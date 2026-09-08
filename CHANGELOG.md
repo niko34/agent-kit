@@ -7,6 +7,35 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 <!-- Les entrées ci-dessous documentent le KIT lui-même. Au démarrage d'un projet,
      les remplacer par le journal du projet. -->
 
+## [0.3.0] - 2026-09-08
+
+Le kit devient utilisable sur GitHub **et** GitLab, et cesse d'être un cul-de-sac
+une fois recopié dans un projet.
+
+### Deux forges
+
+- `.gitlab/ci/hygiene.yml` : variante GitLab CI des contrôles d'hygiène, à inclure
+  depuis un `.gitlab-ci.yml` existant sans le remplacer. Les deux variantes appellent
+  les **mêmes scripts** `tools/` — le support bi-forge est quasi gratuit parce que la
+  logique n'a jamais vécu dans le YAML.
+- `/release` gère les deux forges (`gh` / `glab`), avec la consigne de supprimer la
+  variante inutilisée — et la commande entière si la chaîne CI publie déjà les releases.
+- `.claude/settings.json` : entrées `glab` en miroir des entrées `gh`.
+- `README.md` : étape « Choisir sa forge » dans la procédure de démarrage.
+
+### Propagation kit → projets
+
+- `tools/update_kit.sh` : récupère dans un projet les évolutions du kit, **uniquement
+  sur les fichiers gelés**. Refuse un arbre de travail sale, propose `--dry-run`, laisse
+  le diff indexé pour relecture.
+- `README.md` et `GUIDE.md` documentent qu'un template GitHub ne crée **aucun lien git** :
+  rien ne descend, rien ne remonte. D'où les deux catégories de fichiers — **gelés**
+  (rapatriables) et **personnalisés** (jamais touchés) — sans lesquelles toute
+  synchronisation écraserait le `CLAUDE.md` du projet.
+- Rappel explicite : un agent métier vit dans le projet, jamais dans le kit.
+
+---
+
 ## [0.2.0] - 2026-09-08
 
 Report des leçons apprises sur le projet d'origine depuis la constitution du kit.

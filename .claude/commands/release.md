@@ -1,16 +1,25 @@
 ---
-description: Publie une release (tag, artefacts de build, notes, GitHub) sans rien committer
+description: Publie une release (tag, artefacts de build, notes) sur GitHub ou GitLab, sans rien committer
 argument-hint: [vX.Y.Z] [résumé des changements]
-allowed-tools: Bash(git status:*), Bash(git fetch:*), Bash(git rev-parse:*), Bash(git rev-list:*), Bash(git tag:*), Bash(git push:*), Bash(git log:*), Bash(gh auth status:*), Bash(gh release create:*), Bash(gh release view:*), Bash(npm run *), Bash(ls:*), Bash(grep:*), Read
+allowed-tools: Bash(git status:*), Bash(git fetch:*), Bash(git rev-parse:*), Bash(git rev-list:*), Bash(git tag:*), Bash(git push:*), Bash(git log:*), Bash(gh auth status:*), Bash(gh release create:*), Bash(gh release view:*), Bash(glab auth status:*), Bash(glab release create:*), Bash(glab release view:*), Bash(npm run *), Bash(ls:*), Bash(grep:*), Read
 ---
 
 <!-- ═══════════════════════════════════════════════════════════════════
   KIT DE DÉMARRAGE — À PERSONNALISER :
-  1. Étape 2 : remplacer par la commande de build réelle du projet
-  2. Étape 3 : remplacer ou supprimer si le projet ne génère pas de doc
-  3. Étape 4 : indiquer où vit le numéro de version (package.json, __init__.py…)
-  4. Étape 6 : lister les artefacts réellement à joindre
-  5. Ajuster `allowed-tools` en tête aux commandes citées
+  1. CHOISIR LA FORGE : les étapes 1, 6 et 7 proposent deux variantes,
+     GitHub (`gh`) et GitLab (`glab`). SUPPRIMER celle qui ne sert pas —
+     laisser les deux rend la commande ambiguë à l'exécution.
+  2. Étape 2 : remplacer par la commande de build réelle du projet
+  3. Étape 3 : remplacer ou supprimer si le projet ne génère pas de doc
+  4. Étape 4 : indiquer où vit le numéro de version (package.json, __init__.py…)
+  5. Étape 6 : lister les artefacts réellement à joindre
+  6. Ajuster `allowed-tools` en tête : retirer les entrées de la forge écartée
+
+  ⚠️ SI LA FORGE PUBLIE DÉJÀ LES RELEASES (chaîne CI/CD en place qui construit
+  et déploie sur tag), SUPPRIMER CETTE COMMANDE plutôt que de la faire coexister
+  avec le pipeline. Deux mécanismes de publication qui s'ignorent produisent des
+  releases incohérentes, et personne ne sait plus laquelle fait foi.
+
   Le squelette (pré-vérifications, règle « ne commite rien », gestion d'échec
   après tag) fonctionne tel quel et c'est lui qui porte la valeur.
 ═══════════════════════════════════════════════════════════════════ -->
@@ -36,8 +45,13 @@ pas les voir dans `git status`, et ne cherche pas à les ajouter.
 
 ### 1. Pré-vérifications — tout échec arrête la commande
 
-- `gh auth status` : si `gh` est absent ou non authentifié, **arrête** avec
-  l'indication d'installation (https://cli.github.com) et `gh auth login`.
+- **Forge GitHub** — `gh auth status` : si `gh` est absent ou non authentifié,
+  **arrête** avec l'indication d'installation (https://cli.github.com) et
+  `gh auth login`.
+- **Forge GitLab** — `glab auth status` : si `glab` est absent ou non
+  authentifié, **arrête** avec l'indication d'installation
+  (https://gitlab.com/gitlab-org/cli) et `glab auth login`. Sur une instance
+  auto-hébergée, l'authentification vise cette instance, pas gitlab.com.
 - `git status --porcelain` : doit être **vide**. Sinon, affiche les fichiers
   concernés et arrête.
 - `git fetch` puis compare `HEAD` à `@{u}` : la branche doit être **à jour avec
@@ -82,12 +96,25 @@ comportement. Langue : celle du projet (cf. `CLAUDE.md`).
 
 **Uniquement le tag.** Jamais `git push` seul, jamais `--tags`.
 
-### 6. Release GitHub
+### 6. Publication de la release
+
+**Forge GitHub :**
 
     gh release create <version> \
       --title "<version> — <titre court>" \
       --notes-file <fichier de notes dans le scratchpad> \
       <artefacts à joindre>
+
+**Forge GitLab :**
+
+    glab release create <version> \
+      --name "<version> — <titre court>" \
+      --notes-file <fichier de notes dans le scratchpad> \
+      <artefacts à joindre>
+
+Sur GitLab, les fichiers volumineux passent mal en pièces jointes de release :
+au-delà de quelques mégaoctets, préférer un artefact de job publié par le
+pipeline et **lier son URL** dans les notes plutôt que de l'attacher.
 
 Écris les notes dans un fichier du répertoire scratchpad et utilise
 `--notes-file` : les notes multi-lignes passées en `--notes` sur la ligne de
@@ -99,8 +126,15 @@ téléchargé.
 
 ### 7. Fin
 
-Affiche l'**URL de la release** (`gh release view <version> --json url -q .url`)
-et un récapitulatif : version, artefacts joints, taille.
+Affiche l'**URL de la release** et un récapitulatif : version, artefacts joints,
+taille.
+
+- GitHub : `gh release view <version> --json url -q .url`
+- GitLab : `glab release view <version>`
+
+Si le pipeline de la forge se déclenche sur le tag, **signale-le** et donne le
+lien du pipeline : la release n'est réellement publiée qu'une fois ce pipeline
+au vert.
 
 ## Rappels
 

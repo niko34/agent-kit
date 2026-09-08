@@ -51,8 +51,11 @@ specs/
 tools/
   check_specs.sh              # Unicité des specs dans le cycle (CI + local)
   check_doc_links.sh          # Aucun lien mort dans la doc (CI + local)
+  update_kit.sh               # Récupère les évolutions du kit dans un projet
 .github/workflows/
-  hygiene-specs.yml           # Lance les deux contrôles sur chaque commit
+  hygiene-specs.yml           # Variante GitHub Actions — supprimer si GitLab
+.gitlab/ci/
+  hygiene.yml                 # Variante GitLab CI — supprimer si GitHub
 docs/
   adr/                        # Décisions d'architecture (avec template)
   API.md                      # Contrat REST (squelette)
@@ -79,11 +82,24 @@ CHANGELOG.md                  # Journal des changements visibles
    paquets et vos scripts.
 5. **Personnaliser `.claude/commands/release.md`** (build, artefacts à joindre)
    ou le supprimer si le projet ne publie pas de release.
-6. **Vérifier que les contrôles d'hygiène passent** : `./tools/check_specs.sh`
-   et `./tools/check_doc_links.sh`. Ils tournent ensuite sur chaque commit via
-   `.github/workflows/hygiene-specs.yml`.
-7. `git init && git add -A && git commit -m "chore: kit de démarrage Claude"`.
-8. Ouvrir Claude Code dans le dossier et lancer :
+6. **Choisir sa forge — supprimer l'autre.** Le kit fournit les deux :
+   - **GitHub** → garder `.github/workflows/hygiene-specs.yml`, supprimer `.gitlab/`
+   - **GitLab** → supprimer `.github/`, et brancher `.gitlab/ci/hygiene.yml` depuis
+     le `.gitlab-ci.yml` du projet (`include: - local: '.gitlab/ci/hygiene.yml'`)
+
+   Dans `.claude/commands/release.md`, supprimer de même la variante inutilisée
+   (`gh` ou `glab`) — ou le fichier entier si la chaîne CI publie déjà les releases.
+7. **Vérifier que les contrôles d'hygiène passent** : `./tools/check_specs.sh`
+   et `./tools/check_doc_links.sh`. Ils tournent ensuite sur chaque commit.
+8. `git init && git add -A && git commit -m "chore: kit de démarrage Claude"`
+   (à sauter si le dépôt du projet existe déjà).
+9. **Déclarer le kit comme distant**, pour pouvoir récupérer ses évolutions plus
+   tard (voir « Faire vivre la référence ») :
+
+   ```bash
+   git remote add kit https://github.com/niko34/claude-agent-kit.git
+   ```
+10. Ouvrir Claude Code dans le dossier et lancer :
    > « Lis CLAUDE.md. Voici ce que doit faire l'application : … .
    > Crée la première spec dans specs/features/todo/. »
 
@@ -125,6 +141,51 @@ CHANGELOG.md                  # Journal des changements visibles
   sont faits pour être lus, pas contournés.
 
 ## Faire vivre la référence
+
+**Un template n'est pas un lien : c'est une photocopie.** Un dépôt créé depuis un
+template GitHub démarre avec un unique commit et **aucune relation git** avec son
+template — ce n'est pas un fork. Conséquence, à connaître avant de s'organiser :
+
+| Question | Réponse |
+|---|---|
+| La création recopie-t-elle le kit ? | **Oui**, intégralement, à cet instant-là |
+| Une évolution du kit descend-elle dans les projets ? | **Non. Jamais.** |
+| Une amélioration faite dans un projet remonte-t-elle au kit ? | **Non. Jamais.** |
+
+Et c'est voulu : une propagation automatique écraserait le `CLAUDE.md` du projet, qui
+est à la fois **le fichier le plus personnalisé** et **un fichier fourni par le kit**.
+
+### Deux catégories de fichiers, à ne jamais confondre
+
+**GELÉS** — fournis par le kit, jamais modifiés dans le projet. Une amélioration se fait
+*dans le kit*, puis redescend : `.claude/agents/` (les génériques), les skills
+`spec-workflow`, `security-checklist`, `db-migrations`, `tools/`, les templates de specs,
+`GUIDE.md`.
+
+**PERSONNALISÉS** — jamais rapatriés depuis le kit : `CLAUDE.md`, la skill
+`dev-workflow`, `.claude/settings.json`, `CHANGELOG.md`, `.claude/memory/`, les fichiers
+de CI, et **les agents métier propres au projet**.
+
+### Récupérer les évolutions du kit
+
+Le lien absent se recrée avec un simple distant — ce qui marche aussi bien d'un kit
+GitHub vers un projet GitLab, puisqu'un distant n'est qu'une URL :
+
+```bash
+git remote add kit https://github.com/niko34/claude-agent-kit.git
+./tools/update_kit.sh --dry-run    # ce qui changerait
+./tools/update_kit.sh              # récupère UNIQUEMENT les fichiers gelés
+```
+
+Le script refuse de tourner sur un arbre sale, n'écrase que les chemins gelés, et laisse
+les modifications indexées pour que tu relises le diff avant de committer.
+
+### Et dans l'autre sens
+
+Le retour d'une leçon vers le kit reste **manuel et délibéré** : on copie le fichier vers
+le kit et on l'inscrit à son `CHANGELOG.md` avec le défaut réel qui l'a motivée. C'est le
+moment où l'on décide si la leçon vaut au-delà de ce projet — un jugement qu'aucun script
+ne peut rendre.
 
 **La copie est un fork au jour J.** Un projet qui affûte un agent, découvre un piège ou
 ajoute un garde-fou l'améliore *chez lui* — et cette amélioration est perdue pour les

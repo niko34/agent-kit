@@ -1,0 +1,57 @@
+# ============================================================================
+# Contrôles d'hygiène documentaire — variante GitLab.
+#
+# ⚠️ Ce fichier N'EST PAS un pipeline complet : il n'ajoute que deux jobs, pour
+# pouvoir cohabiter avec une chaîne de build et de déploiement existante.
+#
+# Deux façons de le brancher :
+#
+#   A. Depuis le .gitlab-ci.yml du projet :
+#          include:
+#            - local: '.gitlab/ci/hygiene.yml'
+#      puis ajouter `hygiene` à la liste des `stages` du pipeline principal.
+#
+#   B. Copier les deux jobs directement dans le .gitlab-ci.yml existant.
+#
+# Ne JAMAIS remplacer un .gitlab-ci.yml existant par ce fichier.
+#
+# POURQUOI CES CONTRÔLES
+# ----------------------
+# 1. Unicité des specs : le cycle todo -> doing -> done procède par DÉPLACEMENT.
+#    Une spec copiée, ce sont deux versions qui divergent et deux statuts qui se
+#    contredisent — « où en est cette feature ? » n'a plus de réponse lisible.
+# 2. Liens de documentation : le chemin d'un lien vers une spec ENCODE son état
+#    (`doing/`, `done/`). Chaque promotion casse silencieusement les liens qui
+#    citaient l'ancien emplacement.
+#
+# Ni toolchain, ni cache, ni filtre de chemins : le contrôle coûte quelques
+# secondes et doit tourner sur TOUS les commits — un déplacement de spec
+# n'accompagne pas nécessairement une modification de code. Une règle que rien
+# ne vérifie n'est pas une règle.
+#
+# La logique vit dans tools/, pas dans ce YAML : les mêmes scripts tournent en
+# local et peuvent servir de hook pre-commit. C'est ce qui rend le support des
+# deux forges quasi gratuit.
+# ============================================================================
+
+stages:
+  - hygiene # à fusionner avec les stages déjà déclarés par le projet
+
+.hygiene_base:
+  stage: hygiene
+  image: alpine:3.20
+  before_script:
+    - apk add --no-cache bash grep coreutils findutils
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+hygiene:specs:
+  extends: .hygiene_base
+  script:
+    - bash ./tools/check_specs.sh
+
+hygiene:liens-doc:
+  extends: .hygiene_base
+  script:
+    - bash ./tools/check_doc_links.sh

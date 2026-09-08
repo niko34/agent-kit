@@ -58,9 +58,13 @@ specs/
 tools/
   check_specs.sh             Une spec ne vit que dans UN dossier du cycle.
   check_doc_links.sh         Tout lien relatif de la doc résout.
-.github/workflows/
-  hygiene-specs.yml          Lance les deux contrôles ci-dessus sur chaque commit.
-                             Une règle que rien ne vérifie n'est pas une règle.
+  update_kit.sh              Récupère les évolutions du kit dans un projet, sur
+                             les seuls fichiers « gelés ».
+.github/workflows/           Variante GitHub Actions des contrôles d'hygiène.
+.gitlab/ci/hygiene.yml       Variante GitLab CI des mêmes contrôles. On garde
+                             UNE des deux au moment de la copie. Le support des
+                             deux forges est quasi gratuit parce que la logique
+                             vit dans tools/, pas dans le YAML.
 docs/
   API.md                     Contrat REST (conventions + une section/ressource).
   ARCHITECTURE.md            Vue d'ensemble : composants, flux, environnements.
@@ -158,6 +162,26 @@ d'alourdir l'historique. Trois conséquences qui se paient cher quand on les oub
 
 `/release` applique ça : arbre propre exigé, branche à jour avec origin, **aucun commit,
 seul le tag est poussé**.
+
+## Le kit et les projets : photocopie, pas lien
+
+Créer un projet depuis le kit — bouton « Use this template », fork, ou simple copie de
+fichiers — produit un dépôt **sans aucune relation git** avec le kit. Rien ne descend,
+rien ne remonte, jamais. C'est délibéré : le fichier le plus personnalisé d'un projet
+(`CLAUDE.md`) est aussi un fichier que le kit fournit, donc toute synchronisation
+automatique le détruirait.
+
+Le lien se recrée à la demande, par un distant `kit` et le script `tools/update_kit.sh`,
+qui ne récupère que les fichiers **gelés** — les agents génériques, les skills partagées,
+`tools/`, les templates de specs, `GUIDE.md`. Les fichiers **personnalisés** (`CLAUDE.md`,
+`dev-workflow`, `settings.json`, CI, mémoire, agents métier) n'y sont jamais touchés.
+
+Le retour vers le kit reste manuel : c'est là qu'on décide si une leçon vaut au-delà d'un
+projet. Détail de la manœuvre dans le `README.md`, section « Faire vivre la référence ».
+
+**Corollaire pour les agents métier** : un agent propre à un domaine (`pool-chemistry`,
+`controle-de-gestion`…) vit **dans le projet**, jamais dans le kit. C'est précisément ce
+mélange qui avait fait dériver la première version de ce kit.
 
 ## La mémoire de projet
 
