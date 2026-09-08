@@ -1,0 +1,51 @@
+name: Hygiène du dépôt
+
+# Deux contrôles d'invariant documentaire, sans toolchain ni cache.
+#
+# JOB 1 — Unicité des specs.
+# Un nom de spec ne doit vivre que dans UN seul des dossiers todo/ · doing/ ·
+# done/. Le cycle procède par déplacement ; une spec copiée produit deux versions
+# qui divergent et deux statuts qui se contredisent.
+#
+# JOB 2 — Liens de documentation.
+# Le chemin d'un lien vers une spec encode son ÉTAT (`doing/`, `done/`) ; chaque
+# promotion casse silencieusement les liens qui citaient l'ancien emplacement.
+# Le commit qui promeut une spec échoue tout de suite, au lieu de laisser pourrir
+# la doc pendant des mois.
+#
+# Aucun filtre de chemins, aucune toolchain, aucun cache : le contrôle coûte une
+# seconde et doit tourner sur TOUS les commits — un déplacement de spec
+# n'accompagne pas nécessairement une modification de code. Un contrôle que
+# personne ne lance ne rend rien inexprimable.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: hygiene-specs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unicite:
+    name: Unicité des specs (todo · doing · done)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # La logique vit dans le dépôt, pas dans ce YAML : le même script tourne en
+      # local (`./tools/check_specs.sh`) et peut servir de hook pre-commit.
+      - name: Contrôle d'unicité
+        run: ./tools/check_specs.sh
+
+  liens-doc:
+    name: Liens de documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Contrôle des liens de documentation
+        run: ./tools/check_doc_links.sh
