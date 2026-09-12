@@ -23,14 +23,13 @@ CLAUDE.md                     # Le contrat de travail de Claude (À PERSONNALISE
 GUIDE.md                      # Manuel de référence : qui fait quoi, pourquoi
 .claude/
   settings.json               # Permissions de départ (larges en lecture, sûres en écriture)
-  agents/                     # L'équipe : 12 agents spécialisés
+  agents/                     # L'équipe : 11 agents spécialisés
     orchestrator.md           #   prépare les plans d'exécution multi-agents
     spec-reader.md            #   analyse d'impact des specs
     architect.md              #   conception, plans courts, verdicts ADR
     backend-developer.md      #   API REST, BDD, migrations
     frontend-developer.md     #   portail web
-    security-auditor.md       #   GATE obligatoire : auth, RGPD, injections
-    security-reviewer.md      #   AUDIT de la surface d'attaque, hors diff
+    security-reviewer.md      #   GATE obligatoire (auth, RGPD, injections) + AUDIT de la surface d'attaque, hors diff
     ux-ui-designer.md         #   ergonomie avant implémentation
     test-engineer.md          #   tests + lint + mutation, zéro régression
     debugger.md               #   investigation méthodique des bugs
@@ -41,7 +40,7 @@ GUIDE.md                      # Manuel de référence : qui fait quoi, pourquoi
   memory/                     # Mémoire de projet versionnée (pièges, hypothèses réfutées)
   skills/
     spec-workflow/            # Cycle de vie des specs (todo → doing → done)
-    security-checklist/       # Invariants de sécurité (chargée par security-auditor)
+    security-checklist/       # Invariants de sécurité (chargée par security-reviewer)
     dev-workflow/             # Commandes build/test/lint/déploiement (À PERSONNALISER)
     db-migrations/            # Check-list migrations BDD (réversibilité, N/N-1…)
 .github/
@@ -128,9 +127,9 @@ CHANGELOG.md                  # Journal des changements visibles
 - **L'orchestrator ne code pas et n'invoque personne** : il produit un plan avec des
   briefs prêts à l'emploi ; la session principale exécute. Cette séparation donne des
   briefs de qualité ET un contrôle humain entre chaque étape.
-- **Le gate de sécurité est non négociable** : `security-auditor` passe DEUX fois —
-  P1 sur le design (avant le code), P2 sur le diff réel (après). Les deux passes
-  attrapent des choses différentes.
+- **Le gate de sécurité est non négociable** : le rôle GATE de `security-reviewer`
+  passe DEUX fois — P1 sur le design (avant le code), P2 sur le diff réel (après).
+  Les deux passes attrapent des choses différentes.
 - **La revue avant chaque commit** attrape ce que l'auteur ne peut plus voir. Briefer
   le relecteur avec « un œil neuf » sur les zones qui ont déjà trompé quelqu'un.
 - **La doc est une obligation par tour, pas un livrable de fin de cycle** : cinq fixes
@@ -143,8 +142,8 @@ CHANGELOG.md                  # Journal des changements visibles
   validé par MUTATION (casser volontairement le code protégé et vérifier que le test
   meurt). Sur le projet d'origine, trois mutations sur cinq ne tuaient aucun test.
 - **Un garde-fou visible fait passer le relecteur** : chercher la PLACE de la garde dans
-  le cycle de vie de la requête, jamais sa seule présence. C'est le rôle de
-  `security-reviewer`, qui regarde le système là où le gate ne voit qu'un diff.
+  le cycle de vie de la requête, jamais sa seule présence. C'est le rôle AUDIT de
+  `security-reviewer`, qui regarde le système là où son rôle GATE ne voit qu'un diff.
 - **Une règle que rien ne vérifie n'est pas une règle** : l'unicité des specs et la
   validité des liens de doc sont contrôlées par la CI, pas par la bonne volonté.
 - **On versionne les sources, on publie les générés** : les artefacts de build sont des

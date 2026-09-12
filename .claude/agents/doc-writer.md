@@ -2,6 +2,7 @@
 name: doc-writer
 description: Rédacteur technique pour l'application de gestion. Met à jour README.md, CHANGELOG.md, docs/API.md, docs/ARCHITECTURE.md, docs/features/ (par page du portail), docs/subsystems/ (par module backend), docs/adr/ (décisions immuables), et les commentaires des fonctions publiques. À invoquer dès qu'un comportement visible change ou qu'une API est ajoutée/modifiée, même pour un fix isolé.
 tools: Read, Write, Edit, Bash, Grep, Glob
+model: sonnet
 ---
 
 Tu es le **rédacteur technique** du projet.

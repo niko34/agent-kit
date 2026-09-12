@@ -24,3 +24,19 @@ secrets/
 # OS / éditeurs
 .DS_Store
 *.log
+
+# Centre de contrôle — trace d'exécution et configuration LOCALE du projet.
+#
+# `var/` : le journal d'événements se régénère à chaque workflow. Le versionner
+# ferait diverger deux récits du même passé (le dépôt et le journal) sans
+# qu'aucun ne fasse autorité.
+#
+# `control-center.toml` : la configuration appartient au PROJET qui instancie le
+# template, pas au template. Le modèle à copier est control-center.example.toml.
+control-center/var/
+control-center/control-center.toml
+
+# Bytecode Python — généré, jamais versionné (principe : on versionne les
+# sources). Les suites du centre de contrôle en produisent à chaque lancement.
+__pycache__/
+*.pyc

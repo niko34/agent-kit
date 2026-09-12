@@ -21,8 +21,8 @@ Les sections marquées (optionnelle) peuvent être supprimées si non pertinente
 - [ ] API REST (endpoints, contrats, codes d'erreur)
 - [ ] Frontend (écrans, composants, appels API)
 - [ ] BDD / migrations
-- [ ] Auth / permissions → **passage obligatoire par `security-auditor`**
-- [ ] Données personnelles (collecte, traitement, effacement) → **passage obligatoire par `security-auditor`**
+- [ ] Auth / permissions → **passage obligatoire par `security-reviewer` (rôle GATE)**
+- [ ] Données personnelles (collecte, traitement, effacement) → **passage obligatoire par `security-reviewer` (rôle GATE)**
 - [ ] Intégrations externes (API tierces, webhooks, e-mail…)
 - [ ] Tâches de fond (jobs, cron, files d'attente)
 
@@ -32,7 +32,7 @@ Les sections marquées (optionnelle) peuvent être supprimées si non pertinente
      feature, le second est réactif — il s'invoque quand un bug survient, pas sur plan.) -->
 - [x] spec-reader
 - [x] architect
-- [ ] security-auditor — **obligatoire si** auth / permissions / données personnelles / paiements / migration destructive touchés
+- [ ] security-reviewer, rôle GATE — **obligatoire si** auth / permissions / données personnelles / paiements / migration destructive touchés
 - [ ] ux-ui-designer — **obligatoire si** nouvelle surface UI / refonte visuelle / arbitrage entre plusieurs mises en page
 - [ ] backend-developer
 - [ ] frontend-developer
@@ -99,14 +99,14 @@ Ne pas imbriquer ; si un item est gros, le scinder.
 - Variables d'environnement nouvelles : [lister + `.env.example`]
 
 ## Sécurité & données (optionnelle — obligatoire si auth/permissions/données personnelles/migration)
-<!-- Aide `security-auditor` à statuer GO / NO GO rapidement. -->
+<!-- Aide `security-reviewer` (rôle GATE) à statuer GO / NO GO rapidement. -->
 - Authentification touchée : oui / non — [comment]
 - Permissions / rôles touchés : oui / non — [lesquels]
 - Données personnelles collectées ou traitées : oui / non — finalité : [remplir]
 - Migration destructive (DROP, perte de données possible) : oui / non — plan de retour arrière : [remplir]
 - Nouvelle exposition publique (endpoint sans auth) : oui / non — justification : [remplir]
 - Risque identifié : [remplir ou « aucun »]
-- **Si au moins un « oui » ci-dessus → cocher `security-auditor` dans Agents requis**
+- **Si au moins un « oui » ci-dessus → cocher `security-reviewer` (rôle GATE) dans Agents requis**
 
 ## ADR attendu ?
 <!--
@@ -115,7 +115,7 @@ Déclencheurs ADR :
   2. Décision invisible dans le code (refus, compromis entre options équivalentes)
   3. Alternatives crédibles à tracer
   4. Verrouillage long terme (contrat d'API public, schéma BDD, format de données)
-Cocher « probable » si au moins UN critère est a priori atteint ; `architect` / `security-auditor`
+Cocher « probable » si au moins UN critère est a priori atteint ; `architect` / `security-reviewer`
 confirmeront pendant le cycle.
 -->
 - **Probable** : oui / non

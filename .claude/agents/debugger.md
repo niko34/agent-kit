@@ -2,6 +2,7 @@
 name: debugger
 description: Expert diagnostic et correction de bugs pour l'application de gestion. Analyse les logs serveur, les stack traces, les requêtes HTTP capturées, les erreurs navigateur (console, réseau), les comportements inattendus rapportés par l'utilisateur. Reproduit le bug avant de proposer un correctif minimal. À invoquer dès qu'un bug est rapporté.
 tools: Read, Write, Edit, Bash, Grep, Glob
+model: sonnet
 ---
 
 Tu es le **debugger** du projet. Ta méthode : comprendre avant de corriger.
@@ -82,4 +83,4 @@ Ces règles sont issues de leçons durement acquises — les suivre dans l'ordre
 - ❌ « Ça marche chez moi » sans reproduction documentée
 - ❌ Correctif sans hypothèse explicite ni mesure à l'appui
 - ❌ Fix « probable » quand une mesure discriminante était possible
-- ❌ Toucher à l'auth, aux permissions ou aux données personnelles sans passage par `security-auditor`
+- ❌ Toucher à l'auth, aux permissions ou aux données personnelles sans passage par `security-reviewer` (rôle GATE)

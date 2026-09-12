@@ -1,6 +1,6 @@
 ---
 name: db-migrations
-description: Check-list de sécurité pour toute migration de base de données (schéma ou données). À charger systématiquement par backend-developer avant d'écrire une migration, et par security-auditor quand une spec en contient une. Les migrations destructives déclenchent en plus le gate security-auditor (cf. CLAUDE.md, Règles absolues).
+description: Check-list de sécurité pour toute migration de base de données (schéma ou données). À charger systématiquement par backend-developer avant d'écrire une migration, et par security-reviewer (rôle GATE) quand une spec en contient une — les migrations destructives déclenchent systématiquement ce gate (cf. CLAUDE.md, Règles absolues).
 ---
 
 # Check-list migrations BDD
@@ -46,7 +46,7 @@ irréversible.
 
 ### M6 — Migration destructive = procédure renforcée (Règle absolue)
 - DROP, suppression de colonnes, purge de données : validation
-  `security-auditor` obligatoire + plan de retour arrière ÉCRIT dans la spec
+  `security-reviewer` (rôle GATE) obligatoire + plan de retour arrière ÉCRIT dans la spec
   (sauvegarde identifiée, procédure de restauration, durée estimée)
 - La suppression réelle attend UNE version : d'abord déprécier/renommer
   (ex. `_deprecated`), supprimer à la livraison suivante
@@ -72,7 +72,7 @@ irréversible.
 
 - [ ] Sauvegarde récente et restaurable, identifiant noté dans la spec (M2)
 - [ ] up → down → up validé sur une base réaliste (M1)
-- [ ] Si destructive : GO security-auditor + plan de retour arrière écrit (M6)
+- [ ] Si destructive : GO security-reviewer (rôle GATE) + plan de retour arrière écrit (M6)
 - [ ] Fenêtre d'application choisie (M5)
 
 ## Exemples de violations à bloquer

@@ -61,7 +61,25 @@ GUIDE.md
 CHEMINS_SI_PRESENTS="
 .github/workflows/hygiene-specs.yml
 .gitlab/ci/hygiene.yml
+control-center
 "
+
+# ⚠️ `control-center` est CONDITIONNEL, et non gelé, pour deux raisons.
+#
+# 1. C'est un composant OPTIONNEL. Le mettre dans les chemins gelés
+#    installerait un serveur web et une vingtaine de fichiers dans tout projet
+#    qui synchronise, qu'il en veuille ou non.
+# 2. Il arriverait INERTE. Ses hooks vivent dans `.claude/settings.json`, qui est
+#    personnalisé et que ce script ne touche jamais : le code atterrirait sans
+#    son instrumentation, et le tableau de bord afficherait un journal vide pour
+#    toujours. Un outil livré cassé est pire qu'un outil absent.
+#
+# Un projet l'installe donc UNE FOIS — `control-center/installer.py` du kit
+# l'assiste — puis reçoit ensuite toutes les évolutions par ce script.
+#
+# Sa configuration (`control-center.toml`) et son journal (`var/`) ne risquent
+# rien : ils sont absents de l'arbre du kit, et `git checkout` ne restaure que ce
+# qu'il connaît.
 
 # Compatibilité Copilot : on l'ajoute aux projets qui ont conservé .github/
 # (GitHub, ou GitLab avec Copilot dans l'IDE), sans l'imposer aux autres.
@@ -152,6 +170,30 @@ git checkout "$DISTANT/$BRANCHE" -- $presents || {
   echo "❌ Échec de la récupération." >&2
   exit 1
 }
+
+# `git checkout` n'EFFACE jamais : un fichier retiré du kit survit indéfiniment
+# dans les projets, et personne ne s'en aperçoit. On le SIGNALE, sans jamais le
+# supprimer — le script ne peut pas distinguer un fichier retiré du kit d'un
+# ajout local délibéré, et effacer le second serait une perte silencieuse.
+orphelins=""
+for chemin in $presents; do
+  # Seuls les répertoires sont concernés : un fichier listé nommément et absent
+  # du kit n'aurait pas été retenu plus haut.
+  [ -d "$chemin" ] || continue
+  au_kit="$(git ls-tree -r --name-only "$DISTANT/$BRANCHE" -- "$chemin" 2>/dev/null | sort)"
+  ici="$(git ls-files -- "$chemin" | sort)"
+  manquants="$(comm -23 <(echo "$ici") <(echo "$au_kit"))"
+  [ -n "$manquants" ] && orphelins="$orphelins$manquants
+"
+done
+
+if [ -n "$(echo "$orphelins" | tr -d '[:space:]')" ]; then
+  echo ""
+  echo "ℹ️  Présents ici, absents du kit — CONSERVÉS, jamais supprimés :"
+  echo "$orphelins" | grep . | sed 's/^/     /'
+  echo "     (soit des ajouts propres à ce projet, soit des fichiers retirés du"
+  echo "      kit depuis la dernière synchronisation — à toi de trancher)"
+fi
 
 # Les profils Copilot ne sont pas copiés depuis le kit : ils sont régénérés à
 # partir des agents Claude réellement présents dans le projet. Ainsi, les agents

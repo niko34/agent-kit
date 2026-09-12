@@ -1,6 +1,6 @@
 ---
 name: security-checklist
-description: Check-list de sécurité applicative web (auth, permissions, injections, RGPD, secrets, migrations, uploads). À charger systématiquement par security-auditor et avant toute modif auth/permissions/données.
+description: Check-list de sécurité applicative web (auth, permissions, injections, RGPD, secrets, migrations, uploads). À charger systématiquement par security-reviewer (rôle GATE) et avant toute modif auth/permissions/données.
 ---
 
 # Check-list sécurité applicative
@@ -83,7 +83,7 @@ Pour tout code touchant auth, permissions, données personnelles, paiements, mig
 - [ ] I10 : uploads contraints (type/taille/stockage)
 - [ ] Rate limiting présent sur les endpoints sujets à l'abus (login, reset, envoi de mails)
 - [ ] Tests couvrant les cas de refus (non authentifié, mauvais propriétaire, entrée hostile)
-- [ ] Rapport `security-auditor` avec verdict GO présent dans la spec
+- [ ] Rapport `security-reviewer` (rôle GATE) avec verdict GO présent dans la spec
 
 ## Exemples de violations à bloquer
 

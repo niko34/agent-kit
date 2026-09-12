@@ -94,4 +94,4 @@ Ces règles sont issues de leçons durement acquises — les suivre dans l'ordre
 - ❌ « Ça marche chez moi » sans reproduction documentée
 - ❌ Correctif sans hypothèse explicite ni mesure à l'appui
 - ❌ Fix « probable » quand une mesure discriminante était possible
-- ❌ Toucher à l'auth, aux permissions ou aux données personnelles sans passage par `security-auditor`
+- ❌ Toucher à l'auth, aux permissions ou aux données personnelles sans passage par `security-reviewer` (rôle GATE)

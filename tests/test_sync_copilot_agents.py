@@ -54,6 +54,51 @@ class SyncCopilotAgentsTest(unittest.TestCase):
         self.assertEqual(generated.count("  - edit\n"), 1)
         self.assertIn("Tu analyses la cause racine.", generated)
 
+    def ecrire_agent_avec_cle(self, cle: str, valeur: str) -> Path:
+        """Un agent portant une clé de frontmatter supplémentaire."""
+        source = self.root / ".claude/agents/debugger.md"
+        source.write_text(
+            "---\n"
+            "name: debugger\n"
+            "description: Agent de diagnostic.\n"
+            "tools: Read, Grep\n"
+            f"{cle}: {valeur}\n"
+            "---\n\n"
+            "Tu analyses la cause racine.\n",
+            encoding="utf-8",
+        )
+        return source
+
+    def test_la_cle_model_est_ignoree_sans_erreur(self) -> None:
+        """`model` est propre au runtime Claude : Copilot choisit le sien.
+
+        La recopier produirait dans le profil une valeur que rien ne lit et qui
+        mentirait au lecteur.
+        """
+        self.ecrire_agent_avec_cle("model", "opus")
+
+        sync.write_sync(self.root)
+
+        genere = (self.root / ".github/agents/debugger.agent.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("opus", genere)
+        self.assertNotIn("model", genere)
+        self.assertIn('name: "debugger"', genere)
+
+    def test_une_cle_vraiment_inconnue_reste_refusee(self) -> None:
+        """La garde du refus en bloc ne doit PAS avoir été affaiblie.
+
+        `model` a été ajouté à IGNORED_KEYS, et non à SUPPORTED_KEYS,
+        précisément pour que « non convertie » reste une erreur. Sans ce cas,
+        rien ne distinguerait une exception délibérée d'un trou dans la garde.
+        """
+        self.ecrire_agent_avec_cle("couleur", "bleu")
+
+        with self.assertRaises(sync.ConversionError) as contexte:
+            sync.write_sync(self.root)
+        self.assertIn("couleur", str(contexte.exception))
+
     def test_check_detecte_un_profil_perime(self) -> None:
         self.write_agent()
         sync.write_sync(self.root)
