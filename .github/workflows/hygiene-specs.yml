@@ -1,6 +1,6 @@
 name: Hygiène du dépôt
 
-# Deux contrôles d'invariant documentaire, sans toolchain ni cache.
+# Trois contrôles d'invariant documentaire et d'agents, sans dépendance externe.
 #
 # JOB 1 — Unicité des specs.
 # Un nom de spec ne doit vivre que dans UN seul des dossiers todo/ · doing/ ·
@@ -10,6 +10,10 @@ name: Hygiène du dépôt
 # JOB 2 — Liens de documentation.
 # Le chemin d'un lien vers une spec encode son ÉTAT (`doing/`, `done/`) ; chaque
 # promotion casse silencieusement les liens qui citaient l'ancien emplacement.
+#
+# JOB 3 — Profils GitHub Copilot.
+# Les agents Claude sont la source de vérité ; leurs profils Copilot versionnés
+# doivent être régénérés à chaque évolution pour ne pas dériver silencieusement.
 # Le commit qui promeut une spec échoue tout de suite, au lieu de laisser pourrir
 # la doc pendant des mois.
 #
@@ -49,3 +53,13 @@ jobs:
 
       - name: Contrôle des liens de documentation
         run: ./tools/check_doc_links.sh
+
+  agents-copilot:
+    name: Synchronisation des agents GitHub Copilot
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Contrôle des profils générés
+        run: python3 tools/sync_copilot_agents.py --check

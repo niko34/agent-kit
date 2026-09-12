@@ -7,6 +7,25 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 <!-- Les entrées ci-dessous documentent le KIT lui-même. Au démarrage d'un projet,
      les remplacer par le journal du projet. -->
 
+## [0.4.0] - 2026-09-11
+
+### GitHub Copilot
+
+- `tools/sync_copilot_agents.py` convertit les profils `.claude/agents/*.md` en
+  `.github/agents/*.agent.md`, traduit les outils, refuse les collisions avec un profil
+  manuel et supprime uniquement ses propres dérivés devenus orphelins.
+- Les modes `--write` et `--check` permettent respectivement la génération locale et
+  le contrôle déterministe en CI, sans dépendance Python externe.
+- `.github/copilot-instructions.md` adapte les références partagées à Claude/`Task`
+  aux concepts Copilot et maintient l'orchestration par la session principale.
+- La CI vérifie désormais que les 12 profils Copilot versionnés correspondent exactement
+  à leurs sources Claude ; sept tests unitaires protègent le convertisseur.
+- `tools/update_kit.sh` propage le convertisseur et les instructions communes puis, pour
+  les projets ayant conservé `.github/`, régénère les profils localement afin d'inclure
+  leurs agents métier sans recopier aveuglément tout le répertoire du kit.
+
+---
+
 ## [0.3.0] - 2026-09-08
 
 Le kit devient utilisable sur GitHub **et** GitLab, et cesse d'être un cul-de-sac

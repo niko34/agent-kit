@@ -43,6 +43,8 @@ CHEMINS="
 .claude/skills/db-migrations
 tools/check_specs.sh
 tools/check_doc_links.sh
+tools/sync_copilot_agents.py
+tests/test_sync_copilot_agents.py
 tools/update_kit.sh
 specs/features/_template.md
 specs/modele.md
@@ -59,6 +61,12 @@ GUIDE.md
 CHEMINS_SI_PRESENTS="
 .github/workflows/hygiene-specs.yml
 .gitlab/ci/hygiene.yml
+"
+
+# Compatibilité Copilot : on l'ajoute aux projets qui ont conservé .github/
+# (GitHub, ou GitLab avec Copilot dans l'IDE), sans l'imposer aux autres.
+CHEMINS_GITHUB="
+.github/copilot-instructions.md
 "
 
 SIMULATION=0
@@ -107,6 +115,14 @@ for chemin in $CHEMINS_SI_PRESENTS; do
   fi
 done
 
+if [ -d ".github" ]; then
+  for chemin in $CHEMINS_GITHUB; do
+    if git cat-file -e "$DISTANT/$BRANCHE:$chemin" 2>/dev/null; then
+      presents="$presents $chemin"
+    fi
+  done
+fi
+
 if [ -z "$presents" ]; then
   echo "❌ Aucun des chemins gelés n'existe dans $DISTANT/$BRANCHE." >&2
   echo "   Le distant « $DISTANT » pointe-t-il bien sur le kit ?" >&2
@@ -137,6 +153,18 @@ git checkout "$DISTANT/$BRANCHE" -- $presents || {
   exit 1
 }
 
+# Les profils Copilot ne sont pas copiés depuis le kit : ils sont régénérés à
+# partir des agents Claude réellement présents dans le projet. Ainsi, les agents
+# métier propres au projet restent inclus et un profil Copilot manuel n'est
+# jamais écrasé silencieusement par un répertoire venu du kit.
+if [ -d ".github" ]; then
+  python3 tools/sync_copilot_agents.py --write || {
+    echo "❌ Échec de la régénération des profils GitHub Copilot." >&2
+    exit 1
+  }
+  git add .github/agents
+fi
+
 echo "✅ Fichiers gelés mis à jour et indexés."
 echo ""
 echo "À FAIRE MAINTENANT :"
@@ -146,6 +174,9 @@ echo "  2. Vérifier que les agents MÉTIER du projet n'ont pas été écrasés"
 echo "     (ils ne sont pas dans le kit, donc ils ne le sont pas — mais vérifie)"
 echo "  3. Relancer les contrôles :"
 echo "       ./tools/check_specs.sh && ./tools/check_doc_links.sh"
+if [ -d ".github/agents" ]; then
+  echo "       python3 tools/sync_copilot_agents.py --check"
+fi
 echo "  4. Committer en citant la version du kit récupérée :"
 echo "       git log -1 --format='%h %s' $DISTANT/$BRANCHE"
 echo ""

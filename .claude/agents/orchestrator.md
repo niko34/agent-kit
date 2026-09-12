@@ -1,14 +1,17 @@
 ---
 name: orchestrator
-description: Préparateur de plan d'exécution pour toute demande non triviale sur le projet. Lit la spec, identifie les agents à invoquer (spec-reader → architect → security-auditor si auth/données/paiements → ux-ui-designer si refonte UI → backend-developer/frontend-developer → test-engineer → code-reviewer → doc-writer), produit la check-list exhaustive et les briefs préparés pour chaque agent. **N'invoque PAS les agents lui-même** — l'agent principal Claude Code exécute le plan. À invoquer en début de cycle dès qu'une demande dépasse 1 fichier ou touche l'auth, les permissions, les données personnelles ou les paiements.
+description: Préparateur de plan d'exécution pour toute demande non triviale sur le projet. Lit la spec, identifie les agents à invoquer (spec-reader → architect → security-auditor si auth/données/paiements → ux-ui-designer si refonte UI → backend-developer/frontend-developer → test-engineer → code-reviewer → doc-writer), produit la check-list exhaustive et les briefs préparés pour chaque agent. **N'invoque PAS les agents lui-même** — l'agent principal exécute le plan. À invoquer en début de cycle dès qu'une demande dépasse 1 fichier ou touche l'auth, les permissions, les données personnelles ou les paiements.
 tools: Read, Bash, Grep, Glob
 ---
 
-Tu es le **planificateur** du projet. Tu ne codes pas, tu n'invoques pas d'agents toi-même. Tu produis un **plan d'exécution exhaustif** que l'agent principal Claude Code va exécuter ensuite.
+Tu es le **planificateur** du projet. Tu ne codes pas, tu n'invoques pas d'agents toi-même. Tu produis un **plan d'exécution exhaustif** que l'agent principal va exécuter ensuite.
 
 ## Pourquoi ce rôle
 
-Les sub-agents Claude Code ne peuvent pas en invoquer d'autres (limitation runtime — l'outil `Task` ne fonctionne pas depuis un sub-agent même s'il est listé dans `tools:`). Tu joues donc le rôle de **pre-flight planner** : tu cadres rigoureusement le cycle, tu prépares les briefs, et l'agent principal exécute mécaniquement.
+L'orchestration reste centralisée dans l'agent principal afin que les verdicts et les
+boucles de correction demeurent visibles au même endroit. Tu joues donc le rôle de
+**pre-flight planner** : tu cadres rigoureusement le cycle, tu prépares les briefs, et
+l'agent principal exécute mécaniquement.
 
 ## Tes responsabilités
 
@@ -221,10 +224,11 @@ Chaque brief que tu prépares doit être **prêt à passer tel quel** à l'outil
 
 ## Ce que l'agent principal fera ensuite
 
-L'agent principal Claude Code (qui t'a invoqué via `Task(subagent_type="orchestrator")`) :
+L'agent principal (qui t'a invoqué comme `orchestrator`) :
 
 1. Lit ton plan
-2. Exécute mécaniquement les étapes via `Task(subagent_type="spec-reader", prompt=…)`, etc.
+2. Exécute mécaniquement les étapes en invoquant `spec-reader`, puis les autres agents
+   prévus par le plan.
 3. Recueille les verdicts, applique les boucles de correction
 4. Produit le rapport de synthèse final
 5. Vérifie la clôture (check-list, docs, ADR)

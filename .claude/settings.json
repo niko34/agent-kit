@@ -54,6 +54,7 @@
       "Bash(yarn test*)",
       "Bash(pytest*)",
       "Bash(python3 -m pytest*)",
+      "Bash(python3 tools/sync_copilot_agents.py *)",
       "Bash(node --check *)",
       "Bash(./tools/*)",
       "Bash(./scripts/*)",

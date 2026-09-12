@@ -1,11 +1,12 @@
-# claude-agent-kit
+# agent-kit
 
 Équipe d'agents, workflow de specs, ADR et garde-fous prêts à l'emploi pour démarrer
-un projet avec Claude Code. Orienté application de gestion (portail web + backend
-d'API REST), mais le cycle de travail lui-même ne dépend d'aucune techno.
+un projet avec Claude Code ou GitHub Copilot. Orienté application de gestion
+(portail web + backend d'API REST), mais le cycle de travail lui-même ne dépend
+d'aucune techno.
 
 **Ce dépôt n'est pas une application : c'est une référence à recopier.** Il ne contient
-que l'outillage Claude et son échafaudage — aucun code métier, aucune stack. On le
+que l'outillage multi-agent et son échafaudage — aucun code métier, aucune stack. On le
 clone, on copie son contenu à la racine d'un nouveau projet, on personnalise, et il
 reste ici comme version de référence à faire évoluer.
 
@@ -43,6 +44,11 @@ GUIDE.md                      # Manuel de référence : qui fait quoi, pourquoi
     security-checklist/       # Invariants de sécurité (chargée par security-auditor)
     dev-workflow/             # Commandes build/test/lint/déploiement (À PERSONNALISER)
     db-migrations/            # Check-list migrations BDD (réversibilité, N/N-1…)
+.github/
+  agents/                     # Profils GitHub Copilot générés depuis .claude/agents/
+  copilot-instructions.md     # Pont entre le workflow commun et les outils Copilot
+  workflows/
+    hygiene-specs.yml         # Hygiène specs, liens et synchronisation des agents
 specs/
   features/{todo,doing,done}/ # La file de travail
   features/_template.md       # Template de feature (obligatoire)
@@ -51,9 +57,8 @@ specs/
 tools/
   check_specs.sh              # Unicité des specs dans le cycle (CI + local)
   check_doc_links.sh          # Aucun lien mort dans la doc (CI + local)
+  sync_copilot_agents.py      # Génère et contrôle les profils GitHub Copilot
   update_kit.sh               # Récupère les évolutions du kit dans un projet
-.github/workflows/
-  hygiene-specs.yml           # Variante GitHub Actions — supprimer si GitLab
 .gitlab/ci/
   hygiene.yml                 # Variante GitLab CI — supprimer si GitHub
 docs/
@@ -75,31 +80,43 @@ CHANGELOG.md                  # Journal des changements visibles
    l'équipe d'agents.
 2. **Personnaliser `CLAUDE.md`** : suivre le bloc de commentaire en tête
    (nom, stack, arborescence réelle, règles métier). C'est LE fichier que
-   Claude lit à chaque session — sa précision conditionne tout le reste.
+   les agents utilisent comme contrat commun — sa précision conditionne tout le reste.
 3. **Personnaliser `.claude/skills/dev-workflow/SKILL.md`** : y inscrire les
    commandes réelles de build/test/lint du projet.
 4. **Relire `.claude/settings.json`** et l'adapter à votre gestionnaire de
    paquets et vos scripts.
-5. **Personnaliser `.claude/commands/release.md`** (build, artefacts à joindre)
+5. **Générer les profils GitHub Copilot** après toute modification d'un agent source :
+
+   ```bash
+   python3 tools/sync_copilot_agents.py --write
+   ```
+
+   Les fichiers `.github/agents/*.agent.md` sont des dérivés versionnés requis par
+   Copilot : ne jamais les corriger directement.
+6. **Personnaliser `.claude/commands/release.md`** (build, artefacts à joindre)
    ou le supprimer si le projet ne publie pas de release.
-6. **Choisir sa forge — supprimer l'autre.** Le kit fournit les deux :
+7. **Choisir sa forge — supprimer le pipeline de l'autre.** Le kit fournit les deux :
    - **GitHub** → garder `.github/workflows/hygiene-specs.yml`, supprimer `.gitlab/`
-   - **GitLab** → supprimer `.github/`, et brancher `.gitlab/ci/hygiene.yml` depuis
-     le `.gitlab-ci.yml` du projet (`include: - local: '.gitlab/ci/hygiene.yml'`)
+   - **GitLab** → supprimer `.github/workflows/`, et brancher
+     `.gitlab/ci/hygiene.yml` depuis le `.gitlab-ci.yml` du projet
+     (`include: - local: '.gitlab/ci/hygiene.yml'`). Conserver `.github/agents/` et
+     `.github/copilot-instructions.md` si GitHub Copilot est utilisé dans l'IDE ; sinon,
+     le dossier `.github/` entier peut être supprimé.
 
    Dans `.claude/commands/release.md`, supprimer de même la variante inutilisée
    (`gh` ou `glab`) — ou le fichier entier si la chaîne CI publie déjà les releases.
-7. **Vérifier que les contrôles d'hygiène passent** : `./tools/check_specs.sh`
-   et `./tools/check_doc_links.sh`. Ils tournent ensuite sur chaque commit.
-8. `git init && git add -A && git commit -m "chore: kit de démarrage Claude"`
+8. **Vérifier que les contrôles d'hygiène passent** : `./tools/check_specs.sh`,
+   `./tools/check_doc_links.sh` et
+   `python3 tools/sync_copilot_agents.py --check`. Ils tournent ensuite sur chaque commit.
+9. `git init && git add -A && git commit -m "chore: kit de démarrage agents"`
    (à sauter si le dépôt du projet existe déjà).
-9. **Déclarer le kit comme distant**, pour pouvoir récupérer ses évolutions plus
+10. **Déclarer le kit comme distant**, pour pouvoir récupérer ses évolutions plus
    tard (voir « Faire vivre la référence ») :
 
    ```bash
    git remote add kit https://github.com/niko34/claude-agent-kit.git
    ```
-10. Ouvrir Claude Code dans le dossier et lancer :
+11. Ouvrir Claude Code ou GitHub Copilot dans le dossier et lancer :
    > « Lis CLAUDE.md. Voici ce que doit faire l'application : … .
    > Crée la première spec dans specs/features/todo/. »
 
@@ -131,7 +148,8 @@ CHANGELOG.md                  # Journal des changements visibles
 - **Une règle que rien ne vérifie n'est pas une règle** : l'unicité des specs et la
   validité des liens de doc sont contrôlées par la CI, pas par la bonne volonté.
 - **On versionne les sources, on publie les générés** : les artefacts de build sont des
-  assets de release, jamais du contenu commité.
+  assets de release, jamais du contenu commité. Les profils `.github/agents/` constituent
+  l'exception nécessaire : Copilot ne peut les découvrir que s'ils sont dans le dépôt.
 
 ## Ce que le kit ne fait pas
 
@@ -159,8 +177,10 @@ est à la fois **le fichier le plus personnalisé** et **un fichier fourni par l
 
 **GELÉS** — fournis par le kit, jamais modifiés dans le projet. Une amélioration se fait
 *dans le kit*, puis redescend : `.claude/agents/` (les génériques), les skills
-`spec-workflow`, `security-checklist`, `db-migrations`, `tools/`, les templates de specs,
-`GUIDE.md`.
+`spec-workflow`, `security-checklist`, `db-migrations`,
+`.github/copilot-instructions.md`, `tools/`, les templates de specs, `GUIDE.md`.
+Les profils `.github/agents/` sont ensuite régénérés localement afin d'inclure aussi
+les éventuels agents métier du projet.
 
 **PERSONNALISÉS** — jamais rapatriés depuis le kit : `CLAUDE.md`, la skill
 `dev-workflow`, `.claude/settings.json`, `CHANGELOG.md`, `.claude/memory/`, les fichiers

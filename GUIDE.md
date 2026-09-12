@@ -133,7 +133,7 @@ commentaire qu'un humain pressé saute.
 
 ## Pourquoi la CI vérifie les specs et les liens
 
-Deux contrôles tournent sur chaque commit (`.github/workflows/hygiene-specs.yml`),
+Trois contrôles tournent sur chaque commit (`.github/workflows/hygiene-specs.yml`),
 sans toolchain ni cache, en une seconde :
 
 - **Unicité** — un nom de spec ne vit que dans un seul de `todo/` · `doing/` · `done/`.
@@ -142,6 +142,8 @@ sans toolchain ni cache, en une seconde :
 - **Liens** — tout lien relatif de la doc résout. Le chemin d'un lien vers une spec
   **encode son état** (`doing/`, `done/`), donc chaque promotion casse silencieusement
   les liens qui citaient l'ancien emplacement.
+- **Agents Copilot** — chaque profil `.github/agents/*.agent.md` correspond exactement
+  à sa source `.claude/agents/*.md` ; une modification non régénérée bloque la CI.
 
 Les deux défauts sont attestés sur le projet d'origine : trois specs dans deux dossiers
 avec des statuts contradictoires, et 29 % de liens morts vers des specs — des liens
@@ -160,6 +162,11 @@ d'alourdir l'historique. Trois conséquences qui se paient cher quand on les oub
 - ce qui est **relevé** et non généré (dump de crash, trace d'incident) se versionne :
   rien ne le régénère. C'est l'exception assumée à la règle.
 
+Les profils `.github/agents/*.agent.md` sont une seconde exception, imposée par leur
+consommateur : GitHub Copilot ne les découvre que dans le dépôt. Leur source reste
+`.claude/agents/*.md`; `tools/sync_copilot_agents.py --write` les régénère et `--check`
+interdit leur dérive en CI. Un profil Copilot généré ne se corrige jamais directement.
+
 `/release` applique ça : arbre propre exigé, branche à jour avec origin, **aucun commit,
 seul le tag est poussé**.
 
@@ -173,7 +180,10 @@ automatique le détruirait.
 
 Le lien se recrée à la demande, par un distant `kit` et le script `tools/update_kit.sh`,
 qui ne récupère que les fichiers **gelés** — les agents génériques, les skills partagées,
-`tools/`, les templates de specs, `GUIDE.md`. Les fichiers **personnalisés** (`CLAUDE.md`,
+le convertisseur Copilot, `tools/`, les templates de specs, `GUIDE.md`. Les profils
+Copilot sont régénérés dans le projet après cette récupération, ce qui conserve aussi
+ses agents métier propres.
+Les fichiers **personnalisés** (`CLAUDE.md`,
 `dev-workflow`, `settings.json`, CI, mémoire, agents métier) n'y sont jamais touchés.
 
 Le retour vers le kit reste manuel : c'est là qu'on décide si une leçon vaut au-delà d'un
@@ -227,3 +237,8 @@ slug.md`, remplir les blocs, puis demander le lancement. Un bug simple :
 
 **Où sont les commandes du projet (tests, build, migrations) ?** Dans la skill
 `dev-workflow` — l'unique endroit à maintenir quand elles changent.
+
+**Comment mettre les agents à disposition de GitHub Copilot ?** Modifier uniquement
+leur source dans `.claude/agents/`, puis lancer
+`python3 tools/sync_copilot_agents.py --write`. Copilot charge les profils générés dans
+`.github/agents/` et réutilise directement les skills sous `.claude/skills/`.

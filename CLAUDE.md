@@ -58,6 +58,12 @@ tools/                # Contrôles d'hygiène, lançables en local ET en CI
 .claude/
   memory/             # Mémoire de projet versionnée (cf. .claude/memory/README.md)
   commands/           # Commandes slash du projet (/release…)
+.github/
+  agents/             # Profils GitHub Copilot générés depuis .claude/agents/
+  copilot-instructions.md # Adaptation du workflow commun aux outils Copilot
+  workflows/          # Contrôles d'hygiène GitHub Actions
+tools/
+  sync_copilot_agents.py # Génération + contrôle des profils Copilot
 ```
 
 ## Source de vérité : les specs
@@ -172,7 +178,7 @@ poser d'abord la question :
 
 | Agent | Rôle | Quand l'invoquer |
 |---|---|---|
-| `orchestrator` | **Préparateur de plan** : lit la spec, produit la check-list exhaustive et les briefs prêts-à-l'emploi pour chaque agent. **N'invoque pas les agents lui-même** (limitation runtime). C'est l'agent principal qui exécute le plan. | Obligatoire dès qu'une demande dépasse 1 fichier ou touche auth/données/paiements |
+| `orchestrator` | **Préparateur de plan** : lit la spec, produit la check-list exhaustive et les briefs prêts-à-l'emploi pour chaque agent. **N'invoque pas les agents lui-même** : l'orchestration reste centralisée dans l'agent principal. | Obligatoire dès qu'une demande dépasse 1 fichier ou touche auth/données/paiements |
 | `spec-reader` | Lit et analyse la spec, produit l'analyse d'impact, déplace vers `doing/` | Dès qu'une spec est sélectionnée |
 | `architect` | Conçoit l'implémentation, produit le plan court, statue sur l'ADR | Après analyse de spec, avant codage |
 | `backend-developer` | API REST, logique métier, BDD, migrations, tâches de fond | Toute modif backend |
