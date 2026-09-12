@@ -87,6 +87,41 @@ CHEMINS_GITHUB="
 .github/copilot-instructions.md
 "
 
+# ── SURCHARGE PAR PROJET ─────────────────────────────────────────────────────
+# Un fichier `.kit-paths` à la racine du projet REMPLACE la liste des chemins
+# gelés ci-dessus. Un chemin par ligne ; `#` commente ; les lignes vides sont
+# ignorées.
+#
+# POURQUOI CETTE SOUPAPE. Tous les projets ne descendent pas du kit. Certains le
+# précèdent, et ont spécialisé leurs agents pendant des mois : leur appliquer la
+# liste gelée écraserait ce travail d'un coup, sans retour possible.
+#
+# Le cas réel qui l'a motivée : un projet firmware dont les agents avaient
+# divergé de 50 à 88 % du kit — un agent métier propre au domaine, un
+# test-engineer portant toute une doctrine de validation. La synchronisation
+# aveugle les aurait remplacés par les versions génériques.
+#
+# ⚠️ DÉCLARER UN CHEMIN ICI, C'EST L'ADOPTER. Un chemin absent de `.kit-paths`
+# n'est plus jamais mis à jour depuis le kit : le projet en devient
+# propriétaire. C'est le but — mais c'est définitif tant que le fichier n'est pas
+# modifié.
+#
+# La liste INCLUSIVE est délibérée, là où une liste d'exclusions serait
+# fragile : si le kit ajoute demain un chemin gelé, un projet qui a forké n'en
+# veut probablement pas, et une exclusion oubliée le lui imposerait en silence.
+#
+# Les chemins CONDITIONNELS (fichiers de CI, control-center) continuent de
+# s'appliquer : ils ne sont récupérés que s'ils existent déjà dans le projet.
+#
+# ⚠️ PENSER À Y METTRE `tools/update_kit.sh` LUI-MÊME. Omis, le script cesse de
+# se mettre à jour et se fossilise à la version du jour de son installation —
+# les corrections apportées ici n'atteindraient jamais le projet.
+RACINE_PROJET="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+if [ -f "$RACINE_PROJET/.kit-paths" ]; then
+  CHEMINS="$(sed 's/#.*//' "$RACINE_PROJET/.kit-paths" | grep -v '^[[:space:]]*$' || true)"
+  echo "ℹ️  .kit-paths trouvé — la liste des chemins gelés du kit est REMPLACÉE."
+fi
+
 SIMULATION=0
 [ "${1:-}" = "--dry-run" ] && SIMULATION=1
 
@@ -140,6 +175,11 @@ if [ -d ".github" ]; then
     fi
   done
 fi
+
+# Dédoublonnage : `control-center` peut figurer à la fois dans `.kit-paths` et
+# dans les chemins conditionnels. `git checkout` s'en accommoderait, mais le
+# récapitulatif afficherait deux fois la même chose.
+presents="$(echo $presents | tr ' ' '\n' | grep . | sort -u | tr '\n' ' ')"
 
 if [ -z "$presents" ]; then
   echo "❌ Aucun des chemins gelés n'existe dans $DISTANT/$BRANCHE." >&2

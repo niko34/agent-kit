@@ -197,7 +197,33 @@ git remote add kit https://github.com/niko34/claude-agent-kit.git
 ```
 
 Le script refuse de tourner sur un arbre sale, n'écrase que les chemins gelés, et laisse
-les modifications indexées pour que tu relises le diff avant de committer.
+les modifications indexées pour que tu relises le diff avant de committer. Il signale
+aussi les fichiers présents dans le projet et **absents du kit** — sans jamais les
+supprimer : il ne peut pas distinguer un module retiré du kit d'un ajout local délibéré.
+
+#### Un projet qui n'adopte pas tout le kit
+
+Tous les projets ne descendent pas du kit. Certains le **précèdent**, et ont spécialisé
+leurs agents pendant des mois — leur appliquer la liste gelée les écraserait d'un coup.
+
+Un fichier **`.kit-paths`** à la racine du projet remplace alors la liste des chemins
+gelés. Un chemin par ligne, `#` commente :
+
+```
+# Ce projet ne prend du kit que le centre de contrôle.
+# Ses agents ont divergé et lui appartiennent.
+control-center
+
+# ⚠️ À ne pas oublier : sans cette ligne, le script ne se met plus à jour
+# lui-même et se fossilise à la version du jour de son installation.
+tools/update_kit.sh
+```
+
+⚠️ **Déclarer un chemin, c'est l'adopter ; l'omettre, c'est en devenir
+propriétaire.** Un chemin absent de `.kit-paths` n'est plus jamais mis à jour depuis le
+kit. La liste est **inclusive** à dessein : si le kit ajoute demain un chemin gelé, un
+projet qui a forké n'en veut probablement pas, et une exclusion oubliée le lui imposerait
+en silence.
 
 ### Et dans l'autre sens
 
