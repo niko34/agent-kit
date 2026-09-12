@@ -4,10 +4,10 @@
 > dans les projets, par leur script `tools/sync-control-center.sh`.
 >
 > Les chiffres cités plus bas — 167 specs, 22 divergences, 108 appels d'outils
-> sur 110 — viennent du projet où l'outil a été construit et éprouvé
-> (`esp32-pool-controller`). Ils ne décrivent pas votre projet : ils expliquent
-> **pourquoi** la conception est ce qu'elle est. Une mesure datée vaut mieux
-> qu'une affirmation générale.
+> sur 110 — ont été relevés dans `esp32-pool-controller`, le projet où l'outil a
+> été construit et éprouvé. Ils ne décrivent pas nécessairement le vôtre : ils
+> expliquent **pourquoi** la conception est ce qu'elle est. Une mesure datée vaut
+> mieux qu'une affirmation générale.
 >
 > **Ce qui ne voyage pas** : `control-center.toml`, la configuration du projet,
 > et `var/`, son journal. Le modèle à copier est
