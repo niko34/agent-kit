@@ -140,10 +140,19 @@ fi
 # Arbre propre EXIGÉ : ce script écrase des fichiers suivis. Sans cette garde, une
 # modification en cours sur un agent disparaîtrait sans trace ni possibilité de
 # comparaison. C'est à l'humain de décider quoi faire de son travail en cours.
-if [ -n "$(git status --porcelain)" ]; then
+# ⚠️ La garde ne s'applique PAS en simulation : `--dry-run` n'écrit rien, et
+# refuser de PRÉVISUALISER sur un arbre sale est exactement l'inverse de ce qu'on
+# veut — c'est précisément quand on a du travail en cours qu'on aimerait savoir
+# ce qu'une synchronisation ferait, avant de décider quoi en faire.
+#
+# Constaté en installant le script dans un projet : un seul fichier modifié,
+# appartenant à l'utilisateur, empêchait toute prévisualisation.
+if [ "$SIMULATION" -eq 0 ] && [ -n "$(git status --porcelain)" ]; then
   echo "❌ Arbre de travail sale — ce script écrase des fichiers suivis." >&2
   echo "   Committe ou remise tes modifications d'abord :" >&2
   git status --short >&2
+  echo "" >&2
+  echo "   (./tools/update_kit.sh --dry-run fonctionne, lui, sur un arbre sale)" >&2
   exit 1
 fi
 
