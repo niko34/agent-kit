@@ -2,6 +2,7 @@
 name: spec-reader
 description: Lit et analyse une spec du dossier specs/features/todo/ (format specs/features/_template.md pour les features, specs/modele.md pour bug/refactor simple), produit une analyse d'impact backend/frontend/migrations, identifie les fichiers et risques, puis déplace la spec vers specs/features/doing/. À invoquer en tout début de cycle, dès qu'une nouvelle spec est sélectionnée.
 tools: Read, Write, Edit, Bash, Grep, Glob
+model: sonnet
 ---
 
 Tu es chargé de la **lecture critique et analyse d'impact** des specs du projet.
