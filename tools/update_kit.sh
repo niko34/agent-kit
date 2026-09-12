@@ -45,6 +45,7 @@ tools/check_specs.sh
 tools/check_doc_links.sh
 tools/sync_copilot_agents.py
 tests/test_sync_copilot_agents.py
+tests/test_update_kit.py
 tools/update_kit.sh
 specs/features/_template.md
 specs/modele.md
@@ -133,7 +134,27 @@ if [ -f "$RACINE_PROJET/.kit-paths" ]; then
 fi
 
 SIMULATION=0
-[ "${1:-}" = "--dry-run" ] && SIMULATION=1
+# La seule soupape humaine de ce script est ce test d'argument : une faute de
+# frappe ne doit JAMAIS retomber sur la synchronisation réelle. Tout ce qui
+# n'est ni absent ni exactement `--dry-run` est un argument inconnu, rejeté
+# avec un message d'usage et une sortie non nulle.
+if [ "$#" -gt 1 ]; then
+  echo "❌ Trop d'arguments." >&2
+  echo "   Usage : $0 [--dry-run]" >&2
+  exit 1
+fi
+case "${1:-}" in
+  "")
+    ;;
+  --dry-run)
+    SIMULATION=1
+    ;;
+  *)
+    echo "❌ Argument inconnu : $1" >&2
+    echo "   Usage : $0 [--dry-run]" >&2
+    exit 1
+    ;;
+esac
 
 cd "$(git rev-parse --show-toplevel 2>/dev/null)" || {
   echo "❌ Ce script doit tourner dans un dépôt git." >&2
@@ -217,22 +238,156 @@ fi
 # shellcheck disable=SC2086
 fichiers_du_kit="$(git ls-tree -r --name-only "$DISTANT/$BRANCHE" -- $presents 2>/dev/null)"
 
-echo "→ Écarts sur les fichiers gelés :"
-echo ""
-# shellcheck disable=SC2086
-if [ -n "$fichiers_du_kit" ] && git diff --stat "$DISTANT/$BRANCHE" -- $fichiers_du_kit | grep -q .; then
-  # shellcheck disable=SC2086
-  git diff --stat "$DISTANT/$BRANCHE" -- $fichiers_du_kit
-else
+# ── CLASSIFICATION DES FICHIERS GELÉS ───────────────────────────────────────
+# Le récapitulatif décrit ce que `git checkout` va RÉELLEMENT faire, pas un
+# diff entre deux arbres : un fichier absent du projet n'est pas « supprimé »,
+# il sera CRÉÉ. Quatre issues, sans dépendance entre les tests qui les
+# tranchent :
+#   1. absent du projet                                  → à créer
+#   2. présent, NON SUIVI par git, hash != celui du kit   → non suivi, la
+#      synchro RÉELLE REFUSERA de l'écraser (voir garde plus bas)
+#   3. présent, NON SUIVI par git, hash == celui du kit    → non suivi mais
+#      sans risque : sera indexé, rien à perdre
+#   4. présent et suivi, hash != celui du kit → à mettre à jour
+#      présent et suivi, hash == celui du kit → identique (compté, non listé)
+#
+# La divergence de hash pour un non-suivi est calculée ICI, à la
+# classification, et nulle part ailleurs : c'est la même valeur qui alimente
+# le récapitulatif et la garde d'écrasement plus bas. Deux calculs séparés
+# avaient permis à l'un des deux de désigner « sera écrasé » un fichier que
+# l'autre, quelques lignes plus loin, refusait finalement de toucher — le
+# récapitulatif annonçait alors une opération que l'exécution démentait.
+#
+# `while IFS= read -r … <<<`, jamais `… | while` : sous `set -uo pipefail`, un
+# pipe ouvre un sous-shell — les listes construites dans la boucle seraient
+# perdues en sortant du pipe, en silence. Ni `declare -A`, ni `mapfile` : bash
+# 3.2 (macOS) n'a ni l'un ni l'autre ; les listes restent des chaînes
+# multi-lignes, comme `presents` plus haut.
+#
+# ⚠️ Un écart qui ne porte QUE sur le bit exécutable est classé « identique » :
+# `git hash-object` ne hash que le contenu, jamais le mode du fichier.
+#
+# ⚠️ `git hash-object` applique les filtres `clean` déclarés par
+# `.gitattributes`, `git checkout` applique les filtres `smudge` symétriques.
+# Un `core.autocrlf` agressif peut donc faire apparaître un « à mettre à
+# jour » sans aucun écart sémantique une fois les filtres appliqués.
+a_creer=""
+non_suivis_perte=""
+non_suivis_ok=""
+a_maj=""
+identiques=0
+
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  if [ ! -e "$f" ]; then
+    a_creer="$a_creer$f
+"
+    continue
+  fi
+  if ! git ls-files --error-unmatch -- "$f" >/dev/null 2>&1; then
+    hash_local="$(git hash-object -- "$f" 2>/dev/null)"
+    hash_kit="$(git rev-parse "$DISTANT/$BRANCHE:$f" 2>/dev/null)"
+    if [ "$hash_local" = "$hash_kit" ]; then
+      non_suivis_ok="$non_suivis_ok$f
+"
+    else
+      non_suivis_perte="$non_suivis_perte$f
+"
+    fi
+    continue
+  fi
+  hash_local="$(git hash-object -- "$f" 2>/dev/null)"
+  hash_kit="$(git rev-parse "$DISTANT/$BRANCHE:$f" 2>/dev/null)"
+  if [ "$hash_local" = "$hash_kit" ]; then
+    identiques=$((identiques + 1))
+  else
+    a_maj="$a_maj$f
+"
+  fi
+done <<<"$fichiers_du_kit"
+
+# Court-circuit « déjà aligné » : rien à créer, rien à mettre à jour, aucun
+# non-suivi (perdant ou non) à traiter.
+if [ -z "$a_creer" ] && [ -z "$a_maj" ] && [ -z "$non_suivis_perte" ] && [ -z "$non_suivis_ok" ]; then
   echo "   ✅ Rien à récupérer : le projet est déjà aligné sur le kit."
   exit 0
 fi
+
+# ── RÉCAPITULATIF — SITE D'APPEL UNIQUE ─────────────────────────────────────
+# Appelé une seule fois, ICI, AVANT le branchement --dry-run / réel : les deux
+# chemins ne peuvent pas diverger puisqu'il n'y en a qu'un qui produit ce
+# texte. Seul le pied de page, après ce bloc, distingue simulation et réel.
+echo "→ Ce que la synchronisation va faire :"
 echo ""
+if [ -n "$non_suivis_perte" ]; then
+  n="$(echo "$non_suivis_perte" | grep -c .)"
+  echo "  ⚠️  PRÉSENTS ICI, NON SUIVIS PAR GIT, CONTENU DIVERGENT — LA SYNCHRONISATION REFUSERA DE LES ÉCRASER ($n)"
+  echo "$non_suivis_perte" | grep . | sed 's/^/       /'
+  echo "       (contenu actuel non récupérable après coup : aucun \`git checkout\` ne le rendra ;"
+  echo "        committe le fichier, déplace-le, ou exclus-le via .kit-paths pour débloquer)"
+  echo ""
+fi
+if [ -n "$non_suivis_ok" ]; then
+  n="$(echo "$non_suivis_ok" | grep -c .)"
+  echo "  PRÉSENTS ICI, NON SUIVIS PAR GIT, MAIS DÉJÀ IDENTIQUES AU KIT ($n) — seront indexés, rien à perdre"
+  echo "$non_suivis_ok" | grep . | sed 's/^/       /'
+  echo ""
+fi
+if [ -n "$a_creer" ]; then
+  n="$(echo "$a_creer" | grep -c .)"
+  echo "  À CRÉER ($n)"
+  echo "$a_creer" | grep . | sed 's/^/       /'
+  echo ""
+fi
+if [ -n "$a_maj" ]; then
+  n="$(echo "$a_maj" | grep -c .)"
+  echo "  À METTRE À JOUR ($n)"
+  echo "$a_maj" | grep . | sed 's/^/       /'
+  echo ""
+fi
+if [ "$identiques" -gt 0 ]; then
+  echo "  IDENTIQUES : $identiques fichiers déjà alignés (non listés)"
+  echo ""
+fi
 
 if [ "$SIMULATION" -eq 1 ]; then
   echo "ℹ️  --dry-run : aucune modification appliquée."
   echo "   Relance sans --dry-run pour récupérer ces fichiers."
   exit 0
+fi
+
+# ── GARDE D'ÉCRASEMENT ───────────────────────────────────────────────────────
+# Un fichier non suivi dont le contenu DIFFÈRE de celui du kit (non_suivis_perte,
+# déjà établi à la classification ci-dessus) serait écrasé par `git checkout`
+# sans AUCUN retour arrière possible : n'ayant jamais été suivi, il n'a jamais
+# été sauvegardé nulle part. La garde d'arbre de travail propre plus haut ne le
+# voit pas : `git status --porcelain` est aveugle aux fichiers ignorés — c'est
+# le trou qu'elle laissait passer.
+#
+# ⚠️ Cette garde doit rester APRÈS la sortie --dry-run, jamais avant : la
+# déplacer plus tôt bloquerait aussi la SIMULATION, régression exacte du
+# défaut que feature-005 a corrigé (refuser de PRÉVISUALISER sur un arbre
+# sale).
+#
+# ⚠️ Un fichier non suivi dont le hash est identique à celui du kit
+# (non_suivis_ok) ne déclenche PAS cette garde : rien ne serait perdu, le
+# bloquer serait gratuit — c'est le cas d'un projet qui a copié le kit à la
+# main sans committer.
+#
+# ⚠️ `tools/update_kit.sh` se met à jour lui-même. S'il devient non suivi dans
+# un projet et diverge du kit, cette garde bloque — y compris la synchro qui
+# aurait livré le correctif à cette garde. Le blocage n'est pas permanent :
+# `.kit-paths` (voir en tête de ce script) permet de l'exclure du périmètre
+# géré, ou de le committer pour lever le blocage.
+if [ -n "$non_suivis_perte" ]; then
+  echo "❌ Des fichiers non suivis par git seraient écrasés SANS RETOUR POSSIBLE :" >&2
+  echo "$non_suivis_perte" | grep . | sed 's/^/     /' >&2
+  echo "" >&2
+  echo "   Trois issues, à toi de choisir :" >&2
+  echo "     1. committer le fichier (git add -- <chemin> && git commit)" >&2
+  echo "     2. le déplacer hors du chemin gelé" >&2
+  echo "     3. l'exclure en déclarant .kit-paths (voir en tête de ce script)" >&2
+  exit 1
 fi
 
 # shellcheck disable=SC2086

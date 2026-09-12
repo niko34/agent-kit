@@ -7,6 +7,53 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 <!-- Les entrées ci-dessous documentent le KIT lui-même. Au démarrage d'un projet,
      les remplacer par le journal du projet. -->
 
+## [0.6.0] - 2026-09-12
+
+### Outillage
+
+- **`tools/update_kit.sh` : l'aperçu cesse d'annoncer des suppressions là où
+  il va créer des fichiers.** Il reposait sur un `git diff --stat` entre le
+  kit et l'arbre suivi du projet ; un chemin gelé absent du projet y
+  apparaissait comme `deletions(-)` alors qu'il allait être **créé**.
+  L'aperçu distingue désormais quatre issues par fichier : à créer, non suivi
+  divergent, non suivi déjà identique, à mettre à jour (les identiques suivis
+  sont comptés, non listés). Voir ADR-0011.
+- **Nouvelle garde d'écrasement** : un fichier non suivi par git (typiquement
+  ignoré par `.gitignore`) dont le contenu diverge de celui du kit fait
+  désormais **échouer** la synchronisation réelle avant tout `git checkout`.
+  Motif : un tel fichier, jamais commité, n'est récupérable par aucun retour
+  arrière une fois écrasé — et la garde d'arbre propre préexistante
+  (`git status --porcelain`) ne le voyait pas, puisqu'elle est aveugle aux
+  fichiers ignorés. **Ce qui peut surprendre** : une synchronisation qui
+  réussissait jusqu'ici en silence peut désormais sortir en erreur — c'est le
+  compromis assumé (voir ADR-0011, conséquences négatives).
+- **Tout argument différent de `--dry-run` est rejeté**, sortie non nulle.
+  Motif, relevé par l'audit sécurité : `./tools/update_kit.sh --dry_run`
+  (faute de frappe) déclenchait jusqu'ici une synchronisation **réelle** — la
+  seule soupape humaine du script était contournable par une simple coquille.
+  **Ce qui peut surprendre** : un argument mal orthographié est désormais
+  refusé au lieu d'être silencieusement ignoré.
+- `--dry-run` et l'exécution réelle passent par un site d'appel unique du
+  récapitulatif : ils ne peuvent plus afficher un texte différent.
+
+### Tests
+
+- `tests/test_update_kit.py` [nouveau] : harnais minimal (dépôts kit/projet
+  jetables, confinés, sans réseau) et 4 cas de non-régression sur l'aperçu et
+  la garde d'écrasement. Ajouté à `CHEMINS` d'`update_kit.sh` pour se
+  synchroniser avec le script qu'il protège.
+
+### Documentation
+
+- `docs/adr/0011-apercu-recapitulatif-d-operations.md` [nouveau] : pourquoi
+  l'aperçu décrit des opérations et non un diff d'arbres, alternatives
+  écartées (`numstat` réinterprété, `ls-tree`/`ls-files`, sauvegarde `.bak`
+  automatique).
+- `README.md` : section « Récupérer les évolutions du kit » mise à jour avec
+  les quatre issues de l'aperçu et la garde d'écrasement.
+- `specs/features/todo/feature-006-tests-de-update-kit.md` : note sur le
+  harnais livré en avance par bug-001.
+
 ## [0.5.0] - 2026-09-12
 
 ### Équipe d'agents

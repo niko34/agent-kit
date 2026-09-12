@@ -201,6 +201,22 @@ les modifications indexées pour que tu relises le diff avant de committer. Il s
 aussi les fichiers présents dans le projet et **absents du kit** — sans jamais les
 supprimer : il ne peut pas distinguer un module retiré du kit d'un ajout local délibéré.
 
+L'aperçu (`--dry-run` ou avant l'écriture réelle) décrit ce que la synchronisation va
+**faire**, pas un diff entre deux arbres (voir ADR-0011) : chaque chemin gelé est classé
+en à créer, à mettre à jour, identique (compté, non listé), ou non suivi par git. Un
+chemin non suivi (typiquement ignoré par `.gitignore`) dont le contenu diverge de celui
+du kit est signalé à part et **fait échouer la synchronisation réelle avant tout
+écrasement** — ce contenu, jamais commité, ne serait récupérable par aucun retour
+arrière. Trois issues, à choisir :
+
+```bash
+git add -- <chemin> && git commit   # 1. committer le fichier
+mv <chemin> <ailleurs>              # 2. le déplacer hors du chemin gelé
+```
+
+ou l'exclure du périmètre géré en le retirant de `.kit-paths` (voir plus bas). Un
+non-suivi déjà identique au kit ne bloque rien : il sera simplement indexé.
+
 #### Un projet qui n'adopte pas tout le kit
 
 Tous les projets ne descendent pas du kit. Certains le **précèdent**, et ont spécialisé

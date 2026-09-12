@@ -241,6 +241,31 @@ puis installations réelles dans deux projets (feature-005).
 4. **Erreur** : lancer la suite avec `git` indisponible dans le `PATH` — elle
    doit échouer avec un message exploitable, pas une trace illisible.
 
+## Note — harnais minimal livré par bug-001 (2026-09-12)
+
+L'ordre annoncé plus haut (« le cinquième défaut se corrige après cette
+spec ») a été **inversé** : bug-001 a été traité avant feature-006, au motif
+que ce défaut détruisait des données et ne pouvait pas attendre les 17 cas
+prévus ici. `tests/test_update_kit.py` existe donc déjà, avec un harnais
+**minimal** — dépôts kit/projet jetables, confinement git complet (config
+globale/système neutralisée **et** variables `GIT_DIR`/`GIT_WORK_TREE`/etc.
+neutralisées), sans réseau — et **4 cas** de non-régression, tous liés au
+seul défaut de bug-001 :
+
+1. fichier absent du projet classé « à créer », jamais annoncé en suppression ;
+2. fichier non suivi divergent signalé dans l'aperçu **et** protégé par la
+   garde d'écrasement à l'exécution réelle ;
+3. récapitulatif `--dry-run` identique à celui de l'exécution réelle ;
+4. argument inconnu (`--dry_run`) rejeté sans déclencher de synchronisation.
+
+**Ce qui reste dû à cette spec, intégralement** : les 17 garanties listées
+ci-dessus (le harnais de bug-001 n'en couvre qu'une poignée, indirectement),
+les cas limites (chemin absent du kit, `.kit-paths` vide, espace dans un nom,
+échec de `git checkout`), l'extraction éventuelle d'un `harnais_kit.py`
+partagé, les jobs CI GitHub **et** GitLab, et la section hygiène de
+`GUIDE.md`. Aucun livrable de cette spec n'est retiré ni considéré comme
+couvert par ce qui précède.
+
 ## Notes pour agent
 - **La leçon du 2026-09-12 s'applique en premier lieu ici** : sur ce script,
   la relecture n'a jamais rien trouvé, l'exécution a tout trouvé. Un cas de
