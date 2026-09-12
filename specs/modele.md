@@ -3,7 +3,7 @@ Template MINIMAL pour bug simple ou refactor ponctuel.
 Copier ce fichier dans specs/features/todo/ sous le nom :
     bug-NNN-<slug>.md   ou   refactor-NNN-<slug>.md
 Si le bug touche l'auth, les permissions, les données personnelles ou une migration
-destructive : basculer sur specs/features/_template.md (déclenche security-auditor).
+destructive : basculer sur specs/features/_template.md (déclenche security-reviewer, rôle GATE).
 Supprimer ce bloc commentaire.
 -->
 
@@ -21,11 +21,11 @@ Supprimer ce bloc commentaire.
 <!--
 Même vocabulaire que le template feature, pour que l'orchestrator ait quelque chose à
 lire ici aussi. La règle d'escalade doit être VISIBLE, pas seulement commentée :
-si `security-auditor` est coché, ce format ne suffit plus — basculer sur
+si `security-reviewer` (rôle GATE) est coché, ce format ne suffit plus — basculer sur
 specs/features/_template.md.
 -->
 - [x] debugger (si bug) ou architect (si refactor)
-- [ ] **security-auditor** — si coché : **basculer sur le template feature complet**
+- [ ] **security-reviewer, rôle GATE** — si coché : **basculer sur le template feature complet**
 - [x] test-engineer
 - [x] code-reviewer
 - [x] doc-writer

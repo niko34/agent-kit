@@ -36,7 +36,7 @@ features/todo/X.md ──(promotion par spec-reader)──> features/doing/X.md 
 2. Remplir **tous les blocs obligatoires** :
    - Métadonnées (ID, slug, priorité, version cible)
    - Domaines touchés (checklist)
-   - Agents requis (checklist — cocher `security-auditor` si auth / permissions / données personnelles / migration destructive touchés)
+   - Agents requis (checklist — cocher `security-reviewer` (rôle GATE) si auth / permissions / données personnelles / migration destructive touchés)
    - Description, Contexte, Comportement attendu, Comportement actuel
    - Contraintes techniques, Fichiers potentiellement concernés
    - Sécurité & données (si applicable)
@@ -49,7 +49,7 @@ features/todo/X.md ──(promotion par spec-reader)──> features/doing/X.md 
 
 1. Copier `specs/modele.md` vers `specs/features/todo/bug-NNN-<slug>.md` (ou `refactor-NNN-<slug>.md`)
 2. Remplir type, symptôme observé (avec preuves : logs serveur, réponse HTTP, stack trace), cause racine, correctif attendu, critères d'acceptation
-3. Si le bug touche l'auth, les permissions, les données personnelles ou une migration destructive : basculer sur le template feature complet pour que `security-auditor` soit déclenché
+3. Si le bug touche l'auth, les permissions, les données personnelles ou une migration destructive : basculer sur le template feature complet pour que `security-reviewer` (rôle GATE) soit déclenché
 
 ## Promotion todo → doing
 
@@ -89,7 +89,7 @@ Ajouter **en fin de fichier** (pas en remplacement) les sections de `specs/model
 ## Plan (architect)
 ...
 
-## Validation security-auditor (si applicable)
+## Validation security-reviewer, rôle GATE (si applicable)
 P1 (design) : GO / GO SOUS CONDITIONS / NO GO
 P2 (diff)   : GO / GO SOUS CONDITIONS / NO GO
 ...
@@ -112,7 +112,7 @@ Exigences avant promotion :
 - [ ] `./tools/check_specs.sh` et `./tools/check_doc_links.sh` verts
 - [ ] Lint propre
 - [ ] Rapport `code-reviewer` Approved
-- [ ] `security-auditor` GO si applicable
+- [ ] `security-reviewer` (rôle GATE) GO si applicable
 - [ ] `CHANGELOG.md` mis à jour (si visible utilisateur)
 - [ ] Documentation à jour (si API / UX / schéma BDD change)
 

@@ -36,9 +36,9 @@ feature | bug | refactor
 ## Domaines touchés
 - [ ] API REST (endpoints, schémas de réponse)
 - [ ] Modèle de données / migrations
-- [ ] Auth / permissions / rôles ⚠️ passage obligatoire par security-auditor
-- [ ] Données personnelles (RGPD) ⚠️ passage obligatoire par security-auditor
-- [ ] Paiements ⚠️ passage obligatoire par security-auditor
+- [ ] Auth / permissions / rôles ⚠️ passage obligatoire par security-reviewer (rôle GATE)
+- [ ] Données personnelles (RGPD) ⚠️ passage obligatoire par security-reviewer (rôle GATE)
+- [ ] Paiements ⚠️ passage obligatoire par security-reviewer (rôle GATE)
 - [ ] Frontend (écrans, composants, état client)
 - [ ] Tâches de fond / jobs planifiés
 - [ ] Config / variables d'environnement / déploiement

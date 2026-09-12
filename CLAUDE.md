@@ -67,7 +67,7 @@ tools/                # Contrôles d'hygiène, lançables en local ET en CI
   dans `specs/features/todo/feature-NNN-<slug>.md` et remplir les blocs **Métadonnées**,
   **Domaines touchés**, **Agents requis**, **Sécurité & données** (si applicable) et
   **Éléments visibles**. Ces blocs pilotent l'`orchestrator` et déclenchent
-  `security-auditor` automatiquement.
+  `security-reviewer` (rôle GATE) automatiquement.
 - Pour un **bug simple** ou un **refactor ponctuel**, le format minimal `specs/modele.md` suffit.
 - Une spec à la fois. Quand Claude commence : `todo/X.md` → `doing/X.md`
 - À la fin (tests verts + revue OK) : `doing/X.md` → `done/X.md`, avec notes techniques
@@ -122,12 +122,12 @@ par tour**. Une session de debug qui enchaîne 5 fixes accumule 5 obligations do
    risques, dépendances ; déplace la spec vers `doing/`
 2. **Plan court** (agent `architect`) — max 10 lignes, verdict ADR explicite
 3. **Si la spec touche l'auth, les permissions, les données personnelles, les paiements
-   ou une migration destructive** : `security-auditor` **P1 sur le design** (AVANT tout
-   code) — verdict GO / GO SOUS CONDITIONS / NO GO
+   ou une migration destructive** : `security-reviewer` **rôle GATE, P1 sur le design**
+   (AVANT tout code) — verdict GO / GO SOUS CONDITIONS / NO GO
 4. **Si la spec crée ou refond une surface UI** : `ux-ui-designer` (AVANT
    `frontend-developer`)
 5. **Implémenter** (`backend-developer` et/ou `frontend-developer` selon le domaine)
-6. **Si P1 a eu lieu** : `security-auditor` **P2 sur le diff réel** — re-verdict
+6. **Si P1 a eu lieu** : `security-reviewer` **rôle GATE, P2 sur le diff réel** — re-verdict
 7. **Tests & lint** (agent `test-engineer`) :
    - suite de tests complète — **obligatoire, zéro régression tolérée**
    - lint propre, pas de warnings nouveaux
@@ -156,7 +156,7 @@ poser d'abord la question :
    - Tout endpoint est protégé par défaut ; l'exposition publique est l'exception,
      déclarée et justifiée
    - Aucune vérification de permission côté client seul — le backend revalide TOUT
-   - Tout nouveau chemin vers les données d'un utilisateur → validation `security-auditor`
+   - Tout nouveau chemin vers les données d'un utilisateur → validation `security-reviewer` (rôle GATE)
 2. **Données personnelles (RGPD)** : pas de nouvelle collecte sans finalité déclarée dans
    la spec ; pas de données personnelles dans les logs ; droit à l'effacement préservé
 3. **Secrets** : jamais de token, mot de passe, clé d'API dans le code ou le dépôt —
@@ -177,8 +177,7 @@ poser d'abord la question :
 | `architect` | Conçoit l'implémentation, produit le plan court, statue sur l'ADR | Après analyse de spec, avant codage |
 | `backend-developer` | API REST, logique métier, BDD, migrations, tâches de fond | Toute modif backend |
 | `frontend-developer` | Portail web : écrans, composants, appels API, état client | Toute modif frontend |
-| `security-auditor` | **GATE** sur une spec puis sur son diff : auth, permissions, injections, RGPD, secrets | OBLIGATOIRE pour auth/permissions/données personnelles/paiements/migrations destructives |
-| `security-reviewer` | **AUDIT** de la surface d'attaque entière, sans diff ni spec : routes non authentifiées, ordre des gardes dans le cycle de requête, cloisonnement entre comptes, données au repos | Audit périodique, et après toute refonte de l'auth, du routage ou des permissions |
+| `security-reviewer` | Unique auditeur de sécurité, deux rôles cumulés : **GATE** sur une spec puis sur son diff (auth, permissions, injections, RGPD, secrets) ; **AUDIT** de la surface d'attaque entière, sans diff ni spec (routes non authentifiées, ordre des gardes dans le cycle de requête, cloisonnement entre comptes, données au repos) | GATE OBLIGATOIRE pour auth/permissions/données personnelles/paiements/migrations destructives ; AUDIT en périodique et après toute refonte de l'auth, du routage ou des permissions |
 | `ux-ui-designer` | Ergonomie et design AVANT implémentation UI | Nouvelle surface UI, refonte, arbitrage de mise en page |
 | `test-engineer` | Tests unitaires/intégration, non-régression, lint | Après implémentation, avant revue |
 | `debugger` | Analyse de logs, stack traces, reproduction de bugs | Dès qu'un bug est rapporté |
@@ -203,11 +202,12 @@ poser d'abord la question :
 4. À chaque verdict bloquant (NO GO, Request changes), reboucler sur l'agent concerné
 5. À la fin : rapport de synthèse, vérification de clôture, spec vers `done/`
 
-**Security-reviewer seul** (hors cycle, sans spec ni diff) :
+**Security-reviewer seul, rôle AUDIT** (hors cycle, sans spec ni diff) :
 - Audit périodique de la surface d'attaque — à provoquer délibérément, il ne se
   déclenche sur aucun changement
 - Après une refonte de l'authentification, du routage ou du modèle de permissions :
-  le gate `security-auditor` a vu le diff, pas l'assemblage qui en résulte
+  le rôle GATE, invoqué pendant le cycle, n'a vu que le diff — pas l'assemblage qui
+  en résulte une fois le système regardé dans son ensemble
 
 **Doc-writer obligatoire seul** (sans cycle complet, à la fin du tour courant) :
 - Tout fix isolé qui modifie un comportement observable

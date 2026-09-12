@@ -13,7 +13,7 @@ y compris les hypothèses invalidées et les retours en arrière.
 - [remplir]
 - ADR : [aucun | ADR-NNNN à créer — sujet]
 
-## Validation security-auditor (si applicable)
+## Validation security-reviewer, rôle GATE (si applicable)
 <!-- P1 = revue du design AVANT codage ; P2 = revue du diff réel AVANT commit. -->
 - **P1 (design)** — Verdict : GO / GO SOUS CONDITIONS / NO GO
   - Conditions ou réserves : [remplir ou « aucune »]

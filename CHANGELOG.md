@@ -7,6 +7,25 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 <!-- Les entrées ci-dessous documentent le KIT lui-même. Au démarrage d'un projet,
      les remplacer par le journal du projet. -->
 
+## [0.3.0] - 2026-09-12
+
+### Équipe d'agents
+
+- **Fusion `security-auditor` + `security-reviewer` → `security-reviewer` unique.**
+  Le nouvel agent cumule les deux rôles : **GATE** bloquant sur un périmètre déclaré
+  (P1 sur le design, P2 sur le diff, verdict GO / GO SOUS CONDITIONS / NO GO) et
+  **AUDIT** holistique de la surface d'attaque, sans diff ni spec. Raison : deux
+  « invocation obligatoire » sur le même périmètre produisent soit le double de
+  coût, soit l'ambiguïté — et l'ambiguïté, en pratique, veut dire qu'aucune des
+  deux n'est appelée. `.claude/agents/security-auditor.md` supprimé.
+- Toutes les références au gate dans `CLAUDE.md`, `GUIDE.md`, `README.md`,
+  `orchestrator.md`, les templates de spec et les skills `security-checklist` /
+  `db-migrations` renommées vers `security-reviewer`, en précisant le rôle (GATE
+  ou AUDIT) partout où l'ambiguïté était possible.
+- L'équipe passe de 12 à 11 agents.
+
+---
+
 ## [0.2.0] - 2026-09-08
 
 Report des leçons apprises sur le projet d'origine depuis la constitution du kit.

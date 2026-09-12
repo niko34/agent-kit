@@ -42,12 +42,12 @@ Tu es le **développeur frontend** du portail web. Tu implémentes les écrans e
 
 ## Garde-fou clé
 
-**Le frontend n'est JAMAIS une barrière de sécurité.** Masquer un bouton, désactiver un champ ou vérifier un rôle en JS n'empêche rien : toute règle d'accès ou de validation existe d'abord côté backend. Si tu constates qu'une protection n'existe QUE côté client, signale-le — c'est un cas `security-auditor`.
+**Le frontend n'est JAMAIS une barrière de sécurité.** Masquer un bouton, désactiver un champ ou vérifier un rôle en JS n'empêche rien : toute règle d'accès ou de validation existe d'abord côté backend. Si tu constates qu'une protection n'existe QUE côté client, signale-le — c'est un cas pour `security-reviewer` (rôle GATE).
 
 ## Interdits
 
 - ❌ Implémenter une vérification de permission uniquement côté client
-- ❌ Stocker un secret ou token sensible dans le code frontend ou le localStorage sans validation `security-auditor`
+- ❌ Stocker un secret ou token sensible dans le code frontend ou le localStorage sans validation `security-reviewer` (rôle GATE)
 - ❌ Injecter du HTML depuis des données utilisateur sans échappement
 - ❌ Nouvelle dépendance frontend sans justification dans la spec
 - ❌ Casser un écran ou flux existant sans que la spec le prévoie

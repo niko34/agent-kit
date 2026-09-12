@@ -32,7 +32,7 @@ CHANGELOG.md                 Changements visibles utilisateur, par version.
                              (sinon on approuve tout sans lire), DEMANDER pour ce
                              qui sort du dépôt (push, PR, release), REFUSER ce qui
                              détruit. Secrets interdits en lecture.
-  agents/*.md                Les 12 agents (voir tableau ci-dessous). Un fichier
+  agents/*.md                Les 11 agents (voir tableau ci-dessous). Un fichier
                              = un rôle : frontmatter (nom, description, outils)
                              + instructions.
   commands/release.md        Commande slash `/release` — ne commite rien, ne
@@ -43,12 +43,12 @@ CHANGELOG.md                 Changements visibles utilisateur, par version.
     spec-workflow/           Cycle de vie des specs — se charge dès qu'une spec
                              est créée, reprise ou clôturée.
     security-checklist/      Invariants de sécurité I1-I10 — chargée par
-                             security-auditor à chaque audit.
+                             security-reviewer à chaque passage GATE.
     dev-workflow/            Commandes réelles du projet (build/test/lint/
                              migrations/déploiement) — À PERSONNALISER.
     db-migrations/           Check-list des migrations BDD (réversibilité,
                              sauvegarde, compat N/N-1, backfill) — chargée par
-                             backend-developer et security-auditor.
+                             backend-developer et security-reviewer.
 specs/
   features/todo|doing|done/  La file de travail (voir « Cycle de vie »).
   features/_template.md      Template RICHE, obligatoire pour toute feature.
@@ -69,15 +69,14 @@ docs/
   adr/                       Décisions d'architecture — IMMUABLES (voir ADR).
 ```
 
-## Les 12 agents
+## Les 11 agents
 
 | Agent | En une phrase | Particularité |
 |---|---|---|
 | `orchestrator` | Lit la spec et produit le PLAN : check-list figée, briefs prêts-à-l'emploi, invariants, critères de clôture | **N'invoque jamais les autres agents** (limitation runtime) — c'est la session principale qui exécute son plan |
 | `spec-reader` | Analyse d'impact d'une spec, la promeut de `todo/` vers `doing/` | Spec incomplète = questions à l'utilisateur, pas de promotion |
 | `architect` | Plan d'implémentation ≤ 10 lignes, arbitrages techniques | Statue explicitement sur la nécessité d'un ADR (4 critères) |
-| `security-auditor` | Audit sécurité : auth, permissions, injections, RGPD, secrets, migrations | **Gate bloquant, passe DEUX fois** : P1 sur le design (avant code), P2 sur le diff réel. Verdicts GO / GO SOUS CONDITIONS / NO GO. Lecture seule |
-| `security-reviewer` | Audit de la SURFACE D'ATTAQUE entière, sans diff ni spec | Complète le gate : il cherche ce qui n'apparaît dans aucun diff. Règle maîtresse : « la PLACE de la garde dans le cycle de vie, jamais sa seule présence ». Rapport à 3 niveaux (Grave / assumé / cosmétique). Lecture seule |
+| `security-reviewer` | Unique auditeur de sécurité, deux rôles cumulés : audit sécurité (auth, permissions, injections, RGPD, secrets, migrations) ET audit de la SURFACE D'ATTAQUE entière, sans diff ni spec | **Rôle GATE bloquant, passe DEUX fois** : P1 sur le design (avant code), P2 sur le diff réel, verdicts GO / GO SOUS CONDITIONS / NO GO. **Rôle AUDIT** : cherche ce qui n'apparaît dans aucun diff, règle maîtresse « la PLACE de la garde dans le cycle de vie, jamais sa seule présence », rapport à 3 niveaux (Grave / assumé / cosmétique). Lecture seule dans les deux rôles |
 | `ux-ui-designer` | Ergonomie et mise en page, AVANT l'implémentation | Rend un arbitrage, pas un catalogue d'options |
 | `backend-developer` | API REST, logique métier, BDD, migrations | Migrations toujours réversibles ; requêtes paramétrées |
 | `frontend-developer` | Écrans du portail, appels API, formulaires | « Le frontend n'est jamais une barrière de sécurité » |
@@ -99,8 +98,8 @@ todo/  ──(spec-reader, après analyse)──>  doing/  ──(agent principa
 - **Une seule spec dans `doing/` à la fois.** Suspendue = retour en `todo/` avec note.
 - Pendant le cycle, la spec s'ENRICHIT en fin de fichier (format
   `modele_iteration.md`) : plan, verdicts P1/P2, tests, revue, addendums.
-- Exigences avant `done/` : tests verts, revue Approved, security-auditor GO
-  (si applicable), CHANGELOG et docs à jour.
+- Exigences avant `done/` : tests verts, revue Approved, security-reviewer (rôle
+  GATE) GO (si applicable), CHANGELOG et docs à jour.
 - Une spec `done/` est **immuable** — nouvelle évolution = nouvelle spec.
   L'ordre des fichiers `done/` raconte l'histoire du projet.
 - **Honnêteté documentaire** : un diagnostic qui s'avère faux reste dans la spec,
@@ -118,7 +117,7 @@ C'est la **proportionnalité du processus** :
   racine, correctif, critères. S'écrit en cinq minutes au cœur d'un debug.
 - **Règle d'escalade (le verrou anti-abus)** : un bug qui touche l'auth, les
   permissions, les données personnelles ou une migration → bascule obligatoire
-  sur le template complet, pour que security-auditor soit déclenché.
+  sur le template complet, pour que security-reviewer (rôle GATE) soit déclenché.
 
 Fusionner les deux pousserait soit à bâcler le grand format sur les petits
 sujets, soit à priver l'orchestrator de ses blocs de pilotage.
