@@ -113,7 +113,7 @@ CHANGELOG.md                  # Journal des changements visibles
    tard (voir « Faire vivre la référence ») :
 
    ```bash
-   git remote add kit https://github.com/niko34/claude-agent-kit.git
+   git remote add kit https://github.com/niko34/agent-kit.git
    ```
 11. Ouvrir Claude Code ou GitHub Copilot dans le dossier et lancer :
    > « Lis CLAUDE.md. Voici ce que doit faire l'application : … .
@@ -191,7 +191,7 @@ Le lien absent se recrée avec un simple distant — ce qui marche aussi bien d'
 GitHub vers un projet GitLab, puisqu'un distant n'est qu'une URL :
 
 ```bash
-git remote add kit https://github.com/niko34/claude-agent-kit.git
+git remote add kit https://github.com/niko34/agent-kit.git
 ./tools/update_kit.sh --dry-run    # ce qui changerait
 ./tools/update_kit.sh              # récupère UNIQUEMENT les fichiers gelés
 ```

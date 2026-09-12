@@ -1,7 +1,7 @@
 # <NOM DU PROJET> — Guide Claude
 
 <!-- ═══════════════════════════════════════════════════════════════════
-  ⚠️ SI TU LIS CE FICHIER DANS LE DÉPÔT `claude-agent-kit` LUI-MÊME :
+  ⚠️ SI TU LIS CE FICHIER DANS LE DÉPÔT `agent-kit` LUI-MÊME :
   ce n'est pas un projet, c'est le MODÈLE que l'on recopie dans les projets.
   Il n'y a ici ni code métier, ni stack, ni feature à implémenter — seulement
   l'outillage. Le travail légitime dans ce dépôt consiste à faire évoluer les
