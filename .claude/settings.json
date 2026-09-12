@@ -39,7 +39,6 @@
     "allow": [
       "Task",
       "TodoWrite",
-
       "Bash(npm test*)",
       "Bash(npm run *)",
       "Bash(npx tsc --noEmit*)",
@@ -53,7 +52,6 @@
       "Bash(node --check *)",
       "Bash(./tools/*)",
       "Bash(./scripts/*)",
-
       "Bash(git status*)",
       "Bash(git diff*)",
       "Bash(git log*)",
@@ -74,7 +72,6 @@
       "Bash(gh pr view*)",
       "Bash(gh pr list*)",
       "Bash(gh auth status*)",
-
       "Bash(ls *)",
       "Bash(cat *)",
       "Bash(head *)",
@@ -103,6 +100,108 @@
       "Bash(chmod *)",
       "Bash(unzip -l*)",
       "Bash(zip *)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/control-center/hooks/record-event.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/control-center/hooks/record-event.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/control-center/hooks/record-event.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/control-center/hooks/record-event.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/control-center/hooks/record-event.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/control-center/hooks/record-event.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/control-center/hooks/record-event.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/control-center/hooks/record-event.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/control-center/hooks/record-event.py\"",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }
