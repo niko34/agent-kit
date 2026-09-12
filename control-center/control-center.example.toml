@@ -4,7 +4,8 @@
 #
 # ⚠️ Ce fichier-ci est le MODÈLE du template : il est remplacé à chaque
 # synchronisation. Votre configuration vit dans `control-center.toml`, à côté,
-# et n'est JAMAIS touchée par `tools/sync-control-center.sh`.
+# et n'est JAMAIS touchée par `tools/update_kit.sh` : elle est absente de
+# l'arbre du kit, et `git checkout` ne restaure que ce qu'il connaît (ADR-0007).
 #
 # Principe : tout ce qui peut être découvert l'est. La liste des agents vient de
 # `.claude/agents/`, celle des specs du système de fichiers, les fichiers

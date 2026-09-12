@@ -1,7 +1,10 @@
 # Centre de contrôle du développement piloté par agents
 
-> **Ce répertoire fait partie du template `agent-kit`.** Il est copié tel quel
-> dans les projets, par leur script `tools/sync-control-center.sh`.
+> **Ce répertoire fait partie du template `agent-kit`.** Il arrive dans les
+> projets par `tools/update_kit.sh`, en chemin **conditionnel** : seuls ceux qui
+> l'ont déjà installé le reçoivent. La première installation est assistée par
+> [`installer.py`](installer.py). Il n'existe pas d'autre script de
+> synchronisation — voir [ADR-0010](../docs/adr/0010-un-seul-script-de-synchronisation.md).
 >
 > Les chiffres cités plus bas — 167 specs, 22 divergences, 108 appels d'outils
 > sur 110 — ont été relevés dans `esp32-pool-controller`, le projet où l'outil a
@@ -88,11 +91,13 @@ Un workflow est donc **une session et une suite de sous-agents partageant un
 `session_id`**. Le reconstruire est un tri chronologique, pas une résolution
 d'arbre.
 
-> ⚠️ `CLAUDE.md` attribue cette impossibilité à une « limitation runtime ». Ce
-> n'est pas exact : la profondeur d'imbrication par défaut est de trois niveaux.
-> Ce qui ferme la délégation ici, c'est la liste `tools` des agents. La
-> conséquence est la même, la cause ne l'est pas — et elle rouvre une option que
-> le référentiel présente comme fermée.
+> ⚠️ Ne pas lire cette impossibilité comme une « limitation runtime » : la
+> profondeur d'imbrication par défaut est de trois niveaux. Ce qui ferme la
+> délégation ici, c'est la liste `tools` des agents — une décision de
+> configuration, révocable. La conséquence est la même, la cause ne l'est pas,
+> et elle rouvre une option qu'on pourrait croire fermée. Le référentiel
+> (`CLAUDE.md`, `GUIDE.md`) portait la formulation fausse ; corrigée le
+> 2026-09-12, voir [ADR-0002](../docs/adr/0002-graphe-execution-plat.md).
 
 ### Ce que le collecteur ne fait jamais
 

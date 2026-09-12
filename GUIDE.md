@@ -77,7 +77,7 @@ docs/
 
 | Agent | En une phrase | Particularité |
 |---|---|---|
-| `orchestrator` | Lit la spec et produit le PLAN : check-list figée, briefs prêts-à-l'emploi, invariants, critères de clôture | **N'invoque jamais les autres agents** (limitation runtime) — c'est la session principale qui exécute son plan |
+| `orchestrator` | Lit la spec et produit le PLAN : check-list figée, briefs prêts-à-l'emploi, invariants, critères de clôture | **N'invoque jamais les autres agents** — non par limite technique mais par choix : aucun agent du kit ne déclare l'outil `Task` (ADR-0002), pour que verdicts et boucles de correction restent visibles dans la seule session principale, qui exécute son plan |
 | `spec-reader` | Analyse d'impact d'une spec, la promeut de `todo/` vers `doing/` | Spec incomplète = questions à l'utilisateur, pas de promotion |
 | `architect` | Plan d'implémentation ≤ 10 lignes, arbitrages techniques | Statue explicitement sur la nécessité d'un ADR (4 critères) |
 | `security-reviewer` | Unique auditeur de sécurité, deux rôles cumulés : audit sécurité (auth, permissions, injections, RGPD, secrets, migrations) ET audit de la SURFACE D'ATTAQUE entière, sans diff ni spec | **Rôle GATE bloquant, passe DEUX fois** : P1 sur le design (avant code), P2 sur le diff réel, verdicts GO / GO SOUS CONDITIONS / NO GO. **Rôle AUDIT** : cherche ce qui n'apparaît dans aucun diff, règle maîtresse « la PLACE de la garde dans le cycle de vie, jamais sa seule présence », rapport à 3 niveaux (Grave / assumé / cosmétique). Lecture seule dans les deux rôles |

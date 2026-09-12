@@ -29,3 +29,12 @@ Une simple préférence de style, un choix réversible en une heure ou un détai
 | # | Titre | Statut |
 |---|-------|--------|
 | [0001](0001-exemple-format-adr.md) | Adopter le format ADR et ses règles | Accepté |
+| [0002](0002-graphe-execution-plat.md) | Le graphe d'exécution des agents est plat | Accepté |
+| [0003](0003-colonne-spec-depuis-repertoire.md) | La colonne d'une spec vient de son répertoire, jamais de son champ « Statut » | Accepté |
+| [0004](0004-centre-controle-sans-route-ecriture.md) | Le tableau de bord n'a aucune route d'écriture tant que ses garde-fous ne sont pas du code | Accepté |
+| [0005](0005-commandes-liste-fermee-par-cle.md) | Liste fermée de commandes : l'interface choisit une clé, jamais une ligne de commande | Accepté |
+| [0006](0006-centre-controle-zero-dependance.md) | Le centre de contrôle n'a aucune dépendance d'exécution | Accepté |
+| [0007](0007-config-projet-ne-voyage-pas-avec-kit.md) | Ce qui appartient au projet ne voyage pas avec le kit | Accepté |
+| [0008](0008-kit-paths-liste-inclusive.md) | `.kit-paths` est une liste inclusive, jamais une liste d'exclusions | Accepté |
+| [0009](0009-un-seul-auditeur-securite.md) | Un seul auditeur de sécurité, cumulant gate et audit | Accepté |
+| [0010](0010-un-seul-script-de-synchronisation.md) | Un seul script de synchronisation : `update_kit.sh` | Accepté |
