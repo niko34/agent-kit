@@ -119,7 +119,17 @@ CHEMINS_GITHUB="
 RACINE_PROJET="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
 if [ -f "$RACINE_PROJET/.kit-paths" ]; then
   CHEMINS="$(sed 's/#.*//' "$RACINE_PROJET/.kit-paths" | grep -v '^[[:space:]]*$' || true)"
-  echo "ℹ️  .kit-paths trouvé — la liste des chemins gelés du kit est REMPLACÉE."
+  # ⚠️ `.kit-paths` gouverne TOUT, conditionnels compris. Sans cela, les chemins
+  # conditionnels lui échappaient et s'appliquaient quand même.
+  #
+  # Le défaut a été trouvé au premier essai réel : un projet avait déclaré ne
+  # prendre que `control-center`, et la prévisualisation annonçait le
+  # remplacement de son fichier de CI — qui portait un contrôle de sécurité
+  # absent du kit. Un projet qui déclare ce qu'il prend ne s'attend pas à
+  # recevoir autre chose.
+  CHEMINS_SI_PRESENTS=""
+  CHEMINS_GITHUB=""
+  echo "ℹ️  .kit-paths trouvé — il définit SEUL ce que ce projet prend du kit."
 fi
 
 SIMULATION=0
@@ -196,12 +206,23 @@ if [ -z "$presents" ]; then
   exit 1
 fi
 
+# L'aperçu ne montre QUE ce qui sera réellement écrit, c'est-à-dire les fichiers
+# présents DANS LE KIT. Un `git diff` sur les chemins entiers listait aussi les
+# fichiers propres au projet — la configuration du centre de contrôle y
+# apparaissait comme sur le point d'être modifiée, alors que `git checkout` ne
+# peut pas la toucher : elle n'existe pas dans l'arbre du kit.
+#
+# Un aperçu auquel on ne peut pas se fier ne sert à rien : c'est sur lui qu'on
+# décide de lancer la synchronisation ou non.
+# shellcheck disable=SC2086
+fichiers_du_kit="$(git ls-tree -r --name-only "$DISTANT/$BRANCHE" -- $presents 2>/dev/null)"
+
 echo "→ Écarts sur les fichiers gelés :"
 echo ""
 # shellcheck disable=SC2086
-if git diff --stat "$DISTANT/$BRANCHE" -- $presents | grep -q .; then
+if [ -n "$fichiers_du_kit" ] && git diff --stat "$DISTANT/$BRANCHE" -- $fichiers_du_kit | grep -q .; then
   # shellcheck disable=SC2086
-  git diff --stat "$DISTANT/$BRANCHE" -- $presents
+  git diff --stat "$DISTANT/$BRANCHE" -- $fichiers_du_kit
 else
   echo "   ✅ Rien à récupérer : le projet est déjà aligné sur le kit."
   exit 0
