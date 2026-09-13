@@ -21,17 +21,70 @@
 - [x] code-reviewer
 - [x] doc-writer
 
+## ⚠️ Traité conjointement avec `bug-008` (décision du 2026-09-13)
+
+Établi par exécution : un composant de chemin **du kit** contenant un guillemet
+sort **cité** de `ls-tree` malgré `core.quotepath=off`. Le chemin est alors
+classé **« À CRÉER »** — il court-circuite sur `[ ! -e "$f" ]`, qui teste un nom
+qui n'existe pas sur le disque — et il n'atteint donc **jamais** la branche où
+vivrait la garde de ce cycle. Le répertoire suivi est détruit, son contenu
+ignoré avec, **sortie 0**.
+
+La garde de `bug-009` n'est pas *contournée* par `bug-008` : elle est rendue
+**inatteignable**. `bug-008` est donc traité **dans ce cycle**, et **avant**,
+selon le critère : *un défaut qui désarme la garde en cours de livraison se
+traite dans le cycle qui la livre*. Voir le relevé complet dans
+`specs/features/doing/bug-008-noms-cites-par-git-malgre-quotepath.md`.
+
 ## Symptôme observé
 
 Un **répertoire suivi** occupant la place d'un **fichier gelé** est **supprimé
 entièrement** par la synchronisation, avec tout ce qu'il contient — y compris
 les fichiers **ignorés**, donc irrécupérables. Le script sort en **0**.
 
+**Relevé établi par exécution le 2026-09-13**, sur dépôts jetables (kit + projet
+consommateur, environnement git confiné). `GUIDE.md/` contient `notes.md`
+**suivi** et `secret.local` **ignoré** (`.gitignore` : `GUIDE.md/secret.local`).
+
 ```
-(relevé à produire : l'audit a établi le cas par exécution — C1 — sans conserver
-la sortie. PREMIÈRE TÂCHE DU CYCLE : reproduire et coller ici l'état de départ,
-la commande, la sortie complète, le code de retour et l'état final.)
+########## AVANT ##########
+GUIDE.md est un : directory
+  contient : notes.md
+  contient : secret.local
+ls-files --error-unmatch GUIDE.md : RÉUSSIT (classé suivi)
+ls-files --others GUIDE.md        : [GUIDE.md/secret.local ]
+git status                        : []
+
+########## APERÇU ##########
+→ Ce que la synchronisation va faire :
+
+  À METTRE À JOUR (1)
+       GUIDE.md
+
+  IDENTIQUES : 1 fichiers déjà alignés (non listés)
+
+ℹ️  --dry-run : aucune modification appliquée.
+   Relance sans --dry-run pour récupérer ces fichiers.
+
+########## SYNCHRONISATION RÉELLE ##########
+code de sortie : 0
+
+########## APRÈS ##########
+GUIDE.md est un : regular file
+secret.local    : DISPARU
+notes.md        : disparu (récupérable : suivi)
 ```
+
+Trois faits à retenir de ce relevé :
+
+- **`git status` est vide** — l'arbre est *propre*. Aucune garde raisonnant sur
+  l'état global de l'arbre ne peut voir ce cas : il faut juger **par fichier**
+  (ADR-0013, décision 1).
+- **`ls-files --error-unmatch` et `ls-files --others` se contredisent** sur le
+  même chemin : le premier le dit « suivi », le second liste un contenu
+  irrécupérable dedans. C'est ce désaccord qui est le discriminant.
+- **Sortie 0** — rien, dans le code de retour ni dans l'aperçu, ne distingue
+  cette destruction d'une mise à jour ordinaire.
 
 **Scénario de reproduction** : dans un projet consommateur, créer un
 **répertoire** `GUIDE.md/` — là où le kit a un **fichier** — contenant un
@@ -40,6 +93,33 @@ la commande, la sortie complète, le code de retour et l'état final.)
 
 Observé par l'audit : l'aperçu annonce « À METTRE À JOUR `GUIDE.md` », puis le
 répertoire entier disparaît, `secret.local` avec lui, **sortie 0**.
+
+### Variantes voisines — où tombe chaque cas AUJOURD'HUI (établi par exécution)
+
+Six dépôts jetables, même kit, `GUIDE.md` variant seul :
+
+| Variante | `--error-unmatch` | `--others` | `--others --exclude-standard` | Garde qui parle |
+|---|---|---|---|---|
+| **V1** répertoire suivi, contient un ignoré | **réussit** | `GUIDE.md/secret.local` | **vide** ⚠️ | aucune — « À METTRE À JOUR » |
+| **V2** répertoire suivi, tout suivi et propre | réussit | vide | vide | aucune (correct) |
+| **V3** répertoire **non suivi** (terrain d'`O6`) | **échoue** | `GUIDE.md/libre.md` | idem | `bug-001` (`ecrasement`) |
+| **V4** répertoire **vide** | échoue | vide | vide | `bug-001` (`ecrasement`) |
+| **V5** suivi, fichier suivi **modifié** | réussit | vide | vide | arbre de travail sale (en réel) |
+| **V6** **lien symbolique** suivi | réussit | `000a5636…` (hash !) | vide | aucune — récupérable par git |
+
+Trois conséquences pour le correctif :
+
+1. **`--exclude-standard` est un piège, pas une hygiène.** Sur V1 il rend la sortie
+   **vide** : il masque précisément le seul fichier irrécupérable. L'ajouter
+   annulerait la garde en silence. À interdire explicitement et à **muter**.
+2. **La non-régression d'`O6` est structurelle.** V3 et V4 **échouent** à
+   `--error-unmatch` ; une branche placée *après* un `--error-unmatch` réussi ne
+   peut pas les atteindre. Ce n'est pas une précaution, c'est une impossibilité —
+   et c'est ce qui doit être écrit, plutôt qu'une promesse de vigilance.
+3. **V5 et V6 ne sont pas des trous**, mais rien ne les nomme : V5 est arrêté en
+   réel par la garde d'arbre sale (vérifié), V6 est intégralement récupérable
+   (`hash-object` réussit sur un lien symbolique — il hache la cible comme blob).
+   À **décider et écrire** (voir B3), pas à subir.
 
 ## Cause racine
 

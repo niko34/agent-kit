@@ -19,6 +19,31 @@
 - [x] code-reviewer
 - [x] doc-writer
 
+## ⚠️ Traité conjointement avec `bug-009` (décision du 2026-09-13)
+
+Ce cycle traite **`bug-008` puis `bug-009` ensemble**, sur décision de
+l'utilisateur, en application d'un critère neuf :
+
+> Un défaut découvert pendant un cycle qui **désarme la garde en cours de
+> livraison** se traite **dans ce cycle**. Un défaut indépendant garde sa
+> propre spec.
+
+Motif établi par exécution (relevé ci-dessous) : un nom cité rend
+**inatteignable** la garde que `bug-009` allait livrer, comme celle déjà livrée
+par `bug-006`. Livrer `bug-009` seul reviendrait à livrer une protection dont on
+sait qu'elle ne s'applique pas.
+
+Ordre imposé : **`bug-008` d'abord** — l'énumération doit être fiable avant
+qu'une garde bâtie dessus veuille dire quelque chose — **`bug-009` ensuite**.
+Phase de test, revue et documentation **communes aux deux**.
+
+`bug-005` et `bug-007` restent **hors** de ce cycle : ils ne désarment aucune
+garde.
+
+Cette décision met **deux specs dans `doing/`**, ce qui plie la règle « une spec
+à la fois » de `CLAUDE.md`. Elle doit donc faire l'objet d'un **ADR**, pas d'une
+entorse tacite.
+
 ## Symptôme observé
 
 `bug-003` a corrigé les noms **non-ASCII** en posant `-c core.quotepath=off` sur
@@ -34,12 +59,44 @@ d'existence, est classé **« À CRÉER »**, et `git checkout` l'écrase.
 C'est **exactement le mécanisme de `bug-003`**, sur le sous-ensemble de noms que
 son correctif ne pouvait pas atteindre.
 
+**Relevé établi par exécution le 2026-09-13**, sur dépôts jetables. Cas du
+**guillemet**, avec un chemin situé **dans le périmètre du kit** (un premier
+essai hors périmètre n'énumérait rien — le filtre `.kit-paths` l'écartait avant
+toute classification ; l'essai a été refait) :
+
 ```
-(relevé à produire : constaté par `code-reviewer` en marge du cycle bug-003,
-sans sortie conservée. PREMIÈRE TÂCHE DU CYCLE : reproduire les deux cas —
-retour-ligne et guillemet — et coller ici l'état de départ, la commande, la
-sortie et le contenu final du fichier.)
+kit    : .claude/agents/a"b.md            (fichier, contenu « PROFIL DU KIT »)
+projet : .claude/agents/a"b.md/           RÉPERTOIRE SUIVI contenant
+           notes.md      (suivi)
+           secret.local  (IGNORÉ via .gitignore)
+
+$ git -c core.quotepath=off ls-tree -r --name-only HEAD
+".claude/agents/a\"b.md"            ← cité MALGRÉ quotepath=off
+
+$ ./tools/update_kit.sh --dry-run
+→ Ce que la synchronisation va faire :
+
+  À CRÉER (1)
+       ".claude/agents/a\"b.md"
+
+  IDENTIQUES : 1 fichiers déjà alignés (non listés)
+
+$ ./tools/update_kit.sh ; echo $?
+0
+
+APRÈS : .claude/agents/a"b.md est un regular file
+        secret.local : DISPARU
 ```
+
+**Confirmation du point de départ** : `code-reviewer` avait raison — `git`
+cite ce nom **malgré** `core.quotepath=off`. Ce bug existe.
+
+**Constat neuf, décisif pour le périmètre du cycle** : le chemin est classé
+**« À CRÉER »**, pas « À METTRE À JOUR ». Il court-circuite sur `[ ! -e "$f" ]`
+— le test porte sur le nom **cité**, qui n'existe pas sur le disque — donc il
+n'atteint **jamais** les branches où vivent les gardes de `bug-006` et de
+`bug-009`. Un nom cité ne contourne pas ces gardes : il les rend
+**inatteignables**.
 
 ## Cause racine
 
