@@ -31,6 +31,14 @@ name: Hygiène du dépôt
 # cette croissance ; en contrepartie, ce job tourne en PARALLÈLE des trois
 # autres (même `on:`, même groupe de `concurrency`), donc le temps de
 # restitution global ne change pas.
+#
+# JOB 5 — Tests du centre de contrôle (bug-004).
+# Même patron que le job 4 : `control-center/` descend chez les projets
+# consommateurs, donc chaque étape teste l'EXISTENCE du fichier avant de le
+# lancer. Différence structurante avec le job 4 : les six fichiers ne sont
+# PAS des suites `unittest` mais des scripts autonomes qui sortent en code 1
+# à l'échec (`python3 control-center/backend/test_events.py`, pas
+# `unittest discover`). Ne pas citer ici de compte de cas : il périme aussitôt.
 
 on:
   push:
@@ -122,4 +130,73 @@ jobs:
             python3 -m unittest discover -s tests -p 'test_sync_copilot_agents.py'
           else
             echo "ℹ️  tests/test_sync_copilot_agents.py absent (exclu via .kit-paths ?) — rien à lancer."
+          fi
+
+  centre-de-controle:
+    name: Suite de tests (control-center/)
+    runs-on: ubuntu-latest
+    # `contents: read` suffit : ce job ne fait que lire le dépôt et exécuter
+    # des scripts de test autonomes, jamais écrire.
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # `control-center/` est un chemin CONDITIONNEL, comme `tests/` : un
+      # projet consommateur qui n'a pas encore reçu le centre de contrôle ne
+      # doit pas voir sa CI cassée par nous. Même patron que le job `tests`
+      # ci-dessus : un test d'EXISTENCE par fichier, `if/then/else` explicite,
+      # jamais un `|| true` qui masquerait aussi un VRAI échec.
+      #
+      # ⚠️ Ce ne sont PAS des suites `unittest` : chaque fichier est un
+      # script AUTONOME qui sort en code 1 à l'échec — d'où un appel direct
+      # `python3 <fichier>`, jamais `unittest discover` (qui ne les
+      # collecterait pas, ces fichiers ne dérivant d'aucun `TestCase`).
+      - name: Suite de tests du centre de contrôle (hooks)
+        run: |
+          if [ -f control-center/hooks/test_record_event.py ]; then
+            python3 control-center/hooks/test_record_event.py
+          else
+            echo "ℹ️  control-center/hooks/test_record_event.py absent — rien à lancer."
+          fi
+
+      - name: Suite de tests du centre de contrôle (specs)
+        run: |
+          if [ -f control-center/backend/test_specs.py ]; then
+            python3 control-center/backend/test_specs.py
+          else
+            echo "ℹ️  control-center/backend/test_specs.py absent — rien à lancer."
+          fi
+
+      - name: Suite de tests du centre de contrôle (événements)
+        run: |
+          if [ -f control-center/backend/test_events.py ]; then
+            python3 control-center/backend/test_events.py
+          else
+            echo "ℹ️  control-center/backend/test_events.py absent — rien à lancer."
+          fi
+
+      - name: Suite de tests du centre de contrôle (configuration)
+        run: |
+          if [ -f control-center/backend/test_config.py ]; then
+            python3 control-center/backend/test_config.py
+          else
+            echo "ℹ️  control-center/backend/test_config.py absent — rien à lancer."
+          fi
+
+      - name: Suite de tests du centre de contrôle (vcs)
+        run: |
+          if [ -f control-center/backend/test_vcs.py ]; then
+            python3 control-center/backend/test_vcs.py
+          else
+            echo "ℹ️  control-center/backend/test_vcs.py absent — rien à lancer."
+          fi
+
+      - name: Suite de tests du centre de contrôle (serveur)
+        run: |
+          if [ -f control-center/backend/test_server.py ]; then
+            python3 control-center/backend/test_server.py
+          else
+            echo "ℹ️  control-center/backend/test_server.py absent — rien à lancer."
           fi

@@ -125,6 +125,34 @@ repertoire = "wip"
                       racine_projet=tmp)
         check("test_colonne_sans_repertoire_ignoree", c.colonnes() == [])
 
+        # --- E11 : bornage des workflows (bug-004), défensif ------------------
+        c = C.charger(chemin=os.path.join(tmp, "absent3.toml"), racine_projet=tmp)
+        check("test_E11_workflows_absent_donne_agents_ouvrants_vide",
+              c.agents_ouvrants() == [],
+              "sans [workflows], le module events.py ne doit connaître aucun nom "
+              "d'agent")
+        check("test_E11_workflows_absent_donne_affiches_par_defaut",
+              c.workflows_affiches() == 20)
+
+        c = C.charger(chemin=ecrire(tmp, '''[workflows]
+agents_ouvrants = [42, ""]
+affiches = -3
+'''), racine_projet=tmp)
+        check("test_E11_agents_ouvrants_malformes_rejetes_sans_exception",
+              c.agents_ouvrants() == [],
+              "un nombre et une chaîne vide ne sont pas des agent_type valides ; "
+              "obtenu %r" % c.agents_ouvrants())
+        check("test_E11_affiches_hors_bornes_retombe_sur_le_defaut",
+              c.workflows_affiches() == 20,
+              "-3 ne doit pas atteindre `workflows[-n:]` ; obtenu %r"
+              % c.workflows_affiches())
+
+        c = C.charger(chemin=ecrire(tmp, '[workflows]\naffiches = "dix"\n'),
+                      racine_projet=tmp)
+        check("test_E11_affiches_type_invalide_retombe_sur_le_defaut",
+              c.workflows_affiches() == 20,
+              "une chaîne n'est pas un entier ; obtenu %r" % c.workflows_affiches())
+
     print("\n%d cas, %d echec(s)" % (_tests, len(_echecs)))
     for echec in _echecs:
         print("  - %s" % echec)

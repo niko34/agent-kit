@@ -198,6 +198,31 @@ function rendreWorkflows(etat) {
     entete.appendChild(el("span", "marqueur " + (actif ? "actif" : "clos"),
       actif ? "● sans fin observée" : "✓ close"));
     entete.appendChild(el("span", "session", "session " + String(wf.session_id).slice(0, 8)));
+    /* Deux segments d'une même session partagent le même `session_id` :
+     * sans l'indice de cycle et l'agent ouvrant, ils seraient indiscernables
+     * à l'écran. `cycles_dans_la_session` et `indice_cycle` sont tolérés
+     * absents (backend en retard) : le span n'apparaît alors simplement pas. */
+    if (wf.cycles_dans_la_session > 1) {
+      /* Un segment ANTÉRIEUR au premier repère n'est pas un cycle : le backend
+       * refuse explicitement de l'affirmer (`bornage = avant-premier-marqueur`).
+       * Le libellé visible doit refuser la même chose — sans quoi l'écran en dit
+       * plus que ce que le module sait, ce que ce cycle entier cherche à éviter. */
+      let texteCycle;
+      if (wf.bornage === "avant-premier-marqueur") {
+        texteCycle = "avant le premier repère";
+      } else {
+        texteCycle = "cycle " + (wf.indice_cycle + 1) + "/" + wf.cycles_dans_la_session;
+        if (wf.borne_par) texteCycle += " — ouvert par " + wf.borne_par;
+      }
+      const cycle = el("span", "session", texteCycle);
+      cycle.title = wf.bornage === "marqueur-agent"
+        ? "Segment ouvert par l'agent repère " + wf.borne_par
+        : wf.bornage === "avant-premier-marqueur"
+          ? "Antérieur au premier agent repère rencontré dans la session — "
+            + "n'affirme rien sur son contenu"
+          : "Bornage non établi pour cette session";
+      entete.appendChild(cycle);
+    }
     entete.appendChild(el("span", "session", heure(wf.debut) + " → " + heure(wf.fin_observee)));
     entete.appendChild(el("span", "session", wf.fichiers.length + " fichier(s)"));
     bloc.appendChild(entete);
@@ -275,6 +300,19 @@ function rendreWorkflows(etat) {
         + "inexpliqué qu'on tait devient un écart invisible entre le journal et "
         + "le récit qu'on en tire.";
       note.appendChild(texte);
+      bloc.appendChild(note);
+    }
+    /* Un bornage sur `marqueur-agent` est une CONVENTION posée par la
+     * configuration, pas un fait relevé par le système (contrairement à
+     * `imbrication_suspectee`, ci-dessus, qui EST une anomalie du récit).
+     * Même registre visuel que les fermetures orphelines : un fait qu'on
+     * signale, pas une alerte. Absent sur un backend en retard : `wf.bornage`
+     * n'existe alors simplement pas. */
+    if (wf.bornage === "marqueur-agent" && wf.borne_par) {
+      const note = el("div", "wf-notes attendu");
+      note.appendChild(el("span", "",
+        "ℹ frontières posées sur l'invocation de " + wf.borne_par + " ; un "
+        + "cycle mené sans cet agent est rattaché au segment précédent"));
       bloc.appendChild(note);
     }
     zone.appendChild(bloc);

@@ -87,9 +87,8 @@ Les hooks `SubagentStart` / `SubagentStop` portent `agent_type`, `agent_id` et
 s'il y avait de l'imbrication — or aucun agent de ce dépôt n'a l'outil `Task`
 dans son frontmatter, donc aucun ne peut déléguer.
 
-Un workflow est donc **une session et une suite de sous-agents partageant un
-`session_id`**. Le reconstruire est un tri chronologique, pas une résolution
-d'arbre.
+Une session ne peut donc jamais imbriquer deux passages d'agent : le
+reconstruire un segment est un tri chronologique, pas une résolution d'arbre.
 
 > ⚠️ Ne pas lire cette impossibilité comme une « limitation runtime » : la
 > profondeur d'imbrication par défaut est de trois niveaux. Ce qui ferme la
@@ -98,6 +97,19 @@ d'arbre.
 > et elle rouvre une option qu'on pourrait croire fermée. Le référentiel
 > (`CLAUDE.md`, `GUIDE.md`) portait la formulation fausse ; corrigée le
 > 2026-09-12, voir [ADR-0002](../docs/adr/0002-graphe-execution-plat.md).
+
+> ⚠️ **« Un workflow » n'est plus « une session ».** ADR-0002 posait qu'un
+> workflow observable est une session entière partageant un `session_id` —
+> cette hypothèse a été **réfutée à l'usage** (`bug-004`) : quatre cycles de
+> spec complets, 45 passages d'agents sur quinze heures, menés dans une seule
+> session et affichés jusqu'ici comme un seul workflow. Un workflow est
+> désormais un **segment** d'une session, borné par un agent ouvrant déclaré
+> en configuration (`[workflows] agents_ouvrants`) — la session entière par
+> défaut, ou en l'absence de ce marqueur. Voir la note additive datée du
+> 2026-09-13 sur [ADR-0002](../docs/adr/0002-graphe-execution-plat.md) et
+> [ADR-0014](../docs/adr/0014-bornage-des-cycles-par-marqueur-declare.md), qui
+> le supersède sur ce seul point. Le graphe reste plat : ADR-0002 n'est pas
+> remis en cause sur l'absence de `Task` et le tri chronologique.
 
 ### Ce que le collecteur ne fait jamais
 
@@ -279,10 +291,10 @@ faire expirer. Le comportement est testé, le rendu ne l'est pas.
 ```bash
 python3 control-center/hooks/test_record_event.py   # 19 cas
 python3 control-center/backend/test_specs.py        # 16 cas
-python3 control-center/backend/test_events.py       # 24 cas
-python3 control-center/backend/test_config.py       # 17 cas
+python3 control-center/backend/test_events.py       # 54 cas
+python3 control-center/backend/test_config.py       # 22 cas
 python3 control-center/backend/test_vcs.py          # 26 cas
-python3 control-center/backend/test_server.py       # 30 cas
+python3 control-center/backend/test_server.py       # 34 cas
 python3 control-center/backend/specs.py             # inventaire réel
 python3 control-center/backend/events.py            # workflows reconstruits
 ```
@@ -298,6 +310,16 @@ confinement au dépôt en tue un, sortir en code non nul en tue deux.
 affirmer une divergence sur un statut illisible en tue un, laisser le dernier
 champ gagner en tue un, retirer la fenêtre d'en-tête en tue un, inclure
 `README.md` en tue deux, fabriquer un titre en tue un.
+
+**Bornage en cycles** (`bug-004`, la suite passe de 139 à 171 cas au total,
+quatre mutants tués sur ce lot) : neutraliser la recherche d'une fermeture
+dans les segments antérieurs à un marqueur fait échouer l'appariement d'un
+passage ouvert avant la frontière et clos après (cas E7), et gonfle à tort
+`fermetures_orphelines` ; trier les événements avant de les segmenter au lieu
+de suivre l'ordre reçu inverse l'indice de cycle attendu (cas E10) ; laisser
+un découpage se produire quand `agents_ouvrants` est vide, ou quand aucun
+agent de la liste n'est rencontré, fait échouer le refus explicite testé par
+E3 et E4.
 
 Un mutant du collecteur est **équivalent** et doit rester documenté comme tel :
 rendre une chaîne vide au lieu de `None` quand aucun jeton n'est sûr ne change

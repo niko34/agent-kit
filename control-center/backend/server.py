@@ -94,7 +94,8 @@ class Etat:
 
     def instantane(self):
         evenements = E.lire_journal(self.journal)
-        workflows = E.reconstruire(evenements, self.config.tetes_de_commande())
+        workflows = E.reconstruire(
+            evenements, self.config.tetes_de_commande(), self.config.agents_ouvrants())
         specs = self.specs()
         colonnes = [{"repertoire": r, "classe": c, "libelle": l}
                     for r, c, l in self.config.colonnes()]
@@ -103,13 +104,23 @@ class Etat:
         # Agent actif = celui d'un passage non terminé, dans un workflow sans fin
         # observée. On ne dit JAMAIS qu'un agent est actif sur la foi d'un
         # passage ouvert dans une session close.
-        actifs = {}
+        #
+        # ⚠️ Restreint au DERNIER segment de chaque session : déclarer un agent
+        # actif est une affirmation sur le présent, jamais sur un cycle antérieur
+        # déjà clos par un agent ouvrant. Sans cette restriction, un passage
+        # resté ouvert dans un vieux segment (fermeture perdue, cf. l'appariement
+        # à cheval sur une frontière) ressusciterait un agent qu'on ne peut plus
+        # affirmer actif.
+        dernier_segment_par_session = {}
         for workflow in workflows:
+            dernier_segment_par_session[workflow["session_id"]] = workflow
+        actifs = {}
+        for workflow in dernier_segment_par_session.values():
             if not workflow["fin_observee_absente"]:
                 continue
             for passage in workflow["passages"]:
                 if not passage["termine"]:
-                    actifs[passage["agent"]] = workflow["session_id"]
+                    actifs[passage["agent"]] = workflow["workflow_id"]
 
         return {
             "projet": self.config.section("projet").get("nom"),
@@ -118,7 +129,7 @@ class Etat:
             "specs": specs,
             "divergences": sum(1 for s in specs if s["divergence"]),
             "agents": [dict(a, actif_sur=actifs.get(a["nom"])) for a in agents],
-            "workflows": workflows[-10:],
+            "workflows": workflows[-self.config.workflows_affiches():],
             "evenements": [_evenement_public(e) for e in evenements[-60:]],
             "git": {
                 "depot": V.est_un_depot(self.racine),

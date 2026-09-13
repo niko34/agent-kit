@@ -1,7 +1,7 @@
 # ============================================================================
 # Contrôles d'hygiène documentaire — variante GitLab.
 #
-# ⚠️ Ce fichier N'EST PAS un pipeline complet : il n'ajoute que quatre jobs,
+# ⚠️ Ce fichier N'EST PAS un pipeline complet : il n'ajoute que cinq jobs,
 # pour pouvoir cohabiter avec une chaîne de build et de déploiement existante.
 #
 # Deux façons de le brancher :
@@ -11,7 +11,7 @@
 #            - local: '.gitlab/ci/hygiene.yml'
 #      puis ajouter `hygiene` à la liste des `stages` du pipeline principal.
 #
-#   B. Copier les quatre jobs directement dans le .gitlab-ci.yml existant.
+#   B. Copier les cinq jobs directement dans le .gitlab-ci.yml existant.
 #
 # Ne JAMAIS remplacer un .gitlab-ci.yml existant par ce fichier.
 #
@@ -29,6 +29,9 @@
 # 4. Profils GitHub Copilot : parité avec `.github/workflows/hygiene-specs.yml`,
 #    qui porte ce contrôle côté GitHub depuis l'origine — un projet GitLab avec
 #    Copilot dans l'IDE ne doit pas être moins bien couvert.
+# 5. Suite de tests du centre de contrôle (bug-004) : même besoin que le job 3,
+#    pour `control-center/` — chemin CONDITIONNEL lui aussi, six fichiers, mais
+#    des scripts AUTONOMES (sortie 1 à l'échec) et non des suites `unittest`.
 #
 # Les jobs 1 et 2 : ni toolchain, ni cache, ni filtre de chemins, quelques
 # secondes, sur TOUS les commits — un déplacement de spec n'accompagne pas
@@ -119,6 +122,56 @@ hygiene:tests:
         python3 -m unittest discover -s tests -p 'test_sync_copilot_agents.py'
       else
         echo "ℹ️  tests/test_sync_copilot_agents.py absent — rien à lancer."
+      fi
+
+# Job 5 (bug-004) : suite du centre de contrôle. Même base `.tests_base`
+# (git n'y sert à rien mais python3 oui ; on ne crée pas une troisième base
+# pour un besoin qui recouvre déjà celui-ci). Même patron que `hygiene:tests`
+# ci-dessus : `control-center/` est aussi un chemin CONDITIONNEL du kit.
+#
+# ⚠️ Différence structurante avec `hygiene:tests` : ces six fichiers ne sont
+# PAS des suites `unittest` — ce sont des scripts AUTONOMES qui sortent en
+# code 1 à l'échec. D'où un appel direct `python3 <fichier>`, jamais
+# `unittest discover` (qui ne les collecterait pas : ils ne dérivent d'aucun
+# `TestCase`).
+hygiene:centre-de-controle:
+  extends: .tests_base
+  script:
+    - |
+      if [ -f control-center/hooks/test_record_event.py ]; then
+        python3 control-center/hooks/test_record_event.py
+      else
+        echo "ℹ️  control-center/hooks/test_record_event.py absent — rien à lancer."
+      fi
+    - |
+      if [ -f control-center/backend/test_specs.py ]; then
+        python3 control-center/backend/test_specs.py
+      else
+        echo "ℹ️  control-center/backend/test_specs.py absent — rien à lancer."
+      fi
+    - |
+      if [ -f control-center/backend/test_events.py ]; then
+        python3 control-center/backend/test_events.py
+      else
+        echo "ℹ️  control-center/backend/test_events.py absent — rien à lancer."
+      fi
+    - |
+      if [ -f control-center/backend/test_config.py ]; then
+        python3 control-center/backend/test_config.py
+      else
+        echo "ℹ️  control-center/backend/test_config.py absent — rien à lancer."
+      fi
+    - |
+      if [ -f control-center/backend/test_vcs.py ]; then
+        python3 control-center/backend/test_vcs.py
+      else
+        echo "ℹ️  control-center/backend/test_vcs.py absent — rien à lancer."
+      fi
+    - |
+      if [ -f control-center/backend/test_server.py ]; then
+        python3 control-center/backend/test_server.py
+      else
+        echo "ℹ️  control-center/backend/test_server.py absent — rien à lancer."
       fi
 
 # Parité avec le job GitHub `agents-copilot` : `python3` seul suffit, le

@@ -29,7 +29,7 @@ Une simple préférence de style, un choix réversible en une heure ou un détai
 | # | Titre | Statut |
 |---|-------|--------|
 | [0001](0001-exemple-format-adr.md) | Adopter le format ADR et ses règles | Accepté |
-| [0002](0002-graphe-execution-plat.md) | Le graphe d'exécution des agents est plat | Accepté |
+| [0002](0002-graphe-execution-plat.md) | Le graphe d'exécution des agents est plat | Accepté (bornage : superseded by ADR-0014) |
 | [0003](0003-colonne-spec-depuis-repertoire.md) | La colonne d'une spec vient de son répertoire, jamais de son champ « Statut » | Accepté |
 | [0004](0004-centre-controle-sans-route-ecriture.md) | Le tableau de bord n'a aucune route d'écriture tant que ses garde-fous ne sont pas du code | Accepté |
 | [0005](0005-commandes-liste-fermee-par-cle.md) | Liste fermée de commandes : l'interface choisit une clé, jamais une ligne de commande | Accepté |
@@ -41,3 +41,4 @@ Une simple préférence de style, un choix réversible en une heure ou un détai
 | [0011](0011-apercu-recapitulatif-d-operations.md) | L'aperçu d'`update_kit` est un récapitulatif d'opérations, pas un diff de deux arbres | Accepté |
 | [0012](0012-harnais-de-test-partage-et-doctrine-anti-chevauchement.md) | Un harnais de test partagé, et la doctrine anti-chevauchement | Accepté |
 | [0013](0013-detection-par-fichier-et-noms-cites.md) | La détection des fichiers gelés se fait par fichier, jamais sur un état global de l'arbre, et les noms sortis de git sont dé-cités avant réutilisation comme chemins disque | Accepté |
+| [0014](0014-bornage-des-cycles-par-marqueur-declare.md) | Le bornage des cycles se fait par marqueur déclaré, jamais par nom d'agent en dur | Accepté — supersède ADR-0002 sur le bornage seul |

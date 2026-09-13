@@ -222,6 +222,169 @@ def main():
     check("test_imbrication_signalee", w["imbrication_suspectee"] is True,
           "deux ouvertures sans fermeture intercalée rendent le récit incertain")
 
+    # --- bornage en cycles (bug-004) -----------------------------------------
+    # Un `SubagentStart` dont l'`agent_type` figure dans `agents_ouvrants` clôt le
+    # segment courant s'il a déjà reçu un événement, et en ouvre un neuf. Trois
+    # refus explicites sont testés à part : liste vide, marqueur absent, et le
+    # traitement des événements antérieurs au premier marqueur.
+
+    # E1 — LE test de non-régression exigé par la spec : deux cycles marqués
+    # dans une seule session doivent produire deux workflows, pas un seul.
+    workflows = E.reconstruire([
+        ev(T(1), "SubagentStart", agent_type="orchestrator", agent_id="a1"),
+        ev(T(2), "SubagentStop", agent_id="a1"),
+        ev(T(3), "SubagentStart", agent_type="test-engineer", agent_id="a2"),
+        ev(T(4), "SubagentStop", agent_id="a2"),
+        ev(T(5), "SubagentStart", agent_type="orchestrator", agent_id="a3"),
+        ev(T(6), "SubagentStop", agent_id="a3"),
+    ], agents_ouvrants=("orchestrator",))
+    check("test_E1_deux_cycles_marques_donnent_deux_workflows", len(workflows) == 2,
+          "obtenu %d" % len(workflows))
+    check("test_E1_workflow_id_distincts_et_indexes",
+          [w["workflow_id"] for w in workflows] == ["s1#0", "s1#1"],
+          "obtenu %r" % [w["workflow_id"] for w in workflows])
+
+    # E2 — un seul cycle marqué ne doit pas se découper au passage : aucun
+    # second marqueur, donc aucun second segment.
+    workflows = E.reconstruire([
+        ev(T(1), "SubagentStart", agent_type="orchestrator", agent_id="a1"),
+        ev(T(2), "SubagentStop", agent_id="a1"),
+        ev(T(3), "SubagentStart", agent_type="test-engineer", agent_id="a2"),
+        ev(T(4), "SubagentStop", agent_id="a2"),
+    ], agents_ouvrants=("orchestrator",))
+    check("test_E2_un_seul_cycle_un_seul_workflow", len(workflows) == 1)
+    check("test_E2_bornage_marqueur", workflows[0]["bornage"] == E.BORNAGE_MARQUEUR)
+
+    # E3 — `agents_ouvrants` vide : aucun découpage, quel que soit le contenu.
+    workflows = E.reconstruire([
+        ev(T(1), "SubagentStart", agent_type="orchestrator", agent_id="a1"),
+        ev(T(2), "SubagentStop", agent_id="a1"),
+        ev(T(3), "SubagentStart", agent_type="orchestrator", agent_id="a2"),
+        ev(T(4), "SubagentStop", agent_id="a2"),
+    ])  # agents_ouvrants par défaut : ()
+    check("test_E3_agents_ouvrants_vide_un_seul_workflow", len(workflows) == 1)
+    check("test_E3_bornage_session_entiere", workflows[0]["bornage"] == E.BORNAGE_SESSION,
+          "obtenu %r" % workflows[0]["bornage"])
+
+    # E4 — un bornage configuré mais jamais rencontré ne découpe pas non plus.
+    # On ne découpe jamais au jugé.
+    workflows = E.reconstruire([
+        ev(T(1), "SubagentStart", agent_type="test-engineer", agent_id="a1"),
+        ev(T(2), "SubagentStop", agent_id="a1"),
+    ], agents_ouvrants=("orchestrator",))
+    check("test_E4_marqueur_configure_mais_absent_un_seul_workflow", len(workflows) == 1)
+    check("test_E4_marqueur_configure_mais_absent_bornage_session_entiere",
+          workflows[0]["bornage"] == E.BORNAGE_SESSION)
+
+    # E5 — événements antérieurs au premier marqueur : un workflow à part qui
+    # n'affirme rien sur son contenu.
+    workflows = E.reconstruire([
+        ev(T(1), "PostToolUse", tool="Write", file="a.py"),
+        ev(T(2), "SubagentStart", agent_type="orchestrator", agent_id="a1"),
+        ev(T(3), "SubagentStop", agent_id="a1"),
+    ], agents_ouvrants=("orchestrator",))
+    check("test_E5_avant_premier_marqueur_forme_un_workflow_a_part", len(workflows) == 2)
+    check("test_E5_bornage_distinct",
+          workflows[0]["bornage"] == E.BORNAGE_PREFIXE
+          and workflows[1]["bornage"] == E.BORNAGE_MARQUEUR)
+    check("test_E5_avant_premier_marqueur_n_affirme_rien",
+          workflows[0]["borne_par"] is None and workflows[1]["borne_par"] == "orchestrator")
+
+    # E6 — un segment `{"type": "principal"}` reste rattaché au cycle où il a
+    # réellement eu lieu, avant comme après le marqueur.
+    workflows = E.reconstruire([
+        ev(T(1), "PostToolUse", tool="Write", file="a.py"),
+        ev(T(2), "SubagentStart", agent_type="orchestrator", agent_id="a1"),
+        ev(T(3), "SubagentStop", agent_id="a1"),
+        ev(T(4), "PostToolUse", tool="Write", file="b.py"),
+    ], agents_ouvrants=("orchestrator",))
+    check("test_E6_segment_principal_avant_marqueur_dans_le_bon_cycle",
+          workflows[0]["segments"][0]["type"] == "principal"
+          and workflows[0]["segments"][0]["fichiers"] == ["a.py"])
+    check("test_E6_segment_principal_apres_marqueur_dans_le_bon_cycle",
+          workflows[1]["segments"][-1]["type"] == "principal"
+          and workflows[1]["segments"][-1]["fichiers"] == ["b.py"])
+
+    # E7 — ⚠️ fermeture à cheval sur une frontière : un agent ouvert AVANT un
+    # marqueur et fermé APRÈS doit être apparié correctement, et
+    # `fermetures_orphelines` doit rester à 0 des deux côtés. Sans la recherche
+    # dans les segments antérieurs, ce compteur gonflerait faussement.
+    workflows = E.reconstruire([
+        ev(T(1), "SubagentStart", agent_type="architect", agent_id="a1"),
+        ev(T(2), "SubagentStart", agent_type="orchestrator", agent_id="a2"),
+        ev(T(4), "SubagentStop", agent_id="a1"),
+        ev(T(5), "SubagentStop", agent_id="a2"),
+    ], agents_ouvrants=("orchestrator",))
+    check("test_E7_fermeture_a_cheval_deux_segments", len(workflows) == 2)
+    check("test_E7_fermeture_a_cheval_appariee_au_bon_passage",
+          workflows[0]["passages"][0]["termine"] is True
+          and workflows[0]["passages"][0]["duree_ms"] == 3000,
+          "obtenu %r" % workflows[0]["passages"][0])
+    check("test_E7_fermeture_a_cheval_pas_de_fermeture_orpheline",
+          workflows[0]["fermetures_orphelines"] == 0 and workflows[1]["fermetures_orphelines"] == 0,
+          "obtenu %r" % [w["fermetures_orphelines"] for w in workflows])
+
+    # E8 — deux sessions entrelacées, CHACUNE avec ses propres marqueurs :
+    # jamais de mélange. Étend test_deux_sessions_separees et
+    # test_entrelacement_n_attribue_pas_de_travers ci-dessus, ne les remplace pas.
+    a = ev(T(1), "SubagentStart", agent_type="orchestrator", agent_id="a1")
+    b = dict(ev(T(2), "SubagentStart", agent_type="orchestrator", agent_id="b1"), session_id="s2")
+    c = ev(T(3), "SubagentStop", agent_id="a1")
+    d = dict(ev(T(4), "SubagentStop", agent_id="b1"), session_id="s2")
+    e = ev(T(5), "SubagentStart", agent_type="orchestrator", agent_id="a2")
+    f = ev(T(6), "SubagentStop", agent_id="a2")
+    workflows = E.reconstruire([a, b, c, d, e, f], agents_ouvrants=("orchestrator",))
+    check("test_E8_deux_sessions_marquees_total_trois_workflows", len(workflows) == 3,
+          "obtenu %d" % len(workflows))
+    par_session = {}
+    for w in workflows:
+        par_session.setdefault(w["session_id"], []).append(w)
+    check("test_E8_session_s1_a_deux_cycles", len(par_session.get("s1", [])) == 2)
+    check("test_E8_session_s2_a_un_seul_cycle", len(par_session.get("s2", [])) == 1)
+    check("test_E8_entrelacement_ne_melange_pas_les_passages",
+          all(p["agent_id"] == "b1" for w in par_session["s2"] for p in w["passages"])
+          and all(p["agent_id"] in ("a1", "a2") for w in par_session["s1"] for p in w["passages"]),
+          "un passage de s2 s'est retrouvé rattaché à s1, ou l'inverse")
+
+    # E9 — `workflow_id` est stable entre deux appels sur les mêmes événements.
+    evenements_stables = [
+        ev(T(1), "SubagentStart", agent_type="orchestrator", agent_id="a1"),
+        ev(T(2), "SubagentStop", agent_id="a1"),
+    ]
+    w1 = E.reconstruire(evenements_stables, agents_ouvrants=("orchestrator",))
+    w2 = E.reconstruire(evenements_stables, agents_ouvrants=("orchestrator",))
+    check("test_E9_workflow_id_stable_entre_deux_appels",
+          [w["workflow_id"] for w in w1] == [w["workflow_id"] for w in w2])
+
+    # E10 — `reconstruire()` ne trie TOUJOURS PAS, y compris pour le bornage en
+    # cycles : le segment est ouvert dans l'ordre où l'événement est REÇU, pas
+    # dans l'ordre chronologique de son horodatage.
+    workflows = E.reconstruire([
+        ev(T(10), "SubagentStart", agent_type="orchestrator", agent_id="a1"),
+        ev(T(1), "SubagentStart", agent_type="orchestrator", agent_id="a2"),
+    ], agents_ouvrants=("orchestrator",))
+    par_indice = {w["indice_cycle"]: w for w in workflows}
+    check("test_E10_segmentation_suit_l_ordre_recu_pas_l_horodatage",
+          par_indice[0]["debut"] == T(10) and par_indice[1]["debut"] == T(1),
+          "le premier événement REÇU (ts=%s) doit ouvrir l'indice 0, même s'il "
+          "est postérieur au second (ts=%s) ; obtenu indice0=%s indice1=%s"
+          % (T(10), T(1), par_indice[0]["debut"], par_indice[1]["debut"]))
+
+    # E13 — comportement INCHANGÉ à figer : un `SubagentStop` sans `agent_type`
+    # (333 occurrences relevées en production) continue de tomber en fermeture
+    # orpheline, DANS LE SEGMENT où il arrive — même avec un bornage actif.
+    workflows = E.reconstruire([
+        ev(T(1), "SubagentStart", agent_type="orchestrator", agent_id="a1"),
+        ev(T(2), "SubagentStop", agent_type="", agent_id="INTRUS1"),
+        ev(T(3), "SubagentStop", agent_id="a1"),
+        ev(T(4), "SubagentStart", agent_type="orchestrator", agent_id="a2"),
+        ev(T(5), "SubagentStop", agent_type="", agent_id="INTRUS2"),
+        ev(T(6), "SubagentStop", agent_id="a2"),
+    ], agents_ouvrants=("orchestrator",))
+    check("test_E13_fermetures_orphelines_figees_par_segment_avec_bornage_actif",
+          workflows[0]["fermetures_orphelines"] == 1 and workflows[1]["fermetures_orphelines"] == 1,
+          "obtenu %r" % [w["fermetures_orphelines"] for w in workflows])
+
     # --- lecture du journal ---------------------------------------------------
     with tempfile.TemporaryDirectory() as tmp:
         chemin = os.path.join(tmp, "j.jsonl")

@@ -71,6 +71,19 @@ racine = ".claude/agents"
 # build = ["make"]
 # lint  = ["./tools/lint.sh"]
 
+[workflows]
+# ⚠️ Bloc COMMENTÉ ET VIDE par défaut : sans lui, un workflow affiché reste
+# une SESSION entière (comportement d'avant bug-004). Un cycle mené sans ces
+# agents sera rattaché au précédent — le découpage ne se fait jamais au jugé,
+# seulement sur les agents que vous déclarez ici.
+#
+# Les agent_type dont l'invocation ouvre un nouveau cycle dans le tableau de
+# bord (typiquement celui qui prépare le plan avant tout le reste) :
+# agents_ouvrants = ["orchestrator"]
+
+# Nombre de workflows envoyés au tableau de bord, borné [1, 100] :
+# affiches = 20
+
 [serveur]
 # 127.0.0.1 par défaut. Ouvrir au réseau local est une décision EXPLICITE :
 # hote = "0.0.0.0"

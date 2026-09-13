@@ -79,6 +79,14 @@ _DEFAUTS = {
     },
     "agents": {"racine": ".claude/agents"},
     "commandes": {},
+    "workflows": {
+        # Défaut NEUTRE : un projet sans `control-center.toml` garde le
+        # comportement d'avant bug-004, un workflow par session — le module
+        # `events.py` ne connaît aucun nom d'agent, c'est ici qu'un projet
+        # déclare celui qui ouvre ses cycles.
+        "agents_ouvrants": [],
+        "affiches": 20,
+    },
     "serveur": {
         # Par défaut on n'écoute QUE en local. Ouvrir au réseau est une décision
         # explicite du projet, jamais un héritage silencieux du défaut.
@@ -123,6 +131,33 @@ class Config(dict):
         if isinstance(argv, list) and argv and all(isinstance(x, str) for x in argv):
             return list(argv)
         return None
+
+    def agents_ouvrants(self):
+        """Les `agent_type` dont l'invocation ouvre un cycle, chaînes non vides.
+
+        Défensif dans le même esprit que `commande()` : une entrée malformée
+        (nombre, liste, chaîne vide) est ignorée plutôt que de faire planter
+        `events.py` — qui, lui, fait confiance à ce que ce module lui donne.
+        """
+        bruts = self.section("workflows").get("agents_ouvrants", [])
+        if not isinstance(bruts, list):
+            return []
+        return [a for a in bruts if isinstance(a, str) and a]
+
+    def workflows_affiches(self):
+        """Nombre de workflows envoyés au tableau de bord, borné [1, 100].
+
+        Une valeur aberrante (négative, hors bornes, ou d'un autre type) ne
+        doit pas priver l'interface de tout historique : on retombe alors sur
+        le défaut plutôt que de propager une valeur qui casserait `[-n:]`.
+        """
+        defaut = _DEFAUTS["workflows"]["affiches"]
+        brut = self.section("workflows").get("affiches", defaut)
+        if not isinstance(brut, int) or isinstance(brut, bool):
+            return defaut
+        if brut < 1 or brut > 100:
+            return defaut
+        return brut
 
     def tetes_de_commande(self):
         """Les deux premiers jetons de chaque commande autorisée.
@@ -204,5 +239,7 @@ if __name__ == "__main__":
         "tetes": sorted(config.tetes_de_commande()),
         "serveur": config.section("serveur"),
         "garde_fous": config.section("garde_fous"),
+        "agents_ouvrants": config.agents_ouvrants(),
+        "workflows_affiches": config.workflows_affiches(),
         "taille_vocabulaire": len(config.section("specs").get("vocabulaire", {})),
     }, ensure_ascii=False, indent=2))

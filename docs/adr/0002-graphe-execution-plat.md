@@ -63,3 +63,19 @@ agents.
   (`imbrication_suspectee`) plutôt que de mentir silencieusement, mais il ne
   corrige rien — un futur ADR serait nécessaire avant d'ajouter `Task` à un
   agent.
+
+> **Note (2026-09-13)** : l'affirmation du Contexte selon laquelle « un
+> workflow observable est une session et une suite de sous-agents qui
+> partagent un `session_id` » a été **réfutée à l'usage**, pas seulement en
+> théorie — quatre cycles de spec complets (`bug-001`, `feature-006`,
+> `bug-003`, `bug-004`), 45 passages d'agents sur quinze heures, menés dans une
+> seule session interactive et affichés jusqu'ici comme un **seul** workflow.
+> Voir [ADR-0014](0014-bornage-des-cycles-par-marqueur-declare.md), qui
+> supersède ce point précis (et lui seul) : un workflow est désormais un
+> **segment** d'une session, borné par un signal déclaré en configuration.
+>
+> **Ce que cette note ne touche pas** : le graphe reste plat, et la Décision
+> ci-dessus — reconstruire par tri chronologique plutôt que par résolution
+> d'un arbre parent/enfant, faute de l'outil `Task` sur aucun agent — reste
+> valide sans changement. ADR-0014 borne des segments à l'intérieur d'une
+> session ; il ne réintroduit aucune imbrication.

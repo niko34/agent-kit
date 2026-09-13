@@ -7,6 +7,56 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 <!-- Les entrées ci-dessous documentent le KIT lui-même. Au démarrage d'un projet,
      les remplacer par le journal du projet. -->
 
+## [0.7.0] - 2026-09-13
+
+### Centre de contrôle
+
+- **Le tableau de bord recoupe désormais les cycles au lieu d'en fondre
+  plusieurs en un seul workflow.** Jusqu'ici, un workflow était affiché par
+  session : une session interactive qui enchaînait plusieurs cycles de spec
+  (constaté en pratique — quatre cycles, 45 passages d'agents sur quinze
+  heures) les présentait comme un seul récit continu, sans séparation.
+  `reconstruire()` accepte désormais `agents_ouvrants`, une liste déclarée en
+  configuration (`[workflows] agents_ouvrants`, vide par défaut) : un
+  `SubagentStart` dont l'`agent_type` y figure ouvre un nouveau segment.
+- **Et dit quand la frontière n'a pas pu être établie**, plutôt que de
+  découper au jugé : liste vide, ou aucun agent de la liste rencontré ⇒ le
+  workflow reste une session entière (`bornage = session entière`) ; les
+  événements antérieurs au premier marqueur rencontré forment un segment à
+  part qui n'affirme rien sur son contenu (`bornage = avant le premier
+  repère`). Le tableau de bord affiche ce bornage, ainsi que l'indice du cycle
+  et l'agent qui l'a ouvert.
+- **Ce que ça n'améliore pas, assumé** : un cycle mené sans l'agent ouvrant
+  déclaré (typiquement un fix isolé sans `orchestrator`) reste rattaché au
+  segment précédent — c'est visible à l'écran, pas masqué. `SessionEnd` ne se
+  déclenchant jamais en pratique (0 occurrence relevée sur 1563 événements),
+  tous les segments d'une session continuent d'afficher « sans fin observée »,
+  y compris ceux manifestement clos — ce défaut appartient à `bug-002`.
+- Le nombre de workflows envoyés au tableau de bord n'est plus figé à 10 : il
+  est désormais configurable (`[workflows] affiches`, défaut 20, borné
+  [1, 100]), pour compenser la fenêtre d'historique plus courte qu'ouvre le
+  découpage par segment.
+
+### Intégration continue
+
+- **La suite de tests du centre de contrôle est enfin exécutée par une CI**,
+  sur GitHub et sur GitLab — elle ne l'était par aucune des deux jusqu'ici.
+
+### Documentation
+
+- `docs/adr/0014-bornage-des-cycles-par-marqueur-declare.md` [nouveau] :
+  pourquoi le bornage est un paramètre déclaré et jamais un nom d'agent en
+  dur, les trois refus de découpage au jugé, alternatives écartées
+  (corrélation avec `specs.py`/`vcs.py`, événement de bornage explicite).
+  Supersède [ADR-0002](docs/adr/0002-graphe-execution-plat.md) sur le seul
+  point du bornage.
+- `docs/adr/0002-graphe-execution-plat.md` : note additive datée du
+  2026-09-13 — l'hypothèse « un workflow est une session » a été réfutée à
+  l'usage ; le reste de l'ADR (graphe plat, absence de `Task`) reste valide.
+- `control-center/README.md` : section « Pourquoi le graphe est plat »
+  corrigée (elle répétait l'hypothèse réfutée), compteurs de tests et lot de
+  mutants de la section Tests mis à jour.
+
 ## [0.6.0] - 2026-09-12
 
 ### Outillage

@@ -177,6 +177,77 @@ def main():
                 SRV._RACINE_WEB = ancienne_racine
                 serveur.servables = anciens
 
+        # --- E12 : `actifs` (bug-004) restreint au dernier segment -----------
+        # Session avec deux cycles marqués : un agent laissé ouvert dans le
+        # PREMIER segment (fermeture perdue) ne doit jamais ressusciter comme
+        # actif ; seul un passage ouvert dans le DERNIER segment compte.
+
+        def _ev(ts, nom, **extra):
+            base = {"ts": ts, "hook_event_name": nom, "session_id": "s-actif",
+                    "runtime": "claude-code"}
+            base.update(extra)
+            return base
+
+        def _t(seconde):
+            return "2026-09-13T10:%02d:%02d.000Z" % (seconde // 60, seconde % 60)
+
+        with tempfile.TemporaryDirectory() as tmp_e12:
+            journal_e12 = os.path.join(tmp_e12, "j.jsonl")
+            with open(journal_e12, "w", encoding="utf-8") as f:
+                for e in [
+                    _ev(_t(1), "SubagentStart", agent_type="orchestrator", agent_id="a1"),
+                    _ev(_t(2), "SubagentStop", agent_id="a1"),
+                    _ev(_t(3), "SubagentStart", agent_type="debugger", agent_id="d1"),
+                    # d1 n'est JAMAIS fermé : sa fermeture est perdue, dans le
+                    # premier segment (indice 0).
+                    _ev(_t(4), "SubagentStart", agent_type="orchestrator", agent_id="a2"),
+                    _ev(_t(5), "SubagentStop", agent_id="a2"),
+                    _ev(_t(6), "SubagentStart", agent_type="test-engineer", agent_id="e1"),
+                    # e1 reste ouvert dans le DERNIER segment (indice 1) : lui
+                    # doit apparaître actif.
+                ]:
+                    f.write(json.dumps(e) + "\n")
+
+            toml_e12 = os.path.join(tmp_e12, "c.toml")
+            with open(toml_e12, "w", encoding="utf-8") as f:
+                f.write('[workflows]\nagents_ouvrants = ["orchestrator"]\naffiches = 20\n')
+            # racine_projet = le dépôt réel : ses `.claude/agents/` déclarent
+            # bien `debugger` et `test-engineer`, sans qu'il faille en fabriquer
+            # de faux ici.
+            racine_reelle = os.path.dirname(
+                os.path.dirname(os.path.dirname(os.path.abspath(SRV.__file__))))
+            config_e12 = C.charger(chemin=toml_e12, racine_projet=racine_reelle)
+
+            etat_e12 = SRV.Etat(config_e12)
+            etat_e12.journal = journal_e12
+            donnees_e12 = etat_e12.instantane()
+            par_nom = {a["nom"]: a for a in donnees_e12["agents"]}
+
+            check("test_E12_actif_ignore_le_segment_anterieur",
+                  par_nom.get("debugger", {}).get("actif_sur") is None,
+                  "un passage ouvert dans un segment clos par un marqueur "
+                  "ultérieur ne doit pas ressusciter comme actif ; obtenu %r"
+                  % par_nom.get("debugger", {}).get("actif_sur"))
+            check("test_E12_actif_pointe_le_workflow_id_du_dernier_segment",
+                  par_nom.get("test-engineer", {}).get("actif_sur") == "s-actif#1",
+                  "obtenu %r" % par_nom.get("test-engineer", {}).get("actif_sur"))
+
+            # --- `len(workflows) <= affiches` ---------------------------------
+            toml_borne = os.path.join(tmp_e12, "borne.toml")
+            with open(toml_borne, "w", encoding="utf-8") as f:
+                f.write('[workflows]\nagents_ouvrants = ["orchestrator"]\naffiches = 1\n')
+            config_borne = C.charger(chemin=toml_borne, racine_projet=racine_reelle)
+            etat_borne = SRV.Etat(config_borne)
+            etat_borne.journal = journal_e12
+            donnees_borne = etat_borne.instantane()
+            check("test_E12_len_workflows_borne_par_affiches",
+                  len(donnees_borne["workflows"]) <= config_borne.workflows_affiches(),
+                  "obtenu %d workflow(s) pour affiches=%d"
+                  % (len(donnees_borne["workflows"]), config_borne.workflows_affiches()))
+            check("test_E12_affiches_1_tronque_bien_a_un_seul",
+                  len(donnees_borne["workflows"]) == 1,
+                  "la session compte 2 cycles ; obtenu %d" % len(donnees_borne["workflows"]))
+
         # --- l'empreinte ne bouge pas toute seule ----------------------------
         # Sans cela l'interface se rafraîchirait en boucle : l'instantané
         # contient un horodatage, l'empreinte ne doit surtout pas le contenir.
