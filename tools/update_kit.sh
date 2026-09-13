@@ -45,6 +45,8 @@ tools/check_specs.sh
 tools/check_doc_links.sh
 tools/sync_copilot_agents.py
 tests/test_sync_copilot_agents.py
+tests/harnais_kit.py
+tests/test_harnais_kit.py
 tests/test_update_kit.py
 tools/update_kit.sh
 specs/features/_template.md
@@ -156,10 +158,18 @@ case "${1:-}" in
     ;;
 esac
 
-cd "$(git rev-parse --show-toplevel 2>/dev/null)" || {
+# ⚠️ `cd "$(...)" || { ... }` ne suffit PAS : quand la substitution est vide,
+# `cd ""` réussit silencieusement en bash (aucun changement de répertoire,
+# code 0) — le `||` ne se déclenche alors JAMAIS, et ce message n'était donc
+# jamais affiché hors d'un dépôt (le script retombait sur la garde suivante,
+# « distant absent », pour la mauvaise raison). Constaté à l'exécution par
+# feature-006. On capture donc la racine d'abord, on vérifie qu'elle est non
+# vide, PUIS on `cd`.
+racine_du_projet="$(git rev-parse --show-toplevel 2>/dev/null)"
+if [ -z "$racine_du_projet" ] || ! cd "$racine_du_projet"; then
   echo "❌ Ce script doit tourner dans un dépôt git." >&2
   exit 1
-}
+fi
 
 if ! git remote get-url "$DISTANT" >/dev/null 2>&1; then
   echo "❌ Aucun distant nommé « $DISTANT »." >&2

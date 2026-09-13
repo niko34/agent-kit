@@ -1,8 +1,8 @@
 # ============================================================================
 # Contrôles d'hygiène documentaire — variante GitLab.
 #
-# ⚠️ Ce fichier N'EST PAS un pipeline complet : il n'ajoute que deux jobs, pour
-# pouvoir cohabiter avec une chaîne de build et de déploiement existante.
+# ⚠️ Ce fichier N'EST PAS un pipeline complet : il n'ajoute que quatre jobs,
+# pour pouvoir cohabiter avec une chaîne de build et de déploiement existante.
 #
 # Deux façons de le brancher :
 #
@@ -11,7 +11,7 @@
 #            - local: '.gitlab/ci/hygiene.yml'
 #      puis ajouter `hygiene` à la liste des `stages` du pipeline principal.
 #
-#   B. Copier les deux jobs directement dans le .gitlab-ci.yml existant.
+#   B. Copier les quatre jobs directement dans le .gitlab-ci.yml existant.
 #
 # Ne JAMAIS remplacer un .gitlab-ci.yml existant par ce fichier.
 #
@@ -23,11 +23,24 @@
 # 2. Liens de documentation : le chemin d'un lien vers une spec ENCODE son état
 #    (`doing/`, `done/`). Chaque promotion casse silencieusement les liens qui
 #    citaient l'ancien emplacement.
+# 3. Suite de tests (feature-006) : jusqu'ici, aucune CI n'exécutait `tests/` —
+#    ni les cas de `test_update_kit.py`, ni ceux de `test_sync_copilot_agents.py`
+#    ne tournaient ailleurs qu'à la main, en local.
+# 4. Profils GitHub Copilot : parité avec `.github/workflows/hygiene-specs.yml`,
+#    qui porte ce contrôle côté GitHub depuis l'origine — un projet GitLab avec
+#    Copilot dans l'IDE ne doit pas être moins bien couvert.
 #
-# Ni toolchain, ni cache, ni filtre de chemins : le contrôle coûte quelques
-# secondes et doit tourner sur TOUS les commits — un déplacement de spec
-# n'accompagne pas nécessairement une modification de code. Une règle que rien
-# ne vérifie n'est pas une règle.
+# Les jobs 1 et 2 : ni toolchain, ni cache, ni filtre de chemins, quelques
+# secondes, sur TOUS les commits — un déplacement de spec n'accompagne pas
+# nécessairement une modification de code. Une règle que rien ne vérifie
+# n'est pas une règle.
+#
+# Le job 3 est volontairement SÉPARÉ des deux premiers (base `.tests_base`
+# dédiée, pas `.hygiene_base`) : `tests/` exécute réellement `git` et
+# `update_kit.sh`, deux dépôts jetables par cas — mesuré le 2026-09-12,
+# ~75 ms par cas côté `test_update_kit.py`, et les lots suivants visent
+# ~24 cas au total. Ajouter `git`/`python3` à `.hygiene_base` alourdirait
+# À TORT les jobs 1 et 2, qui n'en ont jamais eu besoin.
 #
 # La logique vit dans tools/, pas dans ce YAML : les mêmes scripts tournent en
 # local et peuvent servir de hook pre-commit. C'est ce qui rend le support des
@@ -46,6 +59,18 @@ stages:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
+# Base séparée pour la suite de tests (feature-006) : `git` et `python3` n'y
+# alourdissent QUE ce job, jamais `.hygiene_base`. Même image alpine que les
+# deux premiers jobs, pour ne pas multiplier les couches téléchargées.
+.tests_base:
+  stage: hygiene
+  image: alpine:3.20
+  before_script:
+    - apk add --no-cache bash git python3
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
 hygiene:specs:
   extends: .hygiene_base
   script:
@@ -55,3 +80,58 @@ hygiene:liens-doc:
   extends: .hygiene_base
   script:
     - bash ./tools/check_doc_links.sh
+
+hygiene:tests:
+  extends: .tests_base
+  # Motifs explicites, un par fichier de test DU KIT — jamais une découverte
+  # non filtrée. `tests/` est un chemin CONDITIONNEL du kit : un projet
+  # consommateur qui l'a déjà reçoit aussi ses propres tests métier dans ce
+  # même dossier. `discover -s tests` sans motif les collecterait ici, dans
+  # une image qui n'a pas leurs dépendances — nous casserions leur CI par
+  # notre faute. Ce job ne teste QUE le kit.
+  #
+  # ⚠️ Chaque ligne vérifie l'EXISTENCE du fichier avant de lancer
+  # `unittest` : ce même YAML descend chez un projet consommateur (chemin
+  # conditionnel), qui peut avoir exclu tel fichier via `.kit-paths`. Depuis
+  # Python 3.12, `unittest discover` sort en code 5 (« aucun test collecté »)
+  # quand le motif ne matche rien — un échec, pas un succès. Un projet qui
+  # n'a pas nos tests ne doit pas voir sa CI cassée par nous : d'où le test
+  # d'existence, plutôt qu'un `|| true` qui aurait aussi masqué un VRAI
+  # échec de test.
+  # `if/then/else` explicite, jamais `A && B || echo` : ce dernier masquerait
+  # aussi un VRAI échec de B (le `||` se déclenche alors pour la mauvaise
+  # raison), exactement ce que ce correctif doit éviter.
+  script:
+    - |
+      if [ -f tests/test_update_kit.py ]; then
+        python3 -m unittest discover -s tests -p 'test_update_kit.py'
+      else
+        echo "ℹ️  tests/test_update_kit.py absent — rien à lancer."
+      fi
+    - |
+      if [ -f tests/test_harnais_kit.py ]; then
+        python3 -m unittest discover -s tests -p 'test_harnais_kit.py'
+      else
+        echo "ℹ️  tests/test_harnais_kit.py absent — rien à lancer."
+      fi
+    - |
+      if [ -f tests/test_sync_copilot_agents.py ]; then
+        python3 -m unittest discover -s tests -p 'test_sync_copilot_agents.py'
+      else
+        echo "ℹ️  tests/test_sync_copilot_agents.py absent — rien à lancer."
+      fi
+
+# Parité avec le job GitHub `agents-copilot` : `python3` seul suffit, le
+# script ne fait aucun appel git. Base indépendante de `.tests_base` (qui
+# installerait aussi `git` et `bash` sans besoin) et de `.hygiene_base` (qui
+# n'a pas `python3`, et qu'on ne touche pas — voir plus haut).
+hygiene:agents-copilot:
+  stage: hygiene
+  image: alpine:3.20
+  before_script:
+    - apk add --no-cache python3
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - python3 tools/sync_copilot_agents.py --check

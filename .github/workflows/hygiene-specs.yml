@@ -21,6 +21,16 @@ name: Hygiène du dépôt
 # seconde et doit tourner sur TOUS les commits — un déplacement de spec
 # n'accompagne pas nécessairement une modification de code. Un contrôle que
 # personne ne lance ne rend rien inexprimable.
+#
+# JOB 4 — Tests (feature-006).
+# Job DISTINCT, et non une extension des trois contrôles ci-dessus : mesuré
+# le 2026-09-12, `tests/` coûte ~75 ms par cas, deux dépôts git réels créés
+# à chaque fois — l'un des quatre lots visés porte à lui seul ~24 cas, donc
+# quelques secondes rien que pour ce fichier. Le budget « une seconde, sans
+# toolchain ni cache » des trois contrôles d'hygiène ne doit pas absorber
+# cette croissance ; en contrepartie, ce job tourne en PARALLÈLE des trois
+# autres (même `on:`, même groupe de `concurrency`), donc le temps de
+# restitution global ne change pas.
 
 on:
   push:
@@ -63,3 +73,53 @@ jobs:
 
       - name: Contrôle des profils générés
         run: python3 tools/sync_copilot_agents.py --check
+
+  tests:
+    name: Suite de tests (tests/)
+    runs-on: ubuntu-latest
+    # `contents: read` suffit : ce job ne fait que lire le dépôt et exécuter
+    # des tests, jamais écrire (revue de sécurité, feature-006).
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Motifs explicites, un par fichier de test DU KIT — jamais une
+      # découverte non filtrée. `tests/` est un chemin CONDITIONNEL du kit :
+      # un projet consommateur qui l'a déjà reçoit aussi ses propres tests
+      # métier dans ce même dossier. `discover -s tests` sans motif les
+      # collecterait ici, dans une image qui n'a pas leurs dépendances — nous
+      # casserions leur CI par notre faute. Ce job ne teste QUE le kit.
+      #
+      # ⚠️ Chaque étape vérifie l'EXISTENCE du fichier avant de lancer
+      # `unittest` : ce même YAML descend chez un projet consommateur (chemin
+      # conditionnel), qui peut avoir exclu tel fichier via `.kit-paths`.
+      # Depuis Python 3.12, `unittest discover` sort en code 5 (« aucun test
+      # collecté ») quand le motif ne matche rien — un échec, pas un succès.
+      # Un projet qui n'a pas nos tests ne doit pas voir sa CI cassée par
+      # nous : d'où le test d'existence, plutôt qu'un `|| true` qui aurait
+      # aussi masqué un VRAI échec de test.
+      - name: Suite de tests du kit (update_kit.sh)
+        run: |
+          if [ -f tests/test_update_kit.py ]; then
+            python3 -m unittest discover -s tests -p 'test_update_kit.py'
+          else
+            echo "ℹ️  tests/test_update_kit.py absent (exclu via .kit-paths ?) — rien à lancer."
+          fi
+
+      - name: Suite de tests du kit (harnais)
+        run: |
+          if [ -f tests/test_harnais_kit.py ]; then
+            python3 -m unittest discover -s tests -p 'test_harnais_kit.py'
+          else
+            echo "ℹ️  tests/test_harnais_kit.py absent (exclu via .kit-paths ?) — rien à lancer."
+          fi
+
+      - name: Suite de tests du kit (profils Copilot)
+        run: |
+          if [ -f tests/test_sync_copilot_agents.py ]; then
+            python3 -m unittest discover -s tests -p 'test_sync_copilot_agents.py'
+          else
+            echo "ℹ️  tests/test_sync_copilot_agents.py absent (exclu via .kit-paths ?) — rien à lancer."
+          fi

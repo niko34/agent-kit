@@ -73,6 +73,14 @@ trou « non suivi » ; celui-ci reste ouvert.
 3. Le message doit nommer le bit en cause : un utilisateur qui a posé
    `skip-worktree` il y a six mois ne fera pas le lien tout seul.
 
+> **Note (feature-006, lot 1, harnais livré)** : `tests/harnais_kit.py` est
+> disponible, avec la primitive `poser_skip_worktree()` (et sa variante
+> `assume_unchanged`), `MARQUEURS_DE_GARDE` et `affirmer_seule_garde()`. La
+> **garde** correspondante reste entièrement à la charge de ce bug (voir
+> « Notes pour agent » de feature-006). ADR-0012 impose que le test de
+> non-régression ajouté ici déclare sa propre clé dans `MARQUEURS_DE_GARDE`
+> et démontre, par mutation, qu'aucune autre garde ne peut le faire échouer.
+
 ## Critères d'acceptation
 
 - [ ] Dans le scénario de reproduction, la synchronisation refuse de

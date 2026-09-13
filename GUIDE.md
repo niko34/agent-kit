@@ -130,10 +130,9 @@ Pour que le verrou tienne, `modele.md` porte lui aussi un bloc **Agents requis**
 l'escalade doit être *lisible par l'orchestrator*, pas seulement mentionnée dans un
 commentaire qu'un humain pressé saute.
 
-## Pourquoi la CI vérifie les specs et les liens
+## Pourquoi la CI vérifie les specs, les liens et les tests
 
-Trois contrôles tournent sur chaque commit (`.github/workflows/hygiene-specs.yml`),
-sans toolchain ni cache, en une seconde :
+Quatre contrôles tournent sur chaque commit (`.github/workflows/hygiene-specs.yml`) :
 
 - **Unicité** — un nom de spec ne vit que dans un seul de `todo/` · `doing/` · `done/`.
   Le cycle procède par déplacement ; une spec copiée, ce sont deux versions qui
@@ -143,12 +142,31 @@ sans toolchain ni cache, en une seconde :
   les liens qui citaient l'ancien emplacement.
 - **Agents Copilot** — chaque profil `.github/agents/*.agent.md` correspond exactement
   à sa source `.claude/agents/*.md` ; une modification non régénérée bloque la CI.
+- **Tests** (`tests/`, depuis feature-006) — jusque-là, aucune CI n'exécutait `tests/` :
+  ni les cas de `test_update_kit.py`, ni ceux de `test_sync_copilot_agents.py` ne
+  tournaient ailleurs qu'à la main, en local. C'est le premier contrôle qui fait
+  tourner cette suite tout court.
 
-Les deux défauts sont attestés sur le projet d'origine : trois specs dans deux dossiers
-avec des statuts contradictoires, et 29 % de liens morts vers des specs — des liens
-pourtant justes le jour où ils ont été écrits. D'où la règle : **une règle que rien ne
-vérifie n'est pas une règle**. Les scripts vivent dans `tools/`, pas dans le YAML, pour
-tourner à l'identique en local et servir de hook pre-commit.
+Les deux premiers défauts sont attestés sur le projet d'origine : trois specs dans deux
+dossiers avec des statuts contradictoires, et 29 % de liens morts vers des specs — des
+liens pourtant justes le jour où ils ont été écrits. D'où la règle : **une règle que
+rien ne vérifie n'est pas une règle**. Les scripts vivent dans `tools/`, pas dans le
+YAML, pour tourner à l'identique en local et servir de hook pre-commit.
+
+**Le contrôle de tests est un job à part, délibérément hors du budget « une seconde,
+sans toolchain ni cache »** des trois autres. Il exécute réellement `git` et
+`tools/update_kit.sh` — deux dépôts jetables par cas, mesuré à ~75 ms par cas le
+2026-09-12. Les lots qui étoffent cette suite après feature-006 (feature-012,
+feature-013, feature-014) visent ~24 cas au total pour ce seul fichier : la suite
+sortira alors de la seconde. Faire porter cette croissance par les trois premiers
+contrôles aurait fait mentir leur promesse d'être quasi instantanés sur chaque commit ;
+le job de tests tourne donc séparément, en parallèle des trois autres (même `on:`, même
+groupe de `concurrency`), pour que le temps de restitution global ne change pas. Voir
+ADR-0012 pour la doctrine anti-chevauchement qui gouverne le contenu de cette suite.
+
+Les deux forges sont désormais à parité sur ces quatre contrôles : `.gitlab/ci/hygiene.yml`
+gagne, avec feature-006, le job de tests **et** le contrôle des profils Copilot, qui
+n'existait jusqu'ici que côté GitHub.
 
 ## Sources versionnées, générés publiés
 

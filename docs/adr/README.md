@@ -39,3 +39,4 @@ Une simple préférence de style, un choix réversible en une heure ou un détai
 | [0009](0009-un-seul-auditeur-securite.md) | Un seul auditeur de sécurité, cumulant gate et audit | Accepté |
 | [0010](0010-un-seul-script-de-synchronisation.md) | Un seul script de synchronisation : `update_kit.sh` | Accepté |
 | [0011](0011-apercu-recapitulatif-d-operations.md) | L'aperçu d'`update_kit` est un récapitulatif d'opérations, pas un diff de deux arbres | Accepté |
+| [0012](0012-harnais-de-test-partage-et-doctrine-anti-chevauchement.md) | Un harnais de test partagé, et la doctrine anti-chevauchement | Accepté |

@@ -42,6 +42,38 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
   jetables, confinés, sans réseau) et 4 cas de non-régression sur l'aperçu et
   la garde d'écrasement. Ajouté à `CHEMINS` d'`update_kit.sh` pour se
   synchroniser avec le script qu'il protège.
+- **`tests/harnais_kit.py` [nouveau]** (feature-006, lot 1) : le harnais de
+  `test_update_kit.py` est extrait en module partagé, confinement étendu à 4
+  variables `GIT_*` supplémentaires trouvées par l'audit sécurité
+  (`GIT_CONFIG_PARAMETERS`, `GIT_CONFIG_COUNT`, `GIT_TEMPLATE_DIR`,
+  `GIT_EXEC_PATH`), et enrichi de primitives (`.kit-paths`, faux `.github/`,
+  arbre sali, fichier non inscriptible, `skip-worktree`) pour les lots
+  suivants. `tests/test_harnais_kit.py` [nouveau] : auto-contrôles du
+  harnais lui-même, variable de confinement par variable. Voir ADR-0012.
+- Cinq gardes d'usage d'`update_kit.sh` couvertes (arbre sale en réel et en
+  `--dry-run`, distant `kit` absent, hors dépôt git, projet déjà aligné),
+  chacune protégée par `affirmer_seule_garde()` — un cas qui passerait pour
+  la mauvaise raison, comme sur bug-001, échoue désormais.
+- **Une garde d'`update_kit.sh` qui n'avait jamais fonctionné est réparée** :
+  le message « Ce script doit tourner dans un dépôt git » ne pouvait jamais
+  s'afficher, `cd ""` réussissant silencieusement en bash quand la
+  substitution est vide. Trouvé à l'exécution, pas par relecture.
+
+### Intégration continue
+
+- **Une CI exécute enfin `tests/`** : jusqu'ici, ni les 4 cas de
+  `test_update_kit.py` ni les 9 de `test_sync_copilot_agents.py` ne
+  tournaient ailleurs qu'à la main, en local. Job distinct, hors du budget
+  « une seconde » des trois contrôles d'hygiène existants (voir GUIDE.md).
+- **Le contrôle des profils Copilot existe désormais aussi côté GitLab**
+  (`.gitlab/ci/hygiene.yml`), en parité avec `.github/workflows/hygiene-specs.yml`.
+
+⚠️ **Action manuelle pour les consommateurs du kit** : un projet dont le
+`.kit-paths` liste `tests/test_update_kit.py` explicitement ne recevra **pas**
+automatiquement `tests/harnais_kit.py` ni `tests/test_harnais_kit.py`
+(`.kit-paths` est une liste inclusive, ADR-0008) — sa suite cassera à
+l'import (`ModuleNotFoundError: harnais_kit`). Ajouter les deux fichiers à
+son `.kit-paths`.
 
 ### Documentation
 
@@ -49,10 +81,24 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
   l'aperçu décrit des opérations et non un diff d'arbres, alternatives
   écartées (`numstat` réinterprété, `ls-tree`/`ls-files`, sauvegarde `.bak`
   automatique).
+- `docs/adr/0012-harnais-de-test-partage-et-doctrine-anti-chevauchement.md`
+  [nouveau] : pourquoi un harnais unique et `affirmer_seule_garde()`,
+  alternatives écartées (dépôt façonné par garde sans assertion croisée,
+  extraction des gardes en fonctions shell, primitives écrites au fil de
+  l'eau). Impose aux lots feature-012, feature-013, feature-014 et bug-003
+  de déclarer leur marqueur et de produire une matrice diagonale.
 - `README.md` : section « Récupérer les évolutions du kit » mise à jour avec
   les quatre issues de l'aperçu et la garde d'écrasement.
+- `GUIDE.md` : section sur les contrôles d'hygiène — quatrième contrôle
+  (tests), pourquoi il est hors du budget d'une seconde, parité des forges
+  sur le contrôle Copilot.
 - `specs/features/todo/feature-006-tests-de-update-kit.md` : note sur le
   harnais livré en avance par bug-001.
+- `specs/features/todo/feature-012-kit-paths-gouverne-seul.md`,
+  `feature-013-geles-personnalises-conditionnels.md`,
+  `feature-014-apercu-effets-de-bord-echecs.md`,
+  `bug-003-skip-worktree-echappe-aux-gardes.md` : note sur le harnais livré
+  et l'obligation ADR-0012 (marqueur de garde déclaré + matrice diagonale).
 
 ## [0.5.0] - 2026-09-12
 
