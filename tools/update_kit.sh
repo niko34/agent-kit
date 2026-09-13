@@ -413,10 +413,47 @@ a_maj=""
 a_maj_bit_efface=""
 geles_perte=""
 obstacles_type=""
+noms_cites=""
+repertoires_travers=""
+sous_modules=""
 identiques=0
 
 while IFS= read -r f; do
   [ -z "$f" ] && continue
+
+  # ── DÉTECTION DE NOM CITÉ PAR GIT (bug-008) ───────────────────────────────
+  # `-c core.quotepath=off` (voir le commentaire au site `ls-tree` plus haut)
+  # désactive la citation des octets non-ASCII, mais git cite TOUJOURS un nom
+  # contenant un guillemet double, un retour à la ligne, une tabulation ou un
+  # antislash — quelle que soit cette option — parce que la sortie de
+  # `ls-tree --name-only` sépare les noms par des retours à la ligne : un nom
+  # qui en contiendrait un serait sinon indistinguable de deux noms. Un tel
+  # nom ressort donc guillemeté et échappé (`"a\"b.md"`, `"a\nb.md"`,
+  # `"a\tb.md"`, `"a\\b.md"`), échoue au test d'existence `[ ! -e "$f" ]`
+  # ci-dessous — il cherche un fichier qui n'existe pas TEL QUEL sur le
+  # disque —, se classe « à créer », et `git checkout` écrase l'original en
+  # silence. C'est exactement le mécanisme de bug-003, sur le sous-ensemble
+  # de noms que son correctif ne pouvait pas atteindre.
+  #
+  # Discriminant EXACT : un nom brut ne peut jamais commencer par un
+  # guillemet double, puisque la présence même d'un tel caractère dans le nom
+  # force git à citer la totalité du nom pour le rendre non ambigu en
+  # sortie. Un nom accentué (bug-003) reste en clair sous `quotepath=off` —
+  # il ne peut donc jamais entrer dans cette branche, vérifié par exécution.
+  #
+  # ⚠️ Refus nommé (issue retenue), PAS de dé-citation : les listes de ce
+  # script sont des chaînes jointes par des retours à la ligne, comptées par
+  # `grep -c .` et dédoublonnées par `sort -u`. Dé-citer nous-mêmes un nom
+  # contenant un retour à la ligne le scinderait en DEUX entrées fantômes
+  # dans chaque liste, chaque compteur et chaque garde — ça aggraverait le
+  # défaut plutôt que de le fermer.
+  case "$f" in
+    '"'*)
+      noms_cites="$noms_cites$f
+"
+      continue
+      ;;
+  esac
 
   # ── DÉTECTION D'OBSTACLE DE TYPE (bug-006) ────────────────────────────────
   # Un chemin gelé que le kit place SOUS un répertoire (ex.
@@ -428,10 +465,23 @@ while IFS= read -r f; do
   # aucune primitive neuve n'est nécessaire hors de la branche « obstacle
   # trouvé » plus bas.
   #
-  # ⚠️ Ancêtres SEULEMENT. Le cas inverse — un répertoire occupant la place
-  # d'un FICHIER gelé — est déjà classé `non_suivis_perte` plus bas (`git
-  # ls-files`/`git hash-object` échouent sur un répertoire) : l'inclure ici
-  # ferait parler deux gardes sur la même exécution.
+  # ⚠️ Ancêtres SEULEMENT — jamais `$f` lui-même. Un répertoire occupant la
+  # place d'un FICHIER gelé, À LA FEUILLE, est un cas DISTINCT (bug-009,
+  # traité plus bas dans la branche « suivi » de cette même boucle). Ce
+  # commentaire affirmait auparavant que ce cas était « déjà classé
+  # `non_suivis_perte` plus bas » — RÉFUTÉ PAR EXÉCUTION (audit `bug-009`) :
+  # ce n'est vrai QUE si le répertoire est NON SUIVI par git (alors
+  # `--error-unmatch` échoue et le chemin finit bien en `non_suivis_perte`).
+  # Un répertoire SUIVI à la même place réussit `--error-unmatch`, ne prend
+  # jamais ce chemin-là, et échappait donc à toute garde avant bug-009.
+  #
+  # Pourquoi la feuille est traitée dans une garde SÉPARÉE plutôt qu'ajoutée
+  # à cette boucle d'ancêtres : ADR-0016 exclut DÉLIBÉRÉMENT la feuille du
+  # test d'ancêtres (dix tests morts à l'avoir tenté) — sa garde protège un
+  # chemin gelé situé SOUS un obstacle, pas le chemin gelé lui-même. ADR-0016
+  # reste donc immuable et non réécrit ; la feuille « répertoire suivi » a sa
+  # propre garde, distincte, sur un terrain que celle-ci ne couvre
+  # structurellement pas.
   #
   # ⚠️ TOUS les composants sont parcourus, pas seulement les racines de
   # `presents` : un obstacle PROFOND (un fichier ignoré à
@@ -506,6 +556,130 @@ while IFS= read -r f; do
     fi
     continue
   fi
+
+  # ── DÉTECTION DE RÉPERTOIRE SUIVI EN TRAVERS (bug-009) ────────────────────
+  # Ici, `$f` est SUIVI (le bloc non-suivi ci-dessus a déjà pris son
+  # `continue` sinon) et existe (`[ ! -e "$f" ]` plus haut a déjà écarté
+  # l'absence). `git ls-files --error-unmatch` réussit sur un RÉPERTOIRE dès
+  # qu'il contient au moins un fichier suivi — le chemin est alors classé
+  # « suivi », alors que le kit attend ici un FICHIER. `git hash-object`
+  # échoue sur un répertoire (hash local vide != hash du kit) : sans cette
+  # garde, ce chemin tombait en « à mettre à jour », catégorie inoffensive en
+  # apparence, et `git checkout <tree> -- <chemin>` fait un `remove_subtree`
+  # sur tout répertoire en travers SANS regarder son contenu — y compris les
+  # fichiers ignorés, irrécupérables.
+  #
+  # ⚠️ `--exclude-standard` est INTERDIT ici, et volontairement absent :
+  # vérifié par exécution, il rend la sortie VIDE sur le cas de reproduction
+  # (répertoire suivi contenant un fichier IGNORÉ) — il masque exactement le
+  # seul fichier irrécupérable que cette garde existe pour protéger, et
+  # l'annulerait en silence.
+  #
+  # Non-régression d'O6 (bug-006/bug-001) par IMPOSSIBILITÉ, pas par
+  # prudence : un répertoire NON SUIVI ou VIDE fait ÉCHOUER
+  # `--error-unmatch` et prend le `continue` du bloc non-suivi ci-dessus — il
+  # ne peut structurellement pas atteindre cette branche.
+  #
+  # ⚠️ Commentaire corrigé (établi par exécution, l'ancien était FAUX dans
+  # les trois cas) : un lien symbolique **suit sa cible**, il n'est jamais
+  # haché comme un blob de lien. Vers un FICHIER, `git hash-object` rend le
+  # hash du CONTENU CIBLE (jamais celui du blob 120000 du lien lui-même).
+  # Vers un RÉPERTOIRE ou vers une cible CASSÉE, `git hash-object` ÉCHOUE
+  # (`fatal: Unable to hash` / `fatal: could not open`). Le vrai motif de
+  # `[ ! -L "$f" ]` : un lien symbolique est SUIVI par git (récupérable par
+  # `checkout`), et `git ls-files --others` ne traverse PAS un lien présent
+  # dans l'index — vérifié : sur un lien suivi vers un répertoire contenant
+  # un fichier non suivi, `--others -- "$lien"` est VIDE alors que
+  # `--others -- "$cible"` (même répertoire par son vrai nom) ne l'est pas.
+  # C'est ce qui rend `[ ! -L "$f" ]` défensivement redondant ici — une
+  # équivalence de mutation déclarée, pas un trou : sans ce garde-fou,
+  # `--others` resterait déjà vide sur un lien.
+  if [ -d "$f" ] && [ ! -L "$f" ]; then
+    # ── DÉTECTION DE SOUS-MODULE EN TRAVERS ──────────────────────────────────
+    # Établi par exécution : un SOUS-MODULE (gitlink, mode 160000) occupant la
+    # place d'un fichier gelé a `git status` VIDE et `git ls-files --others`
+    # VIDE — le sous-arbre du sous-module n'est PAS indexé par le
+    # superprojet, donc rien ci-dessous ne le voit. Sans cette détection
+    # dédiée, il tombe dans la même case « à mettre à jour » que le cas
+    # bug-009 ordinaire, et `git checkout` fait disparaître le `.git` du
+    # sous-module : c'est tout l'HISTORIQUE du dépôt embarqué qui est perdu,
+    # pas seulement des fichiers ignorés — sortie 0.
+    #
+    # Marqueur DISTINCT (`sous_module`), pas réutilisation de
+    # `repertoire_en_travers` : la perte (un dépôt entier avec son
+    # historique) et le remède (sauvegarder le `.git` du sous-module ailleurs,
+    # ou le désinitialiser proprement — jamais « committer le contenu non
+    # suivi », qui n'a pas de sens pour un gitlink) diffèrent trop pour
+    # partager un message qui parlerait de « contenu non suivi ». Fragment
+    # vérifié disjoint des douze existants, dans les deux sens.
+    #
+    # ⚠️ JAMAIS `git ls-files -s -- "$f" | grep -q '^160000 '` : sous
+    # `set -uo pipefail` (tête de fichier), `grep -q` sort au PREMIER match et
+    # ferme son bout du tube. Si git a encore de la sortie à écrire — un
+    # répertoire suivi dont le gitlink n'est pas la SEULE entrée, par exemple
+    # un ancien `GUIDE.md/` suivi contenant un dépôt embarqué en tête
+    # alphabétique PLUS des milliers de fichiers suivis propres — il meurt en
+    # SIGPIPE, le pipeline vaut 141, et le `if` est FAUX : garde sautée,
+    # sortie 0, `.git` du sous-module détruit avec le reste du répertoire.
+    # Vérifié par exécution : sortie courte + pipefail → garde atteinte (ce
+    # qui expliquait que la suite de tests, aux dépôts jetables minces,
+    # passait) ; sortie longue + pipefail → garde manquée. La substitution de
+    # commande ci-dessous consomme TOUJOURS la totalité de l'entrée avant que
+    # le `if` ne soit évalué — `pipefail` n'y décide de rien, même idiome
+    # qu'au commentaire sur `head -n1 | cut -c1` plus bas dans ce fichier.
+    gitlinks="$(git ls-files -s -- "$f" 2>/dev/null | grep '^160000 ' || true)"
+    if [ -n "$gitlinks" ]; then
+      sous_modules="$sous_modules$f
+"
+      continue
+    fi
+
+    # Bloquant SEULEMENT si quelque chose d'irrécupérable est dedans.
+    # Deux sources, vérifiées séparément par exécution :
+    #   1. `git ls-files --others -- "$f"` : fichiers non suivis (ignorés ou
+    #      non) sous ce répertoire.
+    #   2. TOUTES les entrées de `git ls-files -v -- "$f"` (pas seulement la
+    #      première : trier alphabétiquement et ne lire que `head -n1` avait
+    #      laissé passer un fichier SKIP-WORKTREE/ASSUME-UNCHANGED — lettre
+    #      `S` ou minuscule — situé après un fichier propre dans l'ordre
+    #      alphabétique ; son contenu local, jamais committé, était alors
+    #      perdu avec le reste du répertoire, sortie 0, garde livrée mais
+    #      inatteignable sur ce cas précis).
+    # Si tout le contenu est suivi et propre, rien ne bloque : le chemin
+    # retombe plus bas dans le calcul normal du hash (à mettre à jour).
+    contenu_perdu=0
+    [ -n "$(git ls-files --others -- "$f")" ] && contenu_perdu=1
+    if [ "$contenu_perdu" -ne 1 ]; then
+      while IFS= read -r ligne_interne; do
+        [ -z "$ligne_interne" ] && continue
+        lettre_interne="${ligne_interne:0:1}"
+        chemin_interne="${ligne_interne:2}"
+        interne_gele=0
+        case "$lettre_interne" in
+          S) interne_gele=1 ;;
+          # Même piège documenté plus bas pour la feuille : `[[:lower:]]`,
+          # jamais `[a-z]`, la collation d'une locale non-C pouvant happer
+          # des majuscules.
+          [[:lower:]]) interne_gele=1 ;;
+        esac
+        if [ "$interne_gele" -eq 1 ]; then
+          hash_interne_local="$(git hash-object -- "$chemin_interne" 2>/dev/null)"
+          hash_interne_head="$(git rev-parse "HEAD:$chemin_interne" 2>/dev/null)"
+          if [ "$hash_interne_local" != "$hash_interne_head" ]; then
+            contenu_perdu=1
+            break
+          fi
+        fi
+      done <<<"$(git ls-files -v -- "$f" 2>/dev/null)"
+    fi
+
+    if [ "$contenu_perdu" -eq 1 ]; then
+      repertoires_travers="$repertoires_travers$f
+"
+      continue
+    fi
+  fi
+
   hash_local="$(git hash-object -- "$f" 2>/dev/null)"
   hash_kit="$(git rev-parse "$DISTANT/$BRANCHE:$f" 2>/dev/null)"
   if [ "$hash_local" = "$hash_kit" ]; then
@@ -560,7 +734,14 @@ done <<<"$fichiers_du_kit"
 # obstacle de type (bug-006) — sans ce dernier test, un projet dont le seul
 # écart est un obstacle sortirait ici en « rien à récupérer » et la garde plus
 # bas ne serait jamais atteinte. Même piège déjà rencontré sur `geles_perte`.
-if [ -z "$a_creer" ] && [ -z "$a_maj" ] && [ -z "$non_suivis_perte" ] && [ -z "$non_suivis_ok" ] && [ -z "$geles_perte" ] && [ -z "$obstacles_type" ]; then
+#
+# ⚠️ `noms_cites`, `repertoires_travers` (bug-008/bug-009) et `sous_modules`
+# (correctif ultérieur du même cycle) DOIVENT figurer ici, pour la même
+# raison exacte : sans eux, un projet dont le SEUL écart est un nom cité, un
+# répertoire en travers ou un sous-module en travers sortirait « déjà
+# aligné » et la garde correspondante ne serait JAMAIS atteinte — livrée
+# morte, comme `geles_perte` et `obstacles_type` avant elle.
+if [ -z "$a_creer" ] && [ -z "$a_maj" ] && [ -z "$non_suivis_perte" ] && [ -z "$non_suivis_ok" ] && [ -z "$geles_perte" ] && [ -z "$obstacles_type" ] && [ -z "$noms_cites" ] && [ -z "$repertoires_travers" ] && [ -z "$sous_modules" ]; then
   echo "   ✅ Rien à récupérer : le projet est déjà aligné sur le kit."
   exit 0
 fi
@@ -571,6 +752,15 @@ fi
 # texte. Seul le pied de page, après ce bloc, distingue simulation et réel.
 echo "→ Ce que la synchronisation va faire :"
 echo ""
+if [ -n "$noms_cites" ]; then
+  n="$(echo "$noms_cites" | grep -c .)"
+  echo "  ⚠️  NOMS CITÉS PAR GIT (guillemet, retour à la ligne, tabulation ou antislash) —"
+  echo "      LA SYNCHRONISATION REFUSERA CES CHEMINS ($n)"
+  echo "$noms_cites" | grep . | sed 's/^/       /'
+  echo "       (renomme le fichier sans ce caractère, ou exclus-le via .kit-paths"
+  echo "        pour débloquer)"
+  echo ""
+fi
 if [ -n "$non_suivis_perte" ]; then
   n="$(echo "$non_suivis_perte" | grep -c .)"
   echo "  ⚠️  PRÉSENTS ICI, NON SUIVIS PAR GIT, CONTENU DIVERGENT — LA SYNCHRONISATION REFUSERA DE LES ÉCRASER ($n)"
@@ -596,6 +786,26 @@ if [ -n "$obstacles_type" ]; then
   echo "  ⚠️  CHEMINS GELÉS OCCUPÉS PAR UN FICHIER, LÀ OÙ LE KIT ATTEND UN RÉPERTOIRE ($n)"
   echo "$obstacles_uniques" | sed 's/^/       /;s/$/  (fichier ici, répertoire dans le kit)/'
   echo "       (contenu non récupérable : aucun \`git checkout\` ne le restaurera après coup)"
+  echo ""
+fi
+if [ -n "$sous_modules" ]; then
+  n="$(echo "$sous_modules" | grep -c .)"
+  echo "  ⚠️  SOUS-MODULES GIT EN TRAVERS D'UN FICHIER GELÉ, HISTORIQUE EMBARQUÉ —"
+  echo "      LA SYNCHRONISATION REFUSERA DE LES SUPPRIMER ($n)"
+  echo "$sous_modules" | grep . | sed 's/^/       /'
+  echo "       (git checkout supprimerait le sous-module ENTIER, .git compris — TOUT"
+  echo "        son historique embarqué serait perdu ; sauvegarde-le ou exclus le"
+  echo "        chemin via .kit-paths pour débloquer)"
+  echo ""
+fi
+if [ -n "$repertoires_travers" ]; then
+  n="$(echo "$repertoires_travers" | grep -c .)"
+  echo "  ⚠️  RÉPERTOIRES EN TRAVERS D'UN FICHIER GELÉ, CONTENU NON RÉCUPÉRABLE DEDANS —"
+  echo "      LA SYNCHRONISATION REFUSERA DE LES SUPPRIMER ($n)"
+  echo "$repertoires_travers" | grep . | sed 's/^/       /'
+  echo "       (git checkout supprimerait le répertoire ENTIER pour recréer le fichier —"
+  echo "        déplace ou committe son contenu non suivi, ou exclus le chemin via"
+  echo "        .kit-paths pour débloquer)"
   echo ""
 fi
 if [ -n "$non_suivis_ok" ]; then
@@ -633,6 +843,27 @@ if [ "$SIMULATION" -eq 1 ]; then
   echo "ℹ️  --dry-run : aucune modification appliquée."
   echo "   Relance sans --dry-run pour récupérer ces fichiers."
   exit 0
+fi
+
+# ── GARDE DES NOMS CITÉS PAR GIT (bug-008) ──────────────────────────────────
+# Doit rester APRÈS la sortie --dry-run (même raison que toutes les gardes de
+# la famille : ne jamais bloquer une SIMULATION), et EN PREMIER parmi les
+# gardes de la famille : c'est elle qui garantit que l'énumération elle-même
+# est fiable avant que les gardes suivantes (bug-001, bug-003, bug-006,
+# bug-009) ne raisonnent sur des noms qui pourraient être cités.
+if [ -n "$noms_cites" ]; then
+  echo "❌ NOM CITÉ PAR GIT : au moins un chemin gelé porte un nom que git ne peut pas" >&2
+  echo "   rendre en clair, même avec core.quotepath=off — un guillemet double, un" >&2
+  echo "   retour à la ligne, une tabulation ou un antislash forcent TOUJOURS git à" >&2
+  echo "   citer le nom entier (quotepath ou non). Un nom cité ne correspond à aucun" >&2
+  echo "   fichier réel sur le disque : la synchronisation le classerait « à créer »" >&2
+  echo "   et écraserait l'original en silence." >&2
+  echo "$noms_cites" | grep . | sed 's/^/     /' >&2
+  echo "" >&2
+  echo "   Deux issues, à toi de choisir :" >&2
+  echo "     1. renommer le fichier sans ce caractère" >&2
+  echo "     2. l'exclure en déclarant .kit-paths (voir en tête de ce script)" >&2
+  exit 1
 fi
 
 # ── GARDE D'ÉCRASEMENT ───────────────────────────────────────────────────────
@@ -718,6 +949,60 @@ if [ -n "$obstacles_type" ]; then
   echo "   dont le contenu n'est pas récupérable :" >&2
   echo "$obstacles_uniques" | sed 's/^/     /;s/$/  (fichier ici, répertoire dans le kit)/' >&2
   echo "   Trois issues : le déplacer / le committer / l'exclure via .kit-paths" >&2
+  exit 1
+fi
+
+# ── GARDE D'ÉCRASEMENT (sous-module git en travers) ────────────────────────
+# Cas distinct du répertoire en travers ci-dessous : un chemin gelé attendu
+# comme FICHIER par le kit est occupé ici par un SOUS-MODULE (gitlink, mode
+# 160000). `git status` et `git ls-files --others` sont VIDES sur ce cas —
+# le sous-arbre du sous-module n'est pas indexé par le superprojet — mais
+# `git checkout` ferait disparaître son `.git` : c'est tout l'HISTORIQUE
+# embarqué qui serait perdu, établi par exécution (2 commits perdus sur le
+# dépôt de reproduction), avec une sortie 0.
+#
+# ⚠️ Reste après la sortie --dry-run, même raison que les gardes de cette
+# famille : la remonter bloquerait aussi la SIMULATION. Placée AVANT la
+# garde de répertoire en travers, dans le même ordre que la détection.
+if [ -n "$sous_modules" ]; then
+  echo "❌ SOUS-MODULE EN TRAVERS : un chemin gelé attendu comme FICHIER par le kit est" >&2
+  echo "   occupé ici par un SOUS-MODULE git — git checkout supprimerait son .git," >&2
+  echo "   perdant tout son historique embarqué, sans aucun retour possible :" >&2
+  echo "$sous_modules" | grep . | sed 's/^/     /' >&2
+  echo "" >&2
+  echo "   Trois issues, à toi de choisir :" >&2
+  echo "     1. sauvegarder le sous-module ailleurs (copie de son .git) avant de le retirer" >&2
+  echo "     2. le désinitialiser proprement (git submodule deinit) puis le retirer" >&2
+  echo "     3. l'exclure en déclarant .kit-paths (voir en tête de ce script)" >&2
+  exit 1
+fi
+
+# ── GARDE D'ÉCRASEMENT (répertoire suivi en travers, bug-009) ──────────────
+# Quatrième garde de la même famille, pour le trou qu'aucune des trois
+# précédentes ne couvre : un chemin gelé attendu comme FICHIER par le kit est
+# occupé ici par un RÉPERTOIRE SUIVI contenant du contenu non récupérable
+# (repertoires_travers, déjà établi à la classification ci-dessus) — un
+# fichier non suivi ou ignoré, OU un fichier suivi mais gelé (skip-worktree /
+# assume-unchanged) dont le contenu local diverge de HEAD, situé n'importe
+# où dans l'arborescence, pas seulement au premier nom dans l'ordre
+# alphabétique. `git checkout` ferait un `remove_subtree` de ce répertoire
+# ENTIER pour recréer le fichier — sans regarder ce qu'il contient.
+#
+# ⚠️ Reste après la sortie --dry-run, même raison que les trois gardes
+# ci-dessus : la remonter bloquerait aussi la SIMULATION.
+if [ -n "$repertoires_travers" ]; then
+  echo "❌ RÉPERTOIRE EN TRAVERS : un chemin gelé attendu comme FICHIER par le kit est" >&2
+  echo "   occupé ici par un RÉPERTOIRE contenant du contenu non récupérable — non suivi" >&2
+  echo "   (ignoré ou non), ou suivi mais gelé avec du contenu jamais committé — donc" >&2
+  echo "   git checkout le supprimerait ENTIER (remove_subtree) sans regarder ce qu'il" >&2
+  echo "   contient :" >&2
+  echo "$repertoires_travers" | grep . | sed 's/^/     /' >&2
+  echo "" >&2
+  echo "   Trois issues, à toi de choisir :" >&2
+  echo "     1. déplacer, committer, ou lever le bit gelé (git update-index" >&2
+  echo "        --no-skip-worktree) du contenu qu'il contient" >&2
+  echo "     2. supprimer le répertoire" >&2
+  echo "     3. l'exclure en déclarant .kit-paths (voir en tête de ce script)" >&2
   exit 1
 fi
 

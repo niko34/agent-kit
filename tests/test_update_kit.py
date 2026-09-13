@@ -1209,5 +1209,675 @@ class GardeObstacleTypeTest(unittest.TestCase):
         )
 
 
+class NomsCitesTest(unittest.TestCase):
+    """bug-008 : `-c core.quotepath=off` désactive la citation des octets
+    non-ASCII, mais git cite TOUJOURS un nom contenant un guillemet double,
+    un retour à la ligne, une tabulation ou un antislash — vérifié par
+    exécution (voir la spec), quelle que soit cette option. Sans garde, un
+    tel chemin ressort cité de `git ls-tree`, échoue au test d'existence
+    `[ ! -e "$f" ]`, se classe « à créer », et `git checkout` porte sur la
+    RACINE déclarée ENTIÈRE (`.claude/agents`) — pas seulement le nom cité.
+
+    ⚠️ RÉGRESSION, pas garde-fou : chaque cas de refus est vu ÉCHOUER sur le
+    code d'avant le fix (sortie 0, sentinelle jamais menacée directement,
+    mais le mécanisme — checkout de la racine entière — est celui déjà
+    documenté par bug-006/bug-009). Voir le rapport de test pour la sortie
+    de l'échec.
+    """
+
+    def setUp(self) -> None:
+        self.contexte = fabriquer_kit_et_projet()
+        self.addCleanup(self.contexte.fermer)
+
+    def _refuse_avec_sentinelle_intacte(self, nom: str) -> None:
+        chemin = f".claude/agents/{nom}"
+        self.contexte.committer_dans_kit(chemin, "contenu du kit\n")
+        # Sentinelle : un AUTRE fichier, suivi et propre, sous la MÊME racine
+        # déclarée — `git checkout` porte sur la racine ENTIÈRE (constat
+        # structurel de la spec), donc c'est elle qui prouve qu'aucun
+        # checkout n'a eu lieu, pas seulement que le nom cité est resté
+        # absent.
+        sentinelle = ".claude/agents/sentinelle.md"
+        contenu_sentinelle = "NE DOIT JAMAIS BOUGER\n"
+        self.contexte.committer_dans_projet(sentinelle, contenu_sentinelle)
+
+        resultat = self.contexte.executer_update_kit()
+
+        affirmer_seule_garde(self, resultat, "nom_cite")
+        self.assertNotEqual(0, resultat.returncode)
+        self.assertEqual(
+            contenu_sentinelle,
+            (self.contexte.projet / sentinelle).read_text(encoding="utf-8"),
+        )
+
+    # ── Les quatre classes que git cite TOUJOURS, vérifiées par exécution
+    # (voir « Corrections apportées au plan » de la spec : la classe est
+    # plus large que le seul guillemet/retour-ligne annoncé initialement).
+
+    def test_guillemet_refuse_sentinelle_intacte(self) -> None:
+        self._refuse_avec_sentinelle_intacte('a"b.md')
+
+    def test_retour_ligne_refuse_sentinelle_intacte(self) -> None:
+        self._refuse_avec_sentinelle_intacte("a\nb.md")
+
+    def test_tabulation_refuse_sentinelle_intacte(self) -> None:
+        self._refuse_avec_sentinelle_intacte("a\tb.md")
+
+    def test_antislash_refuse_sentinelle_intacte(self) -> None:
+        self._refuse_avec_sentinelle_intacte("a\\b.md")
+
+    # ── Non-régression bug-003 : un nom ACCENTUÉ reste en clair sous
+    # `quotepath=off` (`core.quotepath=off` le laisse brut, vérifié par
+    # exécution) — il ne doit JAMAIS entrer dans cette branche.
+
+    def test_nom_accentue_reste_chemin_nominal_aucune_garde(self) -> None:
+        self.contexte.committer_dans_kit(
+            ".claude/agents/révision.md", "contenu du kit\n"
+        )
+
+        resultat = self.contexte.executer_update_kit()
+
+        affirmer_seule_garde(self, resultat, None)
+        self.assertEqual(0, resultat.returncode)
+
+    # ── Neutralité en --dry-run et parité récapitulatif, même schéma que
+    # O4/O5 (bug-006) : la garde ne doit JAMAIS bloquer une SIMULATION, et
+    # le bloc récapitulatif ne doit pas diverger du réel (ADR-0011).
+
+    def test_dry_run_neutre_aucune_garde_ne_bloque(self) -> None:
+        self.contexte.committer_dans_kit('.claude/agents/a"b.md', "contenu du kit\n")
+
+        resultat = self.contexte.executer_update_kit("--dry-run")
+
+        affirmer_seule_garde(self, resultat, None)
+        self.assertEqual(0, resultat.returncode)
+        sortie = resultat.stdout + resultat.stderr
+        self.assertIn("NOMS CITÉS PAR GIT", sortie)
+
+    def test_parite_recapitulatif_dry_run_et_reel(self) -> None:
+        """Parité ADR-0011 : `--dry-run` et le réel produisent le même récapitulatif.
+
+        ⚠️ Limite assumée, hors-diagonale déclarée : ce test compare les deux
+        modes entre eux, PAS la justesse de leur contenu. Une mutation qui
+        rendrait le récapitulatif faux des DEUX côtés le laisserait vert —
+        l'égalité testée resterait vraie. C'est le test frère
+        `test_dry_run_*` qui vérifie le contenu, et c'est lui qui meurt alors.
+        Vérifié par exécution lors du cycle bug-008/bug-009.
+        """
+        self.contexte.committer_dans_kit('.claude/agents/a"b.md', "contenu du kit\n")
+        apercu = self.contexte.executer_update_kit("--dry-run")
+
+        contexte_reel = fabriquer_kit_et_projet()
+        self.addCleanup(contexte_reel.fermer)
+        contexte_reel.committer_dans_kit('.claude/agents/a"b.md', "contenu du kit\n")
+        reel = contexte_reel.executer_update_kit()
+
+        bloc_simulation = extraire_recapitulatif(apercu.stdout)
+        bloc_reel = extraire_recapitulatif(reel.stdout)
+
+        self.assertTrue(bloc_simulation, "bloc récapitulatif introuvable en --dry-run")
+        self.assertEqual(bloc_simulation, bloc_reel)
+
+
+class RepertoireEnTraversTest(unittest.TestCase):
+    """bug-009 : un RÉPERTOIRE SUIVI occupant la place d'un FICHIER gelé
+    réussit `git ls-files --error-unmatch` (suivi dès qu'il contient au
+    moins un fichier suivi), alors que `git hash-object` échoue dessus — le
+    chemin tombait en « à mettre à jour », catégorie inoffensive en
+    apparence, et `git checkout` en ferait un `remove_subtree` SANS regarder
+    le contenu, y compris les fichiers ignorés, irrécupérables.
+
+    Quatrième garde de la même famille (bug-001, bug-003, bug-006),
+    distincte d'ADR-0016 : elle protège la FEUILLE, jamais l'ancêtre — un
+    terrain qu'ADR-0016 exclut délibérément de sa propre garde.
+    """
+
+    def setUp(self) -> None:
+        self.contexte = fabriquer_kit_et_projet()
+        self.addCleanup(self.contexte.fermer)
+
+    def _arbre_propre(self) -> None:
+        arrange = _git(["status", "--porcelain"], self.contexte.projet, self.contexte.env)
+        assert arrange.stdout == "", (
+            "arrange cassé : l'arbre doit rester propre au sens de "
+            f"`git status --porcelain` ; obtenu {arrange.stdout!r}"
+        )
+
+    # ── V1 — répertoire suivi contenant un fichier IGNORÉ : reproduction
+    # littérale du relevé de la spec.
+    #
+    # ⚠️ RÉGRESSION, pas garde-fou : ce cas est vu ÉCHOUER sur le code
+    # d'avant le fix (sortie 0, secret.local disparu — voir le rapport).
+
+    def test_V1_repertoire_suivi_avec_ignore_refuse_intact(self) -> None:
+        self.contexte.committer_dans_kit("GUIDE.md", "contenu du kit\n")
+        self.contexte.committer_dans_projet(".gitignore", "GUIDE.md/secret.local\n")
+        self.contexte.committer_dans_projet("GUIDE.md/notes.md", "suivi\n")
+        obstacle = self.contexte.projet / "GUIDE.md"
+        contenu_secret = "IGNORÉ, IRRÉCUPÉRABLE\n"
+        (obstacle / "secret.local").write_text(contenu_secret, encoding="utf-8")
+        self._arbre_propre()
+
+        resultat = self.contexte.executer_update_kit()
+
+        affirmer_seule_garde(self, resultat, "repertoire_en_travers")
+        self.assertNotEqual(0, resultat.returncode)
+        self.assertTrue(obstacle.is_dir(), "le répertoire a été détruit")
+        self.assertEqual(
+            contenu_secret, (obstacle / "secret.local").read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            "suivi\n", (obstacle / "notes.md").read_text(encoding="utf-8")
+        )
+
+    # ── V2 — répertoire suivi, TOUT propre : non-régression du cas qui
+    # marche, le contenu est entièrement récupérable, comme les autres
+    # gardes de la famille.
+
+    def test_V2_repertoire_suivi_tout_propre_ne_bloque_pas(self) -> None:
+        self.contexte.committer_dans_kit("GUIDE.md", "contenu du kit\n")
+        self.contexte.committer_dans_projet("GUIDE.md/notes.md", "suivi\n")
+
+        resultat = self.contexte.executer_update_kit()
+
+        affirmer_seule_garde(self, resultat, None)
+        self.assertEqual(0, resultat.returncode)
+        chemin = self.contexte.projet / "GUIDE.md"
+        self.assertTrue(chemin.is_file(), "le remplacement attendu n'a pas eu lieu")
+        self.assertEqual("contenu du kit\n", chemin.read_text(encoding="utf-8"))
+
+    # ── V3 / V4 — non-régression d'O6 (bug-006/bug-001) : un répertoire NON
+    # SUIVI, avec ou sans contenu, échoue à `--error-unmatch` et ne peut PAS
+    # atteindre la garde neuve — il reste sur `ecrasement`, PAR
+    # IMPOSSIBILITÉ, pas par prudence (voir « Non-régression d'O6 » de la
+    # spec).
+
+    def test_V3_repertoire_non_suivi_reste_sur_ecrasement(self) -> None:
+        self.contexte.committer_dans_kit("GUIDE.md", "contenu du kit\n")
+        self.contexte.committer_dans_projet(".gitignore", "GUIDE.md\n")
+        obstacle = self.contexte.projet / "GUIDE.md"
+        obstacle.mkdir()
+        contenu_local = "NON SUIVI, IRREMPLAÇABLE\n"
+        (obstacle / "libre.md").write_text(contenu_local, encoding="utf-8")
+        self._arbre_propre()
+
+        resultat = self.contexte.executer_update_kit()
+
+        affirmer_seule_garde(self, resultat, "ecrasement")
+        self.assertNotEqual(0, resultat.returncode)
+        self.assertTrue(obstacle.is_dir(), "le répertoire a été détruit")
+        self.assertEqual(
+            contenu_local, (obstacle / "libre.md").read_text(encoding="utf-8")
+        )
+
+    def test_V4_repertoire_vide_reste_sur_ecrasement(self) -> None:
+        self.contexte.committer_dans_kit("GUIDE.md", "contenu du kit\n")
+        obstacle = self.contexte.projet / "GUIDE.md"
+        obstacle.mkdir()
+        self._arbre_propre()
+
+        resultat = self.contexte.executer_update_kit()
+
+        affirmer_seule_garde(self, resultat, "ecrasement")
+        self.assertNotEqual(0, resultat.returncode)
+        self.assertTrue(obstacle.is_dir(), "le répertoire vide a été détruit")
+
+    # ── V6 — lien symbolique SUIVI, vers un fichier ET vers un répertoire :
+    # jamais bloquant, `[ ! -L "$f" ]` l'exclut explicitement de la garde
+    # neuve — entièrement récupérable par git (checkout ne remplace que le
+    # lien, sans jamais toucher sa cible).
+
+    def test_V6a_lien_symbolique_vers_fichier_ne_bloque_pas(self) -> None:
+        self.contexte.committer_dans_kit("GUIDE.md", "contenu du kit\n")
+        cible = self.contexte.projet / "cible.md"
+        cible.write_text("cible locale\n", encoding="utf-8")
+        lien = self.contexte.projet / "GUIDE.md"
+        lien.symlink_to("cible.md")
+        _git(
+            ["add", "--", "cible.md", "GUIDE.md"], self.contexte.projet, self.contexte.env
+        )
+        _git(["commit", "-q", "-m", "lien fichier"], self.contexte.projet, self.contexte.env)
+        self._arbre_propre()
+
+        resultat = self.contexte.executer_update_kit()
+
+        affirmer_seule_garde(self, resultat, None)
+        self.assertEqual(0, resultat.returncode)
+        self.assertTrue(cible.is_file(), "la cible du lien a été touchée")
+        self.assertEqual("cible locale\n", cible.read_text(encoding="utf-8"))
+
+    def test_V6b_lien_symbolique_vers_repertoire_ne_bloque_pas(self) -> None:
+        self.contexte.committer_dans_kit("GUIDE.md", "contenu du kit\n")
+        cible_dir = self.contexte.projet / "cible_dir"
+        cible_dir.mkdir()
+        (cible_dir / "f.md").write_text("contenu\n", encoding="utf-8")
+        lien = self.contexte.projet / "GUIDE.md"
+        lien.symlink_to("cible_dir")
+        _git(
+            ["add", "--", "cible_dir/f.md", "GUIDE.md"],
+            self.contexte.projet,
+            self.contexte.env,
+        )
+        _git(["commit", "-q", "-m", "lien dir"], self.contexte.projet, self.contexte.env)
+        self._arbre_propre()
+
+        resultat = self.contexte.executer_update_kit()
+
+        affirmer_seule_garde(self, resultat, None)
+        self.assertEqual(0, resultat.returncode)
+        self.assertTrue(cible_dir.is_dir(), "le répertoire cible a été détruit")
+        self.assertEqual("contenu\n", (cible_dir / "f.md").read_text(encoding="utf-8"))
+
+    # ── Neutralité en --dry-run et parité récapitulatif, même schéma que
+    # O4/O5 (bug-006), rejoué sur V1 (ADR-0011).
+
+    def test_dry_run_neutre_aucune_garde_ne_bloque(self) -> None:
+        self.contexte.committer_dans_kit("GUIDE.md", "contenu du kit\n")
+        self.contexte.committer_dans_projet(".gitignore", "GUIDE.md/secret.local\n")
+        self.contexte.committer_dans_projet("GUIDE.md/notes.md", "suivi\n")
+        obstacle = self.contexte.projet / "GUIDE.md"
+        (obstacle / "secret.local").write_text("IGNORÉ\n", encoding="utf-8")
+        self._arbre_propre()
+
+        resultat = self.contexte.executer_update_kit("--dry-run")
+
+        affirmer_seule_garde(self, resultat, None)
+        self.assertEqual(0, resultat.returncode)
+        sortie = resultat.stdout + resultat.stderr
+        self.assertIn("RÉPERTOIRES EN TRAVERS", sortie)
+        self.assertTrue(obstacle.is_dir(), "--dry-run ne doit jamais toucher au disque")
+
+    def test_parite_recapitulatif_dry_run_et_reel(self) -> None:
+        """Établit que `--dry-run` et l'exécution réelle produisent le MÊME
+        bloc récapitulatif sur ce cas — utile pour détecter une DIVERGENCE
+        entre les deux chemins de code.
+
+        ⚠️ Limite hors-diagonale, déclarée : ce test ne peut PAS tuer une
+        mutation qui corromprait le TEXTE du récapitulatif de façon
+        IDENTIQUE dans les deux modes (ex. un libellé faux partagé par les
+        deux branches) — les deux sorties resteraient égales, donc fausses
+        ensemble, et la comparaison passerait quand même. Ce n'est pas un
+        trou : la justesse du contenu est de la responsabilité d'autres
+        tests (`affirmer_seule_garde`, assertions sur le disque) ; celui-ci
+        ne vérifie que la PARITÉ des deux chemins, pas leur exactitude."""
+        self.contexte.committer_dans_kit("GUIDE.md", "contenu du kit\n")
+        self.contexte.committer_dans_projet(".gitignore", "GUIDE.md/secret.local\n")
+        self.contexte.committer_dans_projet("GUIDE.md/notes.md", "suivi\n")
+        obstacle = self.contexte.projet / "GUIDE.md"
+        (obstacle / "secret.local").write_text("IGNORÉ\n", encoding="utf-8")
+        self._arbre_propre()
+        apercu = self.contexte.executer_update_kit("--dry-run")
+
+        contexte_reel = fabriquer_kit_et_projet()
+        self.addCleanup(contexte_reel.fermer)
+        contexte_reel.committer_dans_kit("GUIDE.md", "contenu du kit\n")
+        contexte_reel.committer_dans_projet(".gitignore", "GUIDE.md/secret.local\n")
+        contexte_reel.committer_dans_projet("GUIDE.md/notes.md", "suivi\n")
+        obstacle_reel = contexte_reel.projet / "GUIDE.md"
+        (obstacle_reel / "secret.local").write_text("IGNORÉ\n", encoding="utf-8")
+        reel = contexte_reel.executer_update_kit()
+
+        bloc_simulation = extraire_recapitulatif(apercu.stdout)
+        bloc_reel = extraire_recapitulatif(reel.stdout)
+
+        self.assertTrue(bloc_simulation, "bloc récapitulatif introuvable en --dry-run")
+        self.assertEqual(bloc_simulation, bloc_reel)
+
+
+class RepertoireEnTraversTousLesEtatsTest(unittest.TestCase):
+    """Correctif ultérieur C1 (ADR-0017, réouverture après bug-009) : la
+    détection de contenu perdu dans un répertoire suivi en travers ne
+    regardait que la PREMIÈRE entrée de `git ls-files -v -- "$f"`
+    (`head -n1`, sorti par ordre alphabétique). Un fichier gelé
+    (skip-worktree ou assume-unchanged) dont le contenu local diverge de
+    HEAD, situé APRÈS un voisin propre dans cet ordre, échappait donc à la
+    garde selon le seul ordre des noms — corrigé en parcourant TOUTES les
+    entrées. Marqueur réutilisé : `repertoire_en_travers`.
+
+    ⚠️ RÉGRESSION, pas garde-fou : ce cas est vu ÉCHOUER sur le code d'avant
+    C1 (retour à `head -n1`) — voir le rapport de test pour la sortie de
+    l'échec observée.
+    """
+
+    def setUp(self) -> None:
+        self.contexte = fabriquer_kit_et_projet()
+        self.addCleanup(self.contexte.fermer)
+        self.contexte.committer_dans_kit("GUIDE.md", "contenu du kit\n")
+
+    def _repertoire_avec_voisin_propre_et_geles(self) -> tuple[Path, str, str]:
+        """Committe GUIDE.md/{a-clean,b-skip,c-assume}.txt — trié
+        alphabétiquement, le voisin propre `a-clean.txt` trie AVANT les deux
+        fichiers gelés, exactement l'ordre que `head -n1` regardait seul."""
+        self.contexte.committer_dans_projet("GUIDE.md/a-clean.txt", "propre\n")
+        self.contexte.committer_dans_projet("GUIDE.md/b-skip.txt", "committe-skip\n")
+        self.contexte.committer_dans_projet("GUIDE.md/c-assume.txt", "committe-assume\n")
+
+        b = self.contexte.projet / "GUIDE.md" / "b-skip.txt"
+        contenu_skip = "LOCAL SKIP, JAMAIS COMMITE, IRREMPLACABLE\n"
+        b.write_text(contenu_skip, encoding="utf-8")
+        self.contexte.poser_skip_worktree("GUIDE.md/b-skip.txt")
+
+        c = self.contexte.projet / "GUIDE.md" / "c-assume.txt"
+        contenu_assume = "LOCAL ASSUME, JAMAIS COMMITE, IRREMPLACABLE\n"
+        c.write_text(contenu_assume, encoding="utf-8")
+        self.contexte.poser_skip_worktree("GUIDE.md/c-assume.txt", assume_unchanged=True)
+
+        arrange = _git(["status", "--porcelain"], self.contexte.projet, self.contexte.env)
+        assert arrange.stdout == "", (
+            "arrange cassé : les bits gelés doivent vider `git status --porcelain` ; "
+            f"obtenu {arrange.stdout!r}"
+        )
+        etats = _git(
+            ["ls-files", "-v", "--", "GUIDE.md"], self.contexte.projet, self.contexte.env
+        ).stdout
+        noms_dans_l_ordre = [ligne[2:] for ligne in etats.splitlines()]
+        assert noms_dans_l_ordre == [
+            "GUIDE.md/a-clean.txt",
+            "GUIDE.md/b-skip.txt",
+            "GUIDE.md/c-assume.txt",
+        ], (
+            "arrange cassé : l'ordre alphabétique attendu ne place pas le voisin "
+            f"propre en premier — obtenu {noms_dans_l_ordre!r}"
+        )
+        return self.contexte.projet / "GUIDE.md", contenu_skip, contenu_assume
+
+    def test_C1_fichiers_geles_apres_voisin_propre_refuse_intact(self) -> None:
+        obstacle, contenu_skip, contenu_assume = (
+            self._repertoire_avec_voisin_propre_et_geles()
+        )
+
+        resultat = self.contexte.executer_update_kit()
+
+        affirmer_seule_garde(self, resultat, "repertoire_en_travers")
+        self.assertNotEqual(0, resultat.returncode)
+        self.assertTrue(obstacle.is_dir(), "le répertoire a été détruit")
+        self.assertEqual(
+            contenu_skip, (obstacle / "b-skip.txt").read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            contenu_assume, (obstacle / "c-assume.txt").read_text(encoding="utf-8")
+        )
+
+    def test_dry_run_neutre_C1(self) -> None:
+        obstacle, _, _ = self._repertoire_avec_voisin_propre_et_geles()
+
+        resultat = self.contexte.executer_update_kit("--dry-run")
+
+        affirmer_seule_garde(self, resultat, None)
+        self.assertEqual(0, resultat.returncode)
+        sortie = resultat.stdout + resultat.stderr
+        self.assertIn("RÉPERTOIRES EN TRAVERS", sortie)
+        self.assertTrue(obstacle.is_dir(), "--dry-run ne doit jamais toucher au disque")
+
+    def test_parite_recapitulatif_C1(self) -> None:
+        """Même rôle et même limite que `test_parite_recapitulatif_dry_run_et_reel`
+        ci-dessus (`RepertoireEnTraversTest`) : établit la PARITÉ entre
+        `--dry-run` et l'exécution réelle sur le correctif C1 (parcours
+        complet des entrées internes, pas seulement `head -n1`).
+
+        ⚠️ Limite hors-diagonale, déclarée : une mutation qui produirait un
+        récapitulatif FAUX de façon IDENTIQUE dans les deux modes survit à
+        ce test — les deux blocs resteraient égaux, donc la comparaison
+        passerait quand même. Ce n'est pas un trou : la justesse du contenu
+        est vérifiée ailleurs (`affirmer_seule_garde`, assertions sur le
+        disque) ; celui-ci ne vérifie que l'ABSENCE de divergence entre les
+        deux chemins de code."""
+        self._repertoire_avec_voisin_propre_et_geles()
+        apercu = self.contexte.executer_update_kit("--dry-run")
+
+        contexte_reel = fabriquer_kit_et_projet()
+        self.addCleanup(contexte_reel.fermer)
+        contexte_reel.committer_dans_kit("GUIDE.md", "contenu du kit\n")
+        ancien = self.contexte
+        self.contexte = contexte_reel
+        self._repertoire_avec_voisin_propre_et_geles()
+        self.contexte = ancien
+        reel = contexte_reel.executer_update_kit()
+
+        bloc_simulation = extraire_recapitulatif(apercu.stdout)
+        bloc_reel = extraire_recapitulatif(reel.stdout)
+
+        self.assertTrue(bloc_simulation, "bloc récapitulatif introuvable en --dry-run")
+        self.assertEqual(bloc_simulation, bloc_reel)
+
+
+def _creer_sous_module_source(contexte) -> Path:
+    """Fabrique un dépôt git jetable SÉPARÉ, avec deux commits réels — la
+    future SOURCE d'un sous-module. Confiné par le même environnement que le
+    kit et le projet (aucune fuite possible vers un dépôt réel)."""
+    racine = Path(contexte.temporaire.name)
+    source = racine / "sous-module-source"
+    source.mkdir()
+    _git(["init", "--quiet", "-b", "main"], source, contexte.env)
+    _git(["config", "user.email", "jetable@example.test"], source, contexte.env)
+    _git(["config", "user.name", "Dépôt jetable"], source, contexte.env)
+    (source / "fichier.txt").write_text("premier\n", encoding="utf-8")
+    _git(["add", "--", "fichier.txt"], source, contexte.env)
+    _git(["commit", "--quiet", "-m", "premier commit"], source, contexte.env)
+    (source / "fichier.txt").write_text("second\n", encoding="utf-8")
+    _git(["add", "--", "fichier.txt"], source, contexte.env)
+    _git(["commit", "--quiet", "-m", "second commit"], source, contexte.env)
+    return source
+
+
+def _ajouter_sous_module(contexte, chemin: str) -> Path:
+    """Ajoute la source ci-dessus comme SOUS-MODULE (gitlink, mode 160000)
+    du faux projet, au chemin donné, puis committe l'ajout.
+
+    `-c protocol.file.allow=always` est nécessaire : git refuse par défaut
+    (depuis le durcissement CVE-2022-39253) de cloner un sous-module par
+    transport `file://` ou chemin local — vérifié par exécution
+    (`fatal: transport 'file' not allowed` sans cette option)."""
+    source = _creer_sous_module_source(contexte)
+    env = dict(contexte.env)
+    _git(
+        [
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            "--quiet",
+            str(source),
+            chemin,
+        ],
+        contexte.projet,
+        env,
+    )
+    _git(["commit", "--quiet", "-m", "ajoute le sous-module"], contexte.projet, env)
+    return contexte.projet / chemin
+
+
+# ── G1 (ADR-0017, 3e réouverture) ────────────────────────────────────────────
+# Nombre de fichiers suivis nécessaire pour reproduire le défaut
+# SIGPIPE/pipefail de l'ANCIENNE détection de sous-module
+# (`git ls-files -s -- "$f" | grep -q '^160000 '`). MESURÉ par exécution
+# répétée (pas déduit) : ce n'est PAS un seuil dur mais une COURSE entre
+# `git` (écrivain) et `grep -q` (lecteur qui ferme le tube dès son premier
+# match, sur la ligne du gitlink). En dessous de ce volume, `git` a
+# toujours fini d'écrire avant que `grep` ne referme le tube — la garde
+# passe alors MÊME SUR LE CODE FAUTIF (11/11 essais mesurés à 50 et 100
+# fichiers) : c'est exactement pourquoi la suite précédente, aux dépôts
+# jetables minces, ne pouvait pas voir ce défaut. Au-dessus de ce volume, la
+# course tourne systématiquement en faveur de `grep` (11/11 essais mesurés
+# à partir de 800 fichiers, ~56 Ko de sortie). 1000 retenu pour une marge de
+# sécurité ; un essai à 1000 fichiers coûte ~0,4 s à fabriquer.
+# 2000 et non 1000 : à 1000 fichiers la sortie de `git ls-files -s` fait
+# ~68 Ko, soit 4 % au-dessus du tampon de tube de 64 Ko — marge trop mince.
+# La reproduction du défaut est une COURSE entre `git` et `grep -q`, donc
+# sensible à la CHARGE de la machine et pas seulement au volume : mesuré
+# 60/60 à vide, mais 39/40 sous charge 8 cœurs. Le test lui-même ne peut pas
+# devenir instable (le code corrigé n'a plus de tube : la substitution de
+# commande lit jusqu'à EOF) ; c'est la MUTATION qui pourrait sous-déclarer.
+N_FICHIERS_VOLUME_SIGPIPE = 2000
+
+
+def _ajouter_sous_module_dans_repertoire_volumineux(contexte, chemin: str) -> Path:
+    """Fabrique, à `chemin`, un RÉPERTOIRE SUIVI contenant un SOUS-MODULE
+    (gitlink) trié en PREMIÈRE position alphabétique (`0-sous-module`),
+    plus `N_FICHIERS_VOLUME_SIGPIPE` fichiers suivis ordinaires — condition
+    NÉCESSAIRE (mesurée par exécution, voir la constante ci-dessus) à la
+    reproduction du défaut SIGPIPE/pipefail de G1. Renvoie le chemin du
+    sous-module."""
+    source = _creer_sous_module_source(contexte)
+    env = dict(contexte.env)
+    repertoire = contexte.projet / chemin
+    repertoire.mkdir(parents=True, exist_ok=True)
+    sous_module = repertoire / "0-sous-module"
+    _git(
+        [
+            "-c",
+            "protocol.file.allow=always",
+            "submodule",
+            "add",
+            "--quiet",
+            str(source),
+            f"{chemin}/0-sous-module",
+        ],
+        contexte.projet,
+        env,
+    )
+    for i in range(1, N_FICHIERS_VOLUME_SIGPIPE + 1):
+        (repertoire / f"fichier{i:04d}.txt").write_text("x\n", encoding="utf-8")
+    _git(["add", "--", chemin], contexte.projet, contexte.env)
+    _git(
+        ["commit", "--quiet", "-m", f"ajoute {chemin} volumineux avec sous-module"],
+        contexte.projet,
+        contexte.env,
+    )
+    return sous_module
+
+
+class SousModuleEnTraversVolumeSigpipeTest(unittest.TestCase):
+    """G1 (ADR-0017, 3e réouverture) : régression du défaut SIGPIPE/pipefail
+    de la détection de sous-module. L'ANCIEN code
+    (`git ls-files -s -- "$f" | grep -q '^160000 '`, sous `set -uo
+    pipefail`) meurt en SIGPIPE dès que `git` a encore de la sortie à
+    écrire au moment où `grep -q` ferme le tube après son premier match :
+    le pipeline vaut alors 141, le `if` est FAUX, la garde `sous_module`
+    est SAUTÉE en silence — sortie 0, `.git` du sous-module détruit avec le
+    reste du répertoire.
+
+    AUCUN cas de `SousModuleEnTraversTest` (dépôts jetables minces) ne
+    pouvait voir ce défaut : sous ce volume, `git` finit toujours d'écrire
+    avant que `grep` ne referme le tube — la garde passait PAR CHANCE,
+    jamais parce qu'elle était correcte (mesuré, voir
+    `N_FICHIERS_VOLUME_SIGPIPE`).
+
+    ⚠️ RÉGRESSION, pas garde-fou : vu ÉCHOUER sur le code d'avant ce
+    correctif — reproduit par exécution (voir le rapport de test pour la
+    sortie observée : code 0, aucune garde, `.git` du sous-module disparu,
+    historique perdu)."""
+
+    def setUp(self) -> None:
+        self.contexte = fabriquer_kit_et_projet()
+        self.addCleanup(self.contexte.fermer)
+        self.contexte.committer_dans_kit("GUIDE.md", "contenu du kit\n")
+
+    def test_sous_module_dans_repertoire_volumineux_refuse_historique_intact(
+        self,
+    ) -> None:
+        sous_module = _ajouter_sous_module_dans_repertoire_volumineux(
+            self.contexte, "GUIDE.md"
+        )
+        arrange = _git(["status", "--porcelain"], self.contexte.projet, self.contexte.env)
+        assert arrange.stdout == "", f"arrange cassé : {arrange.stdout!r}"
+        arrange_ls = _git(
+            ["ls-files", "-s", "--", "GUIDE.md/0-sous-module"],
+            self.contexte.projet,
+            self.contexte.env,
+        )
+        assert arrange_ls.stdout.startswith("160000 "), (
+            "arrange cassé : GUIDE.md/0-sous-module n'est pas un gitlink — "
+            f"{arrange_ls.stdout!r}"
+        )
+
+        resultat = self.contexte.executer_update_kit()
+
+        affirmer_seule_garde(self, resultat, "sous_module")
+        self.assertNotEqual(0, resultat.returncode)
+        self.assertTrue((sous_module / ".git").exists(), "le .git du sous-module a disparu")
+        log = _git(["log", "--oneline"], sous_module, self.contexte.env)
+        commits = [ligne for ligne in log.stdout.strip().splitlines() if ligne]
+        self.assertEqual(2, len(commits), "l'historique du sous-module n'est pas intact")
+
+
+class SousModuleEnTraversTest(unittest.TestCase):
+    """Correctif ultérieur C2 (ADR-0017) : un SOUS-MODULE (gitlink, mode
+    160000) occupant la place d'un fichier gelé a `git status --porcelain`
+    et `git ls-files --others` VIDES — le sous-arbre du sous-module n'est
+    PAS indexé par le superprojet, donc aucune des gardes précédentes ne le
+    voit — mais `git checkout` fait disparaître son `.git` : c'est tout
+    l'historique embarqué qui est perdu, sortie 0. Marqueur DISTINCT
+    (`sous_module`), pas réutilisation de `repertoire_en_travers`.
+
+    ⚠️ RÉGRESSION, pas garde-fou : ce cas est vu ÉCHOUER sur le code d'avant
+    C2 (sortie 0, `.git` du sous-module disparu) — voir le rapport de test
+    pour la sortie de l'échec observée.
+    """
+
+    def setUp(self) -> None:
+        self.contexte = fabriquer_kit_et_projet()
+        self.addCleanup(self.contexte.fermer)
+        self.contexte.committer_dans_kit("GUIDE.md", "contenu du kit\n")
+
+    def test_C2_sous_module_en_travers_refuse_historique_intact(self) -> None:
+        obstacle = _ajouter_sous_module(self.contexte, "GUIDE.md")
+        arrange = _git(["status", "--porcelain"], self.contexte.projet, self.contexte.env)
+        assert arrange.stdout == "", f"arrange cassé : {arrange.stdout!r}"
+        arrange_ls = _git(
+            ["ls-files", "-s", "--", "GUIDE.md"], self.contexte.projet, self.contexte.env
+        )
+        assert arrange_ls.stdout.startswith("160000 "), (
+            f"arrange cassé : GUIDE.md n'est pas un gitlink — {arrange_ls.stdout!r}"
+        )
+
+        resultat = self.contexte.executer_update_kit()
+
+        affirmer_seule_garde(self, resultat, "sous_module")
+        self.assertNotEqual(0, resultat.returncode)
+        self.assertTrue((obstacle / ".git").exists(), "le .git du sous-module a disparu")
+        log = _git(["log", "--oneline"], obstacle, self.contexte.env)
+        commits = [ligne for ligne in log.stdout.strip().splitlines() if ligne]
+        self.assertEqual(2, len(commits), "l'historique du sous-module n'est pas intact")
+
+    def test_dry_run_neutre_C2(self) -> None:
+        obstacle = _ajouter_sous_module(self.contexte, "GUIDE.md")
+
+        resultat = self.contexte.executer_update_kit("--dry-run")
+
+        affirmer_seule_garde(self, resultat, None)
+        self.assertEqual(0, resultat.returncode)
+        sortie = resultat.stdout + resultat.stderr
+        self.assertIn("SOUS-MODULES GIT EN TRAVERS", sortie)
+        self.assertTrue((obstacle / ".git").exists(), "--dry-run ne doit jamais toucher au disque")
+
+    def test_parite_recapitulatif_C2(self) -> None:
+        """Même rôle et même limite que `test_parite_recapitulatif_C1`
+        ci-dessus : établit la PARITÉ entre `--dry-run` et l'exécution
+        réelle sur le correctif C2 (détection de sous-module en travers).
+
+        ⚠️ Limite hors-diagonale, déclarée : une mutation qui produirait un
+        récapitulatif FAUX de façon IDENTIQUE dans les deux modes survit à
+        ce test — les deux blocs resteraient égaux, donc la comparaison
+        passerait quand même. Ce n'est pas un trou : la justesse du contenu
+        est vérifiée ailleurs (`affirmer_seule_garde`, assertions sur le
+        disque et l'historique du sous-module) ; celui-ci ne vérifie que
+        l'ABSENCE de divergence entre les deux chemins de code."""
+        _ajouter_sous_module(self.contexte, "GUIDE.md")
+        apercu = self.contexte.executer_update_kit("--dry-run")
+
+        contexte_reel = fabriquer_kit_et_projet()
+        self.addCleanup(contexte_reel.fermer)
+        contexte_reel.committer_dans_kit("GUIDE.md", "contenu du kit\n")
+        _ajouter_sous_module(contexte_reel, "GUIDE.md")
+        reel = contexte_reel.executer_update_kit()
+
+        bloc_simulation = extraire_recapitulatif(apercu.stdout)
+        bloc_reel = extraire_recapitulatif(reel.stdout)
+
+        self.assertTrue(bloc_simulation, "bloc récapitulatif introuvable en --dry-run")
+        self.assertEqual(bloc_simulation, bloc_reel)
+
+
 if __name__ == "__main__":
     unittest.main()

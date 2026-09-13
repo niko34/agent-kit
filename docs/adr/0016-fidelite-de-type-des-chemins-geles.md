@@ -149,3 +149,10 @@ modifier le corps.
   `docs/adr/0012-harnais-de-test-partage-et-doctrine-anti-chevauchement.md`,
   `docs/adr/0013-detection-par-fichier-et-noms-cites.md` — ADR complétés,
   non modifiés.
+
+> **Note (2026-09-13)** : le cas inverse suivi (feuille répertoire suivi à la
+> place d'un fichier gelé) est désormais couvert par une garde **distincte**,
+> voir [ADR-0018](0018-refus-nomme-des-noms-cites-et-quatrieme-garde-sur-la-feuille.md).
+> Cet ADR-0016 reste inchangé sur son terrain propre (les ancêtres) ; la
+> référence ci-dessus à `specs/features/todo/bug-009-…md` est un instantané du
+> 2026-09-13 et n'est pas mise à jour au gré des déplacements de la spec.

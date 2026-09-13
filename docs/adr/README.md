@@ -45,3 +45,4 @@ Une simple préférence de style, un choix réversible en une heure ou un détai
 | [0015](0015-grammaire-kit-paths.md) | `.kit-paths` a une grammaire, et c'est un contrat public | Accepté |
 | [0016](0016-fidelite-de-type-des-chemins-geles.md) | La garde de fidélité de type ne porte que sur les ancêtres du chemin, jamais sur sa feuille | Accepté |
 | [0017](0017-un-defaut-qui-desarme-la-garde-livree-entre-dans-le-cycle.md) | Un défaut qui rend inatteignable la garde livrée entre dans le cycle qui la livre | Accepté |
+| [0018](0018-refus-nomme-des-noms-cites-et-quatrieme-garde-sur-la-feuille.md) | `bug-008` se ferme par refus nommé, et la partition de fidélité de type se referme sur la feuille répertoire suivi | Accepté |

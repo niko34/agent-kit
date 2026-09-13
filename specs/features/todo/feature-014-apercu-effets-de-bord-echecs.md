@@ -207,6 +207,17 @@ L'état laissé par une écriture interrompue reste une **hypothèse** — le di
 fabriquer l'environnement qui permet de l'éprouver, comme l'audit l'a fait en
 compilant bash 4.3 pour `feature-012`.
 
+## À ajouter — constat de l'audit du cycle `bug-008`/`bug-009` (2026-09-13)
+
+Confirme et complète le constat de l'audit `bug-006` ci-dessus, cosmétique
+(rien d'irrécupérable), reporté ici plutôt qu'absorbé (ADR-0017 : ne désarme
+aucune garde livrée par ce cycle) : un **FIFO** ou un **lien symbolique
+cassé** occupant un chemin gelé est **remplacé sans un mot** par
+`git checkout` — ni dans l'aperçu, ni dans la sortie réelle. Même défaut que
+celui déjà noté (« supprimés en silence »), vu sous l'angle du remplacement
+plutôt que de la suppression ; rattaché au même constat, pas dupliqué en
+garantie séparée.
+
 ## Hors périmètre
 - Les garanties 1, 2, 14, 15, 16 — feature-006 (lot 1)
 - Les garanties 5, 6, 7, 17 — feature-012

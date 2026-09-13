@@ -333,6 +333,9 @@ MARQUEURS_DE_GARDE: dict[str, str] = {
     "deja_aligne": "Rien à récupérer",
     "bit_gele": "MODIFICATION LOCALE INVISIBLE",
     "type_incompatible": "TYPE INCOMPATIBLE",
+    "nom_cite": "NOM CITÉ PAR GIT",
+    "repertoire_en_travers": "RÉPERTOIRE EN TRAVERS",
+    "sous_module": "SOUS-MODULE EN TRAVERS",
 }
 
 

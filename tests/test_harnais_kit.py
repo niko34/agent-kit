@@ -26,6 +26,7 @@ from unittest import mock
 
 from harnais_kit import (
     DEBUT_RECAPITULATIF,
+    MARQUEURS_DE_GARDE,
     REPO_ROOT,
     SCRIPT,
     TIMEOUT_SECONDES,
@@ -696,6 +697,35 @@ class VariablesGitANeutraliserTest(unittest.TestCase):
             set(VARIABLES_GIT_A_NEUTRALISER),
             couvertes_par_un_cas | justifiees_sans_cas,
         )
+
+
+class MarqueursDeGardeDisjointsTest(unittest.TestCase):
+    """D2 (bug-008/bug-009) : aucun fragment de `MARQUEURS_DE_GARDE` ne doit
+    être sous-chaîne d'un AUTRE, dans AUCUN des deux sens — sans quoi
+    `affirmer_seule_garde` pourrait laisser passer un chevauchement non
+    anticipé sans le voir. Le piège a déjà été désamorcé deux fois À LA MAIN
+    (feature-006, puis bug-006/bug-009) ; cette vérification le fait
+    désormais MÉCANIQUEMENT, sur TOUTES les paires ORDONNÉES de clés
+    distinctes, à chaque ajout futur d'entrée."""
+
+    def test_aucun_fragment_n_est_sous_chaine_d_un_autre(self) -> None:
+        cles = sorted(MARQUEURS_DE_GARDE)
+        self.assertGreaterEqual(
+            len(cles), 2, "au moins deux marqueurs sont nécessaires pour ce test"
+        )
+        for cle_a in cles:
+            for cle_b in cles:
+                if cle_a == cle_b:
+                    continue
+                fragment_a = MARQUEURS_DE_GARDE[cle_a]
+                fragment_b = MARQUEURS_DE_GARDE[cle_b]
+                self.assertNotIn(
+                    fragment_a,
+                    fragment_b,
+                    f"{cle_a!r} ({fragment_a!r}) est une sous-chaîne de "
+                    f"{cle_b!r} ({fragment_b!r}) — chevauchement non anticipé, "
+                    "voir D2 de bug-008/bug-009",
+                )
 
 
 if __name__ == "__main__":

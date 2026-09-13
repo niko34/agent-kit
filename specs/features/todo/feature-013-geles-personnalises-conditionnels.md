@@ -163,6 +163,28 @@ projet ayant divergé du kit ; `CLAUDE.md` personnalisé a survécu ».
   mollement. Vérifier le contenu **bit pour bit**, pas seulement l'existence
   du fichier.
 
+## Constat additionnel — audit du cycle `bug-008`/`bug-009` (2026-09-13)
+
+Établi par exécution, hors périmètre de ce cycle (ADR-0017 : ne désarmait
+aucune des gardes livrées par `bug-008`/`bug-009`), reporté ici nommément —
+cas **symétrique et distinct** de la garde « sous-module en travers » livrée
+par `bug-009` (celle-ci couvre un sous-module à la place d'un **fichier**
+gelé) :
+
+**Un sous-module occupant la place d'un RÉPERTOIRE que le kit attend**
+(ex. `.claude/skills/db-migrations/`) n'est détecté par aucune garde
+existante. Les fichiers gelés que le kit place normalement sous ce
+répertoire sont alors écrits par `git checkout` **dans le worktree du
+sous-module** — un dépôt git à part, avec son propre index. Conséquence
+observée : le gitlink (entrée `160000` dans le superprojet) peut se
+retrouver traité comme une entrée `100644` ordinaire aux yeux du projet
+consommateur, selon l'état du worktree du sous-module au moment du
+`checkout`. Rien n'est perdu de façon irrémédiable comme dans les cas
+`bug-006`/`bug-009`, mais l'aperçu reste **muet** sur ce cas et le
+comportement qui en résulte n'a jamais été constaté au-delà de ce relevé. À
+couvrir par ce lot si le harnais le permet, ou à documenter comme limite
+connue sinon.
+
 ## Hors périmètre
 - Les garanties 1, 2, 14, 15, 16 — feature-006 (lot 1)
 - Les garanties 5, 6, 7, 17 — feature-012

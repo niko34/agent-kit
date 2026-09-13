@@ -94,6 +94,19 @@ légitimement un fichier de configuration local.
 - [ ] Matrice de mutation **diagonale** (ADR-0012)
 - [ ] Lint propre, pas de warning nouveau
 
+## Constat additionnel — audit du cycle `bug-008`/`bug-009` (2026-09-13)
+
+Établi par exécution, hors périmètre de ce cycle (ADR-0017 : ne désarmait
+aucune des gardes livrées par `bug-008`/`bug-009`), reporté ici nommément :
+
+**Un FIFO situé à un chemin gelé fait bloquer `git hash-object`
+indéfiniment.** Contrairement au cas déjà documenté ci-dessus (échec net,
+« pathspec did not match »), un FIFO ouvert en lecture par `hash-object` reste
+en attente d'un écrivain qui ne vient jamais — le script ne rend jamais la
+main, sans message, sans code de sortie. C'est un blocage, pas un échec :
+plus sévère que le symptôme d'origine de cette spec. À couvrir par le
+correctif de ce cycle, avec un test qui borne le temps d'exécution.
+
 ## Hors périmètre
 
 - La garde de `bug-003` elle-même — livrée, son contrat ne change pas

@@ -89,6 +89,37 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
   n'est pas couvert et détruit toujours son contenu ignoré en silence, sortie
   0 (`bug-009`) ; l'aperçu reste muet sur les liens symboliques, liens cassés
   et FIFO (`feature-014`). 71 → 77 tests, `shellcheck` toujours à zéro.
+- **`tools/update_kit.sh` : trois gardes de plus, premier cycle mené sous le
+  régime « un défaut qui désarme la garde livrée entre dans le cycle qui la
+  livre »** (`bug-008` + `bug-009`, voir
+  [ADR-0018](docs/adr/0018-refus-nomme-des-noms-cites-et-quatrieme-garde-sur-la-feuille.md)) :
+  - un nom de fichier gelé contenant un **guillemet double, un retour à la
+    ligne, une tabulation ou un antislash** ressort toujours **cité** par
+    git, même avec `core.quotepath=off` (qui ne dé-cite que les accents). Un
+    tel nom se classait « à créer » et écrasait l'original en silence ; la
+    synchronisation **refuse** désormais nommément, avant toute
+    classification ;
+  - un **répertoire suivi** occupant la place d'un fichier gelé, et contenant
+    du contenu non récupérable (non suivi, ignoré, ou gelé et divergent),
+    était **détruit en entier** par `git checkout` (`remove_subtree`), sortie
+    0 — y compris le contenu ignoré, irrécupérable. La synchronisation
+    **refuse** désormais si ce répertoire contient quoi que ce soit
+    d'irrécupérable ; un répertoire entièrement suivi et propre continue de
+    passer ;
+  - un **sous-module git** occupant la même place perdait **tout son
+    historique embarqué** de la même façon, invisible à `git status` comme à
+    `git ls-files --others` : catégorie et message dédiés.
+
+  **Ce qui peut surprendre** : une synchronisation qui réussissait peut
+  désormais **refuser**, notamment sur un nom de fichier gelé contenant l'un
+  des quatre caractères ci-dessus. **Ce que ça n'améliore pas** : `bug-005`
+  (caractère invisible non affiché dans les messages), `bug-007` (blocage
+  muet sur un chemin épinglé non divergent — un cas de **FIFO** qui fait
+  bloquer `git hash-object` indéfiniment y a été reporté), `feature-013` (un
+  sous-module occupant la place d'un **répertoire** attendu par le kit, cas
+  distinct du précédent), `feature-014` (état laissé par un `checkout`
+  partiellement échoué). 44 → 65 tests dans `test_update_kit.py`, 24 → 25
+  dans `test_harnais_kit.py`, `shellcheck` toujours à zéro.
 
 ### Intégration continue
 
@@ -97,6 +128,31 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 
 ### Documentation
 
+- `docs/adr/0018-refus-nomme-des-noms-cites-et-quatrieme-garde-sur-la-feuille.md`
+  [nouveau] : trois décisions — la partition de fidélité de type se referme
+  sur la feuille répertoire suivi (ADR-0016 non modifié) ; `bug-008` se ferme
+  par refus nommé plutôt que dé-citation ou lecture NUL (alternatives
+  écartées par exécution) ; l'écart de grain entre détection par fichier et
+  écriture par racine est constaté et assumé, pas fermé — avec correction
+  d'une affirmation erronée du plan initial sur ce que perd une détection
+  manquée. Deux constats d'audit post-plan (fichier gelé après un voisin
+  propre, sous-module en travers) et les terrains non fermés (`bug-005`,
+  `bug-007`, `feature-013`, `feature-014`).
+- `docs/adr/0016-fidelite-de-type-des-chemins-geles.md` : note additive datée
+  du 2026-09-13, renvoyant vers ADR-0018 pour le cas inverse suivi — corps
+  non modifié.
+- `README.md` : la section synchronisation décrit les trois catégories
+  neuves de l'aperçu (nom cité, répertoire en travers, sous-module en
+  travers) et leur motif de refus.
+- `specs/features/todo/bug-007-blocage-muet-sur-chemin-epingle-non-divergent.md` :
+  constat d'audit reporté — un FIFO fait bloquer `git hash-object`
+  indéfiniment.
+- `specs/features/todo/feature-013-geles-personnalises-conditionnels.md` :
+  constat d'audit reporté — un sous-module occupant la place d'un
+  **répertoire** attendu par le kit.
+- `specs/features/todo/feature-014-apercu-effets-de-bord-echecs.md` :
+  constat d'audit reporté — FIFO et lien cassé remplacés sans un mot,
+  complément au constat déjà présent de l'audit `bug-006`.
 - `docs/adr/0016-fidelite-de-type-des-chemins-geles.md` [nouveau] : la garde
   de fidélité de type ne porte que sur les ancêtres d'un chemin gelé, jamais
   sur sa feuille — la feuille est déjà couverte par la garde de `bug-001`, et

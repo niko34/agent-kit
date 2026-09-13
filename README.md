@@ -227,6 +227,28 @@ il apparaît dans sa propre catégorie et **fait échouer la synchronisation ré
 tout `git checkout`**, avec les trois mêmes issues (le déplacer, le committer, ou
 l'exclure via `.kit-paths`). Un obstacle suivi et identique à `HEAD` ne bloque rien.
 
+Trois catégories de plus ferment la même famille de risques, voir
+[ADR-0018](docs/adr/0018-refus-nomme-des-noms-cites-et-quatrieme-garde-sur-la-feuille.md) :
+
+- **Nom cité par git** : git cite **toujours** un nom contenant un guillemet double, un
+  retour à la ligne, une tabulation ou un antislash — même avec `core.quotepath=off`, qui
+  ne désactive que la citation des octets non-ASCII (accents). Un tel nom ne correspond à
+  aucun chemin réel sur le disque : la synchronisation refuse nommément, avant même la
+  classification, plutôt que de classer le chemin « à créer » et d'écraser l'original en
+  silence. Issues : renommer le fichier, ou l'exclure via `.kit-paths`.
+- **Répertoire en travers** : un chemin gelé que le kit attend comme **fichier** peut
+  être occupé, à sa **feuille**, par un **répertoire suivi** contenant du contenu non
+  récupérable (non suivi, ignoré, ou suivi mais gelé et divergent de `HEAD`) — `git
+  checkout` en ferait un `remove_subtree` complet, sans regarder ce qu'il contient. Bloqué
+  avant tout `checkout`, avec les mêmes issues que les catégories précédentes. Un
+  répertoire dont tout le contenu est suivi et propre ne bloque rien.
+- **Sous-module en travers** : un chemin gelé attendu comme fichier, occupé par un
+  **sous-module git** (gitlink), est un cas à part — `git status` et
+  `git ls-files --others` y sont vides (le sous-arbre du sous-module n'est pas indexé par
+  le superprojet), mais `git checkout` ferait disparaître son `.git` et perdre tout son
+  historique embarqué. Bloqué nommément, avec une issue dédiée (sauvegarder ou
+  désinitialiser le sous-module avant de le retirer).
+
 #### Un projet qui n'adopte pas tout le kit
 
 Tous les projets ne descendent pas du kit. Certains le **précèdent**, et ont spécialisé
