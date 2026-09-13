@@ -610,5 +610,401 @@ class NomsAccentuesTest(unittest.TestCase):
         )
 
 
+class KitPathsGrammaireTest(unittest.TestCase):
+    """feature-012 : `.kit-paths` gouverne SEUL son périmètre, avec une
+    grammaire ligne à ligne — quatre garanties (5, 6, 7, 17) et le correctif
+    de parsing (CRLF, espace, chemin absent nommé, déclaration vide,
+    diagnostic distinct du « mauvais distant »).
+
+    ⚠️ Dérogation à ADR-0012 : le harnais est GELÉ, aucune clé neuve n'est
+    ajoutée à `MARQUEURS_DE_GARDE`.
+
+    Le motif d'abord invoqué — « une clé ferait tomber TOUS les
+    `affirmer_seule_garde(..., None)` déjà écrits » — est FAUX, et réfuté par
+    exécution : en ajoutant les clés, seuls les cas NEUFS tombent, aucun cas
+    préexistant.
+
+    Le motif RÉEL est que le cas du glob déclencherait DEUX marqueurs
+    simultanément, ce qu'`affirmer_seule_garde` interdit par construction. Les
+    deux messages fatals neufs de ce lot (« .kit-paths ne déclare aucun
+    chemin » et « Aucun chemin déclaré dans .kit-paths n'existe côté kit ») ne
+    contiennent par ailleurs aucun des 9 marqueurs existants — vérifié un par
+    un — donc l'anti-chevauchement se démontre ici avec `None`.
+
+    Justification complète et son historique : `specs/features/…/feature-012`.
+    """
+
+    def setUp(self) -> None:
+        self.contexte = fabriquer_kit_et_projet()
+        self.addCleanup(self.contexte.fermer)
+
+    def _recap_dry_run(
+        self,
+        *,
+        lignes: list[str] | None = None,
+        brut: bytes | None = None,
+    ) -> tuple[subprocess.CompletedProcess, str, str]:
+        """Fabrique un contexte INDÉPENDANT, y commite GUIDE.md côté kit,
+        écrit `.kit-paths` (via le harnais si `lignes`, en bytes bruts si
+        `brut` — nécessaire pour une dernière ligne sans `\\n` final, que
+        `ecrire_kit_paths` ne peut pas produire), lance `--dry-run`, renvoie
+        le résultat, le récapitulatif extrait ET la sortie complète
+        (stdout+stderr). Un contexte par appel : les comparaisons LF/CRLF ne
+        doivent jamais partager un dépôt jetable entre les deux membres
+        comparés.
+        """
+        contexte = fabriquer_kit_et_projet()
+        self.addCleanup(contexte.fermer)
+        contexte.committer_dans_kit("GUIDE.md", "contenu du kit\n")
+        if brut is not None:
+            (contexte.projet / ".kit-paths").write_bytes(brut)
+        else:
+            assert lignes is not None
+            contexte.ecrire_kit_paths(lignes)
+        resultat = contexte.executer_update_kit("--dry-run")
+        affirmer_seule_garde(self, resultat, None)
+        return (
+            resultat,
+            extraire_recapitulatif(resultat.stdout),
+            resultat.stdout + resultat.stderr,
+        )
+
+    # ── Garantie 5 — .kit-paths présent → seuls ses chemins sont touchés ────
+
+    def test_garantie_5_seuls_les_chemins_de_kit_paths_sont_touches(self) -> None:
+        self.contexte.committer_dans_kit("GUIDE.md", "contenu du kit\n")
+        # Chemin gelé par défaut, présent côté kit, mais ABSENT de
+        # `.kit-paths` : ne doit apparaître nulle part dans la sortie.
+        self.contexte.committer_dans_kit("tools/check_specs.sh", "#!/bin/sh\n")
+        self.contexte.ecrire_kit_paths(["GUIDE.md"])
+
+        resultat = self.contexte.executer_update_kit("--dry-run")
+
+        affirmer_seule_garde(self, resultat, None)
+        self.assertEqual(0, resultat.returncode)
+        sortie = resultat.stdout + resultat.stderr
+        self.assertIn("GUIDE.md", sortie)
+        self.assertNotIn("check_specs.sh", sortie)
+
+    # ── Garantie 6 — les chemins conditionnels sont neutralisés ─────────────
+
+    def test_garantie_6_chemins_conditionnels_neutralises(self) -> None:
+        self.contexte.committer_dans_kit("GUIDE.md", "contenu du kit\n")
+        # `control-center` est un chemin CONDITIONNEL par défaut (récupéré
+        # seulement s'il existe déjà côté projet) — présent des deux côtés,
+        # il serait normalement synchronisé si `.kit-paths` ne le neutralisait
+        # pas.
+        self.contexte.committer_dans_kit("control-center/app.py", "kit v2\n")
+        self.contexte.committer_dans_projet("control-center/app.py", "v1 local\n")
+        self.contexte.ecrire_kit_paths(["GUIDE.md"])
+
+        resultat = self.contexte.executer_update_kit("--dry-run")
+
+        affirmer_seule_garde(self, resultat, None)
+        self.assertEqual(0, resultat.returncode)
+        sortie = resultat.stdout + resultat.stderr
+        self.assertIn("GUIDE.md", sortie)
+        self.assertNotIn("control-center", sortie)
+
+    # ── Garantie 7 — `#` commente, lignes vides ignorées ────────────────────
+
+    def test_garantie_7_commentaires_et_lignes_vides_ignores(self) -> None:
+        self.contexte.committer_dans_kit("GUIDE.md", "contenu du kit\n")
+        self.contexte.ecrire_kit_paths(
+            [
+                "# commentaire seul, toute la ligne",
+                "",
+                "GUIDE.md   # commentaire en fin de ligne, espaces avant",
+                "   ",
+            ]
+        )
+
+        resultat = self.contexte.executer_update_kit("--dry-run")
+
+        affirmer_seule_garde(self, resultat, None)
+        self.assertEqual(0, resultat.returncode)
+        sortie = resultat.stdout + resultat.stderr
+        self.assertIn("À CRÉER", sortie)
+        self.assertIn("GUIDE.md", sortie)
+
+    # ── Garantie 17 — chemin listé deux fois → traité une fois ─────────────
+    #
+    # ⚠️ Réécrit après revue (code-reviewer, Request changes) : la première
+    # version comparait `git checkout`/`ls-tree` sur un pathspec dupliqué —
+    # git tolère ça tout seul, dédoublonnage ou pas, donc le cas ne prouvait
+    # RIEN sur le script (le relecteur a supprimé le bloc de dédoublonnage
+    # entier sans qu'aucun test ne meure). Le chemin RÉELLEMENT discriminant,
+    # trouvé par `backend-developer` : la boucle des ORPHELINS (l. ~628)
+    # itère directement sur le tableau `presents`, JAMAIS via git. Un
+    # `.kit-paths` déclarant le MÊME dossier deux fois, contenant un fichier
+    # absent du kit, fait apparaître cet orphelin UNE fois avec dédoublonnage,
+    # DEUX fois sans.
+    #
+    # Exécution RÉELLE requise (pas `--dry-run`) : la boucle des orphelins
+    # tourne après `git checkout`, sortie normale (l. ~544) en simulation.
+
+    def test_garantie_17_chemin_liste_deux_fois_orphelin_signale_une_seule_fois(
+        self,
+    ) -> None:
+        dossier = ".claude/agents"
+        # architect.md diverge (kit v2 / projet v1) : évite le court-circuit
+        # « déjà aligné », qui sortirait AVANT le checkout et la détection
+        # d'orphelins.
+        self.contexte.committer_dans_kit(f"{dossier}/architect.md", "kit v2\n")
+        self.contexte.committer_dans_projet(f"{dossier}/architect.md", "kit v1\n")
+        orphelin = f"{dossier}/orpheline.md"
+        self.contexte.committer_dans_projet(orphelin, "absent du kit\n")
+        # Committé (pas seulement écrit) : cette exécution est RÉELLE, pas
+        # `--dry-run` — un `.kit-paths` non suivi déclencherait la garde
+        # d'arbre sale AVANT d'atteindre la détection d'orphelins visée ici.
+        self.contexte.committer_dans_projet(".kit-paths", f"{dossier}\n{dossier}\n")
+
+        resultat = self.contexte.executer_update_kit()
+
+        affirmer_seule_garde(self, resultat, None)
+        self.assertEqual(0, resultat.returncode)
+        sortie = resultat.stdout + resultat.stderr
+        self.assertIn("CONSERVÉS", sortie)
+        self.assertIn(orphelin, sortie)
+        self.assertEqual(1, sortie.count(orphelin))
+
+    # ── CRLF — le récapitulatif extrait doit être IDENTIQUE à celui obtenu
+    # en LF, sur les quatre positions où un `\r` peut survivre (ADR-0013
+    # décision 3) : une ligne de chemin, un commentaire, une ligne vide, et
+    # une dernière ligne SANS `\n` final. Comparaison de CHAÎNES, jamais de
+    # codes retour : le relevé de la spec montre `Recap LF == Recap CRLF ？
+    # False` sur le code d'avant le correctif.
+    #
+    # La comparaison porte sur la sortie COMPLÈTE (stdout+stderr), pas
+    # seulement sur le récapitulatif extrait : un `\r` non retiré sur une
+    # ligne de commentaire ou une ligne vide peut laisser un chemin
+    # fantôme (ex. le caractère `\r` seul) qui se signale UNIQUEMENT sur
+    # stderr (« Déclaré dans .kit-paths mais absent… ») sans jamais toucher
+    # au récapitulatif lui-même — un mutant qui ne retire plus le `\r`
+    # resterait alors invisible à ces deux sous-cas si on ne comparait que
+    # le récapitulatif. L'égalité de la sortie complète implique l'égalité
+    # du récapitulatif (sous-chaîne), donc ne l'affaiblit pas.
+
+    def test_crlf_sur_ligne_de_chemin_recap_identique_au_lf(self) -> None:
+        _, recap_lf, sortie_lf = self._recap_dry_run(lignes=["GUIDE.md"])
+        _, _, sortie_crlf = self._recap_dry_run(lignes=["GUIDE.md\r"])
+
+        self.assertTrue(recap_lf, "récapitulatif LF introuvable")
+        self.assertEqual(sortie_lf, sortie_crlf)
+
+    def test_crlf_sur_ligne_de_commentaire_recap_identique_au_lf(self) -> None:
+        _, recap_lf, sortie_lf = self._recap_dry_run(lignes=["# commentaire", "GUIDE.md"])
+        _, _, sortie_crlf = self._recap_dry_run(lignes=["# commentaire\r", "GUIDE.md"])
+
+        self.assertTrue(recap_lf, "récapitulatif LF introuvable")
+        self.assertEqual(sortie_lf, sortie_crlf)
+
+    def test_crlf_sur_ligne_vide_recap_identique_au_lf(self) -> None:
+        _, recap_lf, sortie_lf = self._recap_dry_run(lignes=["", "GUIDE.md"])
+        _, _, sortie_crlf = self._recap_dry_run(lignes=["\r", "GUIDE.md"])
+
+        self.assertTrue(recap_lf, "récapitulatif LF introuvable")
+        self.assertEqual(sortie_lf, sortie_crlf)
+
+    def test_crlf_sur_derniere_ligne_sans_saut_final_recap_identique_au_lf(
+        self,
+    ) -> None:
+        # Bytes bruts, sans passer par `ecrire_kit_paths` (qui ajoute
+        # toujours un `\n` final) : c'est justement l'ABSENCE de `\n` final
+        # que ce cas exerce, avec un `\r` collé au bout du chemin.
+        _, recap_lf, sortie_lf = self._recap_dry_run(brut=b"GUIDE.md")
+        _, _, sortie_crlf = self._recap_dry_run(brut=b"GUIDE.md\r")
+
+        self.assertTrue(recap_lf, "récapitulatif LF introuvable")
+        self.assertEqual(sortie_lf, sortie_crlf)
+
+    # ── Espace — un chemin avec une espace intérieure est UN SEUL chemin ────
+
+    def test_espace_dans_chemin_traite_comme_un_seul_chemin(self) -> None:
+        chemin = "dossier avec espace/fichier.txt"
+        self.contexte.committer_dans_kit(chemin, "contenu\n")
+        self.contexte.ecrire_kit_paths([chemin])
+
+        resultat = self.contexte.executer_update_kit("--dry-run")
+
+        affirmer_seule_garde(self, resultat, None)
+        self.assertEqual(0, resultat.returncode)
+        recap = extraire_recapitulatif(resultat.stdout)
+        self.assertIn("À CRÉER", recap)
+        self.assertEqual(1, recap.count(chemin))
+
+    # ── Glob `*.md` — cas discriminant à deux fichiers : ni le fichier
+    # présent SEULEMENT côté kit, ni celui présent des DEUX côtés, ne doivent
+    # apparaître — les deux sont hors périmètre — et `*.md` doit être nommé
+    # comme chemin absent (le glob ne s'expanse plus contre le projet).
+
+    def test_glob_md_est_hors_perimetre_et_nomme_comme_chemin_absent(self) -> None:
+        self.contexte.committer_dans_kit("PARTAGE.md", "contenu du kit\n")
+        self.contexte.committer_dans_kit("SEUL_AU_KIT.md", "contenu du kit\n")
+        self.contexte.committer_dans_projet("PARTAGE.md", "contenu du projet\n")
+        self.contexte.ecrire_kit_paths(["*.md"])
+
+        resultat = self.contexte.executer_update_kit("--dry-run")
+
+        affirmer_seule_garde(self, resultat, None)
+        self.assertNotEqual(0, resultat.returncode)
+        sortie = resultat.stdout + resultat.stderr
+        self.assertIn("*.md", sortie)
+        self.assertNotIn("PARTAGE.md", sortie)
+        self.assertNotIn("SEUL_AU_KIT.md", sortie)
+        self.assertIn(
+            "Déclaré dans .kit-paths mais absent de kit/main : *.md", sortie
+        )
+        self.assertIn(
+            "❌ Aucun chemin déclaré dans .kit-paths n'existe côté kit "
+            "(1 déclarés, 0 trouvés).",
+            sortie,
+        )
+
+    # ── Diagnostic distinct (A6) — déclaration NON vide, mais AUCUN des
+    # chemins déclarés n'existe côté kit : message dédié, jamais confondu ni
+    # avec « déclaration vide » (A7, aucun chemin DÉCLARÉ) ni avec le
+    # soupçon de mauvais distant (liste gelée par défaut).
+    #
+    # ⚠️ Ajouté après revue (code-reviewer, Request changes) : ce message
+    # n'était asserté par AUCUN test — le mutant `-eq 0` → `-ge 0` sur
+    # `${#declares[@]}` (qui fait retomber CE cas sur le message « .kit-paths
+    # ne déclare aucun chemin ») survivait aux 69 tests précédents.
+
+    def test_diagnostic_distinct_aucun_chemin_declare_nexiste_cote_kit(self) -> None:
+        self.contexte.committer_dans_kit(
+            "fichier-sans-rapport.txt", "peu importe, juste pour que main existe\n"
+        )
+        self.contexte.ecrire_kit_paths(["chemin/qui-nexiste-pas.md"])
+
+        resultat = self.contexte.executer_update_kit("--dry-run")
+
+        affirmer_seule_garde(self, resultat, None)
+        self.assertNotEqual(0, resultat.returncode)
+        sortie = resultat.stdout + resultat.stderr
+        self.assertIn(
+            "❌ Aucun chemin déclaré dans .kit-paths n'existe côté kit "
+            "(1 déclarés, 0 trouvés).",
+            sortie,
+        )
+        self.assertNotIn("Aucun des chemins gelés n'existe", sortie)
+        self.assertNotIn("pointe-t-il bien sur le kit", sortie)
+        self.assertNotIn(
+            "ne déclare aucun chemin (fichier vide ou entièrement commenté)",
+            sortie,
+        )
+
+    # Compte à N=2 : distingue un mutant qui figerait le nombre affiché (ex.
+    # toujours « 1 déclarés ») de celui qui reflète réellement
+    # `${#declares[@]}`.
+
+    def test_diagnostic_distinct_compte_deux_chemins_declares_absents(self) -> None:
+        self.contexte.committer_dans_kit("fichier-sans-rapport.txt", "peu importe\n")
+        self.contexte.ecrire_kit_paths(["a/b.md", "c/d.md"])
+
+        resultat = self.contexte.executer_update_kit("--dry-run")
+
+        affirmer_seule_garde(self, resultat, None)
+        self.assertNotEqual(0, resultat.returncode)
+        sortie = resultat.stdout + resultat.stderr
+        self.assertIn(
+            "❌ Aucun chemin déclaré dans .kit-paths n'existe côté kit "
+            "(2 déclarés, 0 trouvés).",
+            sortie,
+        )
+
+    # ── Chemin absent nommé, avec un chemin valide à côté ───────────────────
+
+    def test_chemin_absent_du_kit_nomme_avec_un_chemin_valide_a_cote(self) -> None:
+        self.contexte.committer_dans_kit("GUIDE.md", "contenu du kit\n")
+        self.contexte.ecrire_kit_paths(["GUIDE.md", "chemin/qui-nexiste-pas.md"])
+
+        resultat = self.contexte.executer_update_kit("--dry-run")
+
+        affirmer_seule_garde(self, resultat, None)
+        self.assertEqual(0, resultat.returncode)
+        sortie = resultat.stdout + resultat.stderr
+        self.assertIn("À CRÉER", sortie)
+        self.assertIn("GUIDE.md", sortie)
+        self.assertIn(
+            "Déclaré dans .kit-paths mais absent de kit/main : "
+            "chemin/qui-nexiste-pas.md",
+            sortie,
+        )
+
+    # ── Vide, puis entièrement commenté : le script le DIT nommément, et ne
+    # confond ce cas ni avec « aucun chemin gelé » (préexistant) ni avec le
+    # soupçon de mauvais distant.
+
+    def test_kit_paths_vide_declaration_vide_jamais_mauvais_distant(self) -> None:
+        self.contexte.committer_dans_kit("GUIDE.md", "contenu du kit\n")
+        self.contexte.ecrire_kit_paths([])
+
+        resultat = self.contexte.executer_update_kit("--dry-run")
+
+        affirmer_seule_garde(self, resultat, None)
+        self.assertNotEqual(0, resultat.returncode)
+        sortie = resultat.stdout + resultat.stderr
+        self.assertIn(
+            "❌ .kit-paths ne déclare aucun chemin "
+            "(fichier vide ou entièrement commenté).",
+            sortie,
+        )
+        self.assertNotIn("Aucun des chemins gelés n'existe", sortie)
+        self.assertNotIn("pointe-t-il bien sur le kit", sortie)
+
+    def test_kit_paths_entierement_commente_declaration_vide_jamais_mauvais_distant(
+        self,
+    ) -> None:
+        self.contexte.committer_dans_kit("GUIDE.md", "contenu du kit\n")
+        self.contexte.ecrire_kit_paths(["# rien ici", "# une autre ligne commentée"])
+
+        resultat = self.contexte.executer_update_kit("--dry-run")
+
+        affirmer_seule_garde(self, resultat, None)
+        self.assertNotEqual(0, resultat.returncode)
+        sortie = resultat.stdout + resultat.stderr
+        self.assertIn(
+            "❌ .kit-paths ne déclare aucun chemin "
+            "(fichier vide ou entièrement commenté).",
+            sortie,
+        )
+        self.assertNotIn("Aucun des chemins gelés n'existe", sortie)
+        self.assertNotIn("pointe-t-il bien sur le kit", sortie)
+
+    # ── Non-régression du fragment gelé : `.kit-paths` ABSENT (hors
+    # périmètre de ce lot — mécanisme conditionnel non exercé ici) + kit vide
+    # de tout chemin par défaut → le message PRÉEXISTANT sort mot pour mot,
+    # accusation du distant comprise. `MARQUEURS_DE_GARDE["aucun_chemin"]`
+    # existait déjà dans le harnais mais n'était encore exercé par aucun cas.
+
+    def test_non_regression_kit_paths_absent_kit_vide_message_gele_mot_pour_mot(
+        self,
+    ) -> None:
+        self.contexte.committer_dans_kit(
+            "fichier-inconnu-du-kit.txt", "sans rapport avec la liste gelée\n"
+        )
+
+        resultat = self.contexte.executer_update_kit("--dry-run")
+
+        affirmer_seule_garde(self, resultat, "aucun_chemin")
+        self.assertNotEqual(0, resultat.returncode)
+        sortie = resultat.stdout + resultat.stderr
+        self.assertIn(
+            "❌ Aucun des chemins gelés n'existe dans kit/main.\n"
+            "   Le distant « kit » pointe-t-il bien sur le kit ?",
+            sortie,
+        )
+        # Sous la liste gelée par défaut (`.kit-paths` absent), un chemin
+        # gelé absent du kit est une situation NORMALE (le projet n'a pas
+        # encore reçu tel fichier récent) — le nommer produirait un
+        # avertissement à CHAQUE synchronisation, pour rien. La quasi-
+        # totalité des ~15 chemins gelés par défaut sont absents de ce kit
+        # jetable (seul un fichier sans rapport y est commité) : si
+        # l'avertissement neuf devenait inconditionnel, il inonderait cette
+        # sortie, alors qu'il doit rester TOTALEMENT silencieux ici.
+        self.assertNotIn("Déclaré dans .kit-paths mais absent", sortie)
+
+
 if __name__ == "__main__":
     unittest.main()

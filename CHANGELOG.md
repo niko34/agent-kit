@@ -37,6 +37,40 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
   [1, 100]), pour compenser la fenêtre d'historique plus courte qu'ouvre le
   découpage par segment.
 
+### Outillage
+
+- **`tools/update_kit.sh` : `.kit-paths` a désormais une grammaire ligne à
+  ligne, et quatre défauts de parsing sont corrigés.** Établis par exécution
+  sur clones jetables (feature-012) :
+  - un `.kit-paths` enregistré en **CRLF** (un éditeur Windows suffit)
+    perdait **tout** son périmètre déclaré — le `\r` terminal survivait au
+    pipeline `sed | grep`, et le script accusait à tort le distant « kit ».
+    Un `\r` terminal est désormais retiré ligne à ligne, avant tout le
+    reste.
+  - un chemin contenant une **espace** était découpé en plusieurs mots par
+    le shell et disparaissait **en silence** ; il est désormais traité comme
+    un seul chemin (les espaces de tête et de queue restent interdites,
+    voir [ADR-0015](docs/adr/0015-grammaire-kit-paths.md)).
+  - un chemin déclaré dans `.kit-paths` mais **absent du kit** était avalé
+    sans un mot ; il est désormais nommé sur stderr, sans bloquer les autres
+    chemins déclarés.
+  - ⚠️ **un `.kit-paths` contenant un glob (`*`) change de comportement.**
+    Il était auparavant expansé par le shell contre le répertoire **du
+    projet** (jamais l'arbre du kit) : un projet déclarant
+    `.claude/agents/*` ne recevait donc jamais un fichier ajouté côté kit,
+    seulement ce qu'il possédait déjà — ADR-0008 s'en trouvait vidé de son
+    sens. Le glob est désormais **littéral** : s'il ne correspond à aucun
+    chemin exact côté kit, il est nommé comme un chemin absent. Un
+    `.kit-paths` qui utilisait `*` doit être réécrit en chemins explicites.
+  - le message « Le distant « kit » pointe-t-il bien sur le kit ? »
+    n'apparaît plus sur une cause purement locale (CRLF, espace, glob,
+    `.kit-paths` vide ou entièrement commenté) : trois diagnostics distincts
+    remplacent le message unique — déclaration vide, aucun chemin déclaré
+    trouvé côté kit, ou véritable soupçon de mauvais distant.
+  - `presents` est désormais un tableau indexé (plus aucune expansion non
+    quotée d'une liste de chemins) ; 55 → 71 tests ; `shellcheck` passe de
+    un avertissement à zéro.
+
 ### Intégration continue
 
 - **La suite de tests du centre de contrôle est enfin exécutée par une CI**,
@@ -44,6 +78,12 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 
 ### Documentation
 
+- `docs/adr/0015-grammaire-kit-paths.md` [nouveau] : `.kit-paths` a une
+  grammaire et c'est un contrat public — le compromis du trim explicite (prix
+  des espaces intérieures), les alternatives écartées (refus nommé de
+  l'espace, expansion du glob côté kit) et ce que ça verrouille.
+- `README.md` : la section sur les projets qui n'adoptent pas tout le kit
+  décrit désormais la grammaire complète de `.kit-paths`.
 - `docs/adr/0014-bornage-des-cycles-par-marqueur-declare.md` [nouveau] :
   pourquoi le bornage est un paramètre déclaré et jamais un nom d'agent en
   dur, les trois refus de découpage au jugé, alternatives écartées

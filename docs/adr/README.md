@@ -42,3 +42,4 @@ Une simple préférence de style, un choix réversible en une heure ou un détai
 | [0012](0012-harnais-de-test-partage-et-doctrine-anti-chevauchement.md) | Un harnais de test partagé, et la doctrine anti-chevauchement | Accepté |
 | [0013](0013-detection-par-fichier-et-noms-cites.md) | La détection des fichiers gelés se fait par fichier, jamais sur un état global de l'arbre, et les noms sortis de git sont dé-cités avant réutilisation comme chemins disque | Accepté |
 | [0014](0014-bornage-des-cycles-par-marqueur-declare.md) | Le bornage des cycles se fait par marqueur déclaré, jamais par nom d'agent en dur | Accepté — supersède ADR-0002 sur le bornage seul |
+| [0015](0015-grammaire-kit-paths.md) | `.kit-paths` a une grammaire, et c'est un contrat public | Accepté |

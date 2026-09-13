@@ -119,9 +119,49 @@ CHEMINS_GITHUB="
 # ⚠️ PENSER À Y METTRE `tools/update_kit.sh` LUI-MÊME. Omis, le script cesse de
 # se mettre à jour et se fossilise à la version du jour de son installation —
 # les corrections apportées ici n'atteindraient jamais le projet.
+#
+# ── GRAMMAIRE DE .kit-paths (feature-012) ───────────────────────────────────
+# Un chemin par ligne, lue ligne à ligne (jamais par découpage de mots du
+# shell, jamais par un pipeline `sed|grep`). Pour chaque ligne, dans l'ordre :
+#   1. un `\r` TERMINAL est retiré — un `.kit-paths` enregistré en CRLF
+#      (un éditeur Windows suffit) fonctionne donc comme en LF ;
+#   2. tout ce qui suit un `#` est un commentaire, retiré ;
+#   3. les espaces/tabulations de tête et de queue sont coupées ;
+#   4. une ligne devenue vide (blanche ou entièrement commentée) est ignorée.
+# Ce qui reste sur la ligne, tel quel, est le chemin déclaré — une espace
+# INTÉRIEURE (`dossier avec espace/fichier.txt`) en fait désormais partie,
+# au lieu d'être découpée en plusieurs chemins par l'ancien parsing.
+#
+# Conséquence assumée de ce trim explicite : un chemin ne peut plus commencer
+# ni finir par une espace, ni contenir un `#` ou un retour à la ligne. C'est
+# le prix des espaces intérieures — un chemin réel ne commence ni ne finit
+# normalement par une espace.
+#
+# Diagnostics associés, tous non destructifs :
+#   - un chemin déclaré mais introuvable côté kit est nommé sur stderr, sans
+#     bloquer la synchronisation des autres chemins déclarés ;
+#   - un `.kit-paths` vide ou entièrement commenté est signalé explicitement
+#     (avant, le script accusait à tort le distant « kit ») ;
+#   - si aucun chemin déclaré n'existe côté kit, le message le dit
+#     nommément, distinct du message qui soupçonne un mauvais distant.
 RACINE_PROJET="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+KIT_PATHS_ACTIF=0
 if [ -f "$RACINE_PROJET/.kit-paths" ]; then
-  CHEMINS="$(sed 's/#.*//' "$RACINE_PROJET/.kit-paths" | grep -v '^[[:space:]]*$' || true)"
+  declares=()
+  while IFS= read -r ligne || [ -n "$ligne" ]; do
+    ligne="${ligne%$'\r'}"
+    ligne="${ligne%%#*}"
+    ligne="${ligne#"${ligne%%[![:blank:]]*}"}"
+    ligne="${ligne%"${ligne##*[![:blank:]]}"}"
+    [ -z "$ligne" ] && continue
+    declares+=("$ligne")
+  done <"$RACINE_PROJET/.kit-paths"
+  KIT_PATHS_ACTIF=1
+  # ⚠️ Expansion gardée : sous `set -u` en bash < 4.4 (macOS, bash 3.2),
+  # `"${declares[@]}"` sur un tableau VIDE lève « unbound variable ». Le
+  # repli `${declares[@]+"${declares[@]}"}` n'expanse rien si le tableau est
+  # vide, sans jamais échouer.
+  CHEMINS="$(printf '%s\n' "${declares[@]+"${declares[@]}"}")"
   # ⚠️ `.kit-paths` gouverne TOUT, conditionnels compris. Sans cela, les chemins
   # conditionnels lui échappaient et s'appliquaient quand même.
   #
@@ -203,37 +243,75 @@ git fetch "$DISTANT" "$BRANCHE" --quiet || {
   exit 1
 }
 
-# Ne garder que les chemins réellement présents côté kit.
-presents=""
-for chemin in $CHEMINS; do
+# Ne garder que les chemins réellement présents côté kit. Lecture ligne à
+# ligne (jamais `for chemin in $CHEMINS` : le word-splitting par défaut
+# découpait un chemin contenant une espace). `presents` est un tableau
+# indexé — voir le garde-fou bash 3.2 plus bas, avant chaque expansion.
+presents=()
+while IFS= read -r chemin; do
+  [ -z "$chemin" ] && continue
   if git cat-file -e "$DISTANT/$BRANCHE:$chemin" 2>/dev/null; then
-    presents="$presents $chemin"
+    presents+=("$chemin")
+  elif [ "$KIT_PATHS_ACTIF" -eq 1 ]; then
+    # Nommé seulement quand `.kit-paths` gouverne : sous la liste gelée par
+    # défaut, un chemin absent du kit est une situation normale (un projet
+    # peut ne pas avoir encore reçu tel fichier récent) — le nommer là
+    # produirait un avertissement à chaque synchronisation, pour rien.
+    echo "⚠️  Déclaré dans .kit-paths mais absent de $DISTANT/$BRANCHE : $chemin" >&2
   fi
-done
+done <<<"$CHEMINS"
 
 # Conditionnels : présents côté kit ET déjà présents dans le projet.
-for chemin in $CHEMINS_SI_PRESENTS; do
+while IFS= read -r chemin; do
+  [ -z "$chemin" ] && continue
   if [ -e "$chemin" ] && git cat-file -e "$DISTANT/$BRANCHE:$chemin" 2>/dev/null; then
-    presents="$presents $chemin"
+    presents+=("$chemin")
   fi
-done
+done <<<"$CHEMINS_SI_PRESENTS"
 
 if [ -d ".github" ]; then
-  for chemin in $CHEMINS_GITHUB; do
+  while IFS= read -r chemin; do
+    [ -z "$chemin" ] && continue
     if git cat-file -e "$DISTANT/$BRANCHE:$chemin" 2>/dev/null; then
-      presents="$presents $chemin"
+      presents+=("$chemin")
     fi
-  done
+  done <<<"$CHEMINS_GITHUB"
 fi
 
-# Dédoublonnage : `control-center` peut figurer à la fois dans `.kit-paths` et
-# dans les chemins conditionnels. `git checkout` s'en accommoderait, mais le
-# récapitulatif afficherait deux fois la même chose.
-presents="$(echo $presents | tr ' ' '\n' | grep . | sort -u | tr '\n' ' ')"
+# Dédoublonnage : un même chemin peut apparaître deux fois dans `presents` —
+# typiquement un `.kit-paths` qui le déclare deux fois par erreur (garantie 17).
+# `git ls-tree`/`git checkout` tolèrent un pathspec dupliqué sans broncher (ni
+# erreur, ni doublon en sortie — vérifié par exécution), MAIS la boucle des
+# ORPHELINS plus bas itère directement sur `presents`, PAS sur une sortie déjà
+# dédupliquée par git : sans ce bloc, un dossier déclaré deux fois y relance
+# deux fois la même comparaison `comm`, et le même chemin orphelin apparaît en
+# double dans le récapitulatif final — confirmé par exécution (dossier commun
+# déclaré deux fois, contenant un fichier absent du kit : la ligne
+# `ORPHELIN` sort deux fois sans ce bloc, une seule fois avec). Ce n'est donc
+# pas du code mort : c'est la seule protection contre cette duplication-là.
+# ⚠️ Gardé par `${#presents[@]}` (sûr sous set -u, même vide) : expanser
+# `"${presents[@]}"` alors que le tableau est VIDE lève « unbound variable »
+# sous bash < 4.4 (macOS, bash 3.2) — cible déclarée du kit, non reproductible
+# ici (bash local 5.2).
+if [ "${#presents[@]}" -gt 0 ]; then
+  presents_tries=()
+  while IFS= read -r chemin; do
+    presents_tries+=("$chemin")
+  done < <(printf '%s\n' "${presents[@]}" | sort -u)
+  presents=("${presents_tries[@]}")
+fi
 
-if [ -z "$presents" ]; then
-  echo "❌ Aucun des chemins gelés n'existe dans $DISTANT/$BRANCHE." >&2
-  echo "   Le distant « $DISTANT » pointe-t-il bien sur le kit ?" >&2
+if [ "${#presents[@]}" -eq 0 ]; then
+  if [ "$KIT_PATHS_ACTIF" -eq 1 ]; then
+    if [ "${#declares[@]}" -eq 0 ]; then
+      echo "❌ .kit-paths ne déclare aucun chemin (fichier vide ou entièrement commenté)." >&2
+    else
+      echo "❌ Aucun chemin déclaré dans .kit-paths n'existe côté kit (${#declares[@]} déclarés, 0 trouvés)." >&2
+    fi
+  else
+    echo "❌ Aucun des chemins gelés n'existe dans $DISTANT/$BRANCHE." >&2
+    echo "   Le distant « $DISTANT » pointe-t-il bien sur le kit ?" >&2
+  fi
   exit 1
 fi
 
@@ -261,8 +339,11 @@ fi
 # puisque bash ne peut pas conserver un octet NUL dans une variable de
 # substitution de commande : le nom serait tronqué en silence, un défaut pire
 # que celui qu'on corrige.)
-# shellcheck disable=SC2086
-fichiers_du_kit="$(git -c core.quotepath=off ls-tree -r --name-only "$DISTANT/$BRANCHE" -- $presents 2>/dev/null)"
+#
+# ⚠️ `"${presents[@]}"` non gardé ICI est sûr : la garde `[ "${#presents[@]}"
+# -eq 0 ]` plus haut a déjà fait sortir le script si le tableau était vide —
+# à ce point de l'exécution, `presents` contient au moins un élément.
+fichiers_du_kit="$(git -c core.quotepath=off ls-tree -r --name-only "$DISTANT/$BRANCHE" -- "${presents[@]}" 2>/dev/null)"
 
 # ── CLASSIFICATION DES FICHIERS GELÉS ───────────────────────────────────────
 # Le récapitulatif décrit ce que `git checkout` va RÉELLEMENT faire, pas un
@@ -528,8 +609,9 @@ if [ -n "$geles_perte" ]; then
   exit 1
 fi
 
-# shellcheck disable=SC2086
-git checkout "$DISTANT/$BRANCHE" -- $presents || {
+# ⚠️ Non gardé, comme au site `ls-tree` plus haut : `presents` est non vide à
+# ce point, la garde de vacuité a déjà fait sortir le script sinon.
+git checkout "$DISTANT/$BRANCHE" -- "${presents[@]}" || {
   echo "❌ Échec de la récupération." >&2
   exit 1
 }
@@ -544,7 +626,9 @@ git checkout "$DISTANT/$BRANCHE" -- $presents || {
 # selon que git le voit ou non comme « spécial », et `comm -23` comparerait des
 # représentations qui ne correspondent plus au même fichier.
 orphelins=""
-for chemin in $presents; do
+# ⚠️ Non gardé, même raison qu'aux deux sites ci-dessus : `presents` est
+# garanti non vide à ce point de l'exécution.
+for chemin in "${presents[@]}"; do
   # Seuls les répertoires sont concernés : un fichier listé nommément et absent
   # du kit n'aurait pas été retenu plus haut.
   [ -d "$chemin" ] || continue

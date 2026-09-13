@@ -241,6 +241,26 @@ kit. La liste est **inclusive** à dessein : si le kit ajoute demain un chemin g
 projet qui a forké n'en veut probablement pas, et une exclusion oubliée le lui imposerait
 en silence.
 
+**Grammaire de `.kit-paths`** (voir
+[ADR-0015](docs/adr/0015-grammaire-kit-paths.md)) — un chemin par ligne, ligne à ligne :
+
+- les fins de ligne **CRLF sont tolérées** (un `\r` terminal est retiré, il ne fait
+  jamais partie du chemin) — un fichier enregistré depuis un éditeur Windows fonctionne
+  comme en LF ;
+- une **espace intérieure** (`dossier avec espace/fichier.txt`) fait partie du chemin,
+  qui reste un seul chemin ;
+- un chemin ne peut en revanche **pas commencer ni finir par une espace**, ni contenir
+  un `#` (qui ouvre toujours un commentaire) ou un retour à la ligne — c'est le prix des
+  espaces intérieures : elles doivent pouvoir être distinguées d'une espace de bord
+  coupée par le trim ;
+- un **glob** (`*`, `?`, `[...]`) est **littéral** : il n'est expansé ni contre le
+  répertoire du kit ni contre celui du projet ; s'il ne correspond à aucun chemin exact
+  côté kit, il est nommé comme un chemin déclaré absent ;
+- un chemin déclaré mais **absent du kit** est signalé nommément sur stderr, sans
+  bloquer la synchronisation des autres chemins déclarés ;
+- un fichier **vide ou entièrement commenté** est refusé explicitement (le script le
+  dit, plutôt que d'accuser à tort le distant `kit`).
+
 ### Et dans l'autre sens
 
 Le retour d'une leçon vers le kit reste **manuel et délibéré** : on copie le fichier vers
