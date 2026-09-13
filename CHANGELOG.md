@@ -27,6 +27,32 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
   fichiers ignorés. **Ce qui peut surprendre** : une synchronisation qui
   réussissait jusqu'ici en silence peut désormais sortir en erreur — c'est le
   compromis assumé (voir ADR-0011, conséquences négatives).
+- **Nouvelle garde d'écrasement, pour les fichiers gelés par un bit git** :
+  un fichier **suivi** mais marqué `git update-index --skip-worktree` (ou
+  `--assume-unchanged`), dont le contenu local diverge de `HEAD` et n'a
+  jamais été committé, fait désormais **échouer** la synchronisation réelle
+  avant tout `git checkout`. Motif : ces deux bits rendent `git status
+  --porcelain` aveugle par construction — la garde d'arbre propre ne voyait
+  rien, et la garde d'écrasement des non-suivis (ci-dessus) ne couvre que
+  les fichiers non suivis. Sans cette garde, `git checkout` écrasait le
+  contenu **et** effaçait le bit posé, sans laisser aucune trace de
+  l'intention de l'utilisateur. **Ce qui peut surprendre** : une
+  synchronisation qui passait jusqu'ici en silence peut désormais sortir en
+  erreur ; un projet qui fige un fichier avec `skip-worktree` devra lever le
+  bit (`git update-index --no-skip-worktree -- <chemin>`), déplacer le
+  fichier, ou l'exclure via `.kit-paths` pour débloquer la synchronisation.
+  Un fichier gelé **identique** au kit n'est jamais bloqué ; un fichier gelé
+  qui n'a rien à perdre (contenu local == `HEAD`) n'est pas bloqué non plus,
+  mais un avertissement signale que `git checkout` va effacer le bit sans
+  autre forme de procès. Voir ADR-0013.
+- **Correctif, le plus grave de ce lot pour tout projet francophone** : un
+  nom de fichier accentué (ou plus largement non-ASCII) désarmait
+  silencieusement **toutes** les gardes ci-dessus. `git ls-tree` cite par
+  défaut (`core.quotepath`) ces octets — `révision.md` sortait sous la forme
+  `"r\303\251vision.md"` — et le test d'existence de la classification
+  cherchait alors un fichier absent sous cette forme précise, le classait
+  « à créer », et `git checkout` l'écrasait sans un mot. Les appels
+  concernés portent désormais `-c core.quotepath=off`. Voir ADR-0013.
 - **Tout argument différent de `--dry-run` est rejeté**, sortie non nulle.
   Motif, relevé par l'audit sécurité : `./tools/update_kit.sh --dry_run`
   (faute de frappe) déclenchait jusqu'ici une synchronisation **réelle** — la
@@ -54,6 +80,13 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
   `--dry-run`, distant `kit` absent, hors dépôt git, projet déjà aligné),
   chacune protégée par `affirmer_seule_garde()` — un cas qui passerait pour
   la mauvaise raison, comme sur bug-001, échoue désormais.
+- **`GardeGelesPerteTest` et `NomsAccentuesTest` [nouveaux]** (bug-003) : la
+  suite passe de 42 à 55 cas. Couvrent la garde des fichiers gelés
+  (`skip-worktree`/`assume-unchanged`), la parité `--dry-run`/réel sur ce
+  cas, le fichier gelé identique ou sans perte réelle, et le correctif des
+  noms accentués. Matrice de mutation diagonale sur neuf passes, aucun cas
+  préexistant tué. Nouvelle clé `bit_gele` dans `MARQUEURS_DE_GARDE`
+  (`tests/harnais_kit.py`), conformément à ADR-0012. Voir ADR-0013.
 - **Une garde d'`update_kit.sh` qui n'avait jamais fonctionné est réparée** :
   le message « Ce script doit tourner dans un dépôt git » ne pouvait jamais
   s'afficher, `cd ""` réussissant silencieusement en bash quand la

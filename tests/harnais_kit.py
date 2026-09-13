@@ -331,6 +331,7 @@ MARQUEURS_DE_GARDE: dict[str, str] = {
     "aucun_chemin": "Aucun des chemins gelés n'existe",
     "ecrasement": "SANS RETOUR POSSIBLE",
     "deja_aligne": "Rien à récupérer",
+    "bit_gele": "MODIFICATION LOCALE INVISIBLE",
 }
 
 

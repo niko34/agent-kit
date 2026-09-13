@@ -190,6 +190,17 @@ exécution (première tâche du cycle).
   bon côté — rien reçu par erreur, plutôt que tout reçu par erreur ». Un
   parsing qui perd des chemins fait pencher le défaut du bon côté par accident,
   mais pour une mauvaise raison, et prive le projet de ce qu'il voulait.
+- ⚠️ **Piège trouvé par `bug-003`, applicable ici** : `git ls-tree`/`git
+  ls-files` citent par défaut (`core.quotepath`) les octets non-ASCII — un
+  chemin `.kit-paths` accentué peut donc ressortir d'une commande git sous
+  une forme littéralement échappée (`"r\303\251vision.md"`) qui ne
+  correspond plus, telle quelle, à aucun fichier sur le disque. Ce lot
+  traite justement le parsing de `.kit-paths` et les chemins déclarés y sont
+  le sujet central : tout appel à `ls-tree`/`ls-files` introduit ou modifié
+  ici, dont la sortie sert ensuite de chemin disque, doit porter
+  `-c core.quotepath=off` (voir ADR-0013 et le commentaire correspondant
+  dans `tools/update_kit.sh`). Ne retire ni ne remplace aucun des livrables
+  déjà listés — s'ajoute comme point de vigilance à l'implémentation.
 
 ## Hors périmètre
 - Les garanties 1, 2, 14, 15, 16 — feature-006 (lot 1)

@@ -245,8 +245,24 @@ fi
 #
 # Un aperçu auquel on ne peut pas se fier ne sert à rien : c'est sur lui qu'on
 # décide de lancer la synchronisation ou non.
+#
+# ⚠️ `-c core.quotepath=off` est OBLIGATOIRE ici. Par défaut (`core.quotepath`
+# actif), git cite les octets non-ASCII : un fichier `révision.md` sort sous la
+# forme littérale `"r\303\251vision.md"`, guillemets et échappement octal
+# compris. Le `[ ! -e "$f" ]` de la classification plus bas cherche alors un
+# fichier qui n'existe pas TEL QUEL sur le disque, le classe « à créer », et
+# `git checkout` l'écrase — silencieusement, bit compris pour un fichier gelé
+# divergent. C'est un kit francophone : un accent suffisait à contourner
+# TOUTES les gardes de bug-001 et bug-003. `-c core.quotepath=off` restitue le
+# nom en octets bruts, un par ligne — la boucle `while IFS= read -r … <<<` n'a
+# PAS besoin de changer : les noms restent séparés par des retours à la ligne,
+# aucun octet NUL n'entre en jeu. (`git ls-tree -z` aurait aussi désactivé la
+# citation, mais aurait forcé une lecture délimitée par NUL — inutilisable ici
+# puisque bash ne peut pas conserver un octet NUL dans une variable de
+# substitution de commande : le nom serait tronqué en silence, un défaut pire
+# que celui qu'on corrige.)
 # shellcheck disable=SC2086
-fichiers_du_kit="$(git ls-tree -r --name-only "$DISTANT/$BRANCHE" -- $presents 2>/dev/null)"
+fichiers_du_kit="$(git -c core.quotepath=off ls-tree -r --name-only "$DISTANT/$BRANCHE" -- $presents 2>/dev/null)"
 
 # ── CLASSIFICATION DES FICHIERS GELÉS ───────────────────────────────────────
 # Le récapitulatif décrit ce que `git checkout` va RÉELLEMENT faire, pas un
@@ -260,6 +276,25 @@ fichiers_du_kit="$(git ls-tree -r --name-only "$DISTANT/$BRANCHE" -- $presents 2
 #      sans risque : sera indexé, rien à perdre
 #   4. présent et suivi, hash != celui du kit → à mettre à jour
 #      présent et suivi, hash == celui du kit → identique (compté, non listé)
+#
+# Cinquième issue (bug-003) : présent et SUIVI, mais gelé par un bit
+# `skip-worktree` ou `assume-unchanged`. `git status --porcelain` ne voit rien
+# — c'est tout l'objet de ces bits — donc la divergence ne peut être détectée
+# qu'en comparant le hash local à `HEAD:$f`, PAR FICHIER, jamais par un état
+# global de l'arbre. C'est délibéré : un état global (`git status --porcelain`
+# propre) serait vrai en réel et faux en `--dry-run` sur un arbre par ailleurs
+# sale, et le même fichier changerait alors de catégorie selon le mode
+# d'exécution — l'aperçu divergerait de ce que fait réellement le script, ce
+# qu'ADR-0011 interdit. Le test se glisse dans la branche « suivi » :
+#   a. hash_local == hash_kit → identique (aucun risque, même bit posé)
+#   b. sinon, bit posé (`S`, ou TOUTE lettre minuscule — c'est la règle de
+#      `git ls-files -v` pour assume-unchanged, pas seulement `h` : `m`, `r`,
+#      `c` sont aussi des états assume-unchanged, dans d'autres situations)
+#      ET hash_local != HEAD:$f → geles_perte, traité comme non_suivis_perte
+#   c. sinon, bit posé mais hash_local == HEAD:$f (rien à perdre) → à mettre
+#      à jour, MAIS `git checkout` effacera le bit sans un mot : signalé
+#      séparément dans le récapitulatif (a_maj_bit_efface), jamais bloquant
+#   d. sinon (pas de bit) → à mettre à jour (inchangé)
 #
 # La divergence de hash pour un non-suivi est calculée ICI, à la
 # classification, et nulle part ailleurs : c'est la même valeur qui alimente
@@ -275,7 +310,9 @@ fichiers_du_kit="$(git ls-tree -r --name-only "$DISTANT/$BRANCHE" -- $presents 2
 # multi-lignes, comme `presents` plus haut.
 #
 # ⚠️ Un écart qui ne porte QUE sur le bit exécutable est classé « identique » :
-# `git hash-object` ne hash que le contenu, jamais le mode du fichier.
+# `git hash-object` ne hash que le contenu, jamais le mode du fichier. Un
+# fichier gelé dont seul le mode diffère reste donc « identique » lui aussi —
+# cohérent avec ce qui précède, à ne pas corriger.
 #
 # ⚠️ `git hash-object` applique les filtres `clean` déclarés par
 # `.gitattributes`, `git checkout` applique les filtres `smudge` symétriques.
@@ -285,6 +322,8 @@ a_creer=""
 non_suivis_perte=""
 non_suivis_ok=""
 a_maj=""
+a_maj_bit_efface=""
+geles_perte=""
 identiques=0
 
 while IFS= read -r f; do
@@ -310,15 +349,56 @@ while IFS= read -r f; do
   hash_kit="$(git rev-parse "$DISTANT/$BRANCHE:$f" 2>/dev/null)"
   if [ "$hash_local" = "$hash_kit" ]; then
     identiques=$((identiques + 1))
-  else
-    a_maj="$a_maj$f
+    continue
+  fi
+  # Cinquième issue : fichier suivi mais gelé (skip-worktree/assume-unchanged),
+  # dont le contenu local n'a jamais été committé. `head -n1` en substitution
+  # de commande (pas dans un pipe de boucle) : `pipefail` ne s'y applique pas
+  # au sens d'une perte de données ici, `ls-files -v` ne peut pas échouer sur
+  # un chemin déjà confirmé suivi juste au-dessus.
+  etat="$(git ls-files -v -- "$f" 2>/dev/null | head -n1 | cut -c1)"
+  # ⚠️ La règle est « S, ou TOUTE lettre minuscule », pas seulement `h` :
+  # `git ls-files -v` rend une lettre minuscule pour assume-unchanged quel que
+  # soit l'état de base (`h`, mais aussi `m`, `r`, `c`…). Tester deux lettres
+  # précises en aurait laissé passer d'autres, à coût de test identique.
+  gele=0
+  case "$etat" in
+    S) gele=1 ;;
+    # ⚠️ `[[:lower:]]` et NON `[a-z]` : sous une locale non-C, les plages de
+    # bash suivent la collation et peuvent happer des majuscules (`H`, `C`…),
+    # qui signifient tout autre chose ici. La classe POSIX encode la règle —
+    # « toute minuscule = assume-unchanged » — là où la plage encode un
+    # intervalle de caractères qui dépend de l'environnement. Non testable
+    # dans ce conteneur : seule la locale C y est installée.
+    [[:lower:]]) gele=1 ;;
+  esac
+  if [ "$gele" -eq 1 ]; then
+    # Cas limite délibéré : si `$f` est indexé mais absent de HEAD (ajouté,
+    # jamais committé, bit posé quand même), `git rev-parse HEAD:$f` échoue et
+    # renvoie une chaîne vide → considéré divergent → bloqué. C'est
+    # conservateur et voulu, pas un effet de bord : on ne sait rien de ce
+    # contenu, donc on ne l'écrase pas.
+    hash_head="$(git rev-parse "HEAD:$f" 2>/dev/null)"
+    if [ "$hash_local" != "$hash_head" ]; then
+      geles_perte="$geles_perte$f
+"
+      continue
+    fi
+    # Rien à perdre (contenu local == HEAD), mais `git checkout` efface le bit
+    # gelé sans un mot : le marqueur « ne touche pas à ce fichier » disparaît
+    # en silence. Non bloquant — juste signalé dans le récapitulatif.
+    a_maj_bit_efface="$a_maj_bit_efface$f
 "
   fi
+  a_maj="$a_maj$f
+"
 done <<<"$fichiers_du_kit"
 
 # Court-circuit « déjà aligné » : rien à créer, rien à mettre à jour, aucun
-# non-suivi (perdant ou non) à traiter.
-if [ -z "$a_creer" ] && [ -z "$a_maj" ] && [ -z "$non_suivis_perte" ] && [ -z "$non_suivis_ok" ]; then
+# non-suivi (perdant ou non) à traiter, aucun gelé perdant non plus — sans
+# ce dernier test, un projet dont le seul écart est un fichier gelé sortirait
+# ici en « rien à récupérer » et la garde plus bas ne serait jamais atteinte.
+if [ -z "$a_creer" ] && [ -z "$a_maj" ] && [ -z "$non_suivis_perte" ] && [ -z "$non_suivis_ok" ] && [ -z "$geles_perte" ]; then
   echo "   ✅ Rien à récupérer : le projet est déjà aligné sur le kit."
   exit 0
 fi
@@ -337,6 +417,15 @@ if [ -n "$non_suivis_perte" ]; then
   echo "        committe le fichier, déplace-le, ou exclus-le via .kit-paths pour débloquer)"
   echo ""
 fi
+if [ -n "$geles_perte" ]; then
+  n="$(echo "$geles_perte" | grep -c .)"
+  echo "  ⚠️  SUIVIS MAIS GELÉS PAR UN BIT GIT (skip-worktree / assume-unchanged),"
+  echo "      CONTENU LOCAL JAMAIS COMMITTÉ — LA SYNCHRONISATION REFUSERA DE LES ÉCRASER ($n)"
+  echo "$geles_perte" | grep . | sed 's/^/       /'
+  echo "       (git checkout écraserait le contenu local ET effacerait le bit posé :"
+  echo "        aucune trace de ton intention ne survivrait après coup)"
+  echo ""
+fi
 if [ -n "$non_suivis_ok" ]; then
   n="$(echo "$non_suivis_ok" | grep -c .)"
   echo "  PRÉSENTS ICI, NON SUIVIS PAR GIT, MAIS DÉJÀ IDENTIQUES AU KIT ($n) — seront indexés, rien à perdre"
@@ -353,6 +442,14 @@ if [ -n "$a_maj" ]; then
   n="$(echo "$a_maj" | grep -c .)"
   echo "  À METTRE À JOUR ($n)"
   echo "$a_maj" | grep . | sed 's/^/       /'
+  echo ""
+fi
+if [ -n "$a_maj_bit_efface" ]; then
+  n="$(echo "$a_maj_bit_efface" | grep -c .)"
+  echo "  ⚠️  PARMI EUX, LE BIT GELÉ (skip-worktree / assume-unchanged) SERA EFFACÉ SANS AVERTISSEMENT ($n)"
+  echo "$a_maj_bit_efface" | grep . | sed 's/^/       /'
+  echo "       (rien à perdre : contenu local identique à HEAD ; mais le marqueur"
+  echo "        \"ne touche pas à ce fichier\" disparaît — repose-le après coup si besoin)"
   echo ""
 fi
 if [ "$identiques" -gt 0 ]; then
@@ -389,12 +486,43 @@ fi
 # aurait livré le correctif à cette garde. Le blocage n'est pas permanent :
 # `.kit-paths` (voir en tête de ce script) permet de l'exclure du périmètre
 # géré, ou de le committer pour lever le blocage.
+#
+# Même piège pour la garde `geles_perte` juste en dessous : si ce script porte
+# un bit skip-worktree/assume-unchanged localement avec un contenu jamais
+# committé, la synchro qui livrerait son propre correctif se bloque elle
+# aussi. Mais ici les issues sont PRATICABLES sans rien perdre : le fichier
+# étant suivi (contrairement au cas non-suivi ci-dessus), `git update-index
+# --no-skip-worktree -- tools/update_kit.sh` puis un `git checkout` manuel
+# lèvent le blocage sans effacer de travail irremplaçable.
 if [ -n "$non_suivis_perte" ]; then
   echo "❌ Des fichiers non suivis par git seraient écrasés SANS RETOUR POSSIBLE :" >&2
   echo "$non_suivis_perte" | grep . | sed 's/^/     /' >&2
   echo "" >&2
   echo "   Trois issues, à toi de choisir :" >&2
   echo "     1. committer le fichier (git add -- <chemin> && git commit)" >&2
+  echo "     2. le déplacer hors du chemin gelé" >&2
+  echo "     3. l'exclure en déclarant .kit-paths (voir en tête de ce script)" >&2
+  exit 1
+fi
+
+# ── GARDE D'ÉCRASEMENT (bit skip-worktree / assume-unchanged, bug-003) ──────
+# Même contrat que la garde ci-dessus, pour le trou qu'elle ne couvre pas :
+# un fichier SUIVI mais gelé, dont le contenu local n'a jamais été committé
+# (geles_perte, déjà établi à la classification). `git checkout` l'écraserait
+# ET effacerait le bit, sans laisser aucune trace de l'intention de
+# l'utilisateur. Reste après la sortie --dry-run pour la même raison que la
+# garde précédente : la remonter bloquerait aussi la simulation.
+if [ -n "$geles_perte" ]; then
+  echo "❌ MODIFICATION LOCALE INVISIBLE : des fichiers suivis mais gelés par un bit git" >&2
+  echo "   (skip-worktree ou assume-unchanged) seraient écrasés par git checkout, qui" >&2
+  echo "   efface aussi le bit — aucune trace de ton intention ne survivrait :" >&2
+  echo "$geles_perte" | grep . | sed 's/^/     /' >&2
+  echo "" >&2
+  echo "   Trois issues, à toi de choisir :" >&2
+  echo "     1. lever le bit d'abord — git update-index --no-skip-worktree -- <chemin>" >&2
+  echo "        (ou --no-assume-unchanged, selon celui qui est posé) — PUIS committer" >&2
+  echo "        (git add -- <chemin> && git commit) ou jeter le contenu local :" >&2
+  echo "        \`git add\` seul n'indexe RIEN tant que le bit reste posé" >&2
   echo "     2. le déplacer hors du chemin gelé" >&2
   echo "     3. l'exclure en déclarant .kit-paths (voir en tête de ce script)" >&2
   exit 1
@@ -410,13 +538,18 @@ git checkout "$DISTANT/$BRANCHE" -- $presents || {
 # dans les projets, et personne ne s'en aperçoit. On le SIGNALE, sans jamais le
 # supprimer — le script ne peut pas distinguer un fichier retiré du kit d'un
 # ajout local délibéré, et effacer le second serait une perte silencieuse.
+#
+# ⚠️ Même exposition qu'à la classification : sans `-c core.quotepath=off`, un
+# nom accentué sortirait cité (`"r\303\251vision.md"`) d'un côté ou de l'autre
+# selon que git le voit ou non comme « spécial », et `comm -23` comparerait des
+# représentations qui ne correspondent plus au même fichier.
 orphelins=""
 for chemin in $presents; do
   # Seuls les répertoires sont concernés : un fichier listé nommément et absent
   # du kit n'aurait pas été retenu plus haut.
   [ -d "$chemin" ] || continue
-  au_kit="$(git ls-tree -r --name-only "$DISTANT/$BRANCHE" -- "$chemin" 2>/dev/null | sort)"
-  ici="$(git ls-files -- "$chemin" | sort)"
+  au_kit="$(git -c core.quotepath=off ls-tree -r --name-only "$DISTANT/$BRANCHE" -- "$chemin" 2>/dev/null | sort)"
+  ici="$(git -c core.quotepath=off ls-files -- "$chemin" | sort)"
   manquants="$(comm -23 <(echo "$ici") <(echo "$au_kit"))"
   [ -n "$manquants" ] && orphelins="$orphelins$manquants
 "
