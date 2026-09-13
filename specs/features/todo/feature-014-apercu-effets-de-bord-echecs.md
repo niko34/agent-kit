@@ -188,6 +188,25 @@ atteint par un test. L'état laissé par un échec partiel n'est décrit nulle p
   en passant est exactement la dérive de périmètre que le découpage cherche à
   éviter.
 
+## À ajouter — constats de l'audit de `bug-006` (2026-09-13)
+
+**L'aperçu est muet sur les objets non réguliers**, tous établis par exécution :
+
+- un **lien symbolique** d'ancêtre pointant vers un répertoire — cas réel du
+  partage de skills entre projets — est **remplacé par un vrai répertoire**. La
+  cible externe reste intacte, mais **le câblage disparaît sans aucune mention
+  dans l'aperçu** ;
+- un **lien cassé** et un **FIFO** sont **supprimés en silence**.
+
+Rien n'est irrécupérable dans ces trois cas, mais l'aperçu **ne dit pas ce qu'il
+va faire** — ce qui est précisément l'objet de la garantie 10.
+
+**Non vérifiable dans le conteneur** : l'échec **partiel** de `git checkout`. En
+root sur tmpfs, ni `chmod` ni `chattr +i` ne provoquent d'échec d'écriture.
+L'état laissé par une écriture interrompue reste une **hypothèse** — le dire, ou
+fabriquer l'environnement qui permet de l'éprouver, comme l'audit l'a fait en
+compilant bash 4.3 pour `feature-012`.
+
 ## Hors périmètre
 - Les garanties 1, 2, 14, 15, 16 — feature-006 (lot 1)
 - Les garanties 5, 6, 7, 17 — feature-012

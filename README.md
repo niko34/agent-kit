@@ -217,6 +217,16 @@ mv <chemin> <ailleurs>              # 2. le déplacer hors du chemin gelé
 ou l'exclure du périmètre géré en le retirant de `.kit-paths` (voir plus bas). Un
 non-suivi déjà identique au kit ne bloque rien : il sera simplement indexé.
 
+Une sixième catégorie couvre les **obstacles de type** : un chemin gelé que le kit place
+sous un répertoire (ex. `.claude/skills/db-migrations/SKILL.md`) peut être occupé, sur
+l'un de ses composants **ancêtres** — jamais sa feuille, voir
+[ADR-0016](docs/adr/0016-fidelite-de-type-des-chemins-geles.md) —, par un **fichier
+régulier** là où le kit attend un répertoire. Un tel obstacle, s'il n'est pas récupérable
+(non suivi, ou suivi mais divergent de `HEAD`), n'est plus jamais classé « à créer » :
+il apparaît dans sa propre catégorie et **fait échouer la synchronisation réelle avant
+tout `git checkout`**, avec les trois mêmes issues (le déplacer, le committer, ou
+l'exclure via `.kit-paths`). Un obstacle suivi et identique à `HEAD` ne bloque rien.
+
 #### Un projet qui n'adopte pas tout le kit
 
 Tous les projets ne descendent pas du kit. Certains le **précèdent**, et ont spécialisé

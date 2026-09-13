@@ -1006,5 +1006,208 @@ class KitPathsGrammaireTest(unittest.TestCase):
         self.assertNotIn("Déclaré dans .kit-paths mais absent", sortie)
 
 
+class GardeObstacleTypeTest(unittest.TestCase):
+    """bug-006 : un ANCÊTRE d'un chemin gelé (jamais le chemin lui-même) est un
+    FICHIER RÉGULIER là où le kit attend un RÉPERTOIRE. `[ ! -e "$f" ]` ne
+    voyait alors qu'une feuille absente — classée « à créer » — et
+    `git checkout` supprimait l'obstacle pour créer le répertoire, sans
+    aucun retour possible pour un contenu ignoré ou non suivi. Troisième
+    garde de la famille (`bug-001`, `bug-003`), avant tout `git checkout`.
+
+    Piège de mise en scène déjà payé sur bug-001, rejoué ici : `.gitignore`
+    doit être COMMITTÉ (`committer_dans_projet`) avant d'écrire l'obstacle,
+    sinon la garde d'arbre sale préexistante tire la première et le cas
+    passerait pour la mauvaise raison, sans qu'aucun mutant ne meure.
+    """
+
+    def setUp(self) -> None:
+        self.contexte = fabriquer_kit_et_projet()
+        self.addCleanup(self.contexte.fermer)
+
+    def _arbre_propre(self) -> None:
+        arrange = _git(["status", "--porcelain"], self.contexte.projet, self.contexte.env)
+        assert arrange.stdout == "", (
+            "arrange cassé : l'obstacle doit rester ignoré, l'arbre doit "
+            f"rester propre au sens de `git status --porcelain` ; obtenu "
+            f"{arrange.stdout!r}"
+        )
+
+    # ── O1 — obstacle superficiel : fichier ignoré à la racine même du
+    # répertoire gelé (reproduction littérale du relevé de la spec).
+    #
+    # ⚠️ RÉGRESSION, pas garde-fou : ce cas est vu ÉCHOUER sur le code
+    # d'avant le fix (sortie 0, fichier détruit — voir le rapport de test).
+
+    def test_O1_fichier_ignore_a_la_place_repertoire_gele_refuse_intact(
+        self,
+    ) -> None:
+        self.contexte.committer_dans_kit(
+            ".claude/skills/db-migrations/SKILL.md", "contenu du kit\n"
+        )
+        self.contexte.committer_dans_projet(
+            ".gitignore", ".claude/skills/db-migrations\n"
+        )
+        obstacle = self.contexte.projet / ".claude/skills/db-migrations"
+        obstacle.parent.mkdir(parents=True, exist_ok=True)
+        contenu_local = "MA CONFIG LOCALE, IGNOREE, IRREMPLACABLE\n"
+        obstacle.write_text(contenu_local, encoding="utf-8")
+        self._arbre_propre()
+
+        resultat = self.contexte.executer_update_kit()
+
+        affirmer_seule_garde(self, resultat, "type_incompatible")
+        self.assertNotEqual(0, resultat.returncode)
+        self.assertTrue(obstacle.is_file(), "l'obstacle a été détruit ou transformé")
+        self.assertEqual(contenu_local, obstacle.read_text(encoding="utf-8"))
+
+    # ── O2 — obstacle PROFOND, sous une racine déclarée (`.claude/agents`)
+    # mais pas à la racine elle-même : preuve que le contrôle remonte tous
+    # les ancêtres de `$f`, pas seulement les racines de `presents`.
+
+    def test_O2_obstacle_profond_sous_racine_declaree_refuse_intact(self) -> None:
+        self.contexte.committer_dans_kit(
+            ".claude/agents/sous/profil.md", "contenu du kit\n"
+        )
+        self.contexte.committer_dans_projet(".gitignore", ".claude/agents/sous\n")
+        obstacle = self.contexte.projet / ".claude/agents/sous"
+        obstacle.parent.mkdir(parents=True, exist_ok=True)
+        contenu_local = "MA CONFIG LOCALE PROFONDE, IGNOREE, IRREMPLACABLE\n"
+        obstacle.write_text(contenu_local, encoding="utf-8")
+        self._arbre_propre()
+
+        resultat = self.contexte.executer_update_kit()
+
+        affirmer_seule_garde(self, resultat, "type_incompatible")
+        self.assertNotEqual(0, resultat.returncode)
+        self.assertTrue(
+            obstacle.is_file(), "l'obstacle profond a été détruit ou transformé"
+        )
+        self.assertEqual(contenu_local, obstacle.read_text(encoding="utf-8"))
+
+    # ── O3 — obstacle SUIVI et PROPRE : non-régression du cas qui marche,
+    # le risque principal signalé par l'orchestrateur.
+
+    def test_O3_obstacle_suivi_et_propre_remplacement_autorise(self) -> None:
+        self.contexte.committer_dans_kit(
+            ".claude/skills/db-migrations/SKILL.md", "contenu du kit\n"
+        )
+        self.contexte.committer_dans_projet(
+            ".claude/skills/db-migrations", "SUIVI ET PROPRE, RÉCUPÉRABLE\n"
+        )
+
+        resultat = self.contexte.executer_update_kit()
+
+        affirmer_seule_garde(self, resultat, None)
+        self.assertEqual(0, resultat.returncode)
+        chemin = self.contexte.projet / ".claude/skills/db-migrations"
+        self.assertTrue(chemin.is_dir(), "le remplacement attendu n'a pas eu lieu")
+        self.assertEqual(
+            "contenu du kit\n", (chemin / "SKILL.md").read_text(encoding="utf-8")
+        )
+
+    # ── O4 — --dry-run sur O1 : garde inactive en simulation, le chemin
+    # change de catégorie (jamais « À CRÉER »), et aucun marqueur de garde
+    # n'apparaît — le fragment ne vit que dans la garde, jamais le
+    # récapitulatif.
+
+    def test_O4_dry_run_sur_O1_change_de_categorie_sans_garde(self) -> None:
+        self.contexte.committer_dans_kit(
+            ".claude/skills/db-migrations/SKILL.md", "contenu du kit\n"
+        )
+        self.contexte.committer_dans_projet(
+            ".gitignore", ".claude/skills/db-migrations\n"
+        )
+        obstacle = self.contexte.projet / ".claude/skills/db-migrations"
+        obstacle.parent.mkdir(parents=True, exist_ok=True)
+        obstacle.write_text(
+            "MA CONFIG LOCALE, IGNOREE, IRREMPLACABLE\n", encoding="utf-8"
+        )
+        self._arbre_propre()
+
+        resultat = self.contexte.executer_update_kit("--dry-run")
+
+        affirmer_seule_garde(self, resultat, None)
+        self.assertEqual(0, resultat.returncode)
+        sortie = resultat.stdout + resultat.stderr
+        self.assertNotIn("À CRÉER", sortie)
+        self.assertIn("CHEMINS GELÉS OCCUPÉS PAR UN FICHIER", sortie)
+        self.assertIn(".claude/skills/db-migrations", sortie)
+        self.assertNotIn(".claude/skills/db-migrations/SKILL.md", sortie)
+        self.assertTrue(obstacle.is_file(), "--dry-run ne doit jamais toucher au disque")
+
+    # ── O5 — parité récapitulatif --dry-run / réel sur O1, même schéma que
+    # T8 (bug-003) : deux dépôts jetables indépendants.
+
+    def test_O5_parite_recapitulatif_dry_run_et_reel_sur_O1(self) -> None:
+        self.contexte.committer_dans_kit(
+            ".claude/skills/db-migrations/SKILL.md", "contenu du kit\n"
+        )
+        self.contexte.committer_dans_projet(
+            ".gitignore", ".claude/skills/db-migrations\n"
+        )
+        obstacle = self.contexte.projet / ".claude/skills/db-migrations"
+        obstacle.parent.mkdir(parents=True, exist_ok=True)
+        obstacle.write_text(
+            "MA CONFIG LOCALE, IGNOREE, IRREMPLACABLE\n", encoding="utf-8"
+        )
+        self._arbre_propre()
+        apercu = self.contexte.executer_update_kit("--dry-run")
+
+        contexte_reel = fabriquer_kit_et_projet()
+        self.addCleanup(contexte_reel.fermer)
+        contexte_reel.committer_dans_kit(
+            ".claude/skills/db-migrations/SKILL.md", "contenu du kit\n"
+        )
+        contexte_reel.committer_dans_projet(
+            ".gitignore", ".claude/skills/db-migrations\n"
+        )
+        obstacle_reel = contexte_reel.projet / ".claude/skills/db-migrations"
+        obstacle_reel.parent.mkdir(parents=True, exist_ok=True)
+        obstacle_reel.write_text(
+            "MA CONFIG LOCALE, IGNOREE, IRREMPLACABLE\n", encoding="utf-8"
+        )
+        reel = contexte_reel.executer_update_kit()
+
+        bloc_simulation = extraire_recapitulatif(apercu.stdout)
+        bloc_reel = extraire_recapitulatif(reel.stdout)
+
+        self.assertTrue(bloc_simulation, "bloc récapitulatif introuvable en --dry-run")
+        self.assertEqual(bloc_simulation, bloc_reel)
+
+    # ── O6 — épinglage du cas INVERSE : un RÉPERTOIRE à la place d'un
+    # FICHIER gelé. Mécanisme différent (`non_suivis_perte`, garde
+    # `ecrasement`), pas celui de bug-006 : la boucle de remontée d'ancêtres
+    # ne trouve rien pour un chemin SANS « / » (GUIDE.md), donc `obstacles_type`
+    # ne s'en mêle jamais.
+    #
+    # ⚠️ La protection ici est un EFFET DE BORD NON CONÇU : `git hash-object`
+    # échoue sur un répertoire, ce qui le fait classer « non suivi divergent »
+    # comme n'importe quel contenu illisible — et le message de la garde
+    # parle à tort d'un « fichier » là où c'est un répertoire. Sans cet
+    # épinglage, une simplification future de cette classification pourrait
+    # rouvrir ce trou en silence : un quatrième chemin de destruction
+    # existerait déjà, non couvert par bug-006 ni par aucune autre spec.
+
+    def test_O6_repertoire_a_la_place_d_un_fichier_gele_deja_protege_par_ecrasement(
+        self,
+    ) -> None:
+        self.contexte.committer_dans_kit("GUIDE.md", "contenu du kit\n")
+        self.contexte.committer_dans_projet(".gitignore", "GUIDE.md\n")
+        obstacle = self.contexte.projet / "GUIDE.md"
+        obstacle.mkdir()
+        contenu_local = "CONTENU DU RÉPERTOIRE, IGNORÉ, IRREMPLAÇABLE\n"
+        (obstacle / "interne.txt").write_text(contenu_local, encoding="utf-8")
+        self._arbre_propre()
+
+        resultat = self.contexte.executer_update_kit()
+
+        affirmer_seule_garde(self, resultat, "ecrasement")
+        self.assertNotEqual(0, resultat.returncode)
+        self.assertTrue(obstacle.is_dir(), "le répertoire a été détruit ou transformé")
+        self.assertEqual(
+            contenu_local, (obstacle / "interne.txt").read_text(encoding="utf-8")
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

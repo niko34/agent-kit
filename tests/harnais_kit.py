@@ -332,6 +332,7 @@ MARQUEURS_DE_GARDE: dict[str, str] = {
     "ecrasement": "SANS RETOUR POSSIBLE",
     "deja_aligne": "Rien à récupérer",
     "bit_gele": "MODIFICATION LOCALE INVISIBLE",
+    "type_incompatible": "TYPE INCOMPATIBLE",
 }
 
 

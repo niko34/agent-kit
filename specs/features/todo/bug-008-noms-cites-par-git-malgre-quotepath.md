@@ -103,6 +103,16 @@ Un correctif qui normaliserait les noms casserait les chemins accentués que
   retour-ligne et guillemet « quotepath ou non ». C'est le point de départ à
   vérifier en premier : si c'est faux, ce bug n'existe pas.
 
+## Cas à ajouter — constat de l'audit de `bug-006` (2026-09-13)
+
+⚠️ **La garde livrée par `bug-006` hérite de cet angle mort.** Établi par
+exécution : un composant de chemin **du kit** contenant un guillemet sort cité
+de `ls-tree` ; le test `[ -f ]` de la garde porte alors sur un **mauvais nom**,
+l'obstacle ignoré n'est pas vu, et il est **détruit** — sortie 0.
+
+Ce cas doit être couvert par ce cycle : la garde de `bug-006` ne peut pas être
+plus fiable que les noms qu'on lui donne.
+
 ## Hors périmètre
 
 - Les noms **non-ASCII** — traités par `bug-003`, ADR-0013 décision 2

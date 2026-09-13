@@ -70,6 +70,25 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
   - `presents` est désormais un tableau indexé (plus aucune expansion non
     quotée d'une liste de chemins) ; 55 → 71 tests ; `shellcheck` passe de
     un avertissement à zéro.
+- **`tools/update_kit.sh` : troisième garde de la famille `bug-001`/`bug-003`
+  — un chemin gelé attendu comme répertoire mais occupé par un fichier
+  régulier n'est plus détruit en silence.** Établi par exécution : un fichier
+  **ignoré** occupant l'emplacement d'un répertoire du kit (ex.
+  `.claude/skills/db-migrations`) était classé « à créer » dans l'aperçu,
+  puis remplacé par un répertoire lors de la synchronisation réelle — sortie
+  0, contenu irrécupérable puisqu'absent de l'index. Chaque ANCÊTRE (jamais
+  la feuille) du chemin de destination est désormais examiné ; un ancêtre non
+  récupérable (non suivi, ou suivi mais divergent de `HEAD`) fait échouer la
+  synchronisation avant tout `git checkout`, et l'aperçu le signale dans sa
+  propre catégorie plutôt qu'en « à créer ». Un ancêtre suivi et identique à
+  `HEAD` ne bloque rien. **Ce qui peut surprendre** : une synchronisation qui
+  réussissait jusqu'ici en silence peut désormais refuser. Voir ADR-0016.
+  **Ce que ça n'améliore pas** : la fidélité des noms cités par git
+  (`bug-008`) reste un angle mort de cette garde comme des précédentes ; le
+  cas inverse — un répertoire **suivi** occupant la place d'un fichier gelé —
+  n'est pas couvert et détruit toujours son contenu ignoré en silence, sortie
+  0 (`bug-009`) ; l'aperçu reste muet sur les liens symboliques, liens cassés
+  et FIFO (`feature-014`). 71 → 77 tests, `shellcheck` toujours à zéro.
 
 ### Intégration continue
 
@@ -78,6 +97,15 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 
 ### Documentation
 
+- `docs/adr/0016-fidelite-de-type-des-chemins-geles.md` [nouveau] : la garde
+  de fidélité de type ne porte que sur les ancêtres d'un chemin gelé, jamais
+  sur sa feuille — la feuille est déjà couverte par la garde de `bug-001`, et
+  `code-reviewer` a vérifié par mutation qu'étendre l'invariant à la feuille
+  fait mourir dix tests préexistants. Alternatives écartées (laisser
+  `git checkout` échouer seul, traiter le cas en dur) et ce que la décision
+  ne ferme pas (noms cités, liens symboliques, atomicité, cas inverse).
+- `README.md` : la section synchronisation décrit la nouvelle catégorie
+  d'aperçu (obstacle de type) et son motif de refus.
 - `docs/adr/0015-grammaire-kit-paths.md` [nouveau] : `.kit-paths` a une
   grammaire et c'est un contrat public — le compromis du trim explicite (prix
   des espaces intérieures), les alternatives écartées (refus nommé de

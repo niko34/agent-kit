@@ -377,6 +377,13 @@ fichiers_du_kit="$(git -c core.quotepath=off ls-tree -r --name-only "$DISTANT/$B
 #      séparément dans le récapitulatif (a_maj_bit_efface), jamais bloquant
 #   d. sinon (pas de bit) → à mettre à jour (inchangé)
 #
+# Sixième issue (bug-006) : un ANCÊTRE de `$f` — jamais `$f` lui-même — est un
+# fichier régulier là où le kit attend un répertoire. Testé AVANT l'issue 1
+# (absent du projet), dans la boucle plus bas, sur les préfixes de `$f` en
+# bash pur. Non récupérable (obstacle non suivi, ou suivi mais divergent de
+# HEAD) → `obstacles_type`, jamais « à créer » ; récupérable (suivi et
+# identique à HEAD) → comportement d'aujourd'hui conservé, issue 1 inchangée.
+#
 # La divergence de hash pour un non-suivi est calculée ICI, à la
 # classification, et nulle part ailleurs : c'est la même valeur qui alimente
 # le récapitulatif et la garde d'écrasement plus bas. Deux calculs séparés
@@ -405,10 +412,83 @@ non_suivis_ok=""
 a_maj=""
 a_maj_bit_efface=""
 geles_perte=""
+obstacles_type=""
 identiques=0
 
 while IFS= read -r f; do
   [ -z "$f" ] && continue
+
+  # ── DÉTECTION D'OBSTACLE DE TYPE (bug-006) ────────────────────────────────
+  # Un chemin gelé que le kit place SOUS un répertoire (ex.
+  # `.claude/skills/db-migrations/SKILL.md`) peut être inatteignable parce
+  # qu'un de ses ANCÊTRES — jamais `$f` lui-même, la feuille — est ici un
+  # FICHIER RÉGULIER : `[ ! -e "$f" ]` ci-dessous le classerait alors « à
+  # créer », et `git checkout` supprimerait l'obstacle pour créer le
+  # répertoire. Remontée pure bash des préfixes de `$f`, sans aucun appel git :
+  # aucune primitive neuve n'est nécessaire hors de la branche « obstacle
+  # trouvé » plus bas.
+  #
+  # ⚠️ Ancêtres SEULEMENT. Le cas inverse — un répertoire occupant la place
+  # d'un FICHIER gelé — est déjà classé `non_suivis_perte` plus bas (`git
+  # ls-files`/`git hash-object` échouent sur un répertoire) : l'inclure ici
+  # ferait parler deux gardes sur la même exécution.
+  #
+  # ⚠️ TOUS les composants sont parcourus, pas seulement les racines de
+  # `presents` : un obstacle PROFOND (un fichier ignoré à
+  # `.claude/agents/sous`, alors que le kit y place un répertoire contenant
+  # `profil.md`) est détruit par le même mécanisme, et un contrôle limité aux
+  # racines déclarées le manquerait.
+  obstacle=""
+  ancetre=""
+  resto="$f"
+  while [[ "$resto" == */* ]]; do
+    compo="${resto%%/*}"
+    resto="${resto#*/}"
+    if [ -z "$ancetre" ]; then
+      ancetre="$compo"
+    else
+      ancetre="$ancetre/$compo"
+    fi
+    if [ -f "$ancetre" ]; then
+      obstacle="$ancetre"
+      break
+    fi
+  done
+  if [ -n "$obstacle" ]; then
+    # La récupérabilité — et elle seule — décide de bloquer. Mêmes primitives
+    # que la cinquième issue (`geles_perte`) plus bas : un obstacle SUIVI et
+    # IDENTIQUE à HEAD ne perd rien, `git checkout` peut le traiter comme
+    # aujourd'hui (comportement conservé, aucune régression du cas « suivi et
+    # propre »). Un obstacle non suivi (ignoré ou non) ou suivi mais divergent
+    # de HEAD n'est récupérable par rien après coup : bloquant.
+    recuperable=0
+    if git ls-files --error-unmatch -- "$obstacle" >/dev/null 2>&1; then
+      hash_obstacle_local="$(git hash-object -- "$obstacle" 2>/dev/null)"
+      hash_obstacle_head="$(git rev-parse "HEAD:$obstacle" 2>/dev/null)"
+      # Cas limite délibéré, même convention que `geles_perte` : un obstacle
+      # INDEXÉ mais absent de HEAD (ajouté, jamais committé) fait échouer
+      # `rev-parse`, qui rend une chaîne vide — différente du hash local, donc
+      # non récupérable. Conservateur : on ne sait rien de ce contenu.
+      [ "$hash_obstacle_local" = "$hash_obstacle_head" ] && recuperable=1
+    fi
+    if [ "$recuperable" -ne 1 ]; then
+      # Accumulé tel quel, dédoublonné plus tard (récapitulatif et garde) par
+      # `sort -u`, même convention que le dédoublonnage de `presents` plus
+      # haut : N fichiers du kit sous le même obstacle produisent N lignes
+      # identiques ici, une seule à l'affichage.
+      obstacles_type="$obstacles_type$obstacle
+"
+      # Cas limite documenté, pas un défaut : un obstacle SUIVI mais MODIFIÉ
+      # (contenu local ≠ HEAD ≠ non suivi) est déjà arrêté PLUS TÔT en mode
+      # réel par la garde d'arbre de travail sale (`git status --porcelain`
+      # le voit). En `--dry-run`, cette garde-là ne s'applique pas : le
+      # marqueur neuf peut alors apparaître seul au récapitulatif — ce n'est
+      # pas une rupture de parité avec le réel, puisqu'en réel aucun
+      # récapitulatif n'est produit dans ce cas (le script sort avant).
+      continue
+    fi
+  fi
+
   if [ ! -e "$f" ]; then
     a_creer="$a_creer$f
 "
@@ -476,10 +556,11 @@ while IFS= read -r f; do
 done <<<"$fichiers_du_kit"
 
 # Court-circuit « déjà aligné » : rien à créer, rien à mettre à jour, aucun
-# non-suivi (perdant ou non) à traiter, aucun gelé perdant non plus — sans
-# ce dernier test, un projet dont le seul écart est un fichier gelé sortirait
-# ici en « rien à récupérer » et la garde plus bas ne serait jamais atteinte.
-if [ -z "$a_creer" ] && [ -z "$a_maj" ] && [ -z "$non_suivis_perte" ] && [ -z "$non_suivis_ok" ] && [ -z "$geles_perte" ]; then
+# non-suivi (perdant ou non) à traiter, aucun gelé perdant non plus, ni aucun
+# obstacle de type (bug-006) — sans ce dernier test, un projet dont le seul
+# écart est un obstacle sortirait ici en « rien à récupérer » et la garde plus
+# bas ne serait jamais atteinte. Même piège déjà rencontré sur `geles_perte`.
+if [ -z "$a_creer" ] && [ -z "$a_maj" ] && [ -z "$non_suivis_perte" ] && [ -z "$non_suivis_ok" ] && [ -z "$geles_perte" ] && [ -z "$obstacles_type" ]; then
   echo "   ✅ Rien à récupérer : le projet est déjà aligné sur le kit."
   exit 0
 fi
@@ -505,6 +586,16 @@ if [ -n "$geles_perte" ]; then
   echo "$geles_perte" | grep . | sed 's/^/       /'
   echo "       (git checkout écraserait le contenu local ET effacerait le bit posé :"
   echo "        aucune trace de ton intention ne survivrait après coup)"
+  echo ""
+fi
+if [ -n "$obstacles_type" ]; then
+  # Dédoublonné ici, au premier affichage (récapitulatif) : N fichiers du kit
+  # sous le même obstacle ne produisent qu'UNE seule ligne.
+  obstacles_uniques="$(echo "$obstacles_type" | grep . | sort -u)"
+  n="$(echo "$obstacles_uniques" | grep -c .)"
+  echo "  ⚠️  CHEMINS GELÉS OCCUPÉS PAR UN FICHIER, LÀ OÙ LE KIT ATTEND UN RÉPERTOIRE ($n)"
+  echo "$obstacles_uniques" | sed 's/^/       /;s/$/  (fichier ici, répertoire dans le kit)/'
+  echo "       (contenu non récupérable : aucun \`git checkout\` ne le restaurera après coup)"
   echo ""
 fi
 if [ -n "$non_suivis_ok" ]; then
@@ -606,6 +697,27 @@ if [ -n "$geles_perte" ]; then
   echo "        \`git add\` seul n'indexe RIEN tant que le bit reste posé" >&2
   echo "     2. le déplacer hors du chemin gelé" >&2
   echo "     3. l'exclure en déclarant .kit-paths (voir en tête de ce script)" >&2
+  exit 1
+fi
+
+# ── GARDE D'ÉCRASEMENT (obstacle de type, bug-006) ──────────────────────────
+# Troisième garde de la même famille, pour le trou que les deux précédentes ne
+# couvrent pas : un chemin gelé attendu comme RÉPERTOIRE par le kit est occupé
+# ici par un FICHIER RÉGULIER non récupérable (obstacles_type, déjà établi à
+# la classification ci-dessus). `git checkout` supprimerait ce fichier pour
+# créer le répertoire — sans aucun retour arrière possible, son contenu
+# n'étant nulle part dans git.
+#
+# ⚠️ Reste après la sortie --dry-run, même raison que les deux gardes
+# ci-dessus : la remonter bloquerait aussi la SIMULATION — régression exacte
+# du défaut 1 de feature-005 (refuser de PRÉVISUALISER sur un arbre qui en
+# aurait besoin).
+if [ -n "$obstacles_type" ]; then
+  obstacles_uniques="$(echo "$obstacles_type" | grep . | sort -u)"
+  echo "❌ TYPE INCOMPATIBLE : un chemin gelé est occupé par un objet d'un autre type," >&2
+  echo "   dont le contenu n'est pas récupérable :" >&2
+  echo "$obstacles_uniques" | sed 's/^/     /;s/$/  (fichier ici, répertoire dans le kit)/' >&2
+  echo "   Trois issues : le déplacer / le committer / l'exclure via .kit-paths" >&2
   exit 1
 fi
 
