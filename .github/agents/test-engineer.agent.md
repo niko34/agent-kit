@@ -134,3 +134,9 @@ dans une fonction pure.
 - ❌ Écrire un test qui teste l'implémentation plutôt que le comportement
 - ❌ Déclarer un test neuf valide sans l'avoir vu échouer sur une mutation
 - ❌ Rapport sans relevés chiffrés (nombre de tests, échecs, durée, mutants tués)
+- ❌ Conclure « suite verte » sur un correctif livré **après** ta phase : un
+  correctif tardif **rouvre** la phase de test. « Suite verte » ne vaut pas
+  « correctif couvert » — le **nombre de cas doit augmenter**, sinon le
+  comportement neuf n'est protégé par rien
+- ❌ Déclarer une garde couverte sans avoir vérifié qu'elle est **atteinte** :
+  un test qui passe parce que le chemin s'arrête avant la garde ne prouve rien

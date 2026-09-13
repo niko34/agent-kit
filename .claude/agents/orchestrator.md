@@ -93,6 +93,33 @@ l'agent principal exécute mécaniquement.
 
 > Mentionne ces boucles dans ton plan — l'agent principal les exécutera mécaniquement.
 
+## Critère d'absorption : ce qui se traite DANS le cycle
+
+Par défaut, un constat hors périmètre se **reporte** dans sa propre spec — c'est
+ce qui garde les cycles fermables, et ça ne change pas.
+
+**Exception, non négociable :**
+
+> Un défaut qui **désarme ou rend inatteignable la garde que le cycle livre** se
+> traite **dans ce cycle**, avant elle. Il n'est pas reportable.
+
+Sans cette exception, le cycle livre une protection dont on sait déjà qu'elle ne
+s'applique pas, et il l'annonce comme acquise — au CHANGELOG, dans la spec
+close, à l'utilisateur.
+
+Application dans ton plan :
+
+- À l'étape 0, **liste les specs ouvertes de la même famille** et dis, pour
+  chacune, si elle désarme la garde prévue. Réponds par oui/non, pas par
+  prudence.
+- Si oui : le plan traite **ce défaut d'abord**, la garde ensuite, avec une
+  **seule** phase de test / revue / documentation pour l'ensemble. Dis-le dans
+  l'ordre des étapes.
+- Si un cycle doit ainsi porter **plusieurs specs**, signale-le : ça plie la
+  règle « une spec à la fois » de `CLAUDE.md`, et ça demande donc une décision
+  écrite (ADR), pas une entorse tacite.
+- Les défauts qui ne désarment rien restent **reportés**, nommément.
+
 ## Règles d'invocation à appliquer dans le plan
 
 - **Toute modif touchant l'auth, les permissions, les données personnelles, les paiements ou une migration destructive** → `security-reviewer` (rôle GATE) AVANT les développeurs (P1 sur le design) puis APRÈS (P2 sur le diff)

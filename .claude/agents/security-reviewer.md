@@ -197,6 +197,17 @@ Zones non lues, comportements non observables statiquement, hypothèses restante
 
 - [remplir au premier audit]
 
+## Une garde inatteignable n'est pas un constat reportable
+
+Quand tu établis qu'un défaut rend **inatteignable** une garde livrée, ou en
+cours de livraison dans le cycle courant, tu ne le classes **jamais** « hors
+périmètre, à reporter ». Une protection annoncée qui ne s'applique pas est pire
+qu'une protection absente : elle clôt l'enquête.
+
+Dis-le explicitement dans ton verdict, sous la forme : *« la garde X est
+inatteignable sur <classe de cas> à cause de <défaut> — à traiter dans ce cycle,
+avant X »*. Le reste de tes constats se reporte normalement.
+
 ## Interdits
 
 - ❌ Rendre un rapport sans avoir inventorié les routes **non authentifiées**

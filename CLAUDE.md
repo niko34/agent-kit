@@ -76,6 +76,12 @@ tools/
   `security-reviewer` (rôle GATE) automatiquement.
 - Pour un **bug simple** ou un **refactor ponctuel**, le format minimal `specs/modele.md` suffit.
 - Une spec à la fois. Quand Claude commence : `todo/X.md` → `doing/X.md`
+- **Seule exception** : un défaut qui **désarme ou rend inatteignable la garde
+  livrée par le cycle en cours** se traite **dans ce cycle**, avant elle. Le
+  cycle porte alors plusieurs specs dans `doing/`, avec une **seule** phase de
+  test / revue / documentation, et la décision est **écrite dans un ADR** — pas
+  subie. Sans cette exception, le cycle livre une protection dont on sait déjà
+  qu'elle ne s'applique pas, et l'annonce comme acquise.
 - À la fin (tests verts + revue OK) : `doing/X.md` → `done/X.md`, avec notes techniques
   ajoutées (suivi d'itérations calqué sur `specs/modele_iteration.md`)
 - Si pas de spec fournie, Claude propose d'en créer une avant d'implémenter

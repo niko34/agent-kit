@@ -44,3 +44,4 @@ Une simple préférence de style, un choix réversible en une heure ou un détai
 | [0014](0014-bornage-des-cycles-par-marqueur-declare.md) | Le bornage des cycles se fait par marqueur déclaré, jamais par nom d'agent en dur | Accepté — supersède ADR-0002 sur le bornage seul |
 | [0015](0015-grammaire-kit-paths.md) | `.kit-paths` a une grammaire, et c'est un contrat public | Accepté |
 | [0016](0016-fidelite-de-type-des-chemins-geles.md) | La garde de fidélité de type ne porte que sur les ancêtres du chemin, jamais sur sa feuille | Accepté |
+| [0017](0017-un-defaut-qui-desarme-la-garde-livree-entre-dans-le-cycle.md) | Un défaut qui rend inatteignable la garde livrée entre dans le cycle qui la livre | Accepté |

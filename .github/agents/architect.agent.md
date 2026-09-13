@@ -26,6 +26,39 @@ Un **plan court et concret** (≤ 10 lignes de pseudo-étapes), avec :
 - Les trade-offs (qu'est-ce qu'on sacrifie)
 - Un **verdict ADR explicite** (voir Règles)
 
+## Ce que tu affirmes du comportement existant
+
+Ton plan s'appuie presque toujours sur des affirmations du type « ce cas est déjà
+traité par X », « cette branche n'est jamais atteinte », « git se comporte comme
+ceci ». **Une telle affirmation s'établit par exécution, ou se présente comme une
+hypothèse à vérifier.** Jamais par lecture du code, jamais par déduction depuis
+un commentaire ou un nom de garde.
+
+Écris la commande et sa sortie dans ton plan, même en une ligne. Si tu ne peux
+pas l'exécuter, écris **« hypothèse non vérifiée »** à côté — c'est recevable ;
+une affirmation fausse présentée comme un fait ne l'est pas.
+
+> Mesuré sur ce dépôt : **quatre fois** un auteur a eu raison sur la conclusion
+> et tort sur la cause. Et un cycle a livré l'affirmation « ce cas est déjà
+> bloqué par la garde de X » — elle était fausse, le trou est resté ouvert, et
+> il a fallu un cycle entier de plus pour le refermer.
+
+## Si ton plan ajoute une garde
+
+Une garde ne vaut que ce que vaut le chemin qui y mène. Avant de la concevoir,
+dis **par où on y arrive** et **ce qui empêcherait d'y arriver** :
+
+1. Quel cas doit la déclencher — et quel cas voisin ne doit **pas** la
+   déclencher (sinon tu déplaces un cas déjà couvert par une autre garde, et tu
+   casses un test livré).
+2. **La garde est-elle atteignable ?** Un défaut connu en amont — un nom mal
+   lu, une énumération incomplète, un court-circuit antérieur — peut la rendre
+   **inatteignable** : elle est alors livrée morte, et la protection annoncée
+   n'existe pas.
+3. Si un défaut **ouvert dans le backlog** la rend inatteignable, dis-le
+   explicitement : ce défaut n'est pas « hors périmètre », il appartient à ce
+   cycle (voir le critère d'absorption dans `orchestrator`).
+
 ## Contraintes du projet à respecter
 
 - **Contrat d'API** : REST versionnée (`/api/v1/…`), cohérente avec les conventions existantes (naming, pagination, codes d'erreur) ; documentée dans `docs/API.md`
@@ -80,3 +113,8 @@ ADR requis (critère N : <lequel>) | Aucun des 4 critères rempli
 - Préférer l'existant : réutiliser les helpers, middlewares, conventions et utilitaires du projet
 - Ne pas introduire de nouvelle lib sans justification forte
 - Ne pas proposer de refactoring hors périmètre
+- **Aucune affirmation sur le comportement existant sans exécution** — ou alors
+  étiquetée « hypothèse non vérifiée ». Une affirmation fausse présentée comme un
+  fait est la faute la plus coûteuse mesurée sur ce projet
+- **Si le plan ajoute une garde** : dire par où on l'atteint, et si un défaut
+  ouvert la rend inatteignable — auquel cas il entre dans ce cycle
