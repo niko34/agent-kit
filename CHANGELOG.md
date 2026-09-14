@@ -7,10 +7,36 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 <!-- Les entrées ci-dessous documentent le KIT lui-même. Au démarrage d'un projet,
      les remplacer par le journal du projet. -->
 
-## [0.8.0] - 2026-09-13
+## [0.8.0] - 2026-09-14
 
 ### Centre de contrôle
 
+- **Le jeton dépend désormais du déploiement, plus de la route — lecture
+  comprise.** Un centre de contrôle lancé avec `hote = "0.0.0.0"` (ou toute
+  adresse non locale) et sans `fichier_jeton` livrait `GET /api/etat` en
+  `200` à quiconque sur le réseau : quatorze champs, l'activité de
+  développement entière (specs, workflows, état du dépôt, agents, journal
+  d'événements), sans secret exigé. Seule l'écriture était gardée, et le
+  serveur ne faisait qu'avertir au démarrage. Sous
+  [ADR-0020](docs/adr/0020-un-centre-de-controle-appartient-a-un-developpeur.md),
+  la règle change de forme :
+  - sur `127.0.0.1` (`localhost`, `::1`, y compris via `0.0.0.0`) : le jeton
+    reste **facultatif**, lecture et écriture fonctionnent sans secret ;
+  - au-delà : le jeton devient **obligatoire, lecture comprise** — toute
+    requête distante sans jeton valide est refusée (`401`).
+  - **Ce qui peut surprendre** : un tableau de bord consulté depuis un autre
+    poste **demande désormais un jeton pour lire**, pas seulement pour
+    lancer. À l'inverse, en local, le jeton **devient facultatif** — s'il
+    est configuré, il reste exigé (utile derrière un reverse proxy ou un
+    conteneur dont le trafic arrive en `127.0.0.1`).
+  - `Host` est validé sur toutes les routes (`421` sinon), `Origin` /
+    `Sec-Fetch-Site` sur les routes d'écriture (`403`), et l'en-tête
+    `Content-Security-Policy: frame-ancestors 'none'` est posé sur `/`.
+  - `/api/etat` porte un nouveau champ `jeton_requis` (« ce déploiement
+    exige-t-il un jeton pour ce demandeur ? »), distinct d'`ecriture_active`
+    (« ce demandeur peut-il écrire ? ») — ce dernier était auparavant calculé
+    sur la seule présence d'un jeton configuré, et annonçait `false` en local
+    sans jeton alors que l'écriture y fonctionnait déjà.
 - **Étape D : le tableau de bord peut désormais lancer un workflow déclaré, le
   suivre en direct, et l'interrompre.** Jusqu'ici `Handler` n'avait aucune
   méthode d'écriture (`do_POST` absent) : c'était la garantie d'
@@ -70,6 +96,21 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 - `specs/features/todo/bug-010-freinage-global-et-lecture-anonyme-non-bornee.md`
   et `specs/features/todo/bug-011-orphelin-detecte-jamais-repris.md` : les
   deux constats reportés par ce cycle, ouverts en spec.
+- **`bug-012`** — `docs/adr/0020-un-centre-de-controle-appartient-a-un-developpeur.md` :
+  nouvel ADR, la fondation du correctif ci-dessus (l'invariant « un centre de
+  contrôle appartient à un développeur », le jeton comme barrière de
+  rattachement dépendant du déploiement).
+- `control-center/README.md` : section « Le modèle de déploiement (ADR-0020) »
+  en tête, section « Étape D+ » sur la détection d'adresse locale et les deux
+  champs `ecriture_active`/`jeton_requis`, section Tests à jour (451 cas sur
+  treize suites, dont le harnais frontend et son pont Python).
+- `control-center/control-center.example.toml` : le bloc `[serveur]` énonce
+  désormais le modèle ADR-0020 en tête — la phrase affirmant que « la lecture
+  seule continue de fonctionner » sans jeton, devenue fausse à distance, est
+  retirée et remplacée par la règle dépendant du déploiement.
+- `specs/features/todo/bug-010-freinage-global-et-lecture-anonyme-non-bornee.md` :
+  périmètre élargi (le freinage à 20 échecs prive désormais aussi le
+  développeur local muni d'un jeton valide, lecture comprise).
 
 ## [0.7.0] - 2026-09-13
 

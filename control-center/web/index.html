@@ -8,6 +8,11 @@
 </head>
 <body>
 
+<div class="bandeau-hote" id="bandeau-hote" role="alert" hidden>
+  <p id="bandeau-hote-texte"></p>
+  <button type="button" id="bandeau-hote-bouton" class="action-ecriture">Réessayer</button>
+</div>
+
 <header class="barre">
   <div class="titre">
     <span class="marque">Centre de contrôle</span>
@@ -101,6 +106,20 @@
     <button type="button" id="tiroir-fermer" aria-label="Fermer">✕</button>
   </div>
   <pre id="tiroir-contenu"></pre>
+</div>
+
+<div class="porte" id="porte-jeton" role="dialog" aria-modal="true"
+     aria-labelledby="porte-titre" hidden>
+  <div class="porte-fond"></div>
+  <div class="porte-carte">
+    <h2 id="porte-titre"></h2>
+    <p id="porte-corps" class="note"></p>
+    <label for="porte-champ">Jeton de pilotage</label>
+    <input type="password" id="porte-champ" autocomplete="off" aria-describedby="porte-aide">
+    <p id="porte-aide" class="note">Le même jeton sert à consulter et à lancer.</p>
+    <p id="porte-erreur" class="note" role="alert" hidden></p>
+    <button type="button" id="porte-bouton" class="action-ecriture"></button>
+  </div>
 </div>
 
 <script src="/app.js"></script>

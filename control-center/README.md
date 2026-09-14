@@ -21,6 +21,27 @@ côté de Claude Code, elle ne le remplace pas : **l'orchestration reste dans
 `CLAUDE.md` et les agents**, et le terminal continue de fonctionner
 indépendamment.
 
+## Le modèle de déploiement (ADR-0020), à lire avant tout le reste
+
+> Un centre de contrôle **appartient à un développeur** et pilote une session
+> Claude liée à **son** compte. Où il tourne — portable, conteneur, machine
+> distante — est un choix de déploiement, jamais un changement de nature.
+>
+> - Écoute sur `127.0.0.1` (ou `localhost`/`::1`) → le **jeton est
+>   facultatif** : qui atteint le port a déjà un shell sur la machine, lecture
+>   ET écriture fonctionnent sans secret.
+> - Écoute au-delà → le **jeton est obligatoire, lecture comprise**. C'est lui
+>   qui rattache « qui frappe à la porte » à « celui à qui ce serveur
+>   appartient ».
+> - ⚠️ **Tout intermédiaire local** — reverse proxy, TLS, `socat`,
+>   userland-proxy Docker — fait arriver les requêtes du réseau en
+>   `127.0.0.1` : la détection ne les voit pas. **Dans ce cas, configurez un
+>   jeton** ; un jeton *configuré* reste vérifié même en local, et c'est ce
+>   qui vous protège.
+>
+> Détail complet, alternatives écartées et conséquences :
+> [ADR-0020](../docs/adr/0020-un-centre-de-controle-appartient-a-un-developpeur.md).
+
 Ce répertoire est conçu pour être **déplacé d'un bloc** vers le template
 d'agents. Rien de spécifique à ce projet n'entre dans le code : ce qui varie
 d'un dépôt à l'autre vit dans [`control-center.toml`](control-center.toml).
@@ -244,8 +265,22 @@ un diff complet, et c'est un mensonge sur l'état du code.
 ## Étape C — le tableau de bord
 
 ```bash
-python3 control-center/backend/server.py      # puis http://<hôte>:8787
+python3 control-center/backend/server.py
 ```
+
+Le serveur **annonce au démarrage l'adresse et le port sur lesquels il écoute** —
+c'est cette ligne qui fait foi, jamais une valeur recopiée ici. Par défaut il
+s'agit de `127.0.0.1:8787` (`[serveur]` de `control-center.toml` : `hote` et
+`port`), mais tout projet peut les redéfinir, et beaucoup le font.
+
+> ⚠️ Si le tableau de bord « ne répond plus », vérifie **d'abord** que le
+> processus tourne et sur quel port, avant de conclure à une panne :
+> ```bash
+> pgrep -af backend/server.py          # le processus est-il vivant ?
+> ss -ltnp | grep python3              # sur quelle adresse:port écoute-t-il ?
+> ```
+> Une valeur de port lue dans une documentation plutôt que dans la configuration
+> du projet est une cause classique de faux diagnostic.
 
 ### La garantie était structurelle par absence ; elle l'est désormais par table fermée
 
@@ -308,8 +343,14 @@ la remplace est dans [ADR-0019](../docs/adr/0019-jeton-comme-unique-barriere-et-
 Lu depuis le fichier désigné par `[serveur].fichier_jeton`, **hors du
 dépôt**. `charger()` ne lève jamais : absent, vide, mal protégé ou illisible
 rend un jeton **inactif**, avec un motif nommé — c'est le message affiché au
-démarrage du serveur. Dans tous ces cas, les routes d'écriture restent
-désactivées et la lecture seule continue de fonctionner.
+démarrage du serveur.
+
+⚠️ **Un `fichier_jeton` DÉCLARÉ mais invalide ferme, il n'ouvre pas.** C'est le
+principe *fail-closed* : une configuration cassée est précisément le moment où
+il faut se méfier. Les routes exigent alors un jeton que personne ne peut
+fournir, et le message dit **pourquoi** et **comment sortir**. Ne pas déclarer
+de `fichier_jeton` du tout est un choix légitime en local (ADR-0020) ; en
+déclarer un qui ne marche pas n'en est pas un.
 
 - Comparaison par `hmac.compare_digest`, jamais par `==` (temps constant).
 - Permissions vérifiées au chargement : tout bit groupe ou autre posé
@@ -374,9 +415,8 @@ redémarrage suivant.
 ### Le champ unique qui dit si l'écriture est active
 
 `/api/etat` porte un champ `ecriture_active`, calculé par le **même** test
-que celui qui conditionne `do_POST` (`Jeton.actif()`, rechargé à chaque
-appel, jamais mis en cache). L'interface le lit à deux endroits — le badge
-d'état et le panneau de pilotage — sans qu'aucun des deux ne refasse sa
+que celui qui conditionne `do_POST`. L'interface le lit à deux endroits — le
+badge d'état et le panneau de pilotage — sans qu'aucun des deux ne refasse sa
 propre déduction (ni de la présence de `fichier_jeton`, ni de
 `commandes_declarees`). C'est le correctif direct du défaut que ce module
 avait déjà nommé « la pire forme de dette » : afficher « Budget max : 5 $ »
@@ -384,24 +424,79 @@ et « Écrivains : 1 » sans qu'aucun code ne les applique. Le tableau de bord
 affiche désormais « 5 $ · non appliqué (lecture seule) », plus le motif
 (`ecriture_raison`), quand l'écriture n'est pas active.
 
+> ⚠️ **Corrigé par `bug-012`** : `ecriture_active` valait `Jeton.actif()` —
+> « un jeton est-il configuré ? » — pas « CE demandeur-ci peut-il écrire ? ».
+> En local sans jeton, l'écriture fonctionnait déjà et le champ annonçait
+> pourtant `false`. Il est désormais calculé **par requête**, sur la même
+> base que la garde réelle. Détail dans la section suivante.
+
+### Étape D+ (`bug-012`) — le jeton dépend du déploiement, pas de la route
+
+Sous ADR-0020, le jeton n'est plus attaché au **type de route** (lecture ou
+écriture) mais au **déploiement** : `127.0.0.1`/`localhost`/`::1` → jeton
+facultatif, lecture et écriture ; au-delà → jeton obligatoire, **lecture
+comprise**. Avant ce cycle, `0.0.0.0` démarrait avec un simple avertissement
+sur la seule écriture, et `GET /api/etat` répondait `200` à quiconque sur le
+réseau local — quatorze champs, toute l'activité de développement, sans
+secret.
+
+- **La détection est faite sur l'adresse SOURCE de la requête**
+  (`client_address[0]`), jamais sur `[serveur].hote` : `0.0.0.0` sert aussi
+  la boucle locale, et une requête qui arrive par elle doit être traitée
+  comme locale même si le serveur écoute au-delà.
+- **`Host` est validé sur toutes les routes** (littéral IP ou `localhost`,
+  jamais une résolution DNS qui pourrait s'intercaler) → `421` sinon.
+- **`Origin` / `Sec-Fetch-Site`** sont vérifiés sur les routes d'écriture
+  avant le jeton, pour renvoyer un `403` d'origine plutôt qu'un `401` — sans
+  jamais laisser une requête cross-site déclencher une écriture.
+- **Deux champs distincts sur `/api/etat`, tous deux recalculés à chaque
+  appel** :
+  - `ecriture_active` — « ce demandeur-ci peut-il écrire ? ».
+  - `jeton_requis` — « ce déploiement exige-t-il un jeton pour ce
+    demandeur ? », indépendamment du fait que la requête en cours en porte
+    un. C'est ce champ que le navigateur utilise pour distinguer « suis-je
+    autorisé » de « le flux temps réel peut-il s'authentifier » —
+    `EventSource` ne pouvant porter aucun en-tête (`web/app.js`, `modeAuth`).
+- **`Content-Security-Policy: frame-ancestors 'none'`** est posé sur `/`.
+- Le freinage (`429`) ne compte **que** les jetons **présents et faux** —
+  une requête distante sans jeton du tout ne l'alimente pas, pour ne pas
+  aggraver le périmètre déjà connu de `bug-010`.
+
+**Ce que ce correctif a mis au jour**, consigné parce que ça ne se relit pas
+dans le code : quatre tests de la suite précédente certifiaient l'ancien
+modèle (`ecriture_active is False` affirmé juste avant un `POST` qui rendait
+`202`) ; plusieurs suites dépendaient silencieusement du `control-center.toml`
+local — vertes en CI (fichier gitignoré, donc absent) et rouges chez tout
+développeur ayant configuré un jeton, sans jamais le prouver dans les deux
+sens.
+
 ### Ce que cette étape ne couvre pas, assumé
 
 - Un orphelin est **détecté** (`409` au redémarrage) mais **aucun chemin** de
   l'interface ne le reprend — `/api/interrompre` répond `404` dans ce cas.
   Reporté en `bug-011`.
 - Le freinage des échecs d'authentification (`429` au-delà de 20 échecs par
-  minute) est **global**, pas par IP : un anonyme peut priver l'opérateur
-  légitime. Reporté en `bug-010`, avec la lecture anonyme non bornée de
-  `/api/flux`.
+  minute) reste **global**, pas par IP : 20 jetons faux distants privent
+  **tout le monde** pendant 60 s, y compris le développeur local muni d'un
+  jeton valide — lecture comprise. Périmètre **élargi** par `bug-012` et
+  reporté en `bug-010`.
 - Le début d'une sortie de plus de 200 000 octets est perdu (tampon
   circulaire) — seule la fin est conservée, la troncature est annoncée.
 - La détection d'orphelin par `starttime` suppose `/proc` (Linux) ; elle est
   inopérante, mais sûre (verrou traité comme libre), sur un système qui ne
   l'a pas.
+- Détection de mode (`modeAuth`) au rechargement quand le flux échoue pour
+  une autre raison que l'authentification ; `int(Content-Length)` et
+  `int(depuis)` peu tolérants (`+12`, ` 12 `, `1_2`) ; les traces
+  `ConnectionResetError` verbeuses émises quand un navigateur ferme une
+  connexion maintenue (bénignes, mais bruyantes) — constats reportés, specs à
+  ouvrir.
 
 Le détail des décisions et alternatives écartées (SSE pour la sortie, sort
 du processus fils) est dans
-[ADR-0019](../docs/adr/0019-jeton-comme-unique-barriere-et-table-des-routes-fermee.md).
+[ADR-0019](../docs/adr/0019-jeton-comme-unique-barriere-et-table-des-routes-fermee.md) ;
+le modèle de déploiement et le jeton comme barrière de rattachement sont dans
+[ADR-0020](../docs/adr/0020-un-centre-de-controle-appartient-a-un-developpeur.md).
 
 ## Tests
 
@@ -412,16 +507,28 @@ python3 control-center/backend/test_agents.py       # 24 cas
 python3 control-center/backend/test_events.py       # 54 cas
 python3 control-center/backend/test_config.py       # 44 cas
 python3 control-center/backend/test_vcs.py          # 26 cas
-python3 control-center/backend/test_server.py       # 35 cas
-python3 control-center/backend/test_jeton.py        # 44 cas
-python3 control-center/backend/test_verrou.py       # 15 cas
+python3 control-center/backend/test_server.py       # 37 cas
+python3 control-center/backend/test_jeton.py        # 48 cas
+python3 control-center/backend/test_verrou.py       # 23 cas
 python3 control-center/backend/test_lanceur.py      # 33 cas
-python3 control-center/backend/test_server_ecriture.py  # 61 cas
+python3 control-center/backend/test_server_ecriture.py  # 72 cas
+python3 control-center/backend/test_server_bug012.py    # 39 cas
+python3 control-center/web/test_app_bug012.py           # 16 cas (pont vers le harnais JS)
 python3 control-center/backend/specs.py             # inventaire réel
 python3 control-center/backend/events.py            # workflows reconstruits
 ```
 
-371 cas verts au total sur ces onze suites (195 avant l'étape D).
+471 cas verts au total sur ces treize suites (195 avant l'étape D).
+
+**Le harnais frontend** (`web/test_app_bug012.js`) teste `web/app.js` en
+conditions réelles — 39 assertions, zéro dépendance installée (`vm`/`fs`/`path`
+de la bibliothèque standard Node, ADR-0006). `web/test_app_bug012.py` est le
+**pont** que la CI découvre : `find control-center -name 'test_*.py'` ne
+ramasse jamais un `.js` seul. Le pont ne contient aucune assertion, il relaie
+la sortie et le code de sortie du harnais — et **se saute proprement** (code
+0, message explicite) si `node` est introuvable sur la machine qui exécute
+les tests, Node n'étant une dépendance que de ce harnais, jamais du centre de
+contrôle lui-même.
 
 Sans dépendance, et validés par mutation — une suite qui ne tue aucun mutant ne
 prouve rien.
@@ -468,6 +575,28 @@ Un mutant du collecteur est **équivalent** et doit rester documenté comme tel 
 rendre une chaîne vide au lieu de `None` quand aucun jeton n'est sûr ne change
 rien, parce que l'appelant teste la valeur pour sa vérité. Ce n'est pas un trou
 de couverture, et le compter comme tué ferait pourrir le décompte.
+
+**`bug-012`** (jeton dépendant du déploiement, la suite passe de 371 à 451
+cas, 80 nouveaux dont 39 dans le harnais frontend) — quatre points établis en
+cours de cycle, pas par relecture :
+
+1. **Quatre tests hérités certifiaient l'ancien modèle** : écrits quand
+   `ecriture_active` valait `Jeton.actif()` (« un jeton est-il configuré ? »),
+   ils en étaient devenus les gardiens — l'un affirmait `ecriture_active is
+   False` trois lignes avant un `POST` qui rendait `202`. Corrigés pour
+   affirmer sur `_peut_ecrire()`, la garde réellement appliquée.
+2. **Plusieurs suites dépendaient silencieusement du `control-center.toml`
+   local** : vertes en CI (fichier gitignoré, donc absent) et rouges chez tout
+   développeur ayant configuré un jeton — vertes exactement là où elles ne
+   prouvaient rien.
+3. **Le harnais frontend avait été rapporté sans être livré** dans un cycle
+   antérieur : 39 assertions exécutées dans un environnement jetable,
+   absentes de l'arbre versionné. Il est désormais dans `web/test_app_bug012.js`,
+   avec son pont Python, et fait partie des 13 suites découvertes en CI.
+4. **`modeAuth` confondait deux questions** — « suis-je autorisé » et « le
+   flux temps réel peut-il s'authentifier » — ce qui figeait le tableau de
+   bord à chaque rechargement en déploiement distant. Séparé en deux champs
+   (`ecriture_active`, `jeton_requis`), voir la section « Étape D+ » ci-dessus.
 
 ## Format d'un événement
 

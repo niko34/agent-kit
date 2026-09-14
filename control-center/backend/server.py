@@ -38,16 +38,55 @@ n'atteint jamais le navigateur : `_evenement_public()` filtre les champs.
 
 ## L'ordre des gardes sur `do_POST` (GATE P1, condition 1)
 
-chemin ∈ `_ROUTES_ECRITURE` → jeton (en-tête, avec freinage des échecs) →
-`Host` → `Content-Length` → lecture BORNÉE du corps → clé → plafond de
-dépense → verrou d'écrivain → `Popen`. Tout code 4xx autre que 401 ou le 404
-de route inconnue est rendu APRÈS le jeton : sinon un anonyme énumérerait les
-clés de commande et l'état du verrou sans jamais s'authentifier.
+chemin ∈ `_ROUTES_ECRITURE` → jeton OU origine (voir ci-dessous) → `Host` →
+`Content-Length` → lecture BORNÉE du corps → clé → plafond de dépense →
+verrou d'écrivain → `Popen`. Tout code 4xx autre que 401/403/400 (garde de
+rattachement) ou le 404 de route inconnue est rendu APRÈS cette garde : sinon
+un anonyme énumérerait les clés de commande et l'état du verrou sans jamais
+s'authentifier.
 
 Un corps non consommé (401, 411, 413, 400, 421, 429) ferme la connexion
 (`close_connection = True`) : sur `HTTP/1.1` en keep-alive, un corps de requête
 refusé mais non lu est réinterprété comme le DÉBUT de la requête suivante — une
 contrebande de requête vérifiée par exécution sur ce module même avant ce lot.
+
+## ADR-0020 : le jeton dépend du DÉPLOIEMENT, pas de la route (bug-012)
+
+La décision « cette requête doit-elle présenter un jeton ? » se prend PAR
+REQUÊTE, sur `client_address[0]` (`_locale()`) — jamais sur `[serveur].hote` :
+`hote = "0.0.0.0"` sert indifféremment la boucle locale et le réseau sur le
+MÊME socket, et une requête locale reste locale quel que soit `hote`.
+
+- **Locale, aucun `fichier_jeton` configuré** : le jeton est INUTILE (ADR-0020)
+  — qui atteint le port a déjà un shell sur la machine. Lecture ET écriture
+  fonctionnent sans secret. L'écriture perd alors la protection que le jeton
+  apportait contre un site hostile ouvert dans le navigateur du développeur
+  (CSRF) : deux gardes INDÉPENDANTES du jeton la remplacent sur `do_POST`,
+  GATE P1 conditions 1 et 2 — `Origin`/`Sec-Fetch-Site` et
+  `Content-Type: application/json` (force un préflight que ce serveur, sans
+  `do_OPTIONS`, refuse toujours).
+- **Un `fichier_jeton` CONFIGURÉ reste vérifié, locale ou distante** — c'est
+  ce qui rend la garde distante effective derrière un intermédiaire LOCAL
+  (reverse proxy, TLS, `socat`, userland-proxy Docker : GATE P1 condition 5)
+  qui fait arriver le réseau en boucle locale.
+- **Distante, aucun `fichier_jeton` configuré** : refusée SANS exception —
+  lecture (`/api/*` en `do_GET`) et écriture, `401` uniforme, rien à comparer
+  contre.
+
+Le freinage des échecs (`Ecriture.frein_actif`) ne compte, sur les routes de
+LECTURE, que les jetons PRÉSENTS ET FAUX — jamais absents (GATE P1 condition
+3) : l'`EventSource` d'un opérateur légitime se reconnecte automatiquement
+sans pouvoir poser d'en-tête, et compter ses échecs verrouillerait son propre
+tableau de bord.
+
+`/api/lancement` ne revérifie RIEN par lui-même : c'est un chemin `/api/*`
+comme les autres, déjà gardé par la règle ci-dessus dans `do_GET`. `/api/etat`
+expose `ecriture_active`/`ecriture_raison` (capacité d'ÉCRITURE de CE
+demandeur, `Handler._peut_ecrire`, jamais déduite de la seule présence d'un
+`fichier_jeton`) et `jeton_requis` (CE déploiement exige-t-il un jeton pour CE
+demandeur, indépendamment du fait que la requête en cours en porte un — sert
+au frontend à choisir entre `EventSource`, qui ne pose aucun en-tête, et un
+sondage qui le pose explicitement).
 """
 
 import ipaddress
@@ -187,10 +226,29 @@ def _hote_valide(valeur):
         return False
 
 
+def _locale(adresse_ip):
+    """Vrai si `adresse_ip` (`client_address[0]`, une chaîne) est un littéral
+    IP de la boucle locale — la décision qui gouverne le jeton (ADR-0020,
+    bug-012) se prend PAR REQUÊTE, jamais sur `[serveur].hote` : `0.0.0.0` sert
+    les deux catégories sur le même socket.
+
+    Vérifié par exécution : `127.0.0.1`, `127.0.0.5`, `::1`,
+    `::ffff:127.0.0.1` → True ; `192.168.1.55`, `0.0.0.0` → False. Une adresse
+    imprononçable (ne devrait jamais arriver depuis `client_address`, mais on
+    ne suppose rien) est traitée comme NON locale — défaut sûr : mieux vaut
+    exiger un jeton à tort que l'omettre à tort.
+    """
+    try:
+        return ipaddress.ip_address(adresse_ip).is_loopback
+    except (ValueError, TypeError):
+        return False
+
+
 def _raison_publique(jeton, config):
     """Motif de refus du jeton, DÉBARRASSÉ de son chemin.
 
-    `/api/etat` est lisible sans authentification : le chemin du fichier de
+    `/api/etat` exige le jeton dès que la requête est distante ou qu'un
+   jeton est déclaré (bug-012, ADR-0020) : le chemin du fichier de
     jeton — qui renseigne sur l'arborescence du serveur — ne doit jamais
     l'atteindre. `jeton.py` inclut ce chemin dans certains de ses messages ;
     on le remplace ici par une mention neutre, PARTOUT où il apparaît.
@@ -202,6 +260,25 @@ def _raison_publique(jeton, config):
     if chemin:
         motif = motif.replace(chemin, "<chemin masqué>")
     return motif
+
+
+def _jeton_configure(config):
+    """Vrai si un `[serveur].fichier_jeton` est DÉCLARÉ dans la configuration
+    — que ce jeton soit valide ou non (ADR-0020, régression mesurée pendant
+    `bug-012`).
+
+    C'est CETTE question, jamais `jeton.actif()`, qui doit décider si une
+    requête est soumise à la garde de jeton. `jeton.actif()` répond à une
+    question SUIVANTE — « ce jeton déclaré peut-il être comparé ? » — posée
+    seulement une fois qu'on sait qu'un jeton est exigé. Les confondre a
+    ouvert `bug-012` : un `fichier_jeton` déclaré mais en mode `0644`
+    (`jeton.actif()` faux) retombait sur le régime « aucun jeton, ouvert en
+    local » au lieu de fermer — la lecture ET l'écriture s'ouvraient alors à
+    tout le réseau derrière un intermédiaire local. *Fail-closed* : une
+    configuration cassée est le moment où il faut se méfier, pas celui où
+    l'on baisse la garde.
+    """
+    return config.fichier_jeton() is not None
 
 
 class Etat:
@@ -231,7 +308,13 @@ class Etat:
         """
         return J.charger(self.config.fichier_jeton(), self.racine)
 
-    def instantane(self):
+    def instantane(self, peut_ecrire=None, jeton_requis=None):
+        """`peut_ecrire` et `jeton_requis` sont calculés PAR REQUÊTE par
+        `do_GET` (`Handler._peut_ecrire`, bug-012, ADR-0020) — jamais déduits
+        ici de la seule présence d'un `fichier_jeton`. `None` (tout appelant
+        hors `do_GET` : tests directs sur `Etat`) retombe sur l'ancien test
+        global, conservateur — un jeton configuré mais jamais confronté à un
+        demandeur précis ne peut affirmer une capacité."""
         evenements = E.lire_journal(self.journal)
         workflows = E.reconstruire(
             evenements, self.config.tetes_de_commande(), self.config.agents_ouvrants())
@@ -240,6 +323,10 @@ class Etat:
                     for r, c, l in self.config.colonnes()]
         agents = A.lister_depuis_config(self.config)
         jeton = self.jeton()
+        if peut_ecrire is None:
+            peut_ecrire = jeton.actif()
+        if jeton_requis is None:
+            jeton_requis = jeton.actif()
 
         # Agent actif = celui d'un passage non terminé, dans un workflow sans fin
         # observée. On ne dit JAMAIS qu'un agent est actif sur la foi d'un
@@ -279,15 +366,25 @@ class Etat:
             },
             "commandes_declarees": sorted(self.config.section("commandes")),
             "garde_fous": self.config.section("garde_fous"),
-            # Champ POSITIF et UNIQUE : calculé par le MÊME test que celui qui
-            # conditionne `do_POST`, jamais déduit ailleurs (ni de la seule
-            # présence de `fichier_jeton`, ni d'une constante, ni de
-            # `commandes_declarees` non vide — des commandes peuvent être
-            # déclarées alors que l'écriture est inactive). L'interface lit ce
-            # champ à chaque endroit où l'état d'écriture s'affiche ; elle ne
-            # refait jamais sa propre déduction.
-            "ecriture_active": jeton.actif(),
-            "ecriture_raison": _raison_publique(jeton, self.config),
+            # Champ POSITIF et UNIQUE : calculé PAR REQUÊTE, par le MÊME test
+            # d'identité que celui qui conditionne `do_POST` (`_peut_ecrire`,
+            # bug-012 correctif 2), jamais déduit de la seule présence d'un
+            # `fichier_jeton` configuré — c'était le bug : en local sans jeton
+            # configuré, l'écriture RÉUSSIT (ADR-0020) mais ce champ valait
+            # `False` faute de test par demandeur. L'interface lit ce champ à
+            # chaque endroit où l'état d'écriture s'affiche ; elle ne refait
+            # jamais sa propre déduction.
+            "ecriture_active": peut_ecrire,
+            "ecriture_raison": None if peut_ecrire else _raison_publique(jeton, self.config),
+            # Répond à une question DISTINCTE de `ecriture_active` (bug-012,
+            # correctif 3) : « ce déploiement exige-t-il un jeton pour CE
+            # demandeur ? », indépendamment du fait que la requête EN COURS en
+            # porte un. `ecriture_active` peut valoir `True` alors qu'un jeton
+            # est PORTÉ (en mémoire, via `fetch`) sur un déploiement qui
+            # l'exige — un `EventSource` ultérieur, qui ne pose aucun en-tête,
+            # échouera quand même. Le frontend s'en sert pour choisir entre
+            # `EventSource` et un sondage qui pose l'en-tête lui-même.
+            "jeton_requis": jeton_requis,
             "horodatage": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
 
@@ -326,6 +423,14 @@ def _fichiers_servables():
     if not os.path.isdir(_RACINE_WEB):
         return servables
     for nom in os.listdir(_RACINE_WEB):
+        # Un `test_*` (convention du dépôt entier : `test_app_bug012.js`…) est
+        # un harnais, jamais un livrable du portail — il n'a rien à faire dans
+        # une liste que `/`, distant compris, sert sans jeton (bug-012, revue
+        # finale). L'exclusion vit ici, PAS dans `web/` : la liste servable
+        # reste calculée d'un seul endroit, jamais par un nom de fichier
+        # déplacé ou renommé.
+        if nom.startswith("test_"):
+            continue
         extension = os.path.splitext(nom)[1].lower()
         chemin = os.path.join(_RACINE_WEB, nom)
         if extension in _TYPES and os.path.isfile(chemin):
@@ -534,9 +639,13 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "public, max-age=60" if cache else "no-store")
         # L'interface ne charge rien depuis l'extérieur : la politique le dit et
         # le navigateur l'applique. Pas de CDN, pas de police distante.
+        # `frame-ancestors 'none'` (GATE P1 condition 6, bug-012) : sans elle,
+        # un tableau de bord local sans jeton, cadré dans une page hostile,
+        # lance une commande en un clic — établi absent avant ce correctif.
         self.send_header("Content-Security-Policy",
                          "default-src 'self'; style-src 'self' 'unsafe-inline'; "
-                         "img-src 'self' data:; connect-src 'self'")
+                         "img-src 'self' data:; connect-src 'self'; "
+                         "frame-ancestors 'none'")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
@@ -575,6 +684,109 @@ class Handler(BaseHTTPRequestHandler):
             return ""
         return fourni[len(_PREFIXE_JETON):]
 
+    def _distante(self):
+        """Vrai si CETTE requête n'arrive pas par la boucle locale — décision
+        prise sur `client_address[0]` (bug-012), jamais sur `[serveur].hote`."""
+        return not _locale(self.client_address[0])
+
+    def _autorisation_lecture(self, jeton, distante):
+        """Garde de lecture sur `/api/*` (GATE P1, bug-012, ADR-0020). Rend
+        `None` si la requête est autorisée à poursuivre, sinon `(code,
+        message)` à renvoyer tel quel.
+
+        Appelée uniquement quand `distante` est vraie, ou quand un jeton est
+        DÉCLARÉ (`_jeton_configure()`, valide ou non — bug-012, correctif 1)
+        — c'est `do_GET` qui décide de l'appeler ; une requête locale sans
+        aucun jeton déclaré ne l'atteint jamais (ADR-0020 : le jeton y est
+        inutile, y compris en lecture).
+
+        Le freinage ne compte que les jetons PRÉSENTS ET FAUX, jamais absents
+        (condition 3) : l'`EventSource` d'un opérateur légitime se reconnecte
+        automatiquement sans pouvoir poser d'en-tête ; compter ces échecs-là
+        verrouillerait son propre tableau de bord.
+        """
+        if not jeton.actif():
+            # Deux chemins mènent ici sans jeton actif : une requête
+            # DISTANTE (aucun jeton n'a besoin d'être déclaré pour l'exiger),
+            # ou un jeton DÉCLARÉ mais invalide (permissions, taille,
+            # encodage — `jeton.py`), locale ou non (bug-012, correctif 1,
+            # fail-closed : un jeton cassé ferme, il n'ouvre jamais). Dans
+            # les deux cas, rien n'est chargé contre quoi comparer — refuser
+            # sans jamais appeler `compare()` ni compter d'échec.
+            return 401, "authentification requise"
+        ecriture = self._ecriture()
+        if ecriture.frein_actif():
+            return 429, "trop de tentatives récentes"
+        presente = self._jeton_presente()
+        if not jeton.compare(presente):
+            if presente:
+                ecriture.enregistrer_echec()
+            return 401, "authentification requise"
+        return None
+
+    def _peut_ecrire(self, jeton, distante):
+        """Vrai si CE demandeur (pas cette requête précise) peut écrire —
+        MÊME test d'identité que la branche d'authentification de `do_POST`
+        (ADR-0020, bug-012, correctif 2) : local sans jeton DÉCLARÉ (rien à
+        comparer), ou jeton déclaré ET correctement présenté. Ignore
+        DÉLIBÉRÉMENT les gardes CSRF de `do_POST` (`Origin`, `Content-Type`) :
+        elles bornent la FORME d'une requête d'écriture précise, jamais la
+        capacité du demandeur — ce que ce champ annonce.
+
+        Sert à calculer `ecriture_active` par requête, plus jamais depuis la
+        seule présence d'un `fichier_jeton` configuré (le bug mesuré :
+        `ecriture_active` valait `False` en local sans jeton alors que
+        l'écriture y réussit, 202 à l'appui).
+
+        ⚠️ La décision « un jeton est-il exigé ? » se prend sur
+        `_jeton_configure()` — un fichier_jeton DÉCLARÉ, valide ou non —
+        JAMAIS sur `jeton.actif()` : un jeton déclaré mais invalide doit
+        FERMER, pas retomber sur le régime « aucun jeton, ouvert en local »
+        (régression mesurée pendant `bug-012`, corrigée par ce même correctif).
+
+        ⚠️ Cette méthode n'est JAMAIS atteinte, dans le déploiement local avec
+        un jeton déclaré mais invalide, sans être déjà passée par la garde de
+        LECTURE de `do_GET` (`jeton_requis`, même `_jeton_configure()`) — qui
+        répond 401 avant de construire l'instantané. Remplacer
+        `_jeton_configure()` par `jeton.actif()` sur la ligne suivante ne
+        change donc AUCUNE sortie observable par HTTP tant que cet invariant
+        d'appel tient ; gardé néanmoins pour ne pas dépendre, ici, d'une garde
+        posée ailleurs — un futur appelant qui n'y passerait pas se
+        tromperait sinon dans le même sens que la régression `bug-012`.
+        """
+        if not distante and not _jeton_configure(self.server.etat.config):
+            return True
+        if not jeton.actif():
+            return False
+        return jeton.compare(self._jeton_presente())
+
+    def _origine_locale_valide(self):
+        """Garde CSRF (GATE P1, bug-012, condition 1) pour l'écriture LOCALE
+        sans jeton configuré : ADR-0020 rend le jeton facultatif dans ce cas
+        précis, ce qui retire la seule protection qui empêchait un site
+        hostile, ouvert dans le navigateur du développeur, de faire poster ce
+        même navigateur vers son propre tableau de bord.
+
+        `Origin` ABSENT passe : tout navigateur moderne le pose sur un POST
+        cross-origine, et un client qui n'en pose aucun (`curl`, un script) est
+        un processus local — exactement ce qu'ADR-0020 assume légitime.
+        `Origin` PRÉSENT et différent de `http://<Host>` refuse, `null` inclus
+        (un `Origin: null` — iframe sandboxée, redirection — traverse cette
+        garde si elle ne le nommait pas explicitement : vérifié par exécution).
+        `Sec-Fetch-Site`, quand il est présent, doit valoir `same-origin` ou
+        `none` — un navigateur qui le pose le pose aussi sur les requêtes qui
+        n'ont pas d'`Origin` (ex. navigation), donc c'est un filet distinct,
+        pas redondant.
+        """
+        hote = self.headers.get("Host", "")
+        origine = self.headers.get("Origin")
+        if origine is not None and origine != "http://" + hote:
+            return False
+        site = self.headers.get("Sec-Fetch-Site")
+        if site is not None and site not in ("same-origin", "none"):
+            return False
+        return True
+
     # -- routage GET -----------------------------------------------------------
     def do_GET(self):  # noqa: N802 (nom imposé par http.server)
         try:
@@ -585,10 +797,49 @@ class Handler(BaseHTTPRequestHandler):
             analyse = urlparse(self.path)
             chemin = analyse.path
             parametres = parse_qs(analyse.query)
+
+            # Garde de lecture (bug-012, ADR-0020) : TOUT `/api/*` quand la
+            # requête est distante, ou dès qu'un jeton est configuré (même en
+            # local — condition 5 : un intermédiaire local la rend
+            # effective). `/`, et les fichiers statiques (`app.js`, `app.css`,
+            # …) restent libres dans tous les cas : sinon un navigateur
+            # distant ne peut jamais charger la page qui lui permettrait de
+            # saisir le jeton.
+            jeton = None
+            distante = None
+            jeton_requis = None
+            if chemin.startswith("/api/"):
+                jeton = self.server.etat.jeton()
+                distante = self._distante()
+                # Même condition, MÊME variable, pour deux usages : garder la
+                # garde de lecture ci-dessous (comme avant), ET l'exposer telle
+                # quelle sur `/api/etat` (bug-012, correctif 3) — le frontend
+                # ne peut pas la déduire d'un `200` : un jeton peut être PORTÉ
+                # par la requête en cours (en mémoire, via `fetch`) sans que le
+                # déploiement l'exige pour un flux `EventSource`, qui ne pose
+                # aucun en-tête.
+                #
+                # ⚠️ Sur `_jeton_configure()` — un fichier_jeton DÉCLARÉ,
+                # valide ou non — JAMAIS sur `jeton.actif()` : c'était la
+                # régression mesurée pendant ce même cycle. `jeton.actif()`
+                # vaut faux aussi bien pour « aucun jeton déclaré » (ouvert en
+                # local, ADR-0020) que pour « jeton déclaré mais invalide »
+                # (doit FERMER, fail-closed) — les confondre laissait un jeton
+                # en mode 0644 rouvrir toute la lecture ET l'écriture derrière
+                # un intermédiaire local, précisément le cas que
+                # `[serveur].fichier_jeton` existe pour couvrir.
+                jeton_requis = distante or _jeton_configure(self.server.etat.config)
+                if jeton_requis:
+                    erreur = self._autorisation_lecture(jeton, distante)
+                    if erreur is not None:
+                        code, message = erreur
+                        return self._erreur(code, message)
+
             if chemin == "/":
                 return self._statique("index.html")
             if chemin == "/api/etat":
-                return self._json(self.server.etat.instantane())
+                return self._json(self.server.etat.instantane(
+                    self._peut_ecrire(jeton, distante), jeton_requis))
             if chemin == "/api/spec":
                 return self._spec(parametres)
             if chemin == "/api/diff":
@@ -620,20 +871,48 @@ class Handler(BaseHTTPRequestHandler):
             ecriture = self._ecriture()
             jeton = self.server.etat.jeton()
 
-            # 2) jeton — 403 si l'écriture n'est pas activée DU TOUT (état
-            # statique du serveur, ne dépend d'aucun secret présenté) ; 429 si
-            # le freinage est déclenché, SANS comparer ; 401 sinon, avec un
-            # corps IDENTIQUE que le jeton soit absent ou faux.
-            if not jeton.actif():
-                self.close_connection = True
-                return self._erreur(403, "routes d'écriture non activées")
-            if ecriture.frein_actif():
-                self.close_connection = True
-                return self._erreur(429, "trop de tentatives récentes")
-            if not jeton.compare(self._jeton_presente()):
-                ecriture.enregistrer_echec()
-                self.close_connection = True
-                return self._erreur(401, "authentification requise")
+            # 2) jeton — OU origine, sur la seule branche où ADR-0020 rend le
+            # jeton facultatif : locale, aucun `fichier_jeton` DÉCLARÉ.
+            # Partout ailleurs (distant, ou un jeton EST déclaré — condition
+            # 5 : un intermédiaire local le rend effectif quand même),
+            # comportement INCHANGÉ depuis feature-007 : 403 si l'écriture
+            # n'est pas activée DU TOUT ; 429 si le freinage est déclenché,
+            # SANS comparer ; 401 sinon, avec un corps IDENTIQUE que le jeton
+            # soit absent ou faux.
+            #
+            # ⚠️ Sur `_jeton_configure()`, JAMAIS sur `jeton.actif()` : c'est
+            # la régression mesurée pendant ce cycle (bug-012, correctif 1).
+            # Un `fichier_jeton` déclaré mais en mode 0644 rendait
+            # `jeton.actif()` faux, retombait dans CETTE branche — celle
+            # d'ADR-0020 pensée pour « aucun jeton, ouvert en local » — et un
+            # `POST /api/lancer` sans aucun jeton présenté recevait 202,
+            # derrière l'intermédiaire local que `fichier_jeton` existe
+            # justement pour couvrir. Fail-closed : un jeton déclaré mais
+            # invalide doit FERMER cette branche, pas y rester.
+            if not self._distante() and not _jeton_configure(self.server.etat.config):
+                # Écriture locale sans jeton (ADR-0020) : plus aucune
+                # comparaison de secret ne protège cette requête d'un site
+                # hostile ouvert dans le navigateur du développeur — deux
+                # gardes INDÉPENDANTES du jeton la remplacent (GATE P1
+                # conditions 1 et 2).
+                if not self._origine_locale_valide():
+                    self.close_connection = True
+                    return self._erreur(403, "origine non reconnue")
+                type_contenu = (self.headers.get("Content-Type") or "").split(";")[0].strip()
+                if type_contenu != "application/json":
+                    self.close_connection = True
+                    return self._erreur(400, "Content-Type application/json requis")
+            else:
+                if not jeton.actif():
+                    self.close_connection = True
+                    return self._erreur(403, "routes d'écriture non activées")
+                if ecriture.frein_actif():
+                    self.close_connection = True
+                    return self._erreur(429, "trop de tentatives récentes")
+                if not jeton.compare(self._jeton_presente()):
+                    ecriture.enregistrer_echec()
+                    self.close_connection = True
+                    return self._erreur(401, "authentification requise")
 
             # 3) Host — après le jeton (condition 1) : un 421 ne doit rien
             # apprendre à qui ne détient pas déjà le jeton.
@@ -775,16 +1054,19 @@ class Handler(BaseHTTPRequestHandler):
         jeton irait en query string (donc dans les journaux d'accès, les
         historiques de proxy). Le jeton est ici, comme sur `/api/lancer`, dans
         l'en-tête `Authorization`.
+
+        ⚠️ AUCUNE revérification d'authentification ici (bug-012, correctif
+        1) : `/api/lancement` est un chemin `/api/*` comme les autres, déjà
+        gardé par `do_GET` — distante ou jeton configuré → `_autorisation_lecture`
+        (jeton exigé, comparé, freiné) ; locale sans jeton configuré →
+        facultatif (ADR-0020), cette méthode n'est même pas atteinte sans
+        avoir déjà franchi cette garde. Une revérification INDÉPENDANTE ici
+        avait dérivé de la règle commune : elle exigeait `jeton.actif()`
+        inconditionnellement, y compris en local sans jeton configuré —
+        rendant la sortie d'un lancement qu'on venait d'autoriser à démarrer
+        indéfiniment inatteignable (202 puis 403 en boucle).
         """
-        jeton = self.server.etat.jeton()
-        if not jeton.actif():
-            return self._erreur(403, "routes d'écriture non activées")
         ecriture = self._ecriture()
-        if ecriture.frein_actif():
-            return self._erreur(429, "trop de tentatives récentes")
-        if not jeton.compare(self._jeton_presente()):
-            ecriture.enregistrer_echec()
-            return self._erreur(401, "authentification requise")
         lancement = ecriture.lancement_courant()
         if lancement is None:
             return self._erreur(404, "aucun lancement")
@@ -873,25 +1155,68 @@ def demarrer(config=None):
         pass  # hors thread principal, ou plateforme sans ce signal : tant pis
 
     jeton_demarrage = serveur.etat.jeton()
+    # ⚠️ Sur `_jeton_configure()` — un `fichier_jeton` DÉCLARÉ, valide ou non
+    # — JAMAIS sur `jeton_demarrage.actif()` seul : c'est le test qui décide
+    # si un jeton est EXIGÉ (bug-012, correctif 1). La bannière annonçait
+    # « désactivée … LECTURE SEULE » sans `fichier_jeton` déclaré, alors que
+    # ce même processus servait `ecriture_active: true` et un 202 en local
+    # (ADR-0020 : aucun jeton n'y est exigé) — mesuré pendant ce cycle
+    # (bug-012, correctif 2).
+    jeton_declare = _jeton_configure(config)
     print("Centre de contrôle")
     print("  projet   : %s" % config.section("projet").get("nom"))
     print("  écoute   : http://%s:%d" % (hote, port))
     print("  dépôt    : %s" % config["_racine_projet"])
     print("  statique : %s" % (", ".join(sorted(serveur.servables)) or "aucun fichier web/"))
-    if jeton_demarrage.actif():
-        print("  écriture : ACTIVE — %s" % ", ".join(_ROUTES_ECRITURE))
+    if not jeton_declare:
+        print("  écriture : ACTIVE en local, SANS jeton (ADR-0020) — %s"
+              % ", ".join(_ROUTES_ECRITURE))
+        print("             aucun secret exigé depuis la boucle locale (127.0.0.1/::1) ;")
+        print("             toute requête distante reste refusée, lecture comprise, sans")
+        print("             `[serveur].fichier_jeton` valide.")
+    elif jeton_demarrage.actif():
+        print("  écriture : ACTIVE avec jeton — %s" % ", ".join(_ROUTES_ECRITURE))
+        print("             un jeton valide est exigé pour toute requête, y compris")
+        print("             locale derrière un intermédiaire (reverse proxy, TLS, socat…).")
     else:
-        print("  écriture : désactivée — %s" % jeton_demarrage.refus)
-        print("             le tableau de bord reste utilisable en LECTURE SEULE")
+        print("  écriture : FERMÉE — jeton déclaré mais invalide : %s" % jeton_demarrage.refus)
+        print("             fail-closed (ADR-0020) : lecture ET écriture refusées à")
+        print("             TOUTE requête, y compris locale, tant que ce jeton n'est pas")
+        print("             corrigé (permissions au plus 0600, 16 à 4096 octets ASCII")
+        print("             imprimable) ou retiré de `[serveur].fichier_jeton`.")
     if hote not in ("127.0.0.1", "localhost"):
-        if jeton_demarrage.actif():
-            print("  ⚠️  ouvert au réseau local, ET l'écriture est ACTIVE : le jeton")
-            print("      partagé est l'unique barrière entre le réseau et l'exécution")
-            print("      de commandes locales.")
+        # ⚠️ Ce que voit CETTE ligne n'est qu'une déclaration de configuration
+        # (`[serveur].hote`) : la décision réelle, elle, se prend PAR
+        # REQUÊTE sur l'adresse source (`_locale()`) — `0.0.0.0` sert la
+        # boucle locale ET le réseau sur le même socket (bug-012, ADR-0020).
+        if jeton_declare and jeton_demarrage.actif():
+            print("  ⚠️  ouvert au réseau local, ET un jeton valide est déclaré : c'est")
+            print("      lui, seul, qui protège LECTURE et ÉCRITURE pour toute requête")
+            print("      qui n'arrive pas par la boucle locale de CETTE machine.")
+        elif jeton_declare:
+            print("  ⚠️  ouvert au réseau local, ET le jeton déclaré est INVALIDE : %s"
+                  % jeton_demarrage.refus)
+            print("      fail-closed (ADR-0020) — aucune requête, locale ou distante,")
+            print("      ne passera tant que ce jeton n'est pas corrigé ou retiré.")
         else:
-            print("  ⚠️  ouvert au réseau local. L'écriture reste désactivée : aucune")
-            print("      route ne peut lancer de commande tant qu'aucun jeton valide")
-            print("      n'est déclaré (`[serveur].fichier_jeton`).")
+            print("  ⚠️  ouvert au réseau local, SANS jeton déclaré. Cause : aucun")
+            print("      `[serveur].fichier_jeton` valide n'est configuré — sous ce")
+            print("      modèle (ADR-0020), le jeton protège aussi la LECTURE dès que")
+            print("      le serveur sort de la machine. Deux sorties possibles :")
+            print("        - déclarer un `[serveur].fichier_jeton` valide, pour ouvrir")
+            print("          ce serveur au réseau en le protégeant réellement ;")
+            print("        - revenir à `hote = \"127.0.0.1\"`, si l'usage est purement")
+            print("          local.")
+            print("      En l'état, toute requête distante — lecture comprise — reçoit")
+            print("      401 ; la machine locale, elle, continue de fonctionner sans")
+            print("      secret.")
+    # ⚠️ `serve_forever()` ne rend jamais la main : sans ce vidage, tout ce qui
+    # précède reste dans le tampon de stdout dès que la sortie n'est pas un
+    # terminal (`nohup`, `> fichier`, superviseur). Les logs de requêtes, eux,
+    # partent sur stderr et s'affichent — d'où un démarrage qui paraît muet
+    # alors que le serveur répond. Relevé en usage réel : la ligne « écoute »
+    # est précisément celle dont le README dit qu'elle fait foi.
+    sys.stdout.flush()
     try:
         serveur.serve_forever()
     except KeyboardInterrupt:

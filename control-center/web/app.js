@@ -1,7 +1,4 @@
-/* Centre de contrôle — vue en LECTURE SEULE.
- *
- * Aucune requête autre que GET n'est émise, et le serveur n'a de toute façon
- * aucune route qui écrive : `do_POST` n'existe pas dans son code.
+/* Centre de contrôle — lecture, et pilotage sous garde-fous (feature-007).
  *
  * Le flux SSE transporte un SIGNAL, pas l'état. Le navigateur redemande
  * `/api/etat` quand il reçoit le signal — un état poussé et un état demandé
@@ -395,7 +392,12 @@ function fermerTiroir() { $("tiroir").hidden = true; }
 async function ouvrirSpec(identifiant) {
   ouvrirTiroir(identifiant, "chargement…");
   try {
-    const reponse = await fetch("/api/spec?id=" + encodeURIComponent(identifiant));
+    const reponse = await fetch("/api/spec?id=" + encodeURIComponent(identifiant),
+      { headers: enTeteAuthPilotage() });
+    if (reponse.status === 401) {
+      sur401Lecture();
+      return ouvrirTiroir(identifiant, "Authentification requise — reconnectez-vous.");
+    }
     const donnees = await reponse.json();
     if (donnees.erreur) return ouvrirTiroir(identifiant, "Erreur : " + donnees.erreur);
     const entete = [
@@ -416,7 +418,12 @@ async function ouvrirSpec(identifiant) {
 async function ouvrirDiff(chemin) {
   ouvrirTiroir(chemin, "chargement…");
   try {
-    const reponse = await fetch("/api/diff?chemin=" + encodeURIComponent(chemin));
+    const reponse = await fetch("/api/diff?chemin=" + encodeURIComponent(chemin),
+      { headers: enTeteAuthPilotage() });
+    if (reponse.status === 401) {
+      sur401Lecture();
+      return ouvrirTiroir(chemin, "Authentification requise — reconnectez-vous.");
+    }
     const donnees = await reponse.json();
     if (donnees.erreur) return ouvrirTiroir(chemin, "Erreur : " + donnees.erreur);
     const avis = donnees.tronque
@@ -464,6 +471,222 @@ function oublierJetonPilotage() { sessionStorage.removeItem(CLE_JETON_PILOTAGE);
 function enTeteAuthPilotage(jeton) {
   const t = jeton !== undefined ? jeton : jetonPilotageStocke();
   return t ? { "Authorization": "Bearer " + t } : {};
+}
+
+/* -- porte : authentification distante (bug-012, ADR-0020) --------------
+ *
+ * `modeAuth` est établi UNE SEULE FOIS, empiriquement, par la réponse du
+ * PREMIER `GET /api/etat` — jamais par une déduction côté client sur
+ * l'adresse ou le nom d'hôte (le serveur seul sait si la requête est
+ * locale). Tant qu'aucun `200` n'est revenu, aucune fonction `rendre*` ne
+ * doit être appelée : afficher un bloc vide ("aucune spec", "aucun agent")
+ * avant d'avoir regardé serait une AFFIRMATION FAUSSE, pas un état de
+ * chargement — la pire forme de dette selon le README du module.
+ *
+ * `modeAuth` répond à UNE SEULE question : « suis-je autorisé ? ». Il ne
+ * dit RIEN sur la capacité du flux temps réel à s'authentifier : un jeton
+ * en mémoire (`sessionStorage`, reposé après un rechargement) peut rendre
+ * `/api/etat` `200` — donc `modeAuth = "libre"` au sens où AUCUNE porte ne
+ * s'ouvre — sur un déploiement qui EXIGE un jeton pour CE demandeur.
+ * `EventSource` ne peut porter aucun en-tête : il échouerait quand même.
+ * C'est `etat.jeton_requis`, lu dans le CORPS de la réponse (pas le code
+ * HTTP), qui tranche entre `EventSource` et le sondage périodique — voir
+ * `verifierEtatAuth` (bug-012, correctif « rechargement »). */
+let modeAuth = "inconnu";     // inconnu | libre | requis
+let minuteurActualisationPeriodique = null;
+
+function masquerBandeauHote() { $("bandeau-hote").hidden = true; }
+
+function afficherBandeauHote(motif) {
+  /* 421 (hôte non reconnu) ou panne réseau : un jeton ne répare ni l'un ni
+   * l'autre, donc PAS la modale — un bandeau distinct avec reprise. */
+  const bandeau = $("bandeau-hote");
+  $("bandeau-hote-texte").textContent = motif === "hote"
+    ? "Hôte non reconnu par le serveur — l'adresse utilisée pour joindre ce "
+      + "tableau de bord n'est pas déclarée côté serveur. Un jeton ne répare pas cela."
+    : "Serveur injoignable.";
+  bandeau.hidden = false;
+}
+
+function texteHorodatageAffiche() {
+  if (dernierEtat && dernierEtat.horodatage) return heure(dernierEtat.horodatage);
+  return heure(new Date().toISOString());
+}
+
+function ouvrirPorte(motif) {
+  const porte = $("porte-jeton");
+  const titre = $("porte-titre");
+  const corps = $("porte-corps");
+  const bouton = $("porte-bouton");
+  const erreur = $("porte-erreur");
+  const champ = $("porte-champ");
+
+  erreur.hidden = true;
+  erreur.textContent = "";
+  champ.value = "";
+  champ.disabled = false;
+  bouton.disabled = false;
+
+  if (motif === "jeton-refuse") {
+    titre.textContent = "Reconnexion nécessaire";
+    corps.textContent = "Jeton refusé — les données à l'écran datent de "
+      + texteHorodatageAffiche() + ". Ressaisissez le jeton pour reprendre.";
+    bouton.textContent = "Reconnecter";
+  } else {
+    titre.textContent = "Authentification requise";
+    corps.textContent = "Ce serveur est consulté depuis un autre poste : la "
+      + "lecture comme le pilotage exigent le jeton déclaré côté serveur "
+      + "([serveur].fichier_jeton).";
+    bouton.textContent = "Ouvrir le tableau de bord";
+  }
+
+  porte.hidden = false;
+  requestAnimationFrame(() => { champ.focus(); });
+}
+
+function fermerPorte() { $("porte-jeton").hidden = true; }
+
+/* Point d'entrée UNIQUE pour toute lecture qui essuie un 401 après le
+ * premier chargement : arrête les minuteurs actifs, oublie le jeton
+ * invalide, rouvre la porte — SANS toucher au DOM déjà rendu (les données à
+ * l'écran restent affichées, seulement plus rafraîchies, derrière la
+ * modale). */
+function sur401Lecture() {
+  arreterSondagePilotage();
+  arreterActualisationPeriodique();
+  oublierJetonPilotage();
+  ouvrirPorte("jeton-refuse");
+}
+
+function demarrerActualisationPeriodique() {
+  /* Repli du temps réel : `etat.jeton_requis` interdit `EventSource` (aucun
+   * en-tête possible), donc sondage périodique — mode ATTENDU, pas une
+   * panne (voir `.jauge.sondage`, ni `ok` ni `ko`). Décidé par le CORPS de
+   * la réponse, jamais par `modeAuth` seul — voir `verifierEtatAuth`. */
+  if (minuteurActualisationPeriodique) return;
+  const jauge = $("jauge-flux");
+  jauge.textContent = "actualisation périodique (10 s)";
+  jauge.className = "jauge sondage";
+  jauge.title = "connexion en direct impossible depuis ce poste — le flux "
+    + "ne peut pas transmettre le jeton";
+  minuteurActualisationPeriodique = setInterval(rafraichir, 10000);
+}
+
+function arreterActualisationPeriodique() {
+  if (minuteurActualisationPeriodique) {
+    clearInterval(minuteurActualisationPeriodique);
+    minuteurActualisationPeriodique = null;
+  }
+}
+
+async function gererSoumissionPorte() {
+  const champ = $("porte-champ");
+  const bouton = $("porte-bouton");
+  const erreur = $("porte-erreur");
+  const jeton = champ.value;
+  if (!jeton) {
+    erreur.textContent = "Jeton requis.";
+    erreur.hidden = false;
+    champ.focus();
+    return;
+  }
+  bouton.disabled = true;
+  champ.disabled = true;
+  erreur.hidden = true;
+  try {
+    const reponse = await fetch("/api/etat", { headers: enTeteAuthPilotage(jeton) });
+    if (reponse.status === 200) {
+      stockerJetonPilotage(jeton);
+      fermerPorte();
+      rafraichir();
+      demarrerActualisationPeriodique();
+      /* Un lancement figé pendant la coupure reprend depuis le curseur EN
+       * MÉMOIRE — jamais `depuis=0`, `pilotage.lancement` n'a pas été
+       * touché par `sur401Lecture`. */
+      if (pilotage.lancement && pilotage.lancement.etat === "en_cours") {
+        demarrerSondagePilotage();
+      }
+      return;
+    }
+    if (reponse.status === 401) {
+      erreur.textContent = "Jeton refusé.";
+      erreur.hidden = false;
+      champ.focus();
+      return;
+    }
+    erreur.textContent = "Erreur du serveur (" + reponse.status + ").";
+    erreur.hidden = false;
+  } catch (erreurReseau) {
+    erreur.textContent = "Erreur réseau : " + erreurReseau.message;
+    erreur.hidden = false;
+  } finally {
+    bouton.disabled = false;
+    champ.disabled = false;
+  }
+}
+
+/* Contention de focus SIMPLE (pas un piège complet) : les deux seuls
+ * contrôles de la modale se rebouclent l'un sur l'autre. Échap ne ferme
+ * rien — aucun gestionnaire ne le fait, volontairement. */
+$("porte-jeton").addEventListener("keydown", (evenement) => {
+  if (evenement.key !== "Tab") return;
+  const champ = $("porte-champ");
+  const bouton = $("porte-bouton");
+  const actif = document.activeElement;
+  if (evenement.shiftKey) {
+    if (actif === champ) { evenement.preventDefault(); bouton.focus(); }
+  } else {
+    if (actif === bouton) { evenement.preventDefault(); champ.focus(); }
+  }
+});
+$("porte-bouton").addEventListener("click", gererSoumissionPorte);
+$("porte-champ").addEventListener("keydown", (evenement) => {
+  if (evenement.key === "Enter") { evenement.preventDefault(); gererSoumissionPorte(); }
+});
+$("bandeau-hote-bouton").addEventListener("click", () => {
+  masquerBandeauHote();
+  verifierEtatAuth();
+});
+
+/* Établit `modeAuth` empiriquement, une seule fois, au démarrage. Rien
+ * d'autre ne doit décider ce mode ailleurs dans ce module.
+ *
+ * `modeAuth === "libre"` dit seulement que CETTE requête est passée — pas
+ * que le flux temps réel peut s'authentifier (bug-012). Un jeton en
+ * mémoire (rechargement de page) fait passer `/api/etat` en `200` sur un
+ * déploiement qui exige pourtant un jeton pour ce demandeur ;
+ * `EventSource` ne pose aucun en-tête et échouerait silencieusement,
+ * laissant l'interface sans aucun rafraîchissement. Seul `etat.jeton_requis`,
+ * lu dans le corps de LA MÊME réponse, tranche entre `EventSource` et le
+ * sondage périodique. */
+async function verifierEtatAuth() {
+  masquerBandeauHote();
+  try {
+    const reponse = await fetch("/api/etat", { headers: enTeteAuthPilotage() });
+    if (reponse.status === 200) {
+      modeAuth = "libre";
+      const etat = await reponse.json();
+      rafraichir();
+      if (etat.jeton_requis) {
+        demarrerActualisationPeriodique();
+      } else {
+        brancherFlux();
+      }
+      return;
+    }
+    if (reponse.status === 401) {
+      modeAuth = "requis";
+      ouvrirPorte(jetonPilotageStocke() ? "jeton-refuse" : "premier-acces");
+      return;
+    }
+    if (reponse.status === 421) {
+      afficherBandeauHote("hote");
+      return;
+    }
+    afficherBandeauHote("reseau");
+  } catch (erreurReseau) {
+    afficherBandeauHote("reseau");
+  }
 }
 
 function dureeLisiblePilotage(ms) {
@@ -706,7 +929,11 @@ async function surClicLancerPilotage() {
   try {
     /* Plafond relu ICI, frais — jamais une valeur mise en cache par un sondage
      * antérieur (SSE ou autre). */
-    const reponse = await fetch("/api/etat");
+    const reponse = await fetch("/api/etat", { headers: enTeteAuthPilotage() });
+    if (reponse.status === 401) {
+      if (bouton) bouton.disabled = false;
+      return sur401Lecture();
+    }
     const etat = await reponse.json();
     dernierEtat = etat;
     if (!etat.ecriture_active) {
@@ -723,7 +950,7 @@ async function surClicLancerPilotage() {
       cle: pilotage.cleChoisie,
       plafond: pilotage.budgetMaxUsd,
       ecrivains: pilotage.ecrivains,
-      besoinJeton: !jetonPilotageStocke(),
+      besoinJeton: modeAuth === "requis" && !jetonPilotageStocke(),
       erreur: null,
       enCours: false,
     };
@@ -796,7 +1023,7 @@ async function surClicConfirmerPilotage() {
       pilotage.confirmation = null;
       pilotage.phase = "inactif";
       rendrePilotage();
-      const r = await fetch("/api/etat");
+      const r = await fetch("/api/etat", { headers: enTeteAuthPilotage() });
       const etat = await r.json();
       dernierEtat = etat;
       pilotage.raison = etat.ecriture_raison;
@@ -879,7 +1106,7 @@ async function surClicInterromprePilotage() {
     if (reponse.status === 403) {
       pilotage.phase = "inactif";
       rendrePilotage();
-      const r = await fetch("/api/etat");
+      const r = await fetch("/api/etat", { headers: enTeteAuthPilotage() });
       const etat = await r.json();
       dernierEtat = etat;
       pilotage.raison = etat.ecriture_raison;
@@ -934,12 +1161,11 @@ async function sonderLancementPilotage() {
       rendrePilotage();
       rendreBadgePilotage(dernierEtat);
     } else if (reponse.status === 401) {
-      arreterSondagePilotage();
-      oublierJetonPilotage();
+      sur401Lecture();
     } else if (reponse.status === 403) {
       arreterSondagePilotage();
       pilotage.phase = "inactif";
-      const r = await fetch("/api/etat");
+      const r = await fetch("/api/etat", { headers: enTeteAuthPilotage() });
       const etat = await r.json();
       dernierEtat = etat;
       pilotage.raison = etat.ecriture_raison;
@@ -1027,7 +1253,16 @@ async function rafraichir() {
   if (enCours) return;
   enCours = true;
   try {
-    const reponse = await fetch("/api/etat");
+    const reponse = await fetch("/api/etat", { headers: enTeteAuthPilotage() });
+    if (reponse.status === 401) {
+      /* Le jeton, valide au démarrage, ne l'est plus : les blocs déjà
+       * rendus restent affichés tels quels (voir `sur401Lecture`), seule la
+       * jauge de flux redevient neutre puisqu'aucune donnée fraîche
+       * n'arrive plus tant que la porte est ouverte. */
+      sur401Lecture();
+      return;
+    }
+    if (!reponse.ok) throw new Error("HTTP " + reponse.status);
     const etat = await reponse.json();
     $("projet").textContent = etat.projet || "";
     $("horodatage").textContent = heure(etat.horodatage) + " UTC";
@@ -1075,5 +1310,7 @@ document.addEventListener("keydown", (evenement) => {
 });
 $("tiroir-fermer").addEventListener("click", fermerTiroir);
 
-rafraichir();
-brancherFlux();
+/* Le premier `GET /api/etat` décide seul du mode d'authentification — voir
+ * `verifierEtatAuth`. Tant qu'il n'a pas répondu `200`, aucun bloc n'est
+ * rendu : ni `rafraichir()` ni `brancherFlux()` ne sont appelés ici. */
+verifierEtatAuth();

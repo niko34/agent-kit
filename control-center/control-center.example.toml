@@ -85,16 +85,34 @@ racine = ".claude/agents"
 # affiches = 20
 
 [serveur]
+# ADR-0020 — Un centre de contrôle appartient à UN développeur. Il pilote une
+# session Claude liée à SON compte ; où il tourne (portable, conteneur,
+# machine distante) est un choix de déploiement, jamais un changement de
+# nature. Le jeton en découle :
+#
+#   - écoute sur 127.0.0.1 (ou localhost/::1) → le jeton est FACULTATIF :
+#     qui atteint le port a déjà un shell sur la machine, lecture ET écriture
+#     fonctionnent sans secret ;
+#   - écoute au-delà → le jeton est OBLIGATOIRE, LECTURE COMPRISE. C'est lui,
+#     et lui seul, qui rattache « qui frappe à la porte » à « celui à qui ce
+#     serveur appartient ».
+#
+# ⚠️ Tout intermédiaire LOCAL — reverse proxy, terminaison TLS, `socat`,
+# userland-proxy Docker — fait arriver les requêtes du réseau en 127.0.0.1 :
+# la détection ne les voit pas passer par ailleurs. Dans ce cas, déclarez un
+# `fichier_jeton` : un jeton CONFIGURÉ reste vérifié même en local, et c'est
+# lui qui vous protège.
+#
 # 127.0.0.1 par défaut. Ouvrir au réseau local est une décision EXPLICITE :
 # hote = "0.0.0.0"
 hote = "127.0.0.1"
 port = 8787
 
-# Secret exigé sur toute action d'écriture (POST /api/lancer, /api/interrompre,
-# GET /api/lancement), dans un fichier HORS DÉPÔT, mode 600. Cette clé est LUE
-# à chaque requête (backend/jeton.py) : sans elle, ou si le fichier est mal
-# protégé, les routes d'écriture restent désactivées et le serveur le dit au
-# démarrage — la lecture seule continue de fonctionner.
+# Secret exigé sur TOUTE route dès que la requête est distante (voir ADR-0020
+# ci-dessus), dans un fichier HORS DÉPÔT, mode 600. Cette clé est LUE à chaque
+# requête (backend/jeton.py) : sans elle, ou si le fichier est mal protégé,
+# toute requête distante — lecture comme écriture — est refusée (401) ; la
+# machine locale, elle, continue de fonctionner sans jeton.
 #
 # Génération recommandée :
 #   python3 -c "import secrets; print(secrets.token_hex(32))" > /chemin/hors/depot/.control-center-token

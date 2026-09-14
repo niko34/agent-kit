@@ -13,9 +13,11 @@ La propriété centrale de cette étape est structurelle : `Handler` n'a pas de
 ajoute une route d'écriture, le second échoue même si le premier est contourné.
 """
 
+import inspect
 import json
 import os
 import sys
+import tempfile
 import threading
 import urllib.error
 import urllib.request
@@ -63,7 +65,32 @@ def appeler(base, chemin, methode="GET"):
 
 
 def main():
-    config = C.charger()
+    # ⚠️ bug-012 (T0) : NE JAMAIS lire le `control-center.toml` RÉEL de ce
+    # dépôt ici. `C.charger()` sans argument le ferait — et sur le poste d'un
+    # développeur qui a réellement déclaré un `[serveur].fichier_jeton`
+    # (l'usage même que `feature-007`/`bug-012` visent), le jeton se recharge
+    # ACTIF à chaque appel (`Etat.jeton()`), et la garde de lecture ajoutée par
+    # bug-012 (`_autorisation_lecture`, appelée dès que `jeton.actif()` est
+    # vrai, MÊME en boucle locale — condition 5 du GATE) renvoie alors 401 à
+    # `GET /api/etat` sans `Authorization`. Mesuré PAR EXÉCUTION : 5 tests
+    # tombaient ainsi sur le dépôt réel de l'utilisateur, verts sur un clone
+    # git neuf (`control-center.toml` gitignoré, donc absent) — deux mesures
+    # exactes, sur deux environnements différents. Une suite qui passe ou
+    # échoue selon la configuration LOCALE du poste ne prouve rien, et masque
+    # le défaut exactement chez qui se sert de la fonctionnalité (la CI, elle,
+    # ne le verrait jamais). On force donc ici un fichier de config qui
+    # N'EXISTE PAS (`chemin_config_isole`, jamais créé) : `C.charger()` rend
+    # alors les DÉFAUTS purs (§ config.py, `_DEFAUTS` : aucun `fichier_jeton`,
+    # jeton inactif), quel que soit ce que ce poste a déclaré par ailleurs —
+    # exactement le comportement que ce fichier vérifiait avant que
+    # `bug-012` ne rende le jeton pertinent en lecture. `racine_projet` reste
+    # le VRAI dépôt : specs, agents et git restent ceux du projet, seule la
+    # section `[serveur]` (et tout le reste de la config déclarée) est
+    # neutralisée.
+    racine_reelle = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(SRV.__file__))))
+    dossier_isole = tempfile.mkdtemp(prefix="cc-test-server-config-")
+    chemin_config_isole = os.path.join(dossier_isole, "n-existe-jamais.toml")
+    config = C.charger(chemin=chemin_config_isole, racine_projet=racine_reelle)
     serveur = ThreadingHTTPServer(("127.0.0.1", 0), SRV.Handler)
     serveur.daemon_threads = True
     serveur.etat = SRV.Etat(config)
@@ -113,10 +140,19 @@ def main():
         code, corps = appeler(base, "/api/etat")
         check("test_etat_repond", code == 200)
         etat = json.loads(corps) if code == 200 else {}
-        # Ce dépôt (`control-center.toml`) ne déclare aucun `fichier_jeton` :
-        # l'écriture doit donc être annoncée INACTIVE, par le même test que
-        # celui qui gouverne `do_POST` (A6b) — plus de champ codé en dur.
-        check("test_etat_annonce_ecriture_inactive", etat.get("ecriture_active") is False)
+        # Corrigé (bug-012, ADR-0020, correctif 2) : cette config isolée ne
+        # déclare aucun `fichier_jeton`, et la requête arrive par la boucle
+        # locale (`127.0.0.1`) — sous ADR-0020, l'écriture y RÉUSSIT sans
+        # secret (même règle que `do_POST`), donc `ecriture_active` doit
+        # l'annoncer. Avant ce correctif, ce champ restait lié à la seule
+        # présence d'un jeton CONFIGURÉ (A6b), plus à la capacité du
+        # demandeur — cette assertion valait alors `False` à tort.
+        check("test_etat_annonce_ecriture_active_local_sans_jeton",
+              etat.get("ecriture_active") is True,
+              "obtenu %r" % etat.get("ecriture_active"))
+        check("test_etat_annonce_ecriture_raison_vide_local_sans_jeton",
+              not etat.get("ecriture_raison"),
+              "obtenu %r" % etat.get("ecriture_raison"))
         # ⚠️ On vérifie le TYPE, pas le nombre. Affirmer `> 0` serait une
         # assertion sur le PROJET, pas sur le code : un dépôt neuf issu du
         # template n'a aucune spec, et c'est normal. Constaté en portant le
@@ -177,11 +213,15 @@ def main():
         # PRÉSENT mais d'extension non prévue — une note, un fichier
         # d'environnement, une sauvegarde. Sans ce cas, le mutant qui supprime la
         # liste survivait.
-        import tempfile
         with tempfile.TemporaryDirectory() as faux_web:
             for nom, contenu in (("ok.css", "body{}"),
                                  ("secrets.env", "JETON=valeur"),
-                                 ("notes.txt", "interne")):
+                                 ("notes.txt", "interne"),
+                                 # Revue finale, bug-012 : `web/test_app_bug012.js`
+                                 # est un harnais, pas un livrable — une extension
+                                 # `.js` autorisée ne doit pas suffire à le rendre
+                                 # servable, distant compris, sans jeton.
+                                 ("test_app_bug012.js", "// harnais, pas un livrable")):
                 with open(os.path.join(faux_web, nom), "w", encoding="utf-8") as f:
                     f.write(contenu)
             ancienne_racine, anciens = SRV._RACINE_WEB, serveur.servables
@@ -197,6 +237,12 @@ def main():
                           "%s présent dans web/ a été servi (%d) : la liste des "
                           "extensions doit trancher, pas l'existence du fichier"
                           % (nom, code))
+                check("test_fichier_test_absent_des_servables",
+                      "test_app_bug012.js" not in serveur.servables,
+                      "un harnais de test figure dans la liste servable")
+                code, _ = appeler(base, "/test_app_bug012.js")
+                check("test_fichier_test_refuse_en_http", code >= 400,
+                      "obtenu %d : un `test_*` ne doit jamais être servi" % code)
             finally:
                 SRV._RACINE_WEB = ancienne_racine
                 serveur.servables = anciens
@@ -272,6 +318,46 @@ def main():
                   len(donnees_borne["workflows"]) == 1,
                   "la session compte 2 cycles ; obtenu %d" % len(donnees_borne["workflows"]))
 
+        # --- `_raison_publique` ne laisse jamais fuir le chemin du jeton -----
+        # Couverture RÉTABLIE (revue finale, bug-012) : le test équivalent
+        # vivait dans `test_server_ecriture.py` (`test_T7_…_ne_contient_pas_
+        # de_chemin`), sur un `GET /api/etat` sans authentification. Ce chemin
+        # HTTP n'existe plus pour cette assertion : depuis le correctif 1 de
+        # ce même cycle, la lecture et l'écriture partagent EXACTEMENT la même
+        # garde, donc tout `/api/etat` qui répond 200 a déjà `ecriture_active`
+        # vrai et `ecriture_raison` vide — il n'y a plus de 200 anonyme sur
+        # lequel observer un motif non vide. La garantie visée (masquer le
+        # chemin) reste réelle, portée par `_raison_publique` seule : on la
+        # vérifie donc directement sur la fonction, avec un refus qui
+        # EMBARQUE le chemin (`jeton.py` : « vide », « absent ou illisible »,
+        # « n'est pas un fichier régulier », « situé DANS le dépôt » le
+        # font), pour que retirer le `.replace()` de masquage fasse
+        # réellement échouer ce test.
+        class _ConfigJetonFactice:
+            def __init__(self, chemin):
+                self._chemin = chemin
+
+            def fichier_jeton(self):
+                return self._chemin
+
+        chemin_sensible = "/home/quelquun/secrets/.jeton-centre-de-controle"
+        jeton_invalide = SRV.J.Jeton(
+            refus="fichier_jeton vide (%s)" % chemin_sensible)
+        config_jeton_factice = _ConfigJetonFactice(chemin_sensible)
+        raison = SRV._raison_publique(jeton_invalide, config_jeton_factice)
+        check("test_raison_publique_motif_nomme", bool(raison), "obtenu %r" % raison)
+        check("test_raison_publique_ne_contient_pas_le_chemin",
+              chemin_sensible not in (raison or ""),
+              "le chemin du jeton fuit dans la raison publique : %r" % raison)
+        check("test_raison_publique_porte_le_masque",
+              "<chemin masqué>" in (raison or ""),
+              "obtenu %r" % raison)
+
+        jeton_actif_factice = SRV.J.Jeton(valeur=b"x" * 20)
+        check("test_raison_publique_none_si_jeton_actif",
+              SRV._raison_publique(jeton_actif_factice, config_jeton_factice) is None,
+              "un jeton ACTIF ne doit exposer aucune raison")
+
         # --- l'empreinte ne bouge pas toute seule ----------------------------
         # Sans cela l'interface se rafraîchirait en boucle : l'instantané
         # contient un horodatage, l'empreinte ne doit surtout pas le contenir.
@@ -280,9 +366,40 @@ def main():
         check("test_empreinte_stable_sans_changement", premiere == deuxieme,
               "une empreinte instable rafraîchirait l'interface en permanence")
 
+        # --- le message de démarrage vide le tampon ---------------------------
+        # Relevé en usage réel : lancé par `nohup … > fichier`, le serveur
+        # paraissait MUET — le banner restait dans le tampon de stdout, tandis
+        # que les logs de requêtes (stderr, non tamponné) s'affichaient. Or
+        # `serve_forever()` ne rend jamais la main : sans vidage explicite, la
+        # ligne « écoute » n'apparaît qu'à l'ARRÊT du processus. C'est
+        # précisément la ligne dont le README dit qu'elle FAIT FOI sur l'adresse
+        # et le port.
+        #
+        # ⚠️ Test STRUCTUREL et non fonctionnel, décision assumée : la version
+        # fonctionnelle (lancer un vrai serveur, stdout redirigé, relire le
+        # fichier) a été écrite, et elle ÉCHOUE dès qu'un tableau de bord tourne
+        # déjà — le port de `control-center.toml` est alors pris, le fils meurt
+        # avant d'imprimer quoi que ce soit. Un test qui dépend de l'absence de
+        # serveur sur la machine est un test qu'on finit par désactiver. On
+        # épingle donc la structure, comme pour la course du verrou (T9).
+        # ⚠️ On vise l'APPEL `serveur.serve_forever()`, pas le mot
+        # « serve_forever » : il apparaît deux fois dans `demarrer()`, et la
+        # première occurrence est dans un commentaire, AVANT le vidage. Chercher
+        # le mot faisait échouer ce test sur du code correct — la version courte
+        # testait un cas fréquent au lieu de la règle.
+        source_demarrer = inspect.getsource(SRV.demarrer)
+        pos_flush = source_demarrer.find("sys.stdout.flush()")
+        pos_boucle = source_demarrer.find("serveur.serve_forever()")
+        check("test_banner_demarrage_vide_le_tampon",
+              pos_flush != -1 and pos_boucle != -1 and pos_flush < pos_boucle,
+              "`demarrer()` doit vider stdout AVANT serve_forever(), qui ne rend "
+              "jamais la main ; sinon le banner reste invisible sous redirection")
+
     finally:
         serveur.shutdown()
         serveur.server_close()
+        import shutil
+        shutil.rmtree(dossier_isole, ignore_errors=True)
 
     print("\n%d cas, %d echec(s)%s"
           % (_tests, len(_echecs),

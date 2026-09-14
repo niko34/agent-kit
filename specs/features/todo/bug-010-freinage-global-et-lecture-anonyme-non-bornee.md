@@ -9,7 +9,7 @@
 - **Domaine** : API (`control-center/backend/server.py`) — freinage des
   échecs d'authentification et lecture anonyme de flux
 - **Spec liée** : `feature-007-pilotage-depuis-le-tableau-de-bord` (close),
-  `ADR-0019`
+  `ADR-0019`, `ADR-0020`, `bug-012` (périmètre précisé, voir note ci-dessous)
 
 ## Agents requis
 
@@ -105,3 +105,29 @@ exécution avant correction (régime ADR-0017) :
 - La reprise d'un orphelin détecté par le verrou (`bug-011`)
 - Tout modèle de permissions plus fin qu'un jeton unique (rôles, utilisateurs
   distincts)
+
+## Note additive (2026-09-14, `bug-012`)
+
+Sous ADR-0020, `bug-012` a rendu le jeton obligatoire pour **toutes** les
+routes dès qu'une requête est distante — la lecture y compris. Le freinage
+compte donc désormais aussi les échecs sur des routes de lecture qui, avant
+ce cycle, n'en connaissaient aucun. Conséquence mesurée : **le périmètre du
+symptôme 1 s'élargit**. Vingt jetons faux envoyés depuis une adresse distante
+déclenchent toujours un `429` **global** (le défaut décrit ci-dessus n'est
+pas corrigé par `bug-012`, qui ne l'absorbait pas délibérément) — mais ce
+`429` prive désormais **aussi** le développeur local muni d'un jeton valide,
+lecture comprise, tant que le compteur global reste saturé. Le correctif
+attendu (comptage par IP source) reste inchangé ; seul l'impact mesuré d'une
+absence de correctif s'aggrave.
+
+**Le point 2 est partiellement recouvert**, à vérifier par le prochain agent
+qui reprend cette spec plutôt qu'à supposer clos : `server.py:762-777` fait
+désormais passer `/api/flux` par la **même** garde générique que le reste de
+`/api/*` (`jeton_requis = distante or jeton.actif()`). Une connexion SSE
+distante sans jeton est donc refusée (`401`) — mais `EventSource` ne pouvant
+porter aucun en-tête, une connexion distante **ne peut jamais** s'authentifier
+par ce canal ; c'est ce qui a forcé le repli sur polling décrit dans
+`control-center/README.md` (section « Étape D+ »). En local, `/api/flux`
+reste ouvert sans jeton, comme prévu par ADR-0020. Ce que `bug-012` **ne
+règle pas** : la limite de connexions SSE simultanées (fin du point 2 et
+correctif attendu ci-dessus) — toujours absente.

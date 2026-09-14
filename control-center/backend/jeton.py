@@ -10,9 +10,20 @@ Le jeton est lu depuis le fichier désigné par `[serveur].fichier_jeton`
 (ADR-0007). `charger()` ne lève jamais — absent, vide, mal protégé ou
 illisible, elle rend un `Jeton` **inactif**, avec un motif nommé
 (`Jeton.refus`) : c'est le message que le serveur affichera au démarrage.
-Dans tous ces cas, les routes d'écriture restent désactivées et la lecture
-seule continue de fonctionner — un projet qui ne veut pas du pilotage garde
-son tableau de bord.
+
+⚠️ Ce que fait `server.py` d'un jeton inactif **dépend du déploiement**
+(ADR-0020, ce module n'en décide rien) : **aucun** `fichier_jeton` déclaré
+laisse la lecture ET l'écriture ouvertes en local, sans secret — un projet qui
+ne veut pas du pilotage garde son tableau de bord. Mais un `fichier_jeton`
+**déclaré et inactif** (permissions, taille, encodage refusés ci-dessous) doit
+**fermer** lecture ET écriture, locale comprise — *fail-closed* : une
+configuration cassée est le moment où il faut se méfier, pas celui où l'on
+baisse la garde. C'est `server.py` qui pose cette distinction, sur la
+présence du chemin (`config.fichier_jeton() is not None`), jamais sur
+`Jeton.actif()` seul — les confondre a ouvert une régression de sécurité
+mesurée pendant `bug-012` : un jeton déclaré en mode `0644` bloquait
+l'écriture (403) avant ce cycle, il ouvrait ensuite lecture ET écriture à
+tout le réseau derrière un intermédiaire local.
 
 ## Deux dangers, deux gardes
 
@@ -32,11 +43,12 @@ ne tente de deviner quel encodage l'auteur avait en tête.
 
 ## Ce que ce module NE fait PAS
 
-Il ne décide pas si les routes d'écriture existent : c'est `server.py`, dans
-un lot ultérieur, qui interroge `Jeton.actif()` avant d'enregistrer quoi que
-ce soit. Ce module n'a pas non plus connaissance du réseau : le jeton
-« présenté » qu'on lui passe est déjà une chaîne ou des octets, jamais une
-requête HTTP.
+Il ne décide pas si les routes de lecture ou d'écriture s'ouvrent : c'est
+`server.py` qui interroge `Jeton.actif()`, et — pour savoir si un jeton est
+seulement EXIGÉ — la présence du chemin déclaré (`config.fichier_jeton()`),
+selon le déploiement (ADR-0020). Ce module n'a pas non plus connaissance du
+réseau : le jeton « présenté » qu'on lui passe est déjà une chaîne ou des
+octets, jamais une requête HTTP.
 """
 
 import hmac
@@ -135,8 +147,10 @@ def charger(chemin, racine_projet):
     """Charge le jeton depuis `chemin`. Rend un `Jeton`, ne lève JAMAIS.
 
     Chaque refus est nommé — c'est le message que le serveur affichera au
-    démarrage — et dans tous les cas la lecture seule continue de
-    fonctionner : ce module ne fait que dire si l'ÉCRITURE peut s'ouvrir.
+    démarrage. Ce module ne dit que si CE jeton est comparable ; ce que
+    `server.py` en fait — lecture et écriture ouvertes en local sans jeton
+    déclaré, ou fermées si un jeton est déclaré et invalide — dépend du
+    déploiement (ADR-0020), pas de ce module seul.
     """
     if not chemin or not isinstance(chemin, str):
         return Jeton(refus="aucun fichier_jeton déclaré — routes d'écriture "

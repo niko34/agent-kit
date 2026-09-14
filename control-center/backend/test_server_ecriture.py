@@ -30,8 +30,13 @@ unique, pour que `_RACINE_VAR` et `_RACINE_WEB` pointent dans le clone.
   `test_verrou.py`) : le `pid_fils` réel d'un `Lancement` doit se propager
   jusqu'à la méta du verrou, pour qu'un second `Ecriture` (un serveur qui
   redémarrerait) le retrouve.
-- T7 : `ecriture_active` / `ecriture_raison` sans fuite du chemin ; aucune
-  sortie de commande n'atteint `/api/etat` ni le journal.
+- T7 : `ecriture_active` / `ecriture_raison` cohérents par demandeur ; aucune
+  sortie de commande n'atteint `/api/etat` ni le journal. Le masquage du
+  chemin du jeton dans `ecriture_raison` (`_raison_publique`) est couvert
+  directement sur la fonction dans `test_server.py` (bug-012, revue finale) :
+  depuis le correctif 1 de ce cycle, lecture et écriture partagent la même
+  garde, donc plus aucun `/api/etat` anonyme ne répond 200 avec une raison
+  non vide à observer ici.
 """
 
 import errno
@@ -633,7 +638,15 @@ def main():
                                           "print('MARQUEUR_SECRET_9f3')"]},
                       avec_budget=["vite"])
     try:
-        code, corps = requete(g7_actif.port, "GET", "/api/etat", entetes={}, corps=b"")
+        # ⚠️ bug-012 (ADR-0020, condition 5 du GATE) : un `fichier_jeton`
+        # CONFIGURÉ reste vérifié même en boucle LOCALE — c'est lui qui rend
+        # la garde distante effective derrière un intermédiaire local. Ce
+        # `Groupe` déclare un jeton (`declarer_jeton` par défaut), donc
+        # `GET /api/etat` l'EXIGE désormais, y compris ici. Sans
+        # `Authorization`, cette requête reçoit 401 et ce test vérifiait alors
+        # un corps d'ERREUR, pas l'état — établi par exécution, `bug-012`.
+        code, corps = requete(g7_actif.port, "GET", "/api/etat",
+                              entetes=_autorisation(g7_actif.jeton_valeur), corps=b"")
         etat = json.loads(corps)
         check("test_T7_ecriture_active_vrai_avec_jeton", etat.get("ecriture_active") is True)
         check("test_T7_ecriture_raison_absente_quand_actif",
@@ -646,7 +659,16 @@ def main():
         lancement = g7_actif.ecriture().lancement_courant()
         _attendre(lambda: lancement is not None and not lancement.toujours_en_cours())
 
-        code, corps_etat = requete(g7_actif.port, "GET", "/api/etat", entetes={}, corps=b"")
+        # ⚠️ Même motif que ci-dessus : sans `Authorization`, cette requête
+        # serait bloquée en 401 AVANT même de construire l'instantané, et le
+        # test « passerait » sans avoir vérifié la moindre purge du marqueur —
+        # exactement le chemin qui ne prouve rien tant que la garde qu'il
+        # traverse n'est pas réellement atteinte.
+        code, corps_etat = requete(g7_actif.port, "GET", "/api/etat",
+                                   entetes=_autorisation(g7_actif.jeton_valeur), corps=b"")
+        check("test_T7_reponse_etat_200_apres_lancement", code == 200,
+              "obtenu %d : la vérification suivante ne prouve rien sur un corps "
+              "d'erreur" % code)
         check("test_T7_marqueur_absent_de_api_etat",
               "MARQUEUR_SECRET_9f3" not in corps_etat,
               "la sortie de la commande a fuité dans /api/etat")
@@ -667,15 +689,21 @@ def main():
 
     g7_inactif = Groupe(commandes={}, declarer_jeton=False)
     try:
+        # Corrigé (bug-012, ADR-0020, correctif 2) : en local sans
+        # `fichier_jeton` configuré, l'écriture RÉUSSIT (même règle que
+        # `do_POST`) — `ecriture_active` doit donc l'annoncer, calculé PAR
+        # DEMANDEUR (`Handler._peut_ecrire`), pas sur la seule présence d'un
+        # jeton configuré. Cette assertion valait `False` avant ce correctif :
+        # elle certifiait l'ancien comportement, pas celui du déploiement
+        # local que cible ADR-0020.
         code, corps = requete(g7_inactif.port, "GET", "/api/etat", entetes={}, corps=b"")
         etat = json.loads(corps)
-        check("test_T7_ecriture_active_faux_sans_jeton",
-              etat.get("ecriture_active") is False)
-        raison = etat.get("ecriture_raison") or ""
-        check("test_T7_ecriture_raison_nommee_sans_jeton", bool(raison))
-        check("test_T7_ecriture_raison_ne_contient_pas_de_chemin",
-              "/" not in raison and "\\" not in raison,
-              "la raison publique fuite un chemin : %r" % raison)
+        check("test_T7_ecriture_active_vrai_local_sans_jeton",
+              etat.get("ecriture_active") is True,
+              "obtenu %r" % etat.get("ecriture_active"))
+        check("test_T7_ecriture_raison_vide_local_sans_jeton",
+              not etat.get("ecriture_raison"),
+              "obtenu %r" % etat.get("ecriture_raison"))
     finally:
         g7_inactif.fermer()
 
