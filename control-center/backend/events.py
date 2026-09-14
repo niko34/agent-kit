@@ -71,6 +71,28 @@ LIBELLES_BORNAGE = {
                      "son contenu",
 }
 
+# État d'un segment (bug-013) — TROIS cases, jamais deux. Un passage sans
+# fermeture n'est plus automatiquement « en cours » : il ne le reste que tant
+# que son inactivité ne dépasse pas le seuil déclaré (fourni par l'appelant,
+# jamais lu ici). `ETAT_SANS_CLOTURE` n'est ni un succès ni un échec du
+# travail — une fin SANS ANNONCE, à ne jamais confondre avec « terminé » (un
+# verdict positif) ni avec un échec (une faute de l'agent qu'il n'a pas
+# commise).
+ETAT_TERMINE = "termine"
+ETAT_EN_COURS = "en_cours"
+ETAT_SANS_CLOTURE = "sans_cloture"
+
+
+class _Workflows(list):
+    """La liste de workflows rendue par `reconstruire()`, augmentée du compte
+    d'événements SANS `session_id` (`evenements_hors_session`, bug-013 /
+    feature-010) — un ATTRIBUT, jamais un élément de la liste : le contrat de
+    liste (indexation, slicing, égalité avec une liste ordinaire, tri) reste
+    entièrement inchangé pour tout appelant qui ne lit pas cet attribut.
+    """
+
+    evenements_hors_session = 0
+
 
 def lire_journal(chemin):
     """Lit le journal. Une ligne illisible est IGNORÉE, jamais fatale.
@@ -122,7 +144,57 @@ def _duree_ms(debut, fin):
     return millisecondes if millisecondes >= 0 else None
 
 
-def reconstruire(evenements, commandes_suivies=(), agents_ouvrants=()):
+def _minutes_ecoulees(ts, maintenant):
+    """Minutes écoulées entre un horodatage ISO du journal et `maintenant`.
+
+    `maintenant` est un `time.struct_time` UTC (le format de `time.gmtime()`)
+    FOURNI PAR L'APPELANT — jamais lu ici via `time.time()` ou
+    `time.gmtime()` internes : l'horloge entre par paramètre, la fonction
+    reste pure et déterministe (ADR-0014, invariant du module).
+
+    Rend `None` — jamais une durée fabriquée — si `ts` est absent/illisible
+    ou si `maintenant` est `None` : c'est précisément le signal qui laisse la
+    garde de fraîcheur INERTE plutôt que de deviner (bug-013).
+    """
+    if not ts or maintenant is None:
+        return None
+    import calendar
+    import datetime
+    try:
+        d = datetime.datetime.strptime(ts, "%Y-%m-%dT%H:%M:%S.%fZ")
+    except ValueError:
+        return None
+    epoque_ts = calendar.timegm(d.timetuple()) + d.microsecond / 1e6
+    epoque_maintenant = calendar.timegm(maintenant)
+    return (epoque_maintenant - epoque_ts) / 60.0
+
+
+def _etat_segment(segment, maintenant, seuil_abandon_minutes):
+    """`ETAT_TERMINE` si le segment a une fermeture observée. Sinon
+    `ETAT_EN_COURS`, sauf si SON INACTIVITÉ dépasse le seuil déclaré — auquel
+    cas `ETAT_SANS_CLOTURE` (bug-013).
+
+    ⚠️ Ne déduit JAMAIS la fin de la seule absence d'un `SubagentStop` : la
+    borne porte sur `derniere_activite` (mise à jour à chaque événement
+    rattaché au segment), pas sur l'absence d'un événement particulier —
+    l'appariement `SubagentStart`/`SubagentStop` est déjà fragile en
+    production (1237 `SubagentStop` sur 1359 sans `agent_type`).
+
+    Sans horloge (`maintenant`) NI seuil déclarés, aucune requalification :
+    la garde reste prouvablement inerte plutôt que de trancher au jugé.
+    """
+    if segment["termine"]:
+        return ETAT_TERMINE
+    if maintenant is None or seuil_abandon_minutes is None:
+        return ETAT_EN_COURS
+    minutes = _minutes_ecoulees(segment.get("derniere_activite"), maintenant)
+    if minutes is not None and minutes > seuil_abandon_minutes:
+        return ETAT_SANS_CLOTURE
+    return ETAT_EN_COURS
+
+
+def reconstruire(evenements, commandes_suivies=(), agents_ouvrants=(),
+                  maintenant=None, seuil_abandon_minutes=None):
     """Groupe les événements en workflows.
 
     Un workflow est un SEGMENT d'une session — la session entière par défaut,
@@ -149,6 +221,23 @@ def reconstruire(evenements, commandes_suivies=(), agents_ouvrants=()):
       PAS absorbés dans le premier cycle : ils forment un workflow à part,
       `bornage` = `BORNAGE_PREFIXE`, qui n'affirme rien sur son contenu.
 
+    `maintenant` (un `time.struct_time` UTC, `time.gmtime()`) et
+    `seuil_abandon_minutes` gouvernent le champ additif `etat` de chaque
+    segment (`ETAT_TERMINE` / `ETAT_EN_COURS` / `ETAT_SANS_CLOTURE`,
+    bug-013) : un passage ouvert dont `derniere_activite` remonte à plus de
+    `seuil_abandon_minutes` avant `maintenant` devient `ETAT_SANS_CLOTURE`
+    plutôt que de rester affiché « en cours » indéfiniment (l'agent tué par
+    une limite de session, jamais fermé). Les deux valent `None` par défaut
+    : SANS horloge ni seuil fournis, AUCUNE requalification n'a lieu — la
+    garde de fraîcheur reste prouvablement inerte, jamais une déduction
+    silencieuse. `termine` garde son sens d'avant ce correctif, inchangé.
+
+    Le compte d'événements SANS `session_id` (`LancementDemande` /
+    `LancementTermine`, écrits avant qu'une session ne soit connue) n'est
+    plus écarté en silence : il est exposé sur `evenements_hors_session`,
+    un ATTRIBUT de la liste rendue (voir `_Workflows`) — on ne leur fabrique
+    jamais de session.
+
     ⚠️ CONTRAT D'ORDRE : cette fonction NE TRIE PAS. Elle consomme les événements
     dans l'ordre reçu, et c'est `lire_journal()` qui garantit l'ordre
     chronologique. Un appelant qui passe une liste non triée obtient un récit
@@ -165,10 +254,15 @@ def reconstruire(evenements, commandes_suivies=(), agents_ouvrants=()):
     # Dernier indice de segment ouvert, par session — c'est ce compteur qui
     # fabrique la clé `(session_id, indice)` et le suffixe de `workflow_id`.
     indice_courant = {}
+    # Événements SANS `session_id` (`LancementDemande`/`LancementTermine`,
+    # écrits avant qu'une session ne soit connue) : COMPTÉS, jamais absorbés
+    # dans une session fabriquée pour l'occasion (bug-013).
+    hors_session = 0
 
     for evenement in evenements:
         session = evenement.get("session_id")
         if not session:
+            hors_session += 1
             continue
 
         nom = evenement.get("hook_event_name")
@@ -216,6 +310,12 @@ def reconstruire(evenements, commandes_suivies=(), agents_ouvrants=()):
                 "commandes": {},
                 "imbrication_suspectee": False,
                 "fermetures_orphelines": 0,
+                # Candidats à l'imbrication suspectée — des RÉFÉRENCES vers
+                # des passages, jamais une décision : le verdict final se
+                # prend en post-passe, une fois `etat` connu pour chacun
+                # (bug-013, ne pas accuser un passage requalifié
+                # `sans_cloture`, ni un passage fermé tardivement).
+                "_candidats_imbrication": [],
             }
         workflow["fin_observee"] = evenement["ts"]
         if evenement.get("cwd") and not workflow["cwd"]:
@@ -232,11 +332,13 @@ def reconstruire(evenements, commandes_suivies=(), agents_ouvrants=()):
                     "debut": evenement["ts"], "fin": evenement["ts"],
                     "duree_ms": None, "outils": 0, "fichiers": [], "echecs": 0,
                     "termine": True,
+                    "derniere_activite": evenement["ts"],
                 }
                 workflow["segments"].append(workflow["principal"])
             workflow["principal"]["fin"] = evenement["ts"]
             workflow["principal"]["duree_ms"] = _duree_ms(
                 workflow["principal"]["debut"], workflow["principal"]["fin"])
+            workflow["principal"]["derniere_activite"] = evenement["ts"]
             if evenement.get("tool"):
                 workflow["principal"]["outils"] += 1
 
@@ -246,9 +348,11 @@ def reconstruire(evenements, commandes_suivies=(), agents_ouvrants=()):
             workflow["principal"] = None
             if workflow["en_cours"] is not None:
                 # Deux ouvertures sans fermeture intercalée : soit une fermeture
-                # a été perdue, soit un agent en a invoqué un autre. Dans les
-                # deux cas le récit devient incertain, et on le DIT.
-                workflow["imbrication_suspectee"] = True
+                # a été perdue, soit un agent en a invoqué un autre. Le récit
+                # devient incertain — mais le verdict (`imbrication_suspectee`)
+                # attend la post-passe (bug-013) : ici on ne fait que
+                # RETENIR le candidat, jamais trancher au vol.
+                workflow["_candidats_imbrication"].append(workflow["en_cours"])
             passage = {
                 "agent": evenement.get("agent_type") or AGENT_PRINCIPAL,
                 "agent_id": evenement.get("agent_id"),
@@ -259,6 +363,7 @@ def reconstruire(evenements, commandes_suivies=(), agents_ouvrants=()):
                 "fichiers": [],
                 "commandes": [],
                 "termine": False,
+                "derniere_activite": evenement["ts"],
             }
             passage["type"] = "sousagent"
             workflow["passages"].append(passage)
@@ -315,6 +420,7 @@ def reconstruire(evenements, commandes_suivies=(), agents_ouvrants=()):
             passage["fin"] = evenement["ts"]
             passage["duree_ms"] = _duree_ms(passage["debut"], passage["fin"])
             passage["termine"] = True
+            passage["derniere_activite"] = evenement["ts"]
             if workflow_du_passage["en_cours"] is passage:
                 workflow_du_passage["en_cours"] = None
             continue
@@ -330,10 +436,23 @@ def reconstruire(evenements, commandes_suivies=(), agents_ouvrants=()):
         # rapportaient qu'un seul fichier. Défaut relevé en revue.
         passage = workflow["en_cours"]
 
+        # TOUT événement qui atteint ce point est rattaché au passage courant
+        # (bug-013, correctif) : un `PostToolUse` nu — sans `file`, sans échec,
+        # sans commande suivie — reste de l'ACTIVITÉ OBSERVÉE. Ne rafraîchir
+        # `derniere_activite` que sur les trois cas particuliers ci-dessous
+        # laissait la garde de fraîcheur ignorer la forme d'événement la plus
+        # fréquente du journal réel (Read, Grep, réflexion sans écriture) et
+        # déclarait `sans_cloture` un agent qui travaillait toujours.
+        if passage is not None:
+            passage["derniere_activite"] = evenement["ts"]
+
         if nom == ECHEC_OUTIL:
             workflow["echecs"] += 1
             if passage is not None:
                 passage["echecs"] += 1
+                # C'est de l'ACTIVITÉ OBSERVÉE (bug-013) : un passage qui
+                # continue d'échouer n'est pas un passage abandonné.
+                passage["derniere_activite"] = evenement["ts"]
             elif workflow["principal"] is not None:
                 workflow["principal"]["echecs"] += 1
 
@@ -344,12 +463,15 @@ def reconstruire(evenements, commandes_suivies=(), agents_ouvrants=()):
             cible = passage if passage is not None else workflow["principal"]
             if cible is not None and fichier not in cible["fichiers"]:
                 cible["fichiers"].append(fichier)
+            if passage is not None:
+                passage["derniere_activite"] = evenement["ts"]
 
         tete = evenement.get("command_head")
         if tete and tete in suivies:
             workflow["commandes"][tete] = workflow["commandes"].get(tete, 0) + 1
             if passage is not None:
                 passage["commandes"].append(tete)
+                passage["derniere_activite"] = evenement["ts"]
 
     for (session, indice), workflow in workflows.items():
         # `cycles_dans_la_session` vient du compteur final : il ne dit pas
@@ -388,7 +510,26 @@ def reconstruire(evenements, commandes_suivies=(), agents_ouvrants=()):
         del workflow["en_cours"]
         del workflow["principal"]
 
-    return sorted(workflows.values(), key=lambda w: (w["debut"], w["indice_cycle"]))
+        # `etat` (bug-013) — calculé APRÈS que tous les segments du workflow
+        # existent, avec l'horloge et le seuil fournis par l'appelant.
+        for segment in workflow["segments"]:
+            segment["etat"] = _etat_segment(segment, maintenant, seuil_abandon_minutes)
+
+        # Post-passe sur l'imbrication suspectée (bug-013) : ⚠️ L'ORDRE
+        # IMPORTE — ceci doit venir APRÈS le calcul de `etat` ci-dessus.
+        # Inversé, un passage tué par le runtime (jamais fermé) serait
+        # requalifié en vraie imbrication au lieu d'une fin sans annonce déjà
+        # expliquée par `ETAT_SANS_CLOTURE`. Ne lever le drapeau que si le
+        # passage antérieur est réellement resté `ETAT_EN_COURS` — ni fermé
+        # (tardivement ou non), ni `ETAT_SANS_CLOTURE`.
+        workflow["imbrication_suspectee"] = any(
+            candidat.get("etat") == ETAT_EN_COURS
+            for candidat in workflow["_candidats_imbrication"])
+        del workflow["_candidats_imbrication"]
+
+    resultat = _Workflows(sorted(workflows.values(), key=lambda w: (w["debut"], w["indice_cycle"])))
+    resultat.evenements_hors_session = hors_session
+    return resultat
 
 
 def _reprises(passages):

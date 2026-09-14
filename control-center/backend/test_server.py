@@ -13,6 +13,7 @@ La propriété centrale de cette étape est structurelle : `Handler` n'a pas de
 ajoute une route d'écriture, le second échoue même si le premier est contourné.
 """
 
+import datetime
 import inspect
 import json
 import os
@@ -258,8 +259,17 @@ def main():
             base.update(extra)
             return base
 
+        # ⚠️ bug-013 : `instantane()` requalifie désormais un passage ouvert
+        # `sans_cloture` contre l'horloge RÉELLE (`time.gmtime()`, jamais
+        # figée dans ce test). Une date codée en dur finirait, avec le temps,
+        # par dépasser le seuil d'abandon et faire ce test — c'est
+        # exactement le défaut que bug-013 corrige, pas un artefact à
+        # contourner. Les horodatages sont donc relatifs à MAINTENANT.
+        _base_e12 = datetime.datetime.now(datetime.timezone.utc)
+
         def _t(seconde):
-            return "2026-09-13T10:%02d:%02d.000Z" % (seconde // 60, seconde % 60)
+            instant = _base_e12 + datetime.timedelta(seconds=seconde)
+            return instant.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
         with tempfile.TemporaryDirectory() as tmp_e12:
             journal_e12 = os.path.join(tmp_e12, "j.jsonl")
@@ -317,6 +327,49 @@ def main():
             check("test_E12_affiches_1_tronque_bien_a_un_seul",
                   len(donnees_borne["workflows"]) == 1,
                   "la session compte 2 cycles ; obtenu %d" % len(donnees_borne["workflows"]))
+
+        # --- bug-013 : `instantane()` ne compte pas un agent `sans_cloture` ---
+        # comme actif — c'est la garde qui manquait quand un agent tué par le
+        # runtime restait affiché « en cours » indéfiniment.
+        with tempfile.TemporaryDirectory() as tmp_b013:
+            journal_b013 = os.path.join(tmp_b013, "j.jsonl")
+            recent = datetime.datetime.now(datetime.timezone.utc)
+
+            def _ts(dt):
+                return dt.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+            with open(journal_b013, "w", encoding="utf-8") as f:
+                for e in [
+                    _ev("2020-01-01T00:00:00.000Z", "SubagentStart",
+                        agent_type="debugger", agent_id="mort1"),
+                    # jamais fermé, dernière activité en l'an 2020 : abandonné
+                    _ev(_ts(recent), "SubagentStart",
+                        agent_type="test-engineer", agent_id="vivant1"),
+                    # jamais fermé non plus, mais actif À L'INSTANT
+                ]:
+                    f.write(json.dumps(e) + "\n")
+
+            toml_b013 = os.path.join(tmp_b013, "c.toml")
+            with open(toml_b013, "w", encoding="utf-8") as f:
+                # Seuil MINIMAL autorisé (60 min, borné par config.py) : l'agent
+                # de 2020 est abandonné depuis bien plus longtemps que ça, quel
+                # que soit le moment où ce test tourne.
+                f.write('[workflows]\nseuil_abandon_minutes = 60\n')
+            config_b013 = C.charger(chemin=toml_b013, racine_projet=racine_reelle)
+
+            etat_b013 = SRV.Etat(config_b013)
+            etat_b013.journal = journal_b013
+            donnees_b013 = etat_b013.instantane()
+            par_nom_b013 = {a["nom"]: a for a in donnees_b013["agents"]}
+
+            check("test_B013_agent_sans_cloture_n_est_plus_actif",
+                  par_nom_b013.get("debugger", {}).get("actif_sur") is None,
+                  "un passage `sans_cloture` ne doit plus apparaître comme actif ; "
+                  "obtenu %r" % par_nom_b013.get("debugger", {}).get("actif_sur"))
+            check("test_B013_agent_recent_reste_actif",
+                  par_nom_b013.get("test-engineer", {}).get("actif_sur") is not None,
+                  "un passage réellement récent doit rester actif ; obtenu %r"
+                  % par_nom_b013.get("test-engineer", {}).get("actif_sur"))
 
         # --- `_raison_publique` ne laisse jamais fuir le chemin du jeton -----
         # Couverture RÉTABLIE (revue finale, bug-012) : le test équivalent

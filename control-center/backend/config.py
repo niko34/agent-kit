@@ -86,6 +86,16 @@ _DEFAUTS = {
         # déclare celui qui ouvre ses cycles.
         "agents_ouvrants": [],
         "affiches": 20,
+        # Combien de minutes sans AUCUNE activité observée avant qu'un
+        # passage encore ouvert ne soit requalifié « sans clôture » plutôt
+        # que laissé « en cours » indéfiniment (bug-013). Mesuré sur ce
+        # dépôt : la plus longue durée réelle d'un passage est 24 min
+        # (`backend-developer`), et un sous-agent peut légitimement rester
+        # silencieux longtemps (`architect` : un seul appel d'outil en
+        # 127 s). 120 min = 5× la plus longue mesurée : le risque d'accuser
+        # un agent vivant (on relancerait un travail en cours) est pire que
+        # celui d'afficher trop longtemps un agent mort.
+        "seuil_abandon_minutes": 120,
     },
     "serveur": {
         # Par défaut on n'écoute QUE en local. Ouvrir au réseau est une décision
@@ -165,6 +175,23 @@ class Config(dict):
         if not isinstance(brut, int) or isinstance(brut, bool):
             return defaut
         if brut < 1 or brut > 100:
+            return defaut
+        return brut
+
+    def seuil_abandon_minutes(self):
+        """Minutes sans activité avant qu'un passage ouvert soit requalifié
+        « sans clôture » (bug-013), borné [60, 10080] (1h à 1 semaine).
+
+        Même discipline défensive que `workflows_affiches()` : une valeur
+        aberrante ne doit pas faire planter la reconstruction, ni accuser à
+        tort un agent vivant (borne basse) ni laisser un abandon invisible
+        pour toujours (borne haute) — on retombe alors sur le défaut.
+        """
+        defaut = _DEFAUTS["workflows"]["seuil_abandon_minutes"]
+        brut = self.section("workflows").get("seuil_abandon_minutes", defaut)
+        if isinstance(brut, bool) or not isinstance(brut, (int, float)):
+            return defaut
+        if brut < 60 or brut > 10080:
             return defaut
         return brut
 
@@ -311,6 +338,7 @@ if __name__ == "__main__":
         "garde_fous": config.section("garde_fous"),
         "agents_ouvrants": config.agents_ouvrants(),
         "workflows_affiches": config.workflows_affiches(),
+        "seuil_abandon_minutes": config.seuil_abandon_minutes(),
         "taille_vocabulaire": len(config.section("specs").get("vocabulaire", {})),
         "fichier_jeton": config.fichier_jeton(),
         "budget_max_usd": config.budget_max_usd(),

@@ -153,6 +153,57 @@ affiches = -3
               c.workflows_affiches() == 20,
               "une chaîne n'est pas un entier ; obtenu %r" % c.workflows_affiches())
 
+        # --- bug-013 : `seuil_abandon_minutes`, borné [60, 10080] --------------
+        c = C.charger(chemin=os.path.join(tmp, "absent5.toml"), racine_projet=tmp)
+        check("test_seuil_abandon_absent_donne_120",
+              c.seuil_abandon_minutes() == 120,
+              "obtenu %r" % c.seuil_abandon_minutes())
+
+        c = C.charger(chemin=ecrire(tmp, '[workflows]\nseuil_abandon_minutes = 180\n'),
+                      racine_projet=tmp)
+        check("test_seuil_abandon_valeur_declaree_respectee",
+              c.seuil_abandon_minutes() == 180,
+              "obtenu %r" % c.seuil_abandon_minutes())
+
+        c = C.charger(chemin=ecrire(tmp, '[workflows]\nseuil_abandon_minutes = 59\n'),
+                      racine_projet=tmp)
+        check("test_seuil_abandon_sous_la_borne_basse_retombe_sur_le_defaut",
+              c.seuil_abandon_minutes() == 120,
+              "59 < 60 min ne doit pas atteindre reconstruire() ; obtenu %r"
+              % c.seuil_abandon_minutes())
+
+        c = C.charger(chemin=ecrire(tmp, '[workflows]\nseuil_abandon_minutes = 60\n'),
+                      racine_projet=tmp)
+        check("test_seuil_abandon_borne_basse_incluse",
+              c.seuil_abandon_minutes() == 60,
+              "60 est la borne basse ADMISE ; obtenu %r" % c.seuil_abandon_minutes())
+
+        c = C.charger(chemin=ecrire(tmp, '[workflows]\nseuil_abandon_minutes = 10081\n'),
+                      racine_projet=tmp)
+        check("test_seuil_abandon_au_dessus_de_la_borne_haute_retombe_sur_le_defaut",
+              c.seuil_abandon_minutes() == 120,
+              "10081 min > 1 semaine ; obtenu %r" % c.seuil_abandon_minutes())
+
+        c = C.charger(chemin=ecrire(tmp, '[workflows]\nseuil_abandon_minutes = 10080\n'),
+                      racine_projet=tmp)
+        check("test_seuil_abandon_borne_haute_incluse",
+              c.seuil_abandon_minutes() == 10080,
+              "10080 (1 semaine) est la borne haute ADMISE ; obtenu %r"
+              % c.seuil_abandon_minutes())
+
+        c = C.charger(chemin=ecrire(tmp, '[workflows]\nseuil_abandon_minutes = "long"\n'),
+                      racine_projet=tmp)
+        check("test_seuil_abandon_type_invalide_retombe_sur_le_defaut",
+              c.seuil_abandon_minutes() == 120,
+              "une chaîne n'est pas un nombre ; obtenu %r" % c.seuil_abandon_minutes())
+
+        c = C.charger(chemin=ecrire(tmp, '[workflows]\nseuil_abandon_minutes = true\n'),
+                      racine_projet=tmp)
+        check("test_seuil_abandon_booleen_retombe_sur_le_defaut",
+              c.seuil_abandon_minutes() == 120,
+              "un booléen est un `int` en Python — piège explicitement écarté, "
+              "comme pour `workflows_affiches()` ; obtenu %r" % c.seuil_abandon_minutes())
+
         # --- feature-007 lot 1 : les accesseurs des trois garde-fous, ENFIN lus --
         c = C.charger(chemin=os.path.join(tmp, "absent4.toml"), racine_projet=tmp)
         check("test_fichier_jeton_absent_rend_none",

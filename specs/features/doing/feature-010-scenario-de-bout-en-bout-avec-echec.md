@@ -244,3 +244,52 @@ entier.
 - Toute refonte révélée par le scénario : un défaut trop gros pour un
   correctif minimal devient sa propre spec
 - Les étapes au-delà de G : il n'y en a pas de déclarée à ce jour
+
+---
+
+## ⏸ Interrompu volontairement — 2026-09-14, fin de session
+
+**Ce cycle n'est pas terminé.** Il reprend à l'étape « jouer le scénario ».
+Rien n'est à redécouvrir : tout ce qui suit a été établi **par exécution**.
+
+### Fait, et vérifié
+
+| Étape | Résultat |
+|---|---|
+| `M1` compte d'entrée | **471 cas** sur 13 suites ; kit : 100 |
+| `M2` capture headless | **DÉBLOQUÉE** — avec jeton déclaré (donc sondage, pas `EventSource`) : `chromium --headless` sort en **0**. Sans jeton : **124**, aucune image. Contrôle négatif fait. La zone laissée en suspens depuis `feature-002` est traitable. |
+| `M3` compteurs | `fermetures_orphelines` = **1250**, toutes à `agent_type` vide, **aucune** appariée — le runtime émet un `SubagentStop` **fantôme** à chaque fin de tour. `imbrication_suspectee` = **9 sur 12**, et le nom est **faux** : c'est un **retard d'écriture du hook** (orchestrator inactif à 20:00:05, fin journalisée à 20:03:33). |
+| `M4` frontières | `SessionEnd` se déclenche **2 fois**, sur les sessions **courtes proprement closes**, **jamais** sur une session longue reprise. `ADR-0014` est **faux par généralisation, vrai sur son sous-ensemble**. `LancementDemande`/`LancementTermine` n'ont **pas de `session_id`** → écartés par `reconstruire()` : **le tableau de bord ne montre pas le lancement qu'il déclenche**. |
+| `A1` scénario | Écrit, versionné : `control-center/SCENARIO-BOUT-EN-BOUT.md` (734 l.), spec porteuse **`bug-005`** (hors `control-center/`, donc l'instrument n'est pas modifié pendant la mesure). |
+| Conception + attendu visuel | Tranchés : dix états, seuil **120 min**, trois arbitrages écrits. |
+| `bug-013` | **Absorbée et implémentée**, backend et frontend. **471 → 512 cas.** |
+
+### Cinq défauts corrigés, dont trois que rien n'avait vus
+
+1. **L'état « sans clôture » n'existait pas** — `if (!segment.termine) classe += " en-cours"` : un agent mort depuis 22 h s'affichait « en cours ».
+2. **Faux positif sur les agents vivants** : `derniere_activite` n'était rafraîchie que par un échec, un fichier ou une commande. **Un `PostToolUse` nu ne comptait pas** — donc un agent qui lit, cherche et raisonne sans écrire était déclaré mort. Sur 5926 événements réels, **3806 sont des `PostToolUse`** : la forme majoritaire était celle qui ne comptait pas.
+3. **`imbrication_suspectee` en alerte ambre** pour un fait bénin, avec un commentaire du code affirmant que c'« EST une anomalie du récit ».
+4. **Le bandeau de rebouclage se déclenchait sans condition**, alors que la détection `.repris`, elle, distinguait correctement. Deux logiques contradictoires **sur le même écran**.
+5. **Deux commentaires contradictoires** sur le même champ, à 35 lignes d'écart.
+
+### Ce qui reste à faire
+
+- **Jouer le scénario** (`A2`, `A5`–`A8`) : mener un vrai cycle sur `bug-005`, y injecter une **vraie** mutation, invoquer `test-engineer` **sans le prévenir**, constater le rouge, reboucler, relever à l'écran. ⚠️ **Aucun événement écrit à la main**, jamais.
+- `A3` : conclure sur les deux compteurs, chiffres à l'appui.
+- `S1` : `security-reviewer` en rôle **AUDIT** sur l'assemblage complet.
+- Tests, revue, documentation, clôture — dont une **note datée** en pied d'`ADR-0014` (immuable : jamais de réécriture) et l'**ADR** du co-traitement `feature-010` + `bug-013`.
+
+### Ce qui est perdu, et pourquoi
+
+**La calibration en aveugle.** Je voulais mesurer si le scénario retrouverait seul le défaut de `bug-013` sans qu'on le lui souffle. J'ai omis `bug-013` du brief — mais elle était **posée en clair dans `specs/features/todo/`**, et le premier travail d'un agent qui écrit un scénario est d'inventorier les specs. Son scénario en portait **16 occurrences**.
+
+L'aveuglement était **impossible par construction** : il se construit dans l'environnement, jamais dans un brief. Et il ne se rejoue pas.
+
+**Le remplacement est meilleur que ce que je tentais** : le scénario est désormais **figé et versionné**. Le **prochain** défaut trouvé en usage réel — comme l'agent bloqué l'a été — l'éprouvera honnêtement, puisqu'il aura été écrit sans rien en savoir. Gratuit, et plus rigoureux.
+
+### Pièges opérationnels, à ne pas redécouvrir
+
+- **Cloner `control-center/` ET `.claude/agents/`**, par `cp -a` et **jamais `git clone`** : un clone partiel fait échouer `test_E12` pour une mauvaise raison ; `_RACINE_VAR` dérive de l'emplacement de `server.py`, donc un clone incomplet **écrit dans le journal réel**.
+- **Un serveur de l'utilisateur tourne sur le port 8788.** Ne pas le tuer, ne pas occuper ce port.
+- **Tout arrêt de processus vise un PID capturé**, jamais un motif : un `pkill -f` a déjà tué le mauvais processus.
+- Le journal réel est **vivant** — il grandit pendant qu'on le mesure. Travailler sur un **instantané figé**.

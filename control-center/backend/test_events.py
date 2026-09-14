@@ -407,6 +407,151 @@ def main():
           E.reconstruire([{"ts": T(1), "hook_event_name": "Stop"}]) == [],
           "sans session_id, un événement n'appartient à aucun workflow")
 
+    # =========================================================================
+    # bug-013 — un agent tué par le runtime ne reste plus « en cours » pour
+    # toujours : troisième état `etat` (`termine` / `en_cours` / `sans_cloture`),
+    # gouverné par `maintenant` et `seuil_abandon_minutes`, tous deux fournis
+    # par l'appelant — jamais lus en interne (ADR-0014).
+    # =========================================================================
+
+    def TM(minutes_totales, ms=0):
+        """Horodatage ISO, en minutes écoulées depuis 2026-09-12T10:00:00Z —
+        évite le piège de `T()` (secondes) qui déborde l'heure au-delà de
+        59 min : bug-013 a besoin de fenêtres de plusieurs dizaines de
+        minutes, parfois de plusieurs jours (seuil muté à 10**6 min)."""
+        import datetime
+        base = datetime.datetime(2026, 9, 12, 10, 0, 0)
+        instant = base + datetime.timedelta(minutes=minutes_totales, milliseconds=ms)
+        return instant.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+    def _struct_time(ts_iso):
+        """`time.struct_time` UTC à partir d'un horodatage ISO quelconque."""
+        import datetime
+        return datetime.datetime.strptime(ts_iso, "%Y-%m-%dT%H:%M:%S.%fZ").utctimetuple()
+
+    def MAINTENANT(minutes_totales):
+        """`time.struct_time` UTC correspondant à `TM(minutes_totales)` —
+        c'est l'horloge que `reconstruire()` reçoit en paramètre, jamais
+        lue via `time.time()`/`time.gmtime()` en interne."""
+        return _struct_time(TM(minutes_totales))
+
+    # B1 — un passage ouvert depuis plus longtemps que le seuil, mais dont la
+    # DERNIÈRE ACTIVITÉ (pas l'ouverture) reste fraîche, n'est JAMAIS
+    # requalifié : la borne porte sur l'activité observée, pas sur l'âge de
+    # l'ouverture (c'est le risque symétrique que bug-013 refuse : accuser un
+    # agent vivant, comme l'`architect` mesuré à 127 s entre deux outils).
+    w = un(E.reconstruire([
+        ev(TM(0), "SubagentStart", agent_type="test-engineer", agent_id="a1"),
+        ev(TM(35), "PostToolUse", tool="Write", file="a.py"),
+        # aucune fermeture : le passage reste ouvert
+    ], maintenant=MAINTENANT(40), seuil_abandon_minutes=36))
+    check("test_B1_actif_recent_reste_en_cours_malgre_ouverture_ancienne",
+          w["passages"][0]["etat"] == E.ETAT_EN_COURS,
+          "obtenu %r (40 min depuis l'ouverture > seuil 36, mais seulement "
+          "5 min depuis la dernière activité)" % w["passages"][0]["etat"])
+
+    # B1b — le cas décisif (relevé par exécution, faux positif désigné par
+    # l'architecte comme le risque le plus coûteux) : la SEULE activité
+    # récente est un `PostToolUse` NU — sans `file`, sans échec, sans commande
+    # suivie (Read, Grep, réflexion...). C'est la forme d'événement la plus
+    # fréquente du journal réel (3806 sur 5926) ; elle DOIT rafraîchir
+    # `derniere_activite` au même titre que les trois autres.
+    w = un(E.reconstruire([
+        ev(TM(0), "SubagentStart", agent_type="architect", agent_id="a1"),
+        ev(TM(35), "PostToolUse", tool="Read"),
+        # aucune fermeture : le passage reste ouvert
+    ], maintenant=MAINTENANT(40), seuil_abandon_minutes=36))
+    check("test_B1b_posttooluse_nu_sans_file_reste_en_cours",
+          w["passages"][0]["etat"] == E.ETAT_EN_COURS,
+          "obtenu %r (un PostToolUse sans `file` et sans échec doit compter "
+          "comme activité observée)" % w["passages"][0]["etat"])
+
+    # B2 — le cas RÉEL relevé par l'utilisateur : `test-engineer`, jamais
+    # fermé, 22 h plus tard sur le tableau de bord.
+    w = un(E.reconstruire([
+        ev("2026-09-13T19:11:54.581Z", "SubagentStart",
+           agent_type="test-engineer", agent_id="afa8010143f22bb24"),
+    ], maintenant=_struct_time("2026-09-14T17:11:54.581Z"), seuil_abandon_minutes=120))
+    check("test_B2_cas_reel_test_engineer_afa8010143f22bb24_sans_cloture",
+          w["passages"][0]["etat"] == E.ETAT_SANS_CLOTURE,
+          "obtenu %r" % w["passages"][0]["etat"])
+
+    # B3 — `maintenant=None` : la garde reste PROUVABLEMENT inerte, quel que
+    # soit le seuil fourni. C'est le comportement par défaut de `reconstruire()`
+    # (rétrocompatibilité) qu'aucun appelant existant ne doit voir changer.
+    w = un(E.reconstruire([
+        ev(TM(0), "SubagentStart", agent_type="test-engineer", agent_id="a1"),
+    ], seuil_abandon_minutes=1))  # maintenant=None (défaut) malgré un seuil ridicule
+    check("test_B3_maintenant_none_desarme_la_garde",
+          w["passages"][0]["etat"] == E.ETAT_EN_COURS,
+          "obtenu %r — aucun sans_cloture ne doit apparaître sans horloge fournie"
+          % w["passages"][0]["etat"])
+
+    # B4 — le seuil, muté dans les deux sens (exigé par les critères
+    # d'acceptation de bug-013). 10 min d'inactivité, mesurées deux fois :
+    #   - seuil RACCOURCI à 5 min : le passage (pourtant vivant) est accusé.
+    #   - seuil ALLONGÉ à 10**6 min : l'abandonné reste ouvert indéfiniment.
+    evenements_b4 = [ev(TM(0), "SubagentStart", agent_type="test-engineer", agent_id="a1")]
+    w_court = un(E.reconstruire(evenements_b4, maintenant=MAINTENANT(10), seuil_abandon_minutes=5))
+    check("test_B4_seuil_raccourci_accuse_le_vivant",
+          w_court["passages"][0]["etat"] == E.ETAT_SANS_CLOTURE,
+          "obtenu %r" % w_court["passages"][0]["etat"])
+    w_long = un(E.reconstruire(evenements_b4, maintenant=MAINTENANT(10), seuil_abandon_minutes=10**6))
+    check("test_B4_seuil_allonge_laisse_l_abandonne_ouvert",
+          w_long["passages"][0]["etat"] == E.ETAT_EN_COURS,
+          "obtenu %r" % w_long["passages"][0]["etat"])
+
+    # B5 — imbrication : le verdict dépend de l'ÉTAT FINAL du passage
+    # antérieur, jamais de la seule présence d'une seconde ouverture.
+    # (a) le premier passage ferme TARDIVEMENT : pas une imbrication.
+    w = un(E.reconstruire([
+        ev(T(1), "SubagentStart", agent_type="architect", agent_id="a1"),
+        ev(T(2), "SubagentStart", agent_type="debugger", agent_id="a2"),
+        ev(T(3), "SubagentStop", agent_id="a1"),
+        ev(T(4), "SubagentStop", agent_id="a2"),
+    ]))
+    check("test_B5a_fermeture_tardive_n_est_pas_une_imbrication",
+          w["imbrication_suspectee"] is False,
+          "le passage antérieur a fini par se fermer : ce n'est pas une "
+          "imbrication, juste un récit tardif")
+
+    # (b) le premier passage ne ferme JAMAIS et reste `en_cours` : imbrication.
+    w = un(E.reconstruire([
+        ev(T(1), "SubagentStart", agent_type="architect", agent_id="a1"),
+        ev(T(2), "SubagentStart", agent_type="debugger", agent_id="a2"),
+        ev(T(3), "SubagentStop", agent_id="a2"),
+    ]))
+    check("test_B5b_premiere_ouverture_jamais_fermee_et_en_cours_est_une_imbrication",
+          w["imbrication_suspectee"] is True)
+
+    # (c) le premier passage ne ferme jamais mais est `sans_cloture` : ce
+    # n'est plus une imbrication, c'est une fin sans annonce déjà expliquée.
+    w = un(E.reconstruire([
+        ev(TM(0), "SubagentStart", agent_type="architect", agent_id="a1"),
+        ev(TM(1), "SubagentStart", agent_type="debugger", agent_id="a2"),
+        ev(TM(2), "SubagentStop", agent_id="a2"),
+    ], maintenant=MAINTENANT(1000), seuil_abandon_minutes=120))
+    check("test_B5c_premiere_ouverture_sans_cloture_n_est_plus_une_imbrication",
+          w["imbrication_suspectee"] is False,
+          "obtenu imbrication_suspectee=%r, etat[0]=%r"
+          % (w["imbrication_suspectee"], w["passages"][0]["etat"]))
+
+    # B6 — `evenements_hors_session` : les événements `LancementDemande` /
+    # `LancementTermine` (pas de `session_id` connu au moment de l'écriture,
+    # cf. `server.py`) sont COMPTÉS, jamais absorbés dans une session
+    # fabriquée pour l'occasion.
+    resultat = E.reconstruire([
+        {"ts": T(1), "hook_event_name": "LancementDemande"},
+        {"ts": T(2), "hook_event_name": "LancementTermine"},
+        ev(T(3), "SubagentStart", agent_type="architect", agent_id="a1"),
+    ])
+    check("test_B6_evenements_hors_session_comptes",
+          resultat.evenements_hors_session == 2,
+          "obtenu %r" % resultat.evenements_hors_session)
+    check("test_B6_evenement_hors_session_n_a_pas_fabrique_de_workflow",
+          len(resultat) == 1,
+          "seul l'événement AVEC session_id doit produire un workflow")
+
     print("\n%d cas, %d echec(s)" % (_tests, len(_echecs)))
     for echec in _echecs:
         print("  - %s" % echec)

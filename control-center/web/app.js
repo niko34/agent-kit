@@ -36,6 +36,19 @@ function duree(ms) {
   return minutes + " min " + Math.round((ms % 60000) / 1000) + " s";
 }
 
+/* Temps écoulé depuis `derniere_activite`, pour le SEUL registre « sans
+ * clôture » (`etat` additif, bug-013/feature-010) : un segment mort depuis
+ * des heures s'exprime en heures, jamais en minutes à quatre chiffres. */
+function dureeDepuisIso(iso) {
+  if (!iso) return null;
+  const debut = Date.parse(String(iso));
+  if (Number.isNaN(debut)) return null;
+  const ms = Date.now() - debut;
+  if (ms < 0) return null;
+  if (ms < 3600000) return Math.max(1, Math.round(ms / 60000)) + " min";
+  return Math.round(ms / 3600000) + " h";
+}
+
 /* Le champ « Priorité » est du Markdown écrit à la main. Il arrivait brut dans
  * l'interface — « **Haute** — un crash n », « ~~Moyenne — fausse une » — avec
  * les astérisques visibles et une coupure au milieu d'un mot.
@@ -188,6 +201,28 @@ function rendreKanban(etat) {
 }
 
 /* ------------------------------------------------------------- workflows -- */
+/* Ancrage visuel du rebouclage dans la chaîne (feature-010, §8) : un agent qui
+ * réapparaît APRÈS qu'un AUTRE sous-agent l'a suivi. On ignore l'agent
+ * principal dans ce calcul : il s'intercale entre chaque appel de sous-agent
+ * par construction (c'est lui qui orchestre), sa présence seule ne signale
+ * donc rien — c'est un AUTRE sous-agent intercalé qui distingue un vrai
+ * rebouclage d'un enchaînement normal. Aucun appel réseau : tout vient de
+ * `segments[]`, déjà transmis. */
+function indicesRepris(segments) {
+  const indices = new Set();
+  const sousAgents = [];
+  segments.forEach((segment, index) => {
+    if (segment.type !== "principal") sousAgents.push({ agent: segment.agent, index });
+  });
+  const dernierePosition = new Map();
+  sousAgents.forEach((entree, position) => {
+    const precedente = dernierePosition.get(entree.agent);
+    if (precedente !== undefined && position - precedente > 1) indices.add(entree.index);
+    dernierePosition.set(entree.agent, position);
+  });
+  return indices;
+}
+
 function rendreWorkflows(etat) {
   const zone = $("workflows");
   vider(zone);
@@ -237,24 +272,47 @@ function rendreWorkflows(etat) {
      * racontait un workflow plus creux qu'il n'est : sur un relevé réel, 108
      * des 110 appels d'outils lui appartenaient et n'apparaissaient nulle part. */
     const segments = wf.segments || wf.passages || [];
+    /* Seule source de vérité pour un VRAI rebouclage : un autre sous-agent
+     * intercalé entre deux passages du même agent (voir `indicesRepris`
+     * ci-dessus). `wf.reprises` ne fait que NOMMER les agents et leur
+     * compte pour le libellé — il ne décide plus, seul, de l'affichage :
+     * il comptait aussi une simple réapparition après l'agent principal,
+     * un enchaînement normal, comme un rebouclage. */
+    const reprisesChaine = indicesRepris(segments);
     if (segments.length) {
       const chaine = el("div", "chaine");
       segments.forEach((segment, index) => {
         if (index) chaine.appendChild(el("span", "fleche", "→"));
         let classe = "maillon";
         if (segment.type === "principal") classe += " principal";
-        if (!segment.termine) classe += " en-cours";
-        if (segment.echecs) classe += " echec";
+        /* `etat` est additif (bug-013) : sur un backend plus ancien, il est
+         * absent — on retombe alors sur le SEUL signal disponible avant lui
+         * (`termine`), jamais sur une affirmation nouvelle par défaut. */
+        const sansCloture = segment.etat === "sans_cloture";
+        if (sansCloture) classe += " sans-cloture";
+        else if (segment.etat === "en_cours") classe += " en-cours";
+        else if (segment.etat === undefined && !segment.termine) classe += " en-cours";
+        /* Jamais cumulée avec `.sans-cloture` : une fin sans annonce n'est ni
+         * un succès ni un échec du travail, l'accusation visuelle (bordure
+         * rouille, marqueur ✕) n'a pas sa place dessus. */
+        if (segment.echecs && !sansCloture) classe += " echec";
+        if (reprisesChaine.has(index)) classe += " repris";
         const maillon = el("span", classe);
         maillon.appendChild(el("span", "mnom", segment.agent));
-        const d = duree(segment.duree_ms);
-        maillon.appendChild(el("span", "mduree",
-          d !== null ? d : (segment.termine ? "durée invalide" : "en cours")));
+        if (sansCloture) {
+          const ecoule = dureeDepuisIso(segment.derniere_activite);
+          maillon.appendChild(el("span", "mduree",
+            "⋯ fin non observée depuis " + (ecoule || "un temps inconnu")));
+        } else {
+          const d = duree(segment.duree_ms);
+          maillon.appendChild(el("span", "mduree",
+            d !== null ? d : (segment.termine ? "durée invalide" : "en cours")));
+        }
         const detail = [];
         if (segment.type === "principal" && segment.outils) detail.push(segment.outils + " outils");
         if (segment.fichiers && segment.fichiers.length) detail.push(segment.fichiers.length + " fich.");
         if (detail.length) maillon.appendChild(el("span", "mduree", detail.join(" · ")));
-        if (segment.echecs) maillon.appendChild(el("span", "mduree", "✕" + segment.echecs));
+        if (segment.echecs && !sansCloture) maillon.appendChild(el("span", "mduree", "✕" + segment.echecs));
         maillon.title = segment.type === "principal"
           ? "Agent principal — la session Claude Code elle-même, entre deux "
             + "sous-agents.\nC'est elle qui orchestre : elle lit, écrit, lance "
@@ -267,29 +325,70 @@ function rendreWorkflows(etat) {
     }
 
     const notes = [];
-    const reprises = Object.keys(wf.reprises || {});
-    if (reprises.length) {
-      notes.push("reprises : " + reprises.map((a) => a + " ×" + wf.reprises[a]).join(", "));
-    }
     if (wf.commandes && Object.keys(wf.commandes).length) {
       notes.push("commandes : " + Object.keys(wf.commandes)
         .map((c) => c + " ×" + wf.commandes[c]).join(", "));
     }
     if (notes.length) bloc.appendChild(el("div", "wf-notes", notes.join(" · ")));
 
+    /* Le rebouclage a sa propre bande, distincte d'un enchaînement normal
+     * (feature-010, §8) : `wf.reprises` était affiché comme une ligne de
+     * texte neutre, indiscernable des autres notes. `.repris` sur les
+     * maillons concernés (voir `indicesRepris`, ci-dessus) ancre le même
+     * signal dans la chaîne.
+     * ⚠️ Le bandeau ne se déclenche QUE si `indicesRepris` a réellement
+     * marqué un maillon — jamais sur la seule présence de `wf.reprises`.
+     * Sans ce garde, le bandeau annonçait un rebouclage que la détection
+     * elle-même écartait : deux logiques sur le même fait, dans la même
+     * fonction, en désaccord. Une réapparition après le seul agent
+     * principal reste un fait qu'on signale — sobrement — pas une alerte :
+     * la taire serait un récit muet sur ce qu'il sait. */
+    const reprises = Object.keys(wf.reprises || {});
+    if (reprises.length && reprisesChaine.size) {
+      const bandeau = el("div", "wf-notes reboucle");
+      bandeau.appendChild(el("span", "",
+        "↻ reboucle — reprises : "
+        + reprises.map((a) => a + " ×" + wf.reprises[a]).join(", ")));
+      bloc.appendChild(bandeau);
+    } else if (reprises.length) {
+      const note = el("div", "wf-notes attendu");
+      note.appendChild(el("span", "",
+        "ℹ agent(s) repassé(s), sans rebouclage détecté : "
+        + reprises.map((a) => a + " ×" + wf.reprises[a]).join(", ")));
+      note.title =
+        "Ces agents réapparaissent dans la chaîne, mais toujours "
+        + "immédiatement après l'agent principal — jamais après un AUTRE "
+        + "sous-agent. Ce n'est pas un rebouclage : c'est un enchaînement "
+        + "normal.";
+      bloc.appendChild(note);
+    }
+
     /* Les incertitudes sont AFFICHÉES, pas masquées : un récit muet sur ce
      * qu'il ignore se lit comme un récit complet. */
-    /* Deux notes de fiabilité, et elles n'ont PAS le même statut :
-     *  - l'imbrication suspectée est une ANOMALIE — le récit peut être faux ;
-     *  - les fins de tour du runtime sont ATTENDUES — elles n'altèrent rien.
-     * Les afficher de la même couleur laissait croire à deux problèmes. */
+    /* `imbrication_suspectee` (bug-013/feature-010, §9) : la mesure sur cycle
+     * réel a montré 9 workflows sur 12 le levant, TOUJOURS pour la même
+     * cause — l'orchestrator cesse son activité avant que le hook n'écrive
+     * sa fin, avec plusieurs secondes de retard. Aucun agent ne peut en
+     * invoquer un autre : ce n'est PAS une anomalie du récit, c'est un
+     * artefact connu de latence d'écriture. Rendu neutre (`.attendu`, comme
+     * les fins de tour du runtime ci-dessous), jamais en alerte — et le
+     * champ backend n'est PAS renommé, seuls le rendu et le libellé le
+     * sont. */
     if (wf.imbrication_suspectee) {
-      const avert = el("div", "wf-notes");
-      const texte = el("span", "alerte",
-        "⚠ imbrication suspectée — deux sous-agents ouverts sans fermeture "
-        + "intercalée : l'ordre affiché peut être faux");
-      avert.appendChild(texte);
-      bloc.appendChild(avert);
+      const note = el("div", "wf-notes attendu");
+      const texte = el("span", "",
+        "ℹ ordre approximatif — fin de sous-agent journalisée en retard : "
+        + "l'ordre affiché peut ne pas refléter l'enchaînement réel");
+      texte.title =
+        "Le hook qui journalise la fin d'un sous-agent peut écrire plusieurs "
+        + "secondes après que l'agent a réellement cessé toute activité — un "
+        + "agent suivant peut démarrer avant que cette fermeture ne soit "
+        + "inscrite au journal.\n\n"
+        + "Ce n'est pas un agent qui en invoque un autre : le runtime ne "
+        + "permet pas ce chaînage. Ce drapeau signale un retard d'écriture "
+        + "du hook, pas une anomalie du récit.";
+      note.appendChild(texte);
+      bloc.appendChild(note);
     }
     if (wf.fermetures_orphelines) {
       const note = el("div", "wf-notes attendu");
@@ -309,8 +408,12 @@ function rendreWorkflows(etat) {
       bloc.appendChild(note);
     }
     /* Un bornage sur `marqueur-agent` est une CONVENTION posée par la
-     * configuration, pas un fait relevé par le système (contrairement à
-     * `imbrication_suspectee`, ci-dessus, qui EST une anomalie du récit).
+     * configuration, pas un fait relevé par le système. ⚠️ Ce commentaire
+     * opposait auparavant le bornage à `imbrication_suspectee`, « qui EST une
+     * anomalie du récit » — c'est FAUX, et le commentaire de ce champ, 35
+     * lignes plus haut, dit désormais l'inverse mesure à l'appui. Deux
+     * commentaires contradictoires sur le même champ valent moins qu'aucun :
+     * le lecteur croit celui qu'il rencontre en premier.
      * Même registre visuel que les fermetures orphelines : un fait qu'on
      * signale, pas une alerte. Absent sur un backend en retard : `wf.bornage`
      * n'existe alors simplement pas. */

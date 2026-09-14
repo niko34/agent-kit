@@ -315,9 +315,16 @@ class Etat:
         hors `do_GET` : tests directs sur `Etat`) retombe sur l'ancien test
         global, conservateur — un jeton configuré mais jamais confronté à un
         demandeur précis ne peut affirmer une capacité."""
+        # Une SEULE lecture de l'horloge, partagée entre la requalification
+        # `sans_cloture` (bug-013) et `horodatage` ci-dessous : deux appels
+        # séparés à `time.gmtime()` pourraient diverger de quelques
+        # millisecondes et rendre deux affirmations incohérentes sur le
+        # « maintenant » de cette même réponse.
+        maintenant = time.gmtime()
         evenements = E.lire_journal(self.journal)
         workflows = E.reconstruire(
-            evenements, self.config.tetes_de_commande(), self.config.agents_ouvrants())
+            evenements, self.config.tetes_de_commande(), self.config.agents_ouvrants(),
+            maintenant=maintenant, seuil_abandon_minutes=self.config.seuil_abandon_minutes())
         specs = self.specs()
         colonnes = [{"repertoire": r, "classe": c, "libelle": l}
                     for r, c, l in self.config.colonnes()]
@@ -341,12 +348,17 @@ class Etat:
         dernier_segment_par_session = {}
         for workflow in workflows:
             dernier_segment_par_session[workflow["session_id"]] = workflow
+        # ⚠️ `etat == ETAT_EN_COURS`, jamais `not passage["termine"]` seul
+        # (bug-013) : un passage requalifié `sans_cloture` (agent tué par le
+        # runtime, aucun événement depuis le seuil déclaré) n'est plus
+        # compté actif — sinon le tableau de bord continuerait d'annoncer un
+        # agent qu'il vient pourtant d'afficher comme abandonné.
         actifs = {}
         for workflow in dernier_segment_par_session.values():
             if not workflow["fin_observee_absente"]:
                 continue
             for passage in workflow["passages"]:
-                if not passage["termine"]:
+                if passage["etat"] == E.ETAT_EN_COURS:
                     actifs[passage["agent"]] = workflow["workflow_id"]
 
         return {
@@ -385,7 +397,7 @@ class Etat:
             # échouera quand même. Le frontend s'en sert pour choisir entre
             # `EventSource` et un sondage qui pose l'en-tête lui-même.
             "jeton_requis": jeton_requis,
-            "horodatage": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "horodatage": time.strftime("%Y-%m-%dT%H:%M:%SZ", maintenant),
         }
 
     def empreinte(self):

@@ -1,5 +1,7 @@
 "use strict";
-/* Harnais headless pour `control-center/web/app.js` — bug-012, ADR-0020.
+/* Harnais headless pour `control-center/web/app.js` — bug-012, ADR-0020, et
+ * feature-010 (§8/§9/§10 — les trois états d'affichage manquants du tableau
+ * de bord).
  *
  *     node control-center/web/test_app_bug012.js
  *
@@ -14,6 +16,9 @@
  * Convention du projet : sortie « N cas, M echec(s) », code de sortie 1 à
  * l'échec (voir `control-center/backend/test_server_bug012.py`). Invoqué
  * depuis `test_app_bug012.py`, qui se saute proprement si `node` est absent.
+ * Étendu plutôt que dédoublé (feature-010) : un harnais de plus est une
+ * suite de plus à découvrir par la CI pour rien — celui-ci fournit déjà tout
+ * le bac à sable nécessaire.
  *
  * ## Ce que ce harnais établit PAR EXÉCUTION
  *
@@ -30,11 +35,24 @@
  *   de sondage périodique démarré (T4).
  * - La jauge n'annonce « reconnexion » que quand une reconnexion est
  *   RÉELLEMENT possible, c.-à-d. seulement sur le chemin `EventSource` (T5).
+ * - [10] `.maillon.sans-cloture` : un segment `etat: "sans_cloture"` ne porte
+ *   ni `.en-cours` ni `.echec`, affiche « ⋯ fin non observée depuis … », et le
+ *   repli d'un backend SANS le champ `etat` (plus ancien) reste inchangé (T6).
+ * - [9] `imbrication_suspectee` se rend en `.attendu` (gris), jamais
+ *   `.alerte` (ambre), et le mot « imbrication » a disparu du texte visible
+ *   comme de l'infobulle (T7).
+ * - [8] Le rebouclage réel — un agent qui réapparaît après qu'un AUTRE
+ *   sous-agent l'a suivi — porte `.wf-notes.reboucle` et `.maillon.repris` ;
+ *   un simple passage de l'agent principal entre deux appels du MÊME agent
+ *   n'est PAS un rebouclage : le bandeau `.reboucle` ne s'affiche pas, une
+ *   mention neutre (`.attendu`) le remplace (T8, cas positif ET négatif
+ *   dans le même test — le bandeau ne suit plus `wf.reprises` seul, il
+ *   suit la détection réelle sur les segments).
  *
- * Ce que ce harnais NE peut PAS établir : le rendu visuel réel, ni le
- * comportement d'un VRAI `EventSource` de navigateur face à un 401 (aucun
- * navigateur ici — voir le rapport de fin de tâche, « hypothèse non
- * vérifiée »).
+ * Ce que ce harnais NE peut PAS établir : le rendu visuel réel (couleurs,
+ * bordures pointillées), ni le comportement d'un VRAI `EventSource` de
+ * navigateur face à un 401 (aucun navigateur ici — voir le rapport de fin de
+ * tâche, « hypothèse non vérifiée » sauf capture headless produite à part).
  */
 
 const fs = require("fs");
@@ -359,6 +377,201 @@ async function testCheminNormalEventSource() {
   check("T4_aucun_sondage_periodique_demarre", !sondage10s);
 }
 
+// ------------------------------------------------- utilitaires feature-010 --
+function classes(noeud) { return (noeud.className || "").split(/\s+/).filter(Boolean); }
+function aClasse(noeud, c) { return classes(noeud).indexOf(c) !== -1; }
+function tousLesNoeuds(racine) {
+  const resultat = [];
+  (function parcourir(n) {
+    resultat.push(n);
+    (n.children || []).forEach(parcourir);
+  })(racine);
+  return resultat;
+}
+function maillonsWorkflows(bac) {
+  return tousLesNoeuds(bac.$("workflows")).filter((n) => aClasse(n, "maillon"));
+}
+function notesWorkflows(bac, classe) {
+  return tousLesNoeuds(bac.$("workflows"))
+    .filter((n) => aClasse(n, "wf-notes") && (!classe || aClasse(n, classe)));
+}
+async function chargerAvecEtat(overrides) {
+  const bac = creerBac();
+  enfilerEtat(bac, 200, corpsEtat(false, overrides));
+  chargerAppJS(bac);
+  await attendreMicrotaches();
+  await attendreMicrotaches();
+  await attendreMicrotaches();
+  return bac;
+}
+
+// -- T6 [10] : `.maillon.sans-cloture` — ni `.en-cours` ni `.echec`, libellé
+// « fin non observée », et repli fidèle sur un backend sans champ `etat` ---
+async function testSansCloture() {
+  const ilYA22h = new Date(Date.now() - 22 * 3600 * 1000).toISOString();
+  const workflow = {
+    session_id: "abcdefgh1234", fin_observee_absente: true, cycles_dans_la_session: 1,
+    debut: "2026-09-13T20:00:00.000Z", fin_observee: ilYA22h, fichiers: [],
+    segments: [
+      {
+        type: "sousagent", agent: "test-engineer", termine: false, etat: "sans_cloture",
+        derniere_activite: ilYA22h, duree_ms: null, fichiers: [], echecs: 2,
+      },
+      {
+        // Backend antérieur au correctif bug-013 : pas de champ `etat` du
+        // tout. Le comportement HISTORIQUE (`.en-cours` sur tout segment
+        // ouvert) doit rester intact — aucune affirmation nouvelle par défaut.
+        type: "sousagent", agent: "debugger", termine: false,
+        duree_ms: null, fichiers: [], echecs: 0,
+      },
+    ],
+    reprises: {}, commandes: {}, imbrication_suspectee: false, fermetures_orphelines: 0,
+  };
+  const bac = await chargerAvecEtat({ workflows: [workflow] });
+  const [m1, m2] = maillonsWorkflows(bac);
+
+  check("T6_sans_cloture_porte_la_classe", aClasse(m1, "sans-cloture"),
+    "classes obtenues : " + classes(m1).join(" "));
+  check("T6_sans_cloture_jamais_en_cours", !aClasse(m1, "en-cours"));
+  check("T6_sans_cloture_jamais_echec_meme_avec_des_echecs", !aClasse(m1, "echec"),
+    "classes obtenues : " + classes(m1).join(" ") + " (echecs=2 dans la donnée)");
+  const libelle = m1.textContent;
+  check("T6_libelle_fin_non_observee", libelle.indexOf("fin non observée depuis") !== -1,
+    "obtenu : " + JSON.stringify(libelle));
+  check("T6_libelle_ne_dit_jamais_en_cours", libelle.indexOf("en cours") === -1,
+    "obtenu : " + JSON.stringify(libelle));
+
+  check("T6_backend_sans_champ_etat_repli_en_cours", aClasse(m2, "en-cours"),
+    "classes obtenues : " + classes(m2).join(" "));
+  check("T6_backend_sans_champ_etat_jamais_sans_cloture", !aClasse(m2, "sans-cloture"));
+}
+
+// -- T7 [9] : imbrication_suspectee — rendu neutre, jamais accusateur, jamais
+// le mot « imbrication » dans le texte affiché -----------------------------
+async function testImbricationDevientOrdreApproximatif() {
+  const workflow = {
+    session_id: "11112222", fin_observee_absente: false, cycles_dans_la_session: 1,
+    debut: "2026-09-13T20:00:00.000Z", fin_observee: "2026-09-13T20:05:00.000Z", fichiers: [],
+    segments: [], reprises: {}, commandes: {},
+    imbrication_suspectee: true, fermetures_orphelines: 0,
+  };
+  const bac = await chargerAvecEtat({ workflows: [workflow] });
+  const attendues = notesWorkflows(bac, "attendu");
+  const alertes = notesWorkflows(bac, "alerte");
+
+  check("T7_rendu_en_attendu_pas_en_alerte", attendues.length === 1 && alertes.length === 0,
+    "attendu(s) : " + attendues.length + ", alerte(s) directe(s) sur wf-notes : " + alertes.length);
+  const texte = attendues.length ? attendues[0].textContent : "";
+  check("T7_libelle_nomme_la_vraie_cause", texte.indexOf("ordre approximatif") !== -1,
+    "obtenu : " + JSON.stringify(texte));
+  check("T7_libelle_ne_dit_plus_jamais_imbrication",
+    texte.toLowerCase().indexOf("imbrication") === -1,
+    "obtenu : " + JSON.stringify(texte));
+  const titre = attendues.length ? tousLesNoeuds(attendues[0]).map((n) => n.title || "").join(" ") : "";
+  check("T7_infobulle_ne_dit_pas_non_plus_imbrication",
+    titre.toLowerCase().indexOf("imbrication") === -1,
+    "obtenu : " + JSON.stringify(titre));
+}
+
+// -- T8 [8] : rebouclage réel vs. enchaînement normal — LA distinction
+// jamais vérifiée sur un vrai cas (positif ET négatif dans le même test) --
+async function testRebouclageAncreDansLaChaine() {
+  const seg = (type, agent, extra) => Object.assign({
+    type, agent, termine: true, etat: "termine", duree_ms: 500, fichiers: [], echecs: 0,
+  }, type === "principal" ? { outils: 1 } : {}, extra || {});
+
+  // Positif : test-engineer → debugger → test-engineer. Un AUTRE sous-agent
+  // (debugger) s'est intercalé : c'est un vrai rebouclage.
+  const workflowPositif = {
+    session_id: "aaaa1111", fin_observee_absente: false, cycles_dans_la_session: 1,
+    debut: "2026-09-13T20:00:00.000Z", fin_observee: "2026-09-13T20:10:00.000Z", fichiers: [],
+    segments: [
+      seg("principal", "(agent principal)"),
+      seg("sousagent", "test-engineer"),
+      seg("principal", "(agent principal)"),
+      seg("sousagent", "debugger"),
+      seg("principal", "(agent principal)"),
+      seg("sousagent", "test-engineer"),
+    ],
+    reprises: { "test-engineer": 2 }, commandes: {},
+    imbrication_suspectee: false, fermetures_orphelines: 0,
+  };
+
+  // Négatif : debugger → (agent principal seul) → debugger. AUCUN autre
+  // sous-agent ne s'est intercalé — l'orchestration normale ne doit jamais
+  // se lire comme un rebouclage.
+  const workflowNegatif = {
+    session_id: "bbbb2222", fin_observee_absente: false, cycles_dans_la_session: 1,
+    debut: "2026-09-13T21:00:00.000Z", fin_observee: "2026-09-13T21:05:00.000Z", fichiers: [],
+    segments: [
+      seg("sousagent", "debugger"),
+      seg("principal", "(agent principal)"),
+      seg("sousagent", "debugger"),
+    ],
+    reprises: { debugger: 2 }, commandes: {},
+    imbrication_suspectee: false, fermetures_orphelines: 0,
+  };
+
+  const bac = await chargerAvecEtat({ workflows: [workflowNegatif, workflowPositif] });
+  // `rendreWorkflows` affiche `etat.workflows.slice().reverse()` : le premier
+  // bloc DOM rendu est donc `workflowPositif` (le dernier de la liste fournie).
+  const tousMaillons = maillonsWorkflows(bac);
+  // Le bandeau `.wf-notes.reboucle` ne doit se déclencher QUE si
+  // `indicesRepris` a réellement marqué un maillon (`.repris`) — jamais sur
+  // la seule présence de `wf.reprises`. Sur le NÉGATIF, `wf.reprises` vaut
+  // pourtant `{debugger: 2}` : sans ce garde, le bandeau s'affichait là où
+  // la détection elle-même dit qu'il n'y a pas de rebouclage (bug trouvé sur
+  // capture, pas par ce test — c'est précisément le trou qu'il comble).
+  const bandeaux = notesWorkflows(bac, "reboucle");
+
+  check("T8_bandeau_reboucle_seulement_sur_le_positif", bandeaux.length === 1,
+    "obtenu " + bandeaux.length);
+  const texteBandeaux = bandeaux.map((b) => b.textContent).join(" | ");
+  check("T8_bandeau_contient_fleche_reboucle", texteBandeaux.indexOf("↻") !== -1,
+    "obtenu : " + JSON.stringify(texteBandeaux));
+  check("T8_bandeau_cite_lagent_et_le_compte",
+    texteBandeaux.indexOf("test-engineer ×2") !== -1,
+    "obtenu : " + JSON.stringify(texteBandeaux));
+
+  // Le NÉGATIF ne porte aucun `.wf-notes.reboucle` : la réapparition de
+  // `debugger` après le seul agent principal reste nommée, mais dans une
+  // mention neutre (`.attendu`), pas dans la bande ambre du rebouclage.
+  const attendues = notesWorkflows(bac, "attendu");
+  const noteNegative = attendues.filter(
+    (n) => n.textContent.indexOf("debugger ×2") !== -1);
+  check("T8_negatif_porte_une_mention_neutre_pas_le_bandeau",
+    noteNegative.length === 1,
+    "note(s) neutre(s) citant debugger ×2 : " + noteNegative.length);
+  if (noteNegative.length) {
+    check("T8_mention_neutre_ne_dit_pas_reboucle",
+      noteNegative[0].textContent.indexOf("↻") === -1
+      && noteNegative[0].textContent.toLowerCase().indexOf("reboucle") === -1,
+      "obtenu : " + JSON.stringify(noteNegative[0].textContent));
+  }
+
+  // Sur le workflow POSITIF (rendu en premier, 6 maillons) : seul le
+  // DEUXIÈME maillon "test-engineer" (après le debugger intercalé) est
+  // `.repris` — pas le premier.
+  const positifs = tousMaillons.slice(0, 6);
+  const testEngineerMaillons = positifs.filter((m) => m.textContent.indexOf("test-engineer") !== -1);
+  check("T8_deux_maillons_test_engineer_sur_le_positif", testEngineerMaillons.length === 2,
+    "obtenu " + testEngineerMaillons.length);
+  if (testEngineerMaillons.length === 2) {
+    check("T8_premier_test_engineer_pas_repris", !aClasse(testEngineerMaillons[0], "repris"),
+      "classes : " + classes(testEngineerMaillons[0]).join(" "));
+    check("T8_second_test_engineer_est_repris", aClasse(testEngineerMaillons[1], "repris"),
+      "classes : " + classes(testEngineerMaillons[1]).join(" "));
+  }
+
+  // Sur le workflow NÉGATIF (rendu en second, 3 maillons) : AUCUN `.repris`,
+  // même si `wf.reprises` vaut `{debugger: 2}` côté backend — seul un AUTRE
+  // sous-agent intercalé fait foi côté rendu.
+  const negatifs = tousMaillons.slice(6);
+  const aucunRepris = negatifs.every((m) => !aClasse(m, "repris"));
+  check("T8_enchainement_normal_jamais_repris", aucunRepris,
+    "classes : " + negatifs.map((m) => classes(m).join(" ")).join(" | "));
+}
+
 // -- T5 : la jauge PEUT annoncer « reconnexion », mais seulement quand un
 // EventSource réel existe et se rompt (source.onerror) -------------------
 async function testReconnexionSeulementSiEventSource() {
@@ -385,6 +598,9 @@ async function main() {
   await testPorteMotifJetonRefuse();
   await testRechargementJetonMemoireExigeSondage();
   await testCheminNormalEventSource();
+  await testSansCloture();
+  await testImbricationDevientOrdreApproximatif();
+  await testRebouclageAncreDansLaChaine();
   await testReconnexionSeulementSiEventSource();
 
   console.log("\n" + _tests + " cas, " + _echecs.length + " echec(s)");

@@ -260,6 +260,16 @@ body {
 .maillon.en-cours .mnom { color: var(--actif); }
 .maillon.echec { border-color: color-mix(in srgb, var(--echec) 50%, var(--trait)); }
 .maillon.echec .mnom { color: var(--echec); }
+/* Fin sans annonce (bug-013/feature-010) : NI teal (en cours) ni rouille
+ * (échec) — ce n'est ni un succès ni un échec du travail, un simple fait
+ * signalé. Bordure pointillée pour le distinguer visuellement d'un maillon
+ * clos normal, sans emprunter au registre de l'alerte. */
+.maillon.sans-cloture { border-color: var(--trait); border-style: dashed; }
+.maillon.sans-cloture .mnom { color: var(--texte-faible); font-style: italic; }
+/* Ancrage du rebouclage dans la chaîne (feature-010, §8) : un simple liseré,
+ * jamais un fond ni une bordure complète — le maillon reste lisible comme un
+ * agent normal, ce trait ajoute juste le contexte « déjà vu ». */
+.maillon.repris { border-left: 2px dashed var(--alerte); }
 
 /* L'agent principal est un acteur à part : c'est lui qui orchestre. Un fond
  * creusé et un nom en retrait le distinguent des sous-agents sans le mettre en
@@ -271,6 +281,9 @@ body {
 .wf-notes .alerte { color: var(--alerte); }
 /* Une information ATTENDUE ne se peint pas comme une anomalie. */
 .wf-notes.attendu { color: var(--texte-faible); cursor: help; }
+/* Le rebouclage EST une anomalie du déroulement nominal (pas du récit) :
+ * seule bande en ambre du bloc workflow, distincte de `.attendu`. */
+.wf-notes.reboucle { color: var(--alerte); }
 
 /* ---------------- pilotage ---------------- */
 /* Un bouton qui écrit dans le dépôt et dépense de l'argent n'a pas la

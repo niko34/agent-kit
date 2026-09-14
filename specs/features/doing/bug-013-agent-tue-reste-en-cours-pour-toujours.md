@@ -121,3 +121,30 @@ particulier.
   corriger.
 - Le pilotage des coûts, la reprise d'orphelin (`bug-011`), le freinage
   (`bug-010`)
+
+---
+
+## ⏸ État au 2026-09-14 — implémentée, non clôturée
+
+**Absorbée dans le cycle `feature-010`** au titre d'ADR-0017 : une session longue
+n'émettant **jamais** `SessionEnd` (mesuré), ses passages s'affichaient
+indéfiniment ouverts — or `feature-010` s'engage, dans ses cas limites, sur
+« le récit ne doit pas afficher un passage ouvert pour toujours ».
+
+**Le code est livré et vérifié** (backend et frontend, **471 → 512 cas**) :
+horloge **injectée** (`reconstruire` reste pure, aucun `time.time()` interne),
+état additif `etat ∈ {termine, en_cours, sans_cloture}`, `derniere_activite`
+rafraîchie à **tout** événement rattaché, seuil **déclaré** en configuration
+(`[workflows] seuil_abandon_minutes`, défaut **120**, borné `[60, 10080]`),
+`actifs` ignorant les passages sans clôture, rendu gris pointillé du registre
+**fait signalé** — jamais accusation.
+
+**Reste à faire** : revue, documentation, **ADR** (l'état neuf est une décision
+de contrat, le seuil déclaré un verrouillage), et clôture **conjointe** avec
+`feature-010`, une seule phase test/revue/doc pour les deux.
+
+⚠️ **Le seuil de 120 min ne vient pas de la durée maximale** (24 min mesurées,
+36 retenues en borne haute) mais du **silence légitime** : un `architect` a
+n'émis **qu'un seul appel d'outil en 127 secondes**. Accuser un agent vivant
+coûte plus cher qu'afficher trop longtemps un agent mort — on relancerait un
+travail en cours.
