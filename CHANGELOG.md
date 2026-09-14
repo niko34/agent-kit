@@ -7,6 +7,70 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 <!-- Les entrées ci-dessous documentent le KIT lui-même. Au démarrage d'un projet,
      les remplacer par le journal du projet. -->
 
+## [0.8.0] - 2026-09-13
+
+### Centre de contrôle
+
+- **Étape D : le tableau de bord peut désormais lancer un workflow déclaré, le
+  suivre en direct, et l'interrompre.** Jusqu'ici `Handler` n'avait aucune
+  méthode d'écriture (`do_POST` absent) : c'était la garantie d'
+  [ADR-0004](docs/adr/0004-centre-controle-sans-route-ecriture.md). Les trois
+  garde-fous qu'elle laissait en attente sont désormais du code, testés
+  isolément **avant** la route elle-même (ordre imposé) :
+  - **jeton partagé** (`backend/jeton.py`) : lu depuis un fichier hors dépôt,
+    comparé à temps constant (`hmac.compare_digest`), permissions vérifiées
+    (masque de bits, pas de comparaison numérique) ;
+  - **écrivain unique** (`backend/verrou.py`) : prise atomique par `flock`,
+    refus nommé, détection d'un fils orphelin après un crash serveur
+    (`pid_fils` + `starttime`) ;
+  - **plafond de dépense** (`backend/config.py`) : réellement transmis
+    (`--max-budget-usd`) aux seules commandes explicitement autorisées à le
+    recevoir.
+  - Nouvelles routes : `POST /api/lancer`, `POST /api/interrompre`,
+    `GET /api/lancement?depuis=<curseur>` (sortie en direct, sans SSE — voir
+    ci-dessous).
+  - Ce que ça remplace, et pourquoi ce n'est pas une régression de
+    ADR-0004 (sa condition est **remplie**, pas contredite) :
+    [ADR-0019](docs/adr/0019-jeton-comme-unique-barriere-et-table-des-routes-fermee.md).
+- **Un seul champ dit si l'écriture est active, plus jamais deux calculs qui
+  pourraient diverger.** Le tableau de bord affichait « Budget max : 5 $ » et
+  « Écrivains : 1 » alors qu'aucun code ne les appliquait — le module
+  qualifiait déjà cela lui-même de « pire forme de dette : une configuration
+  qui a l'air d'être en service alors qu'elle ne pilote rien ». `/api/etat`
+  porte désormais `ecriture_active`, calculé par le même test que celui qui
+  conditionne `do_POST`, lu aux deux endroits de l'interface qui en dépendent.
+  Quand l'écriture n'est pas active, l'interface affiche « 5 $ · non appliqué
+  (lecture seule) », plus la raison.
+- **Ce qui peut surprendre** : sans fichier de jeton déclaré, le serveur
+  démarre en **lecture seule** et le dit au démarrage — ce n'est pas une
+  panne. Un jeton présent mais mal protégé (mode plus permissif que `0600`,
+  vide, trop court, contenant une espace ou un octet non-ASCII) **désactive
+  l'écriture** sans jamais empêcher la lecture : le tableau de bord reste
+  utilisable.
+- **Ce que ce lot ne corrige pas, consigné plutôt que passé sous silence** :
+  un orphelin détecté au redémarrage (`409`) n'est repris par aucun chemin de
+  l'interface (`bug-011`) ; le freinage des échecs d'authentification est
+  global et non par IP, comme la lecture anonyme non bornée de `/api/flux`
+  (`bug-010`).
+
+### Documentation
+
+- `docs/adr/0019-jeton-comme-unique-barriere-et-table-des-routes-fermee.md` :
+  nouvel ADR — ce qui remplace la garantie d'ADR-0004, l'abandon du SSE pour
+  la sortie d'un lancement, le sort décidé du processus fils.
+- `docs/adr/0004-centre-controle-sans-route-ecriture.md` : statut mis à jour
+  (condition remplie), note additive datée renvoyant vers ADR-0019 — corps
+  non modifié.
+- `control-center/README.md` : section étape D, tableau d'avancement A→G,
+  section « garantie structurelle » réécrite sur la garantie actuelle,
+  compteurs de tests à jour (371 cas verts sur onze suites).
+- `control-center/control-center.example.toml` : commentaires de
+  `fichier_jeton`, `budget_max_usd`, `ecrivains_simultanes` à jour — ces clés
+  sont désormais lues, plus seulement déclarées.
+- `specs/features/todo/bug-010-freinage-global-et-lecture-anonyme-non-bornee.md`
+  et `specs/features/todo/bug-011-orphelin-detecte-jamais-repris.md` : les
+  deux constats reportés par ce cycle, ouverts en spec.
+
 ## [0.7.0] - 2026-09-13
 
 ### Centre de contrôle

@@ -65,3 +65,15 @@ plafond de dépense ne se paie pas : ces garde-fous devront devenir du code
 - Ajouter la première route d'écriture (`do_POST`) impose de livrer les trois
   garde-fous **en même temps**, ce qui concentre un travail de sécurité en un
   seul lot plutôt que de l'étaler.
+
+> **Note (2026-09-13)** : la condition posée par cet ADR est **remplie**,
+> pas contredite. `feature-007` (étape D) a livré les trois garde-fous comme
+> du code, testés isolément, **avant** `do_POST` — vérifié par exécution : au
+> terme de ce lot, `test_server.py` passait encore 34/34 avec
+> l'introspection d'origine intacte, et `git diff` ne touchait pas
+> `server.py`. `do_POST` existe désormais, donc le test d'introspection
+> ci-dessus (qui vérifiait l'absence de toute méthode d'écriture) a été
+> remplacé par un test inversé, plus large. C'est
+> [ADR-0019](0019-jeton-comme-unique-barriere-et-table-des-routes-fermee.md)
+> qui fait foi sur la garantie désormais en vigueur ; la Décision ci-dessus
+> reste la trace exacte de ce qui a été vrai jusqu'à ce lot.

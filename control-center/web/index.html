@@ -16,7 +16,7 @@
   <div class="etat-barre">
     <span class="jauge" id="jauge-flux" title="connexion au flux d'événements">flux …</span>
     <span class="jauge" id="jauge-git">git …</span>
-    <span class="jauge lecture-seule" title="Aucune route d'écriture n'existe dans ce serveur">lecture seule</span>
+    <span class="jauge lecture-seule" id="jauge-pilotage" title="chargement de l'état d'écriture…">lecture seule</span>
     <span class="horodatage" id="horodatage"></span>
   </div>
 </header>
@@ -43,10 +43,10 @@
       <textarea id="prompt" rows="2" disabled
         placeholder="Décrire une fonctionnalité en langage naturel…"></textarea>
       <p class="note avert">
-        Inactif à dessein. Ce serveur n'a <strong>aucune route d'écriture</strong> —
-        <code>do_POST</code> n'existe pas dans son code. La création de spec arrive à
-        l'étape&nbsp;E, après les garde-fous de l'étape&nbsp;D&nbsp;: jeton, écrivain
-        unique, plafond de dépense.
+        Inactif à dessein. La création de spec depuis un prompt arrive à
+        l'étape&nbsp;E ; <code>do_POST</code> existe désormais mais ne route que
+        le lancement d'une commande déclarée (bloc « Pilotage » ci-dessous),
+        pas encore la création de spec.
       </p>
     </section>
 
@@ -64,6 +64,13 @@
         </label>
       </div>
       <div class="kanban" id="kanban"></div>
+    </section>
+
+    <section class="bloc pilotage" aria-labelledby="titre-pilotage">
+      <h2 id="titre-pilotage">Pilotage</h2>
+      <div id="pilotage-corps">
+        <p class="vide">chargement…</p>
+      </div>
     </section>
 
     <section class="bloc">

@@ -90,15 +90,38 @@ racine = ".claude/agents"
 hote = "127.0.0.1"
 port = 8787
 
-# Secret exigé sur toute action d'écriture, dans un fichier HORS DÉPÔT, mode 600.
-# Sans écriture implémentée, il n'est pas encore lu.
+# Secret exigé sur toute action d'écriture (POST /api/lancer, /api/interrompre,
+# GET /api/lancement), dans un fichier HORS DÉPÔT, mode 600. Cette clé est LUE
+# à chaque requête (backend/jeton.py) : sans elle, ou si le fichier est mal
+# protégé, les routes d'écriture restent désactivées et le serveur le dit au
+# démarrage — la lecture seule continue de fonctionner.
+#
+# Génération recommandée :
+#   python3 -c "import secrets; print(secrets.token_hex(32))" > /chemin/hors/depot/.control-center-token
+#   chmod 600 /chemin/hors/depot/.control-center-token
+#
+# Un retour à la ligne final (ce que laisse un `echo secret > fichier`) est
+# toléré et retiré. Une ESPACE dans le jeton, ou un jeton de moins de 16
+# octets utiles, sont REFUSÉS — le serveur démarre alors en écriture
+# désactivée plutôt que de croire protégé un secret trop faible ou ambigu.
 # fichier_jeton = "/chemin/hors/depot/.control-center-token"
 
 [garde_fous]
 # Un clic dans une interface ne doit jamais déclencher une dépense non bornée.
+# Cette valeur est LUE et RÉELLEMENT TRANSMISE (`--max-budget-usd`) au processus
+# lancé par POST /api/lancer — mais seulement pour les clés listées ci-dessous
+# dans `commandes_avec_budget` : une clé absente de cette liste refuse le
+# lancement (503) plutôt que de partir sans plafond.
 budget_max_usd = 5.0
+
+# Liste FERMÉE des clés de [commandes] autorisées à recevoir le plafond ci-dessus.
+# Vide par défaut : déclarer une commande ici est une décision explicite du
+# projet, jamais un héritage silencieux.
+#
+# commandes_avec_budget = ["tests"]
 
 # Un seul workflow ÉCRIVAIN à la fois : deux sessions qui écrivent dans le même
 # arbre s'entrelacent selon l'ordre des vidages. Le second lancement est refusé
-# avec sa raison, jamais mis en file en silence.
+# avec sa raison (409), jamais mis en file en silence. Cette valeur est LUE par
+# backend/verrou.py (un fichier de verrou par écrivain autorisé).
 ecrivains_simultanes = 1

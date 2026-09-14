@@ -94,7 +94,16 @@ _DEFAUTS = {
         "port": 8787,
         "fichier_jeton": "",
     },
-    "garde_fous": {"budget_max_usd": 5.0, "ecrivains_simultanes": 1},
+    "garde_fous": {
+        "budget_max_usd": 5.0,
+        "ecrivains_simultanes": 1,
+        # Liste FERMÉE des clés de [commandes] pour lesquelles le plafond de
+        # dépense peut être ajouté à l'argv (`--max-budget-usd`). Un clic ne
+        # doit jamais déclencher une dépense non bornée : par défaut, AUCUNE
+        # commande ne reçoit le drapeau ; le déclarer est une décision
+        # explicite du projet, pas un héritage silencieux.
+        "commandes_avec_budget": [],
+    },
 }
 
 
@@ -158,6 +167,67 @@ class Config(dict):
         if brut < 1 or brut > 100:
             return defaut
         return brut
+
+    def fichier_jeton(self):
+        """Chemin ABSOLU du fichier de jeton, ou None si rien n'est déclaré.
+
+        `None` est le signal qui désactive les routes d'écriture (garde-fou 1,
+        `jeton.py`) : aucun autre module n'a besoin de connaître la
+        différence entre « chaîne vide » et « absent », ils reçoivent la même
+        réponse univoque.
+        """
+        brut = self.section("serveur").get("fichier_jeton", "")
+        if not isinstance(brut, str) or not brut:
+            return None
+        if os.path.isabs(brut):
+            return brut
+        return os.path.join(self["_racine_projet"], brut)
+
+    def budget_max_usd(self):
+        """Plafond de dépense, strictement positif. Retombe sur le défaut si
+        absent, du mauvais type, ou négatif/nul — un plafond à 0 ou négatif
+        interdirait tout lancement sans le dire clairement, silencieusement."""
+        defaut = _DEFAUTS["garde_fous"]["budget_max_usd"]
+        brut = self.section("garde_fous").get("budget_max_usd", defaut)
+        if isinstance(brut, bool) or not isinstance(brut, (int, float)):
+            return defaut
+        if brut <= 0:
+            return defaut
+        return float(brut)
+
+    def ecrivains_simultanes(self):
+        """Nombre d'écrivains simultanés autorisés, entier >= 1. Retombe sur
+        le défaut (1) si absent, du mauvais type, ou hors bornes."""
+        defaut = _DEFAUTS["garde_fous"]["ecrivains_simultanes"]
+        brut = self.section("garde_fous").get("ecrivains_simultanes", defaut)
+        if isinstance(brut, bool) or not isinstance(brut, int):
+            return defaut
+        if brut < 1:
+            return defaut
+        return brut
+
+    def budget_transmissible(self, cle):
+        """Vrai si le plafond de dépense PEUT être ajouté à l'argv de `cle`.
+
+        Critère DÉCLARATIF (condition n°7 du GATE P1) : liste FERMÉE, dans
+        `[garde_fous].commandes_avec_budget`, des clés de `[commandes]`
+        connues pour accepter `--max-budget-usd`. Une clé absente de cette
+        liste — y compris une clé par ailleurs valide dans `[commandes]` —
+        REFUSE la transmission : le défaut sûr est de ne rien ajouter en
+        silence à une commande qui ne l'attend pas.
+
+        Un argv qui contient DÉJÀ `--max-budget-usd` est refusé même s'il
+        figure dans la liste : ajouter le drapeau le dupliquerait, et rien ne
+        dit laquelle des deux valeurs devrait l'emporter.
+        """
+        argv = self.commande(cle)
+        if argv is None or "--max-budget-usd" in argv:
+            return False
+        bruts = self.section("garde_fous").get("commandes_avec_budget", [])
+        if not isinstance(bruts, list):
+            return False
+        autorisees = [c for c in bruts if isinstance(c, str) and c]
+        return cle in autorisees
 
     def tetes_de_commande(self):
         """Les deux premiers jetons de chaque commande autorisée.
@@ -242,4 +312,7 @@ if __name__ == "__main__":
         "agents_ouvrants": config.agents_ouvrants(),
         "workflows_affiches": config.workflows_affiches(),
         "taille_vocabulaire": len(config.section("specs").get("vocabulaire", {})),
+        "fichier_jeton": config.fichier_jeton(),
+        "budget_max_usd": config.budget_max_usd(),
+        "ecrivains_simultanes": config.ecrivains_simultanes(),
     }, ensure_ascii=False, indent=2))

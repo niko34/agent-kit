@@ -62,7 +62,7 @@ ne le reçoit jamais.
 | **A** | Hooks + journal d'événements | ✅ livré, validé par mutation |
 | **B** | Specs, événements, configuration, git | ✅ livré, validé par mutation |
 | **C** | Tableau de bord en lecture seule | ✅ livré · apparence non vérifiée |
-| D | Lancement d'un workflow | à faire |
+| **D** | Lancement d'un workflow | ✅ livré, validé par mutation |
 | E | Création d'une spec depuis un prompt | à faire |
 | F | Discussion par spec | à faire |
 | G | Scénario complet avec échec réel | à faire |
@@ -247,17 +247,26 @@ un diff complet, et c'est un mensonge sur l'état du code.
 python3 control-center/backend/server.py      # puis http://<hôte>:8787
 ```
 
-### La garantie est structurelle, pas réglementaire
+### La garantie était structurelle par absence ; elle l'est désormais par table fermée
 
-**`Handler` n'a pas de `do_POST`.** Ni `do_PUT`, ni `do_DELETE`. Ce ne sont pas
-des routes désactivées par une option : les méthodes n'existent pas, donc
-`http.server` répond **501** de lui-même. Aucun clic ne peut rien lancer, rien
-écrire, rien dépenser.
+**Jusqu'à l'étape D**, `Handler` n'avait pas de `do_POST`. Ni `do_PUT`, ni
+`do_DELETE`. Ce n'étaient pas des routes désactivées par une option : les
+méthodes n'existaient pas, donc `http.server` répondait **501** de lui-même.
 
-Deux tests le verrouillent : un par HTTP, et un par **introspection de la
-classe** — si une route d'écriture est ajoutée un jour, le second échoue même si
-le comportement HTTP est masqué par ailleurs. C'est là que les garde-fous de
-l'étape D devront exister d'abord.
+`do_POST` existe désormais (étape D, ci-dessous), et cette absence-là a donc
+cessé d'être vraie — c'était l'échéance prévue par
+[ADR-0004](../docs/adr/0004-centre-controle-sans-route-ecriture.md) : les trois
+garde-fous devaient devenir du code avant, pas après, cette route. Ce qui
+remplace la garantie, et pourquoi, est documenté dans
+[ADR-0019](../docs/adr/0019-jeton-comme-unique-barriere-et-table-des-routes-fermee.md) :
+une liste **fermée** de routes d'écriture (`_ROUTES_ECRITURE`), vérifiée avant
+toute autre garde, et un test d'introspection **inversé** — il n'affirme plus
+l'absence de méthodes d'écriture, mais que l'ensemble des méthodes `do_*` de
+`Handler` vaut exactement `{do_GET, do_POST}` et que l'ensemble des routes
+réellement routées par `do_POST` vaut exactement `_ROUTES_ECRITURE`. Ce
+nouveau test est **plus large** que celui qu'il remplace : il échoue aussi
+bien sur un `do_PUT` ajouté un jour que sur une route glissée dans `do_POST`
+sans passer par la liste.
 
 ### Trois familles de chemins, trois validations
 
@@ -286,18 +295,133 @@ L'**apparence**. Une capture headless n'aboutit pas : la page garde une
 connexion SSE ouverte, que le budget de temps virtuel de Chromium ne peut pas
 faire expirer. Le comportement est testé, le rendu ne l'est pas.
 
+## Étape D — le lancement d'un workflow
+
+La première route d'écriture. Trois garde-fous, déclarés en configuration
+depuis l'étape C sans qu'aucun code ne les applique, sont devenus du code
+**avant** elle — c'est l'ordre imposé par
+[ADR-0004](../docs/adr/0004-centre-controle-sans-route-ecriture.md), et ce qui
+la remplace est dans [ADR-0019](../docs/adr/0019-jeton-comme-unique-barriere-et-table-des-routes-fermee.md).
+
+### Garde-fou 1 — le jeton partagé ([`backend/jeton.py`](backend/jeton.py))
+
+Lu depuis le fichier désigné par `[serveur].fichier_jeton`, **hors du
+dépôt**. `charger()` ne lève jamais : absent, vide, mal protégé ou illisible
+rend un jeton **inactif**, avec un motif nommé — c'est le message affiché au
+démarrage du serveur. Dans tous ces cas, les routes d'écriture restent
+désactivées et la lecture seule continue de fonctionner.
+
+- Comparaison par `hmac.compare_digest`, jamais par `==` (temps constant).
+- Permissions vérifiées au chargement : tout bit groupe ou autre posé
+  (masque `0o077`) est refusé, seul le bit propriétaire est toléré — mode
+  attendu au plus `0600`.
+- Un jeton tient sur une seule ligne, entre 16 et 4096 octets utiles. Un
+  retour à la ligne final est retiré (c'est ce que laisse `echo secret >
+  fichier`) ; une **espace** à l'intérieur, ou tout octet hors ASCII
+  imprimable, est refusé — un jeton non-ASCII redeviendrait une suite
+  d'octets différente une fois relu depuis un en-tête HTTP (LATIN-1).
+- Le jeton n'apparaît jamais dans un journal, une URL ou un message
+  d'erreur : `/api/etat` masque le chemin du fichier dans le motif de refus.
+
+### Garde-fou 2 — l'écrivain unique ([`backend/verrou.py`](backend/verrou.py))
+
+Prise **atomique** par `flock(LOCK_EX | LOCK_NB)` — vérifié par exécution :
+huit threads lancés simultanément donnent exactement un verrou pris et sept
+refusés, jamais plus d'un. Un refus **nomme** ce qui occupe la place et
+depuis quand.
+
+Le noyau libère le verrou quand le serveur meurt, mais **pas** le processus
+fils qu'il a lancé. La méta du verrou porte donc `pid_fils` et `starttime`
+(champ 22 de `/proc/<pid>/stat`) : avant de reprendre un verrou laissé par un
+détenteur disparu, on vérifie que le fils qu'il désignait n'est pas
+**toujours vivant** (PID existant, `/proc/<pid>/cmdline` non vide, même
+`starttime`). S'il l'est, la reprise est refusée avec le motif « orphelin
+vivant, interrompre d'abord ». Une méta illisible est traitée comme un
+verrou libre, jamais comme un blocage permanent.
+
+### Garde-fou 3 — le plafond de dépense ([`backend/config.py`](backend/config.py))
+
+`[garde_fous].budget_max_usd` est ajouté à l'`argv` (`--max-budget-usd`), et
+seulement pour les clés listées dans `[garde_fous].commandes_avec_budget` —
+liste fermée elle aussi : une clé absente de cette liste refuse le
+lancement (`503`) plutôt que de le laisser partir sans plafond.
+
+### Le lancement ([`backend/lanceur.py`](backend/lanceur.py))
+
+`POST /api/lancer` reçoit une **clé** de `[commandes]`, jamais une ligne de
+commande (ADR-0005). Exécution en `argv`, `shell=False`, `start_new_session=True`
+(le fils devient meneur de son propre groupe, distinct de celui du serveur).
+La sortie est retenue dans un tampon **circulaire** borné (200 000 octets),
+lue par blocs de 64 Kio — jamais par ligne, une commande peut ne jamais
+émettre de saut de ligne. La troncature est **annoncée** (`tronque: true`),
+jamais silencieuse.
+
+`GET /api/lancement?depuis=<curseur>` rend la suite de la sortie depuis un
+curseur opaque — pas de SSE ici : `EventSource` ne pose aucun en-tête, le
+jeton serait passé en query string (donc dans les journaux d'accès), et
+`log_message` recrache déjà tout `4xx`/`5xx` sur `stderr`, y compris le
+`401` qu'un jeton en URL provoquerait à chaque échec. Le curseur rend la
+reconnexion après fermeture d'onglet gratuite : le navigateur redemande
+depuis son dernier curseur connu.
+
+`POST /api/interrompre` envoie `SIGTERM` au groupe du fils, puis `SIGKILL`
+après 5 secondes s'il résiste — même délai à l'arrêt du serveur
+(`atexit`/`SIGTERM`/`SIGINT`), pour qu'un fils ne survive jamais seul à un
+arrêt ordinaire. Sur un `SIGKILL` du serveur lui-même, rien de tout cela ne
+s'exécute : c'est alors la méta du verrou qui détecte l'orphelin au
+redémarrage suivant.
+
+### Le champ unique qui dit si l'écriture est active
+
+`/api/etat` porte un champ `ecriture_active`, calculé par le **même** test
+que celui qui conditionne `do_POST` (`Jeton.actif()`, rechargé à chaque
+appel, jamais mis en cache). L'interface le lit à deux endroits — le badge
+d'état et le panneau de pilotage — sans qu'aucun des deux ne refasse sa
+propre déduction (ni de la présence de `fichier_jeton`, ni de
+`commandes_declarees`). C'est le correctif direct du défaut que ce module
+avait déjà nommé « la pire forme de dette » : afficher « Budget max : 5 $ »
+et « Écrivains : 1 » sans qu'aucun code ne les applique. Le tableau de bord
+affiche désormais « 5 $ · non appliqué (lecture seule) », plus le motif
+(`ecriture_raison`), quand l'écriture n'est pas active.
+
+### Ce que cette étape ne couvre pas, assumé
+
+- Un orphelin est **détecté** (`409` au redémarrage) mais **aucun chemin** de
+  l'interface ne le reprend — `/api/interrompre` répond `404` dans ce cas.
+  Reporté en `bug-011`.
+- Le freinage des échecs d'authentification (`429` au-delà de 20 échecs par
+  minute) est **global**, pas par IP : un anonyme peut priver l'opérateur
+  légitime. Reporté en `bug-010`, avec la lecture anonyme non bornée de
+  `/api/flux`.
+- Le début d'une sortie de plus de 200 000 octets est perdu (tampon
+  circulaire) — seule la fin est conservée, la troncature est annoncée.
+- La détection d'orphelin par `starttime` suppose `/proc` (Linux) ; elle est
+  inopérante, mais sûre (verrou traité comme libre), sur un système qui ne
+  l'a pas.
+
+Le détail des décisions et alternatives écartées (SSE pour la sortie, sort
+du processus fils) est dans
+[ADR-0019](../docs/adr/0019-jeton-comme-unique-barriere-et-table-des-routes-fermee.md).
+
 ## Tests
 
 ```bash
 python3 control-center/hooks/test_record_event.py   # 19 cas
 python3 control-center/backend/test_specs.py        # 16 cas
+python3 control-center/backend/test_agents.py       # 24 cas
 python3 control-center/backend/test_events.py       # 54 cas
-python3 control-center/backend/test_config.py       # 22 cas
+python3 control-center/backend/test_config.py       # 44 cas
 python3 control-center/backend/test_vcs.py          # 26 cas
-python3 control-center/backend/test_server.py       # 34 cas
+python3 control-center/backend/test_server.py       # 35 cas
+python3 control-center/backend/test_jeton.py        # 44 cas
+python3 control-center/backend/test_verrou.py       # 15 cas
+python3 control-center/backend/test_lanceur.py      # 33 cas
+python3 control-center/backend/test_server_ecriture.py  # 61 cas
 python3 control-center/backend/specs.py             # inventaire réel
 python3 control-center/backend/events.py            # workflows reconstruits
 ```
+
+371 cas verts au total sur ces onze suites (195 avant l'étape D).
 
 Sans dépendance, et validés par mutation — une suite qui ne tue aucun mutant ne
 prouve rien.
@@ -320,6 +444,25 @@ de suivre l'ordre reçu inverse l'indice de cycle attendu (cas E10) ; laisser
 un découpage se produire quand `agents_ouvrants` est vide, ou quand aucun
 agent de la liste n'est rencontré, fait échouer le refus explicite testé par
 E3 et E4.
+
+**Étape D** (`jeton.py`, `verrou.py`, `lanceur.py`, `server.py` — 371 cas
+verts au total, 195 avant ce lot) : les mutations trouvées par exécution
+sont documentées au plus près du code qu'elles concernent, pas dupliquées
+ici — voir en particulier `verrou.py` (course entre huit threads sur la
+prise du `flock`, mesurée à un seul verrou pris à chaque fois), `lanceur.py`
+(`tuer_immediatement` face à un double `waitpid` qui avalait un `ECHILD` en
+inventant un code de retour 0, et la fenêtre de 0,41 ms entre la naissance
+du fils et l'assignation du verrou avant `demarrer_lecture()`), et
+`jeton.py` (le mutant qui remplacerait `hmac.compare_digest` par `==` est
+**équivalent** sur toute sortie observable en test : c'est un temps de
+réponse qu'aucune assertion fonctionnelle ne peut faire mourir, documenté
+comme tel plutôt que compté comme tué). Deux défauts ont été trouvés en fin
+de cycle par cette même discipline d'exécution, pas par relecture : la
+garde de permissions du jeton comparait des **nombres** (`permissions >
+0o600`) au lieu de masquer des **bits** — un jeton en `0o077` activait
+l'écriture — et le thread de lecture démarrait avant l'assignation du
+verrou, pouvant laisser un `409` permanent nommant un processus déjà mort.
+Les deux sont corrigés dans le code livré par ce lot.
 
 Un mutant du collecteur est **équivalent** et doit rester documenté comme tel :
 rendre une chaîne vide au lieu de `None` quand aucun jeton n'est sûr ne change

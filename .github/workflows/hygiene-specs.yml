@@ -32,13 +32,21 @@ name: Hygiène du dépôt
 # autres (même `on:`, même groupe de `concurrency`), donc le temps de
 # restitution global ne change pas.
 #
-# JOB 5 — Tests du centre de contrôle (bug-004).
+# JOB 5 — Tests du centre de contrôle (bug-004, feature-007).
 # Même patron que le job 4 : `control-center/` descend chez les projets
-# consommateurs, donc chaque étape teste l'EXISTENCE du fichier avant de le
-# lancer. Différence structurante avec le job 4 : les six fichiers ne sont
-# PAS des suites `unittest` mais des scripts autonomes qui sortent en code 1
-# à l'échec (`python3 control-center/backend/test_events.py`, pas
-# `unittest discover`). Ne pas citer ici de compte de cas : il périme aussitôt.
+# consommateurs, donc le job teste l'EXISTENCE du répertoire avant de lancer
+# quoi que ce soit. Différence structurante avec le job 4 : les fichiers ne
+# sont PAS des suites `unittest` mais des scripts autonomes qui sortent en
+# code 1 à l'échec (`python3 control-center/backend/test_events.py`, pas
+# `unittest discover`).
+#
+# ⚠️ La liste des fichiers est DÉCOUVERTE (`find control-center -name
+# 'test_*.py'`), jamais énumérée à la main : une énumération manuelle a déjà
+# laissé `control-center/backend/test_agents.py` (24 cas verts) hors CI sans
+# qu'aucun signal ne le dise — vérifié en écrivant ce commentaire. La
+# découverte ÉCHOUE si elle ne trouve aucun fichier alors que `control-center/`
+# existe : une liste vide ne doit jamais se lire comme « tout est vert ».
+# Ne pas citer ici de compte de cas : il périme aussitôt.
 
 on:
   push:
@@ -145,58 +153,45 @@ jobs:
 
       # `control-center/` est un chemin CONDITIONNEL, comme `tests/` : un
       # projet consommateur qui n'a pas encore reçu le centre de contrôle ne
-      # doit pas voir sa CI cassée par nous. Même patron que le job `tests`
-      # ci-dessus : un test d'EXISTENCE par fichier, `if/then/else` explicite,
-      # jamais un `|| true` qui masquerait aussi un VRAI échec.
+      # doit pas voir sa CI cassée par nous — d'où le test d'existence du
+      # RÉPERTOIRE, en premier, avant toute découverte.
       #
-      # ⚠️ Ce ne sont PAS des suites `unittest` : chaque fichier est un
-      # script AUTONOME qui sort en code 1 à l'échec — d'où un appel direct
+      # ⚠️ Ce ne sont PAS des suites `unittest` : chaque fichier est un script
+      # AUTONOME qui sort en code 1 à l'échec — d'où un appel direct
       # `python3 <fichier>`, jamais `unittest discover` (qui ne les
       # collecterait pas, ces fichiers ne dérivant d'aucun `TestCase`).
-      - name: Suite de tests du centre de contrôle (hooks)
+      #
+      # ⚠️ La liste est DÉCOUVERTE (`find`), jamais énumérée à la main : une
+      # énumération manuelle a déjà laissé `test_agents.py` hors CI sans que
+      # rien ne le signale. Si `control-center/` existe mais qu'AUCUN
+      # `test_*.py` n'est trouvé, le job ÉCHOUE — une liste vide n'est jamais
+      # un succès silencieux.
+      - name: Suite de tests du centre de contrôle (découverte)
         run: |
-          if [ -f control-center/hooks/test_record_event.py ]; then
-            python3 control-center/hooks/test_record_event.py
-          else
-            echo "ℹ️  control-center/hooks/test_record_event.py absent — rien à lancer."
+          if [ ! -d control-center ]; then
+            echo "ℹ️  control-center/ absent — rien à lancer."
+            exit 0
           fi
 
-      - name: Suite de tests du centre de contrôle (specs)
-        run: |
-          if [ -f control-center/backend/test_specs.py ]; then
-            python3 control-center/backend/test_specs.py
-          else
-            echo "ℹ️  control-center/backend/test_specs.py absent — rien à lancer."
+          mapfile -t fichiers < <(find control-center -type f -name 'test_*.py' | sort)
+
+          if [ "${#fichiers[@]}" -eq 0 ]; then
+            echo "❌ control-center/ existe mais aucun fichier test_*.py n'a été découvert." >&2
+            echo "   Une liste vide ne doit jamais se lire comme « tout est vert »." >&2
+            exit 1
           fi
 
-      - name: Suite de tests du centre de contrôle (événements)
-        run: |
-          if [ -f control-center/backend/test_events.py ]; then
-            python3 control-center/backend/test_events.py
-          else
-            echo "ℹ️  control-center/backend/test_events.py absent — rien à lancer."
-          fi
+          echo "Fichiers de test découverts (${#fichiers[@]}) :"
+          printf '  - %s\n' "${fichiers[@]}"
+          echo
 
-      - name: Suite de tests du centre de contrôle (configuration)
-        run: |
-          if [ -f control-center/backend/test_config.py ]; then
-            python3 control-center/backend/test_config.py
-          else
-            echo "ℹ️  control-center/backend/test_config.py absent — rien à lancer."
-          fi
+          echec_global=0
+          for fichier in "${fichiers[@]}"; do
+            echo "=== $fichier ==="
+            if ! python3 "$fichier"; then
+              echec_global=1
+            fi
+            echo
+          done
 
-      - name: Suite de tests du centre de contrôle (vcs)
-        run: |
-          if [ -f control-center/backend/test_vcs.py ]; then
-            python3 control-center/backend/test_vcs.py
-          else
-            echo "ℹ️  control-center/backend/test_vcs.py absent — rien à lancer."
-          fi
-
-      - name: Suite de tests du centre de contrôle (serveur)
-        run: |
-          if [ -f control-center/backend/test_server.py ]; then
-            python3 control-center/backend/test_server.py
-          else
-            echo "ℹ️  control-center/backend/test_server.py absent — rien à lancer."
-          fi
+          exit "$echec_global"

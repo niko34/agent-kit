@@ -31,7 +31,7 @@ Une simple préférence de style, un choix réversible en une heure ou un détai
 | [0001](0001-exemple-format-adr.md) | Adopter le format ADR et ses règles | Accepté |
 | [0002](0002-graphe-execution-plat.md) | Le graphe d'exécution des agents est plat | Accepté (bornage : superseded by ADR-0014) |
 | [0003](0003-colonne-spec-depuis-repertoire.md) | La colonne d'une spec vient de son répertoire, jamais de son champ « Statut » | Accepté |
-| [0004](0004-centre-controle-sans-route-ecriture.md) | Le tableau de bord n'a aucune route d'écriture tant que ses garde-fous ne sont pas du code | Accepté |
+| [0004](0004-centre-controle-sans-route-ecriture.md) | Le tableau de bord n'a aucune route d'écriture tant que ses garde-fous ne sont pas du code | Accepté (condition remplie ; garantie reprise par [ADR-0019](0019-jeton-comme-unique-barriere-et-table-des-routes-fermee.md)) |
 | [0005](0005-commandes-liste-fermee-par-cle.md) | Liste fermée de commandes : l'interface choisit une clé, jamais une ligne de commande | Accepté |
 | [0006](0006-centre-controle-zero-dependance.md) | Le centre de contrôle n'a aucune dépendance d'exécution | Accepté |
 | [0007](0007-config-projet-ne-voyage-pas-avec-kit.md) | Ce qui appartient au projet ne voyage pas avec le kit | Accepté |
@@ -46,3 +46,4 @@ Une simple préférence de style, un choix réversible en une heure ou un détai
 | [0016](0016-fidelite-de-type-des-chemins-geles.md) | La garde de fidélité de type ne porte que sur les ancêtres du chemin, jamais sur sa feuille | Accepté |
 | [0017](0017-un-defaut-qui-desarme-la-garde-livree-entre-dans-le-cycle.md) | Un défaut qui rend inatteignable la garde livrée entre dans le cycle qui la livre | Accepté |
 | [0018](0018-refus-nomme-des-noms-cites-et-quatrieme-garde-sur-la-feuille.md) | `bug-008` se ferme par refus nommé, et la partition de fidélité de type se referme sur la feuille répertoire suivi | Accepté |
+| [0019](0019-jeton-comme-unique-barriere-et-table-des-routes-fermee.md) | Ce qui remplace l'absence de route d'écriture : une table des routes fermée et le jeton comme unique barrière | Accepté |

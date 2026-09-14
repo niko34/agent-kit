@@ -137,6 +137,7 @@ body {
 .systeme { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 12px; }
 .systeme dt { color: var(--texte-faible); }
 .systeme dd { margin: 0; font-family: var(--mono); font-size: 11.5px; text-align: right; }
+.systeme dd .suffixe-ecriture { color: var(--texte-faible); }
 
 /* ---------------- demande ---------------- */
 .demande textarea {
@@ -251,6 +252,74 @@ body {
 .wf-notes .alerte { color: var(--alerte); }
 /* Une information ATTENDUE ne se peint pas comme une anomalie. */
 .wf-notes.attendu { color: var(--texte-faible); cursor: help; }
+
+/* ---------------- pilotage ---------------- */
+/* Un bouton qui écrit dans le dépôt et dépense de l'argent n'a pas la
+ * sémantique visuelle d'un filtre (.bascule) ni d'un lien de navigation
+ * (.fichier) : il porte sa propre classe, jamais réutilisée ailleurs. */
+.jauge.pilotage-actif { color: var(--actif); border-color: color-mix(in srgb, var(--actif) 40%, var(--trait)); }
+.jauge.pilotage-en-cours {
+  color: var(--actif); font-weight: 600;
+  border-color: color-mix(in srgb, var(--actif) 50%, var(--trait));
+}
+
+.pilotage-select, .pilotage-jeton { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; max-width: 420px; }
+.pilotage-select label, .pilotage-jeton label { font-size: 12px; color: var(--texte-doux); }
+.pilotage-select select, .pilotage-jeton input {
+  background: var(--creux); border: 1px solid var(--trait); border-radius: 2px;
+  color: var(--texte); font-family: var(--mono); font-size: 12.5px; padding: 6px 8px;
+  min-height: 32px;
+}
+.pilotage-select select:focus-visible, .pilotage-jeton input:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
+
+.pilotage-ligne { font-family: var(--mono); font-size: 12.5px; margin: 0 0 8px; }
+.pilotage-ligne.en-cours { color: var(--actif); }
+.pilotage-ligne.bloque { color: var(--alerte); }
+.pilotage-ligne.termine { color: var(--actif); }
+.pilotage-ligne.echec { color: var(--echec); }
+.pilotage-ligne.interrompu { color: var(--texte-faible); }
+
+.pilotage-tronque {
+  font-family: var(--mono); font-size: 11.5px; color: var(--alerte);
+  border: 1px solid color-mix(in srgb, var(--alerte) 45%, var(--trait));
+  border-radius: 2px; padding: 4px 8px; margin-bottom: 6px;
+}
+
+#sortie-lancement {
+  margin: 0 0 8px; padding: 10px; background: var(--creux); border: 1px solid var(--trait);
+  border-radius: 2px; font-family: var(--mono); font-size: 12px; line-height: 1.55;
+  white-space: pre-wrap; overflow-wrap: anywhere; color: var(--texte-doux);
+  max-height: 320px; overflow-y: auto;
+}
+
+.action-ecriture {
+  min-height: 44px; min-width: 44px; padding: 8px 18px;
+  background: var(--accent); color: var(--fond); border: none; border-radius: 2px;
+  font-weight: 600; font: inherit; cursor: pointer;
+}
+.action-ecriture:hover { background: color-mix(in srgb, var(--accent) 88%, white); }
+.action-ecriture:focus-visible { outline: 2px solid var(--texte); outline-offset: 2px; }
+.action-ecriture:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.pilotage-secondaire {
+  min-height: 44px; min-width: 44px; padding: 8px 16px; background: none;
+  border: 1px solid var(--trait); color: var(--texte-doux); border-radius: 2px;
+  font: inherit; cursor: pointer;
+}
+.pilotage-secondaire:hover { color: var(--texte); border-color: var(--texte-faible); }
+.pilotage-secondaire:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pilotage-secondaire:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.pilotage-boutons { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+
+@media (max-width: 480px) {
+  .pilotage-select select, .pilotage-jeton input,
+  .action-ecriture, .pilotage-secondaire { width: 100%; }
+  .pilotage-boutons { flex-direction: column; }
+  .pilotage-boutons .action-ecriture, .pilotage-boutons .pilotage-secondaire { width: 100%; }
+}
 
 /* ---------------- fichiers & timeline ---------------- */
 .deux-colonnes { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }

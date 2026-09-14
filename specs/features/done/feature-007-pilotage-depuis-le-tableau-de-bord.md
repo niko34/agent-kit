@@ -181,22 +181,24 @@ uniquement comme clés de configuration, lues par personne.
 - `CHANGELOG.md` — entrée sous 0.6.0
 
 ## Livrables — check-list
-- [ ] A1 — Jeton : lecture hors dépôt, `hmac.compare_digest`, contrôle des
+- [x] A1 — Jeton : lecture hors dépôt, `hmac.compare_digest`, contrôle des
       permissions, refus de démarrer les routes d'écriture sans lui
-- [ ] A2 — Verrou d'écrivain unique, prise atomique, refus motivé, reprise
-      d'un verrou orphelin
-- [ ] A3 — Plafond de dépense réellement transmis au processus lancé
-- [ ] A4 — Les trois garde-fous testés **isolément**, avant toute route
-- [ ] A5 — `do_POST` : lancement par clé, `argv`, `shell=False`, confinement
-- [ ] A6 — Diffusion de la sortie en direct, bornée, troncature annoncée
-- [ ] A7 — Interruption d'un lancement en cours
-- [ ] A8 — Journalisation du lancement (qui, quoi, quand, résultat), sans secret
-- [ ] B1 — Interface : choix de la commande, confirmation montrant le plafond
-- [ ] B2 — Interface : sortie en direct, état « en cours / terminé / échoué /
+- [x] A2 — Verrou d'écrivain unique, prise atomique, refus motivé, reprise
+      d'un verrou orphelin (détection et refus nommé implémentés et testés ;
+      l'**interruption** d'un orphelin détecté n'a, elle, aucun chemin
+      d'API — reporté en `bug-011`, voir `docs/adr/0019-…md`)
+- [x] A3 — Plafond de dépense réellement transmis au processus lancé
+- [x] A4 — Les trois garde-fous testés **isolément**, avant toute route
+- [x] A5 — `do_POST` : lancement par clé, `argv`, `shell=False`, confinement
+- [x] A6 — Diffusion de la sortie en direct, bornée, troncature annoncée
+- [x] A7 — Interruption d'un lancement en cours
+- [x] A8 — Journalisation du lancement (qui, quoi, quand, résultat), sans secret
+- [x] B1 — Interface : choix de la commande, confirmation montrant le plafond
+- [x] B2 — Interface : sortie en direct, état « en cours / terminé / échoué /
       interrompu », reconnexion après fermeture du navigateur
-- [ ] C1 — `control-center/README.md` étape D, `CHANGELOG.md`
-- [ ] C2 — ADR sur le remplacement de la garantie d'ADR-0004 (voir ci-dessous)
-- [ ] D1 — Tous les cas validés par mutation
+- [x] C1 — `control-center/README.md` étape D, `CHANGELOG.md`
+- [x] C2 — ADR sur le remplacement de la garantie d'ADR-0004 (voir ci-dessous)
+- [x] D1 — Tous les cas validés par mutation
 
 ## Nouvelles signatures / API
 - `POST /api/lancer` — corps : `{ "cle": "<clé de [commandes]>" }` ;
@@ -274,23 +276,29 @@ uniquement comme clés de configuration, lues par personne.
 - `docs/adr/NNNN-*.md` — voir « ADR attendu »
 
 ## Critères d'acceptation
-- [ ] **Les trois garde-fous sont du code, testés, avant la première ligne de
-      `do_POST`** — vérifiable dans l'ordre des commits du cycle
-- [ ] Sans fichier de jeton valide, aucune route d'écriture n'est exposée, et
+- [x] **Les trois garde-fous sont du code, testés, avant la première ligne de
+      `do_POST`** — vérifiable dans l'ordre des commits du cycle (à confirmer
+      formellement par l'agent de clôture au moment du commit : à l'écriture
+      de cette note, le lot est encore dans l'arbre de travail, non commité)
+- [x] Sans fichier de jeton valide, aucune route d'écriture n'est exposée, et
       le serveur le dit au démarrage
-- [ ] Un jeton faux est refusé sans révéler d'information par le temps de
+- [x] Un jeton faux est refusé sans révéler d'information par le temps de
       réponse (comparaison à temps constant)
-- [ ] Deux lancements concurrents : le second est refusé avec sa raison ;
+- [x] Deux lancements concurrents : le second est refusé avec sa raison ;
       vérifié avec des requêtes **réellement simultanées**, pas séquentielles
-- [ ] Le plafond de dépense atteint réellement le processus lancé — vérifié
+- [x] Le plafond de dépense atteint réellement le processus lancé — vérifié
       sur la ligne de commande effective, pas sur l'intention
-- [ ] Une clé de commande inconnue n'atteint aucun shell
-- [ ] Aucun secret (jeton, contenu de la sortie) n'apparaît dans le journal
+- [x] Une clé de commande inconnue n'atteint aucun shell
+- [x] Aucun secret (jeton, contenu de la sortie) n'apparaît dans le journal
       d'événements
-- [ ] Le test d'introspection d'ADR-0004 est remplacé par une garantie au
+- [x] Le test d'introspection d'ADR-0004 est remplacé par une garantie au
       moins aussi forte, pas supprimé
-- [ ] Suite de tests complète verte, zéro régression
-- [ ] Lint propre, pas de warning nouveau
+- [x] Suite de tests complète verte, zéro régression
+- [x] Lint propre, pas de warning nouveau — **aucun linter Python n'est installé**
+      dans cet environnement (`ruff`, `flake8`, `pylint`, `pyflakes` absents,
+      vérifié) ; lu ici comme `python3 -m py_compile` sur tout
+      `control-center/backend/*.py` et `hooks/*.py` → OK, et aucun `.sh` touché
+      par ce cycle
 - [ ] Comportement nominal testé manuellement selon le plan ci-dessous
 
 ## Plan de test manuel
@@ -341,3 +349,120 @@ uniquement comme clés de configuration, lues par personne.
   distincts) : à traiter par une spec dédiée si le besoin apparaît
 - L'ouverture du tableau de bord sur un réseau non maîtrisé : reste une
   décision du projet consommateur, documentée, jamais un défaut du kit
+
+---
+
+## Statut final
+
+⚠️ **Livré et validé, SAUF le plan de test manuel — voir ci-dessous.**
+
+**Cycle réel** : `orchestrator` → `spec-reader` → `architect` → `security-reviewer`
+**GATE P1** *(GO SOUS CONDITIONS, 10 conditions)* → `backend-developer` **lot 1**
+→ correctifs jeton → `ux-ui-designer` ∥ `backend-developer` **lot 2** →
+`frontend-developer` **lot 3** ∥ `test-engineer` *(tué par une limite de session,
+travail perdu)* → `backend-developer` *(champs manquants)* → `test-engineer`
+*(reprise)* → `security-reviewer` **GATE P2** *(GO SOUS CONDITIONS)* ∥
+`code-reviewer` *(Request changes)* → `backend-developer` → `doc-writer` →
+`security-reviewer` **re-P2** *(GO sans réserve)* → `backend-developer` →
+`code-reviewer` *(Request changes)* → `backend-developer` → clôture.
+
+**Comptes** : suites du centre de contrôle **195 → 394 cas** sur **11** fichiers
+(7 au départ) ; suite du kit **100**, inchangée. `check_specs.sh` et
+`check_doc_links.sh` verts.
+
+### L'ordre imposé par ADR-0004 a été tenu, et c'est vérifiable
+
+Au terme du **lot 1**, `python3 control-center/backend/test_server.py` passait
+toujours **34/34** — introspection d'origine comprise — et `git diff` ne touchait
+**pas** `server.py`. Les trois garde-fous étaient donc du code **testé** avant la
+première ligne de `do_POST`. Ce n'est pas une déclaration de bonne foi : c'est
+une commande.
+
+### Ce que ce cycle a supprimé
+
+Le module **affichait** « Budget max : 5 $ » et « Écrivains : 1 » alors
+qu'**aucun code ne les appliquait** — son propre README qualifie une
+configuration « qui a l'air d'être en service alors qu'elle ne pilote rien » de
+**pire forme de dette**. Désormais : un champ serveur **unique**,
+`ecriture_active`, recalculé à chaque requête, lu à **deux** endroits côté client
+sans qu'aucun ne refasse sa propre déduction ; et quand l'écriture n'est pas
+active, l'interface affiche « **5 $ · non appliqué (lecture seule)** » **plus la
+raison**, pour que l'utilisateur sache quoi corriger.
+
+### Sept défauts trouvés APRÈS le plan initial
+
+| # | Défaut | Trouvé par |
+|---|---|---|
+| 1 | **Contrebande de requête** : le corps d'un POST refusé en 401, non consommé, était reparsé comme une **seconde requête** (`[('POST','/api/lancer'), ('GET','/INJECTE')]`) | GATE P1 |
+| 2 | `BaseHTTPRequestHandler.timeout is None` : un octet après `Content-Length: 4096` bloque un fil **indéfiniment** | GATE P1 |
+| 3 | **Permissions du jeton comparées au lieu d'être masquées** : `0o077` — groupe et monde en lecture-écriture — **activait l'écriture** | revue |
+| 4 | **Course sur le verrou** : thread de lecture démarré avant l'assignation → **409 permanent nommant un processus mort** | revue + P2 |
+| 5 | Les tests prouvaient la **présence** de la garde jeton, pas sa **place** : le mutant « garde après lecture du corps » survivait aux 47 tests | GATE P2 |
+| 6 | `OSError` non-`EAGAIN` sur `acquerir()` → **fils orphelin** non lu, non enregistré, non interruptible | re-P2 |
+| 7 | Écriture de la méta échouant après un `flock` réussi → **fd et verrou fuités**, verrou « illisible » définitif | revue finale |
+
+Aucun n'était dans le périmètre déclaré. Les défauts **3**, **4**, **6** et **7**
+appartiennent à la classe même que ce cycle existe pour fermer : un processus qui
+survit sans que rien ne le tienne, ou une garde qui laisse passer ce qu'elle
+prétend arrêter.
+
+### Affirmations réfutées, consignées plutôt qu'effacées
+
+1. « `flock` n'est pas testé » (`test-engineer`, relayé par l'agent principal) —
+   **faux** : le mutant **est** tué par `test_verrou.py`, simplement pas par le
+   test de concurrence qu'on regardait. Protection cross-process prouvée sur deux
+   vrais serveurs : `[202, 409]`.
+2. « `T6` n'est pas exercé pour de vrai » — réserve **infondée** : `kill -9` du
+   serveur, fils survivant, second serveur → **409 nommant le pid**.
+3. « 84 tests verts », « 357 cas sur 10 suites » — deux **comptages faux**
+   rapportés par des agents ; mesures refaites ligne à ligne.
+4. Un 409 au motif « orphelin vivant, interrompre d'abord » annoncé par
+   `ADR-0019` **et** par `bug-011` — **ce message n'existait pas**. Le motif réel
+   était indiscernable de celui d'un écrivain légitime. `bug-011` démarrait sur
+   une observation qui n'avait jamais eu lieu : le piège déjà payé sur
+   `bug-002`. Corrigé **dans le code** (`Verrou._raison_orphelin()`), pas dans le
+   texte.
+
+### Décisions de conception, et pourquoi
+
+- **Pas de SSE pour la sortie** : `EventSource` ne pose aucun en-tête, le jeton
+  serait passé en **query string**, que `log_message` recrache sur stderr pour
+  tout 4xx — donc **précisément sur le 401** qu'il déclenche. Remplacé par
+  `GET /api/lancement?depuis=<curseur>`, jeton en en-tête. Bénéfice non cherché :
+  la reconnexion après fermeture d'onglet devient gratuite.
+- **Pas de modale** : le projet n'en a aucune ; la friction vient du **poids du
+  bouton** et du **nombre d'étapes**.
+- **« Interrompu » n'est pas « échoué »** : deux états distincts. Un arrêt voulu
+  n'est pas une erreur, et les confondre apprend à ignorer les rouges.
+- **Test structurel plutôt que test de timing** sur la course du verrou : la
+  fenêtre réelle mesurée est de **0,41 ms**. Un test de course qui ne se
+  déclenche qu'une fois sur mille est un test qu'on finit par désactiver.
+
+### ⚠️ Ce qui N'A PAS été fait
+
+**Le plan de test manuel (8 scénarios) n'a pas été joué.** Il exige un navigateur
+et un humain. Le critère reste **décoché** délibérément : personne n'a vu
+l'interface fonctionner. Tout ce qui est affirmé ci-dessus porte sur le code et
+sur des requêtes HTTP réelles, pas sur l'écran.
+
+**Le lint Python n'existe pas dans cet environnement** (`ruff`, `flake8`,
+`pylint`, `pyflakes` absents, vérifié). Le critère est lu comme `py_compile`.
+
+### Reporté, nommément
+
+- **`bug-010`** — `/api/flux` et la lecture anonyme sans borne ni contrôle
+  d'origine ; freinage des 401 **global** et non par IP.
+- **`bug-011`** — un orphelin est détecté mais **aucun chemin ne le reprend** :
+  `/api/interrompre` rend 404.
+- **À ouvrir** — `int(Content-Length)` et `int(depuis)` acceptent `+12`, ` 12 `,
+  `1_2`, `012` : sans conséquence en direct (connexion vérifiée **synchrone**),
+  vecteur de désynchronisation derrière un reverse-proxy.
+
+### Non vérifié, déclaré comme tel
+
+Effet réel du `timeout = 30` ; sortie de 100 Mo, ligne de 10 Mo sans `\n`,
+silence pluri-minute, clients multiples sur `/api/lancement` ; réutilisation de
+PID sur un système sans `/proc`.
+
+**Statut : ✅ Done — 2026-09-13**, sous la réserve explicite du plan de test
+manuel ci-dessus.

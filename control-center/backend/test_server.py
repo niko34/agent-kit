@@ -73,26 +73,50 @@ def main():
     fil.start()
 
     try:
-        # --- LA garantie de l'étape C ---------------------------------------
-        for methode in ("POST", "PUT", "DELETE", "PATCH"):
+        # --- ce qui reste hors de portée, structurellement -------------------
+        # `do_PUT`/`do_DELETE`/`do_PATCH` n'existent toujours pas : ces
+        # méthodes restent refusées par `http.server` lui-même (501).
+        for methode in ("PUT", "DELETE", "PATCH"):
             code, _ = appeler(base, "/api/etat", methode)
             check("test_%s_refuse" % methode.lower(), code == 501,
-                  "toute méthode d'écriture doit être refusée ; obtenu %d" % code)
+                  "toute méthode sans do_* doit être refusée ; obtenu %d" % code)
 
-        # Vérification STRUCTURELLE, et pas seulement par le réseau : si une
-        # route d'écriture est ajoutée un jour, ce test échoue même si le
-        # comportement HTTP est masqué par ailleurs.
-        ecrivantes = [n for n in dir(SRV.Handler)
-                      if n in ("do_POST", "do_PUT", "do_DELETE", "do_PATCH")]
-        check("test_aucune_methode_d_ecriture_dans_le_code", ecrivantes == [],
-              "trouvées : %r — les garde-fous de l'étape D (jeton, écrivain "
-              "unique, plafond de dépense) doivent exister AVANT elles" % ecrivantes)
+        # `do_POST` EXISTE depuis l'étape D, mais ne route que les chemins de
+        # `_ROUTES_ECRITURE` : un POST sur une route de lecture est une route
+        # INCONNUE pour do_POST, donc 404 — et sans aucun effet (aucun verrou
+        # pris, aucun processus créé, puisque ce chemin est écarté avant tout
+        # le reste de `do_POST`).
+        code, _ = appeler(base, "/api/etat", "POST")
+        check("test_post_sur_route_non_ecriture_refuse", code == 404,
+              "un POST hors de _ROUTES_ECRITURE doit être une route inconnue, "
+              "sans effet ; obtenu %d" % code)
+
+        # Vérification STRUCTURELLE, remplaçant celle d'ADR-0004 (qui exigeait
+        # l'ABSENCE de toute méthode d'écriture) : ADR-0004 est rempli, cette
+        # étape écrit désormais. La garantie qui la remplace est double —
+        # POSITIVE et FERMÉE, plutôt que négative :
+        # 1. l'ensemble des méthodes `do_*` du Handler ne contient RIEN de
+        #    plus que GET et POST : ajouter un `do_PUT` un jour ferait échouer
+        #    ce test, même si son comportement HTTP était par ailleurs masqué ;
+        # 2. l'ensemble des routes d'écriture réellement routées par `do_POST`
+        #    est EXACTEMENT `{"/api/lancer", "/api/interrompre"}` : y ajouter
+        #    une route sans la déclarer ici (ou l'inverse) fait échouer ce test.
+        methodes_do = {n for n in dir(SRV.Handler) if n.startswith("do_")}
+        check("test_do_methodes_limitees_a_get_et_post",
+              methodes_do == {"do_GET", "do_POST"},
+              "trouvées : %r" % sorted(methodes_do))
+        check("test_routes_ecriture_fermees",
+              set(SRV._ROUTES_ECRITURE) == {"/api/lancer", "/api/interrompre"},
+              "trouvées : %r" % sorted(SRV._ROUTES_ECRITURE))
 
         # --- routes de lecture ----------------------------------------------
         code, corps = appeler(base, "/api/etat")
         check("test_etat_repond", code == 200)
         etat = json.loads(corps) if code == 200 else {}
-        check("test_etat_annonce_la_lecture_seule", etat.get("lecture_seule") is True)
+        # Ce dépôt (`control-center.toml`) ne déclare aucun `fichier_jeton` :
+        # l'écriture doit donc être annoncée INACTIVE, par le même test que
+        # celui qui gouverne `do_POST` (A6b) — plus de champ codé en dur.
+        check("test_etat_annonce_ecriture_inactive", etat.get("ecriture_active") is False)
         # ⚠️ On vérifie le TYPE, pas le nombre. Affirmer `> 0` serait une
         # assertion sur le PROJET, pas sur le code : un dépôt neuf issu du
         # template n'a aucune spec, et c'est normal. Constaté en portant le

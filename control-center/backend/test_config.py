@@ -153,6 +153,97 @@ affiches = -3
               c.workflows_affiches() == 20,
               "une chaîne n'est pas un entier ; obtenu %r" % c.workflows_affiches())
 
+        # --- feature-007 lot 1 : les accesseurs des trois garde-fous, ENFIN lus --
+        c = C.charger(chemin=os.path.join(tmp, "absent4.toml"), racine_projet=tmp)
+        check("test_fichier_jeton_absent_rend_none",
+              c.fichier_jeton() is None,
+              "sans déclaration, aucun autre module ne doit pouvoir croire "
+              "qu'un jeton existe")
+        check("test_budget_max_usd_defaut", c.budget_max_usd() == 5.0)
+        check("test_ecrivains_simultanes_defaut", c.ecrivains_simultanes() == 1)
+
+        c = C.charger(chemin=ecrire(tmp, '[serveur]\nfichier_jeton = "/hors/depot/.token"\n'),
+                      racine_projet=tmp)
+        check("test_fichier_jeton_absolu_rendu_tel_quel",
+              c.fichier_jeton() == "/hors/depot/.token")
+
+        c = C.charger(chemin=ecrire(tmp, '[serveur]\nfichier_jeton = ".token"\n'),
+                      racine_projet=tmp)
+        check("test_fichier_jeton_relatif_resolu_contre_la_racine_projet",
+              c.fichier_jeton() == os.path.join(tmp, ".token"),
+              "un chemin relatif doit se résoudre contre `racine_projet`, "
+              "jamais rester relatif au répertoire d'où le serveur a été lancé")
+
+        c = C.charger(chemin=ecrire(tmp, '[serveur]\nfichier_jeton = ""\n'),
+                      racine_projet=tmp)
+        check("test_fichier_jeton_chaine_vide_rend_none", c.fichier_jeton() is None)
+
+        # --- budget_max_usd : borné strictement positif -------------------------
+        c = C.charger(chemin=ecrire(tmp, "[garde_fous]\nbudget_max_usd = 2.5\n"),
+                      racine_projet=tmp)
+        check("test_budget_max_usd_declare_rendu", c.budget_max_usd() == 2.5)
+
+        for toml, nom in (
+            ("[garde_fous]\nbudget_max_usd = 0\n", "test_budget_zero_retombe_sur_le_defaut"),
+            ("[garde_fous]\nbudget_max_usd = -3\n", "test_budget_negatif_retombe_sur_le_defaut"),
+            ('[garde_fous]\nbudget_max_usd = "cinq"\n', "test_budget_type_invalide_retombe_sur_le_defaut"),
+            ("[garde_fous]\nbudget_max_usd = true\n", "test_budget_booleen_retombe_sur_le_defaut"),
+        ):
+            c = C.charger(chemin=ecrire(tmp, toml), racine_projet=tmp)
+            check(nom, c.budget_max_usd() == 5.0,
+                  "un plafond à 0 ou négatif interdirait tout lancement SANS "
+                  "le dire clairement ; obtenu %r" % c.budget_max_usd())
+
+        # --- ecrivains_simultanes : borné entier >= 1 ---------------------------
+        c = C.charger(chemin=ecrire(tmp, "[garde_fous]\necrivains_simultanes = 3\n"),
+                      racine_projet=tmp)
+        check("test_ecrivains_simultanes_declare_rendu", c.ecrivains_simultanes() == 3)
+
+        for toml, nom in (
+            ("[garde_fous]\necrivains_simultanes = 0\n", "test_ecrivains_zero_retombe_sur_le_defaut"),
+            ("[garde_fous]\necrivains_simultanes = -1\n", "test_ecrivains_negatif_retombe_sur_le_defaut"),
+            ('[garde_fous]\necrivains_simultanes = "un"\n', "test_ecrivains_type_invalide_retombe_sur_le_defaut"),
+            ("[garde_fous]\necrivains_simultanes = 1.5\n", "test_ecrivains_flottant_retombe_sur_le_defaut"),
+        ):
+            c = C.charger(chemin=ecrire(tmp, toml), racine_projet=tmp)
+            check(nom, c.ecrivains_simultanes() == 1)
+
+        # --- budget_transmissible : critère DÉCLARATIF de la condition P1 n°7 --
+        c = C.charger(chemin=ecrire(tmp, '''[commandes]
+tests = ["pio", "test", "-e", "native"]
+deja_borne = ["pio", "test", "--max-budget-usd", "1"]
+
+[garde_fous]
+commandes_avec_budget = ["tests", "deja_borne", "inconnue"]
+'''), racine_projet=tmp)
+        check("test_budget_transmissible_pour_une_commande_declaree",
+              c.budget_transmissible("tests") is True)
+        check("test_budget_non_transmissible_sans_declaration",
+              c.budget_transmissible("cle_absente_de_commandes") is False,
+              "une clé absente de [commandes] ne doit jamais transmettre le "
+              "plafond")
+
+        c_sans_liste = C.charger(chemin=ecrire(tmp, '[commandes]\nbuild = ["make"]\n'),
+                                  racine_projet=tmp)
+        check("test_budget_non_transmissible_pour_commande_non_listee",
+              c_sans_liste.budget_transmissible("build") is False,
+              "une clé valide dans [commandes] mais absente de "
+              "commandes_avec_budget doit rester refusée : le défaut sûr est "
+              "de ne rien ajouter en silence")
+
+        check("test_budget_transmissible_refuse_si_argv_contient_deja_le_drapeau",
+              c.budget_transmissible("deja_borne") is False,
+              "--max-budget-usd déjà présent dans l'argv : l'ajouter le "
+              "dupliquerait, refusé même si la clé est listée")
+        check("test_budget_transmissible_refuse_pour_cle_inconnue_meme_listee",
+              c.budget_transmissible("inconnue") is False,
+              "'inconnue' figure dans commandes_avec_budget mais n'existe pas "
+              "dans [commandes] : commande() rend None, donc refus")
+
+        c = C.charger(chemin=os.path.join(tmp, "absent5.toml"), racine_projet=tmp)
+        check("test_budget_transmissible_sans_configuration_est_faux",
+              c.budget_transmissible("nimporte_quoi") is False)
+
     print("\n%d cas, %d echec(s)" % (_tests, len(_echecs)))
     for echec in _echecs:
         print("  - %s" % echec)

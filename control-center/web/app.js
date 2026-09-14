@@ -86,22 +86,31 @@ function rendreAgents(agents) {
 }
 
 /* --------------------------------------------------------------- système -- */
+/* Le suffixe « appliqué / non appliqué » vient du MÊME champ `ecriture_active`
+ * que le badge d'en-tête (voir rendreBadgePilotage) — jamais d'une déduction
+ * séparée sur `commandes_declarees.length` ou une constante. C'est le défaut
+ * d'origine de ce module (app.js affichait les garde-fous comme s'ils étaient
+ * en vigueur alors qu'aucun code ne les appliquait) ; le corriger ici sans
+ * changer la source laisserait la moitié du mensonge intacte. */
 function rendreSysteme(etat) {
   const dl = $("systeme");
   vider(dl);
+  const suffixe = etat.ecriture_active ? "appliqué" : "non appliqué (lecture seule)";
   const lignes = [
-    ["Dépôt", etat.git.depot ? (etat.git.branche || "?") : "absent"],
-    ["Fichiers touchés", etat.git.touches.length],
-    ["Divergences", etat.divergences],
-    ["Workflows", etat.workflows.length],
-    ["Configuration", etat.config_lue ? "lue" : "défauts"],
-    ["Commandes", etat.commandes_declarees.length],
-    ["Budget max", (etat.garde_fous.budget_max_usd ?? "—") + " $"],
-    ["Écrivains", etat.garde_fous.ecrivains_simultanes ?? "—"],
+    ["Dépôt", etat.git.depot ? (etat.git.branche || "?") : "absent", null],
+    ["Fichiers touchés", etat.git.touches.length, null],
+    ["Divergences", etat.divergences, null],
+    ["Workflows", etat.workflows.length, null],
+    ["Configuration", etat.config_lue ? "lue" : "défauts", null],
+    ["Commandes", etat.commandes_declarees.length, null],
+    ["Budget max", (etat.garde_fous.budget_max_usd ?? "—") + " $", suffixe],
+    ["Écrivains", etat.garde_fous.ecrivains_simultanes ?? "—", suffixe],
   ];
-  lignes.forEach(([cle, valeur]) => {
+  lignes.forEach(([cle, valeur, suffixeLigne]) => {
     dl.appendChild(el("dt", "", cle));
-    dl.appendChild(el("dd", "", valeur));
+    const dd = el("dd", "", valeur);
+    if (suffixeLigne) dd.appendChild(el("span", "suffixe-ecriture", " · " + suffixeLigne));
+    dl.appendChild(dd);
   });
 }
 
@@ -419,6 +428,598 @@ async function ouvrirDiff(chemin) {
   }
 }
 
+/* --------------------------------------------------------------- pilotage -- */
+/* Lancer un workflow déclaré, suivre sa sortie en direct, l'interrompre.
+ *
+ * Invariant central : `ecriture_active` (et `ecriture_raison`) est LU depuis
+ * `/api/etat`, jamais redéduit ici d'une autre donnée (longueur de
+ * `commandes_declarees`, constante, etc.) — c'est le même champ que celui qui
+ * alimente les lignes « Budget max » / « Écrivains » du bloc Système
+ * (rendreSysteme, ci-dessus).
+ *
+ * Le jeton ne va JAMAIS en query string (il finirait dans des journaux
+ * d'accès) : toujours dans l'en-tête `Authorization: Bearer …`. Il n'est posé
+ * dans `sessionStorage` qu'au moment du premier clic sur « Confirmer le
+ * lancement » — jamais avant, aucun prompt au chargement de page.
+ */
+const CLE_JETON_PILOTAGE = "pilotage_jeton";
+
+let pilotage = {
+  phase: "chargement",     // chargement | inactif | pret | confirmation | occupe | lancement
+  raison: null,
+  commandes: [],
+  budgetMaxUsd: null,
+  ecrivains: null,
+  cleChoisie: null,
+  confirmation: null,      // { cle, plafond, ecrivains, besoinJeton, erreur, enCours }
+  occupe: null,            // { texte }
+  lancement: null,         // { cle, etat, curseur, tronque, derniereActivite, debutClient, texteSortie, syntheticMessage }
+};
+
+let minuteurSondagePilotage = null;
+
+function jetonPilotageStocke() { return sessionStorage.getItem(CLE_JETON_PILOTAGE) || ""; }
+function stockerJetonPilotage(valeur) { sessionStorage.setItem(CLE_JETON_PILOTAGE, valeur); }
+function oublierJetonPilotage() { sessionStorage.removeItem(CLE_JETON_PILOTAGE); }
+function enTeteAuthPilotage(jeton) {
+  const t = jeton !== undefined ? jeton : jetonPilotageStocke();
+  return t ? { "Authorization": "Bearer " + t } : {};
+}
+
+function dureeLisiblePilotage(ms) {
+  if (ms === null || ms === undefined || ms < 0 || Number.isNaN(ms)) return null;
+  if (ms < 1000) return Math.round(ms) + " ms";
+  if (ms < 60000) return Math.round(ms / 1000) + " s";
+  const minutes = Math.floor(ms / 60000);
+  return minutes + " min " + Math.round((ms % 60000) / 1000) + " s";
+}
+
+function arreterSondagePilotage() {
+  if (minuteurSondagePilotage) { clearInterval(minuteurSondagePilotage); minuteurSondagePilotage = null; }
+}
+
+/* -- badge d'en-tête, 3 états — piloté par le MÊME champ que le bloc Système -- */
+function rendreBadgePilotage(etat) {
+  const badge = $("jauge-pilotage");
+  if (!etat || !etat.ecriture_active) {
+    badge.textContent = "lecture seule";
+    badge.className = "jauge lecture-seule";
+    badge.title = (etat && etat.ecriture_raison) || "écriture non activée";
+    return;
+  }
+  if (pilotage.lancement && pilotage.lancement.etat === "en_cours") {
+    badge.textContent = "● lancement en cours";
+    badge.className = "jauge pilotage-en-cours";
+    badge.title = "un lancement est en cours, suivi depuis cet onglet";
+  } else {
+    badge.textContent = "pilotage actif";
+    badge.className = "jauge pilotage-actif";
+    badge.title = "l'écriture est active sur ce serveur";
+  }
+}
+
+/* -- construction du DOM, entièrement redessiné à chaque changement de phase -- */
+function rendreSelecteurPilotage() {
+  const conteneur = el("div", "pilotage-select");
+  const label = el("label", "", "Commande à lancer");
+  label.htmlFor = "commande-lancer";
+  const select = document.createElement("select");
+  select.id = "commande-lancer";
+  pilotage.commandes.forEach((cle) => {
+    const option = el("option", "", cle);
+    option.value = cle;
+    if (cle === pilotage.cleChoisie) option.selected = true;
+    select.appendChild(option);
+  });
+  select.addEventListener("change", () => { pilotage.cleChoisie = select.value; });
+  conteneur.appendChild(label);
+  conteneur.appendChild(select);
+  return conteneur;
+}
+
+function rendreNotePlafondPilotage(budget, ecrivains) {
+  return el("p", "note",
+    "Plafond appliqué : " + (budget ?? "—") + " $ · Écrivains : " + (ecrivains ?? "—"));
+}
+
+function rendreConfirmationPilotage() {
+  const conf = pilotage.confirmation;
+  const enveloppe = document.createDocumentFragment();
+  enveloppe.appendChild(el("p", "note", "Commande sélectionnée : " + conf.cle));
+
+  const conteneur = el("div", "pilotage-confirmation");
+  const titre = el("p", "");
+  titre.appendChild(document.createTextNode("Lancer "));
+  titre.appendChild(el("strong", "", conf.cle));
+  titre.appendChild(document.createTextNode(" ?"));
+  conteneur.appendChild(titre);
+  conteneur.appendChild(el("p", "note",
+    "Plafond réellement appliqué : " + conf.plafond + " $ (relu à l'instant du serveur) · "
+    + "Écrivains : " + conf.ecrivains));
+
+  let champJeton = null;
+  if (conf.besoinJeton) {
+    const bloc = el("div", "pilotage-jeton");
+    const label = el("label", "", "Jeton de pilotage");
+    label.htmlFor = "confirmation-jeton";
+    champJeton = document.createElement("input");
+    champJeton.type = "password";
+    champJeton.id = "confirmation-jeton";
+    champJeton.autocomplete = "off";
+    champJeton.setAttribute("aria-describedby", "jeton-aide");
+    champJeton.disabled = conf.enCours;
+    const aide = el("p", "note",
+      "Jeton partagé du serveur — jamais mémorisé au-delà de cet onglet.");
+    aide.id = "jeton-aide";
+    bloc.appendChild(label);
+    bloc.appendChild(champJeton);
+    bloc.appendChild(aide);
+    conteneur.appendChild(bloc);
+  }
+
+  if (conf.erreur) {
+    const erreur = el("p", "note", conf.erreur);
+    erreur.setAttribute("role", "alert");
+    conteneur.appendChild(erreur);
+  }
+
+  const boutons = el("div", "pilotage-boutons");
+  const annuler = el("button", "pilotage-secondaire", "Annuler");
+  annuler.type = "button";
+  annuler.disabled = conf.enCours;
+  annuler.addEventListener("click", surClicAnnulerConfirmationPilotage);
+  const confirmer = el("button", "action-ecriture", "Confirmer le lancement");
+  confirmer.type = "button";
+  confirmer.id = "bouton-confirmer";
+  confirmer.disabled = conf.enCours;
+  confirmer.addEventListener("click", surClicConfirmerPilotage);
+  boutons.appendChild(annuler);
+  boutons.appendChild(confirmer);
+  conteneur.appendChild(boutons);
+  enveloppe.appendChild(conteneur);
+
+  /* Le sous-panneau REMPLACE le bouton in situ : le focus s'y pose, sur le
+   * premier contrôle utile (le champ jeton s'il est demandé, sinon
+   * directement la confirmation). */
+  requestAnimationFrame(() => { (champJeton || confirmer).focus(); });
+
+  return enveloppe;
+}
+
+function rendreOccupePilotage() {
+  const conteneur = el("div", "pilotage-occupe");
+  const texte = el("p", "note avert", pilotage.occupe.texte);
+  texte.setAttribute("role", "status");
+  texte.setAttribute("aria-live", "polite");
+  conteneur.appendChild(texte);
+  /* Modèle de permission binaire assumé (voir spec) : tout porteur du jeton
+   * peut interrompre, quel que soit celui qui a lancé. */
+  const bouton = el("button", "action-ecriture", "Interrompre");
+  bouton.type = "button";
+  bouton.addEventListener("click", surClicInterromprePilotage);
+  conteneur.appendChild(bouton);
+  return conteneur;
+}
+
+function construireLigneEtatPilotage(l) {
+  const ligne = el("p", "pilotage-ligne");
+  ligne.id = "pilotage-ligne-etat";
+  ligne.setAttribute("role", "status");
+  ligne.setAttribute("aria-live", "polite");
+
+  if (l.etat === "en_cours") {
+    const inactiviteMs = Date.now() - l.derniereActivite * 1000;
+    const bloque = inactiviteMs > 30000;
+    ligne.classList.add(bloque ? "bloque" : "en-cours");
+    const ecoule = dureeLisiblePilotage(inactiviteMs) || "0 s";
+    ligne.textContent = bloque
+      ? "● en cours — bloqué depuis " + ecoule
+      : "● en cours · dernière sortie il y a " + ecoule;
+  } else if (l.etat === "termine") {
+    ligne.classList.add("termine");
+    const dureeTxt = l.debutClient ? dureeLisiblePilotage(Date.now() - l.debutClient) : null;
+    ligne.textContent = "✓ terminé" + (dureeTxt ? " · durée " + dureeTxt : "");
+  } else if (l.etat === "echec") {
+    ligne.classList.add("echec");
+    const dureeTxt = l.debutClient ? dureeLisiblePilotage(Date.now() - l.debutClient) : null;
+    ligne.textContent = "✕ échoué"
+      + (l.syntheticMessage ? " · " + l.syntheticMessage : "")
+      + (dureeTxt ? " · durée " + dureeTxt : "");
+  } else if (l.etat === "interrompu") {
+    ligne.classList.add("interrompu");
+    ligne.textContent = "■ interrompu par l'utilisateur";
+  } else {
+    ligne.textContent = String(l.etat || "");
+  }
+  return ligne;
+}
+
+function rendreLancementPilotage() {
+  const l = pilotage.lancement;
+  const conteneur = el("div", "pilotage-lancement");
+  conteneur.appendChild(construireLigneEtatPilotage(l));
+
+  if (l.tronque) {
+    conteneur.appendChild(el("div", "pilotage-tronque",
+      "⚠ SORTIE TRONQUÉE — le début n'est pas affiché"));
+  }
+
+  const pre = document.createElement("pre");
+  pre.id = "sortie-lancement";
+  pre.textContent = l.texteSortie || "";
+  conteneur.appendChild(pre);
+
+  const boutons = el("div", "pilotage-boutons");
+  if (l.etat === "en_cours") {
+    const interrompre = el("button", "pilotage-secondaire", "Interrompre");
+    interrompre.type = "button";
+    interrompre.addEventListener("click", surClicInterromprePilotage);
+    boutons.appendChild(interrompre);
+  } else {
+    const nouveau = el("button", "action-ecriture", "Nouveau lancement");
+    nouveau.type = "button";
+    nouveau.addEventListener("click", surClicNouveauLancementPilotage);
+    boutons.appendChild(nouveau);
+  }
+  conteneur.appendChild(boutons);
+
+  requestAnimationFrame(() => { pre.scrollTop = pre.scrollHeight; });
+  return conteneur;
+}
+
+function rendrePilotage() {
+  const corps = $("pilotage-corps");
+  vider(corps);
+
+  if (pilotage.phase === "chargement") {
+    corps.appendChild(el("p", "vide", "chargement…"));
+  } else if (pilotage.phase === "inactif") {
+    const note = el("p", "note avert");
+    note.appendChild(document.createTextNode("Écriture non activée : "));
+    note.appendChild(el("strong", "", pilotage.raison || "raison inconnue"));
+    corps.appendChild(note);
+  } else if (pilotage.phase === "pret") {
+    if (!pilotage.commandes.length) {
+      corps.appendChild(el("p", "vide", "aucune commande déclarée dans [commandes]"));
+      return;
+    }
+    corps.appendChild(rendreSelecteurPilotage());
+    corps.appendChild(rendreNotePlafondPilotage(pilotage.budgetMaxUsd, pilotage.ecrivains));
+    const bouton = el("button", "action-ecriture", "Lancer…");
+    bouton.type = "button";
+    bouton.id = "bouton-lancer";
+    bouton.addEventListener("click", surClicLancerPilotage);
+    corps.appendChild(bouton);
+  } else if (pilotage.phase === "confirmation") {
+    corps.appendChild(rendreConfirmationPilotage());
+  } else if (pilotage.phase === "occupe") {
+    corps.appendChild(rendreOccupePilotage());
+  } else if (pilotage.phase === "lancement") {
+    corps.appendChild(rendreLancementPilotage());
+  }
+}
+
+/* -- actions ------------------------------------------------------------- */
+async function surClicLancerPilotage() {
+  const bouton = $("bouton-lancer");
+  if (bouton) bouton.disabled = true;
+  try {
+    /* Plafond relu ICI, frais — jamais une valeur mise en cache par un sondage
+     * antérieur (SSE ou autre). */
+    const reponse = await fetch("/api/etat");
+    const etat = await reponse.json();
+    dernierEtat = etat;
+    if (!etat.ecriture_active) {
+      pilotage.phase = "inactif";
+      pilotage.raison = etat.ecriture_raison;
+      rendrePilotage();
+      rendreBadgePilotage(etat);
+      return;
+    }
+    pilotage.commandes = etat.commandes_declarees || [];
+    pilotage.budgetMaxUsd = etat.garde_fous.budget_max_usd;
+    pilotage.ecrivains = etat.garde_fous.ecrivains_simultanes;
+    pilotage.confirmation = {
+      cle: pilotage.cleChoisie,
+      plafond: pilotage.budgetMaxUsd,
+      ecrivains: pilotage.ecrivains,
+      besoinJeton: !jetonPilotageStocke(),
+      erreur: null,
+      enCours: false,
+    };
+    pilotage.phase = "confirmation";
+    rendrePilotage();
+  } catch (erreur) {
+    if (bouton) bouton.disabled = false;
+  }
+}
+
+function surClicAnnulerConfirmationPilotage() {
+  pilotage.confirmation = null;
+  pilotage.phase = "pret";
+  rendrePilotage();
+  const bouton = $("bouton-lancer");
+  if (bouton) bouton.focus();
+}
+
+async function surClicConfirmerPilotage() {
+  const conf = pilotage.confirmation;
+  if (!conf || conf.enCours) return;
+  let jeton = jetonPilotageStocke();
+  if (!jeton) {
+    const champ = $("confirmation-jeton");
+    jeton = champ ? champ.value : "";
+  }
+  if (!jeton) {
+    conf.erreur = "Jeton requis.";
+    rendrePilotage();
+    return;
+  }
+
+  conf.enCours = true;
+  conf.erreur = null;
+  rendrePilotage();
+
+  try {
+    const reponse = await fetch("/api/lancer", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, enTeteAuthPilotage(jeton)),
+      body: JSON.stringify({ cle: conf.cle }),
+    });
+
+    if (reponse.status === 202) {
+      stockerJetonPilotage(jeton);
+      pilotage.lancement = {
+        cle: conf.cle, etat: "en_cours", curseur: 0, tronque: false,
+        derniereActivite: Date.now() / 1000, debutClient: Date.now(),
+        texteSortie: "", syntheticMessage: null,
+      };
+      pilotage.confirmation = null;
+      pilotage.phase = "lancement";
+      rendrePilotage();
+      rendreBadgePilotage(dernierEtat);
+      demarrerSondagePilotage();
+      return;
+    }
+
+    const donnees = await reponse.json().catch(() => ({}));
+
+    if (reponse.status === 401) {
+      oublierJetonPilotage();
+      conf.enCours = false;
+      conf.besoinJeton = true;
+      conf.erreur = "Jeton refusé.";
+      rendrePilotage();
+      return;
+    }
+    if (reponse.status === 403) {
+      pilotage.confirmation = null;
+      pilotage.phase = "inactif";
+      rendrePilotage();
+      const r = await fetch("/api/etat");
+      const etat = await r.json();
+      dernierEtat = etat;
+      pilotage.raison = etat.ecriture_raison;
+      rendrePilotage();
+      rendreBadgePilotage(etat);
+      return;
+    }
+    if (reponse.status === 409) {
+      stockerJetonPilotage(jeton);
+      pilotage.occupe = { texte: donnees.erreur || "un écrivain occupe déjà la place" };
+      pilotage.confirmation = null;
+      pilotage.phase = "occupe";
+      rendrePilotage();
+      return;
+    }
+    if (reponse.status === 503) {
+      /* Aucun processus n'a été créé : le bouton ne repasse JAMAIS en
+       * « en cours » dans ce cas. */
+      stockerJetonPilotage(jeton);
+      pilotage.lancement = {
+        cle: conf.cle, etat: "echec", curseur: 0, tronque: false,
+        derniereActivite: Date.now() / 1000, debutClient: null,
+        texteSortie: "", syntheticMessage: donnees.erreur || "plafond de dépense non transmissible",
+      };
+      pilotage.confirmation = null;
+      pilotage.phase = "lancement";
+      rendrePilotage();
+      return;
+    }
+    if (reponse.status === 404) {
+      conf.enCours = false;
+      conf.erreur = "Clé de commande inconnue — la liste a peut-être changé.";
+      rendrePilotage();
+      return;
+    }
+    conf.enCours = false;
+    conf.erreur = "Erreur du serveur (" + reponse.status + ").";
+    rendrePilotage();
+  } catch (erreur) {
+    conf.enCours = false;
+    conf.erreur = "Erreur réseau : " + erreur.message;
+    rendrePilotage();
+  }
+}
+
+async function surClicInterromprePilotage() {
+  try {
+    /* Corps VIDE mais explicite : sans lui, certains clients HTTP n'émettent
+     * aucun `Content-Length`, que `do_POST` exige avant toute autre garde
+     * (411 sinon) — vérifié par exécution sur ce module (`curl -X POST` sans
+     * `--data` échoue en 411, `--data ''` réussit). */
+    const reponse = await fetch("/api/interrompre", {
+      method: "POST",
+      headers: enTeteAuthPilotage(),
+      body: "",
+    });
+    if (reponse.status === 202) {
+      if (pilotage.phase === "occupe") {
+        /* On ne connaît ni la clé exacte ni un curseur pertinent pour ce
+         * lancement qu'on n'a pas soi-même démarré : on repart de 0, comme au
+         * chargement de page — c'est ce qui rend la reconnexion possible sans
+         * état persistant côté client. */
+        pilotage.lancement = {
+          cle: null, etat: "en_cours", curseur: 0, tronque: false,
+          derniereActivite: Date.now() / 1000, debutClient: null,
+          texteSortie: "", syntheticMessage: null,
+        };
+        pilotage.occupe = null;
+        pilotage.phase = "lancement";
+        rendrePilotage();
+        rendreBadgePilotage(dernierEtat);
+        demarrerSondagePilotage();
+      }
+      return;
+    }
+    if (reponse.status === 401) {
+      oublierJetonPilotage();
+      return;
+    }
+    if (reponse.status === 403) {
+      pilotage.phase = "inactif";
+      rendrePilotage();
+      const r = await fetch("/api/etat");
+      const etat = await r.json();
+      dernierEtat = etat;
+      pilotage.raison = etat.ecriture_raison;
+      rendrePilotage();
+      rendreBadgePilotage(etat);
+      return;
+    }
+    if (reponse.status === 404 && pilotage.phase === "occupe") {
+      pilotage.occupe = null;
+      pilotage.phase = "pret";
+      rendrePilotage();
+    }
+  } catch (erreur) {
+    /* Réessayable : le bouton reste affiché, rien n'est changé côté état. */
+  }
+}
+
+function surClicNouveauLancementPilotage() {
+  arreterSondagePilotage();
+  pilotage.lancement = null;
+  pilotage.phase = "pret";
+  rendrePilotage();
+  const bouton = $("bouton-lancer");
+  if (bouton) bouton.focus();
+}
+
+/* -- sondage de la sortie, ~1 s, PENDANT un lancement seulement -- */
+function demarrerSondagePilotage() {
+  arreterSondagePilotage();
+  sonderLancementPilotage();
+  minuteurSondagePilotage = setInterval(sonderLancementPilotage, 1000);
+}
+
+async function sonderLancementPilotage() {
+  if (!pilotage.lancement) return arreterSondagePilotage();
+  try {
+    const reponse = await fetch("/api/lancement?depuis=" + pilotage.lancement.curseur,
+      { headers: enTeteAuthPilotage() });
+    if (reponse.status === 200) {
+      const donnees = await reponse.json();
+      if (donnees.lignes) pilotage.lancement.texteSortie += donnees.lignes;
+      pilotage.lancement.curseur = donnees.curseur;
+      /* Sticky : une fois annoncée, la troncature ne redevient jamais fausse —
+       * c'est le DÉBUT qui a été perdu, pas la fin. */
+      pilotage.lancement.tronque = pilotage.lancement.tronque || !!donnees.tronque;
+      /* « Bloqué » vient de `derniere_activite` renvoyé par le SERVEUR, jamais
+       * de l'absence de nouvelles lignes côté client : un sondage qui échoue
+       * une fois ne doit pas se lire comme un blocage de la commande. */
+      pilotage.lancement.derniereActivite = donnees.derniere_activite;
+      pilotage.lancement.etat = donnees.etat;
+      if (donnees.etat !== "en_cours") arreterSondagePilotage();
+      rendrePilotage();
+      rendreBadgePilotage(dernierEtat);
+    } else if (reponse.status === 401) {
+      arreterSondagePilotage();
+      oublierJetonPilotage();
+    } else if (reponse.status === 403) {
+      arreterSondagePilotage();
+      pilotage.phase = "inactif";
+      const r = await fetch("/api/etat");
+      const etat = await r.json();
+      dernierEtat = etat;
+      pilotage.raison = etat.ecriture_raison;
+      rendrePilotage();
+      rendreBadgePilotage(etat);
+    } else if (reponse.status === 404) {
+      arreterSondagePilotage();
+    }
+    /* Autre code, ou exception réseau ci-dessous : on retente au prochain
+     * battement, silencieusement — c'est le principe explicite du sondage. */
+  } catch (erreur) {
+    /* idem */
+  }
+}
+
+/* -- initialisation / réaction à /api/etat ------------------------------- */
+async function initialiserPilotage(etat) {
+  pilotage.phase = "pret";
+  if (pilotage.commandes.length && !pilotage.cleChoisie) pilotage.cleChoisie = pilotage.commandes[0];
+  const jeton = jetonPilotageStocke();
+  if (jeton) {
+    /* Reconnexion : on redemande depuis `curseur=0` pour recharger le tampon
+     * avant de reprendre l'incrémental — pas d'état persistant côté client. */
+    try {
+      const reponse = await fetch("/api/lancement?depuis=0", { headers: enTeteAuthPilotage(jeton) });
+      if (reponse.status === 200) {
+        const donnees = await reponse.json();
+        pilotage.lancement = {
+          cle: pilotage.cleChoisie, etat: donnees.etat, curseur: donnees.curseur,
+          tronque: !!donnees.tronque, derniereActivite: donnees.derniere_activite,
+          debutClient: null, texteSortie: donnees.lignes || "", syntheticMessage: null,
+        };
+        pilotage.phase = "lancement";
+        if (donnees.etat === "en_cours") demarrerSondagePilotage();
+      } else if (reponse.status === 401) {
+        oublierJetonPilotage();
+      } else if (reponse.status === 403) {
+        pilotage.phase = "inactif";
+      }
+      /* 404 « aucun lancement » : rien à faire, la phase reste « pret ». */
+    } catch (erreur) {
+      /* Reconnexion ratée : on retombe simplement sur l'état « pret ». */
+    }
+  }
+  rendrePilotage();
+  rendreBadgePilotage(dernierEtat);
+}
+
+function actualiserPilotage(etat) {
+  pilotage.budgetMaxUsd = etat.garde_fous.budget_max_usd;
+  pilotage.ecrivains = etat.garde_fous.ecrivains_simultanes;
+  pilotage.commandes = etat.commandes_declarees || [];
+  pilotage.raison = etat.ecriture_raison;
+
+  if (!etat.ecriture_active) {
+    /* Un lancement réellement en cours survit côté serveur : l'interface
+     * cesse seulement de prétendre pouvoir le piloter depuis cet onglet. */
+    arreterSondagePilotage();
+    pilotage.phase = "inactif";
+    rendrePilotage();
+    rendreBadgePilotage(etat);
+    return;
+  }
+
+  if (pilotage.phase === "chargement") {
+    initialiserPilotage(etat);
+    return;
+  }
+
+  /* Les autres phases ne se réinitialisent jamais depuis `/api/etat` : ce
+   * champ ne porte que `ecriture_active` / `ecriture_raison` et les
+   * garde-fous affichés — jamais l'état d'un lancement, qui vient
+   * exclusivement de `/api/lancement`. */
+  if (pilotage.phase === "pret" && !pilotage.cleChoisie && pilotage.commandes.length) {
+    pilotage.cleChoisie = pilotage.commandes[0];
+  }
+  rendrePilotage();
+  rendreBadgePilotage(etat);
+}
+
 /* ------------------------------------------------------------------ flux -- */
 let enCours = false;
 
@@ -440,6 +1041,7 @@ async function rafraichir() {
     rendreWorkflows(etat);
     rendreFichiers(etat);
     rendreTimeline(etat);
+    actualiserPilotage(etat);
   } catch (erreur) {
     const jauge = $("jauge-flux");
     jauge.textContent = "serveur injoignable";
