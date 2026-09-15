@@ -772,106 +772,105 @@ function traitsCercle(agent) {
 }
 
 function construireCercleAgent(agentGeo, sigles) {
-  const g = svgEl("g", "dg-agent" + (agentGeo.enCours ? " dg-en-cours" : ""));
-  const traits = traitsCercle(agentGeo);
+  const g = svgEl("g", "dg-agent");
+  const c = couleurIdentite(agentGeo.agent);
+  const r0 = agentGeo.rayon + 4;
 
-  // Anneau fantôme : la pleine échelle, toujours visible — même à zéro
-  // appel d'outil (§5, cas limite « agent à zéro appel d'outil »).
-  const fantome = svgEl("circle", "dg-anneau-fantome");
-  svgAttrs(fantome, { cx: agentGeo.cx, cy: agentGeo.cy, r: agentGeo.rayon + 3.5, fill: "none" });
-  g.appendChild(fantome);
+  // Anneau gris extérieur (guide)
+  const guide = svgEl("circle", "dg-guide");
+  svgAttrs(guide, { cx: agentGeo.cx, cy: agentGeo.cy, r: r0 + 3.5, fill: "none" });
+  guide.style.stroke = "var(--trait)";
+  guide.style.strokeWidth = 1;
+  g.appendChild(guide);
 
-  // Barres verticales (filigrane) au-dessus du cercle — barre blanche puis grise
-  // pour marquer le début des graduations sans confondre avec l'anneau fantôme.
-  const barreBlanche = svgEl("line", "dg-barre-blanche");
-  svgAttrs(barreBlanche, {
-    x1: agentGeo.cx, y1: agentGeo.cy - agentGeo.rayon - 4 + 0.5,
-    x2: agentGeo.cx, y2: agentGeo.cy - agentGeo.rayon - 4 - 8.5,
-    stroke: "var(--creux)",
-  });
-  barreBlanche.style.strokeWidth = 2.6;
-  g.appendChild(barreBlanche);
-
-  const barreGrise = svgEl("line", "dg-barre-liserete");
-  svgAttrs(barreGrise, {
-    x1: agentGeo.cx - 0.6, y1: agentGeo.cy - agentGeo.rayon - 4 + 0.5,
-    x2: agentGeo.cx - 0.6, y2: agentGeo.cy - agentGeo.rayon - 4 - 9.5,
-    stroke: "var(--texte-doux)",
-  });
-  barreGrise.style.strokeWidth = 1;
-  g.appendChild(barreGrise);
-
-  // Graduations : arc de 340°, un vide de 20° en haut sépare l'encoche de
-  // zéro (début, angle 10°) du cran de plafond (fin, angle 350°) — les deux
-  // marques restent DISTINCTES l'une de l'autre au lieu de se confondre sur
-  // un cercle complet (§5 : « une encoche en haut, un cran de plafond »).
+  // Graduations : arc de 340°
   const total = agentGeo.graduationsTotal;
-  const graduations = svgEl("g", "dg-graduations");
   for (let i = 0; i < total; i++) {
     const angle = total > 1 ? 10 + (340 * i) / (total - 1) : 10;
     const allumee = i < agentGeo.graduationsAllumees;
     const estBorne = i === 0 || i === total - 1;
-    const interieur = pointCercle(agentGeo.cx, agentGeo.cy, agentGeo.rayon, angle);
+    const interieur = pointCercle(agentGeo.cx, agentGeo.cy, r0, angle);
     const exterieur = pointCercle(agentGeo.cx, agentGeo.cy,
-      agentGeo.rayon + (estBorne ? 7 : 4), angle);
-    const trait = svgEl("line", "dg-graduation" + (allumee ? " allumee" : "")
-      + (estBorne ? " borne" : ""));
+      r0 + (estBorne ? 7 : 3.2), angle);
+    const trait = svgEl("line");
     svgAttrs(trait, { x1: interieur.x, y1: interieur.y, x2: exterieur.x, y2: exterieur.y });
-    trait.style.stroke = allumee ? traits.couleurTexte : "var(--trait-fin)";
+    trait.style.stroke = allumee ? c : "var(--trait-fin)";
     trait.style.strokeWidth = allumee ? 1.8 : 1;
-    graduations.appendChild(trait);
+    g.appendChild(trait);
   }
-  g.appendChild(graduations);
 
-  // Liseré intérieur : nombre de fichiers écrits, en épaisseur de trait —
-  // jamais une couleur d'identité (§8 : le contour/la forme portent l'état
-  // et les mesures, pas l'identité).
+  // Barre blanche (filigrane)
+  const barreBlanche = svgEl("line");
+  svgAttrs(barreBlanche, {
+    x1: agentGeo.cx, y1: agentGeo.cy - r0 + 0.5,
+    x2: agentGeo.cx, y2: agentGeo.cy - r0 - 8.5,
+  });
+  barreBlanche.style.stroke = "var(--creux)";
+  barreBlanche.style.strokeWidth = 2.6;
+  g.appendChild(barreBlanche);
+
+  // Barre grise (liseré)
+  const barreGrise = svgEl("line");
+  svgAttrs(barreGrise, {
+    x1: agentGeo.cx - 0.6, y1: agentGeo.cy - r0 + 0.5,
+    x2: agentGeo.cx - 0.6, y2: agentGeo.cy - r0 - 9.5,
+  });
+  barreGrise.style.stroke = "var(--texte-doux)";
+  barreGrise.style.strokeWidth = 1;
+  g.appendChild(barreGrise);
+
+  // Liseré intérieur pour fichiers
   if (agentGeo.fichiers > 0) {
-    const liseret = svgEl("circle", "dg-liseret");
+    const liseret = svgEl("circle");
     svgAttrs(liseret, {
-      cx: agentGeo.cx, cy: agentGeo.cy, r: Math.max(2, agentGeo.rayon - 6), fill: "none",
+      cx: agentGeo.cx, cy: agentGeo.cy, r: Math.max(2, agentGeo.rayon - 4),
+      fill: "none",
     });
+    liseret.style.stroke = c;
     liseret.style.strokeWidth = agentGeo.liseretEpaisseur;
     g.appendChild(liseret);
   }
 
-  // Le cercle principal : remplissage = identité (ou neutre pour le
-  // principal), contour = état (couleur ET motif).
-  const cercle = svgEl("circle", "dg-cercle " + traits.style);
+  // Cercle principal : remplissage = couleur d'agent, contour = trait fin
+  const cercle = svgEl("circle");
   svgAttrs(cercle, { cx: agentGeo.cx, cy: agentGeo.cy, r: agentGeo.rayon });
-  cercle.style.fill = traits.remplissage;
-  cercle.style.stroke = traits.couleurContour;
+  cercle.style.fill = remplissageIdentite(agentGeo.agent);
+  cercle.style.stroke = agentGeo.enCours ? c : "var(--trait-fin)";
+  cercle.style.strokeWidth = agentGeo.enCours ? 1.8 : 1;
   g.appendChild(cercle);
 
-  // Agent « en cours » : anneau SUPPLÉMENTAIRE — jamais la seule couleur
-  // (§8) — plus la graisse du texte du nom (posée sur le socle, plus bas).
+  // Anneau supplémentaire si en cours
   if (agentGeo.enCours) {
-    const anneau = svgEl("circle", "dg-anneau-en-cours");
+    const anneau = svgEl("circle");
     svgAttrs(anneau, { cx: agentGeo.cx, cy: agentGeo.cy, r: agentGeo.rayon + 3.5, fill: "none" });
+    anneau.style.stroke = c;
+    anneau.style.strokeWidth = 1;
+    anneau.style.opacity = 0.45;
     g.appendChild(anneau);
   }
 
-  // Échec : redondant à dessein — couleur (déjà sur le contour) ET croix.
-  // Jamais cumulé avec « sans clôture » (une fin sans annonce n'est ni un
-  // succès ni un échec, voir `estEchec` dans diagramme.js).
+  // Croix en cas d'échec
   if (agentGeo.echec) {
     const bras = agentGeo.rayon * 0.42;
-    const croix = svgEl("g", "dg-croix-echec");
+    const couleurEchec = "var(--alerte)";
     [[-1, -1, 1, 1], [-1, 1, 1, -1]].forEach(([dx1, dy1, dx2, dy2]) => {
       const trait = svgEl("line");
       svgAttrs(trait, {
         x1: agentGeo.cx + dx1 * bras, y1: agentGeo.cy + dy1 * bras,
         x2: agentGeo.cx + dx2 * bras, y2: agentGeo.cy + dy2 * bras,
       });
-      croix.appendChild(trait);
+      trait.style.stroke = couleurEchec;
+      trait.style.strokeWidth = 1.5;
+      g.appendChild(trait);
     });
-    g.appendChild(croix);
   }
 
-  // Sigle au centre — même identité que la table des passages.
-  const sigle = svgEl("text", "dg-sigle");
+  // Sigle au centre
+  const sigle = svgEl("text");
   svgAttrs(sigle, { x: agentGeo.cx, y: agentGeo.cy, "text-anchor": "middle", "dominant-baseline": "central" });
-  sigle.style.fill = traits.couleurTexte;
+  sigle.style.fill = c;
+  sigle.style.fontSize = agentGeo.rayon > 26 ? 11 : 9.5;
+  sigle.style.fontWeight = 600;
   sigle.textContent = (sigles && sigles.get(agentGeo.agent)) || "??";
   g.appendChild(sigle);
 
