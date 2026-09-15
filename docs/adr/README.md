@@ -50,3 +50,6 @@ Une simple préférence de style, un choix réversible en une heure ou un détai
 | [0020](0020-un-centre-de-controle-appartient-a-un-developpeur.md) | Un centre de contrôle appartient à un développeur, et le jeton dépend du déploiement | Accepté |
 | [0021](0021-etat-sans-cloture-additif-et-seuil-declare.md) | Un état de passage additif (`sans_cloture`), gouverné par un seuil déclaré en configuration | Accepté |
 | [0022](0022-deux-familles-de-jetons-couleur-plancher-perceptuel.md) | Deux familles de jetons de couleur, séparées par un plancher perceptuel | Accepté |
+| [0023](0023-un-cycle-observe-ne-porte-pas-de-nom.md) | Un cycle observé ne porte pas de nom, et le centre de contrôle renonce à lui en donner un | Accepté |
+| [0024](0024-une-section-a-la-fois-dans-un-contenu-borne.md) | Une section à la fois, dans un contenu borné : la colonne de navigation, l'absorption de `bug-016`, l'amendement du §3, et la règle de marge chiffrée | Accepté |
+| [0025](0025-grammaire-du-diagramme-de-deroule.md) | La grammaire du diagramme de déroulé : ce que porte chaque forme du cercle, l'écart horizontal qui ne mesure pas le temps, et la séparation entre géométrie et rendu | Accepté |

@@ -128,7 +128,10 @@ porteur de sens. Une couleur qui n'y arrive pas ne rentre pas dans la palette.
 
 ## 3. Surfaces
 
-Trois niveaux, jamais plus, dans les deux thèmes :
+*Appliqué par `feature-019` (colonne de navigation, contenu borné) — voir
+[ADR-0024](adr/0024-une-section-a-la-fois-dans-un-contenu-borne.md).*
+
+Trois niveaux **structurels**, jamais plus, dans les deux thèmes :
 
 | Jeton | Rôle |
 |---|---|
@@ -140,6 +143,17 @@ L'écart entre deux niveaux est **volontairement faible** — de l'ordre de 1,1:
 Ce n'est pas le fond qui délimite un bloc, c'est son **filet** (`--trait`). Un
 bloc qui aurait besoin d'un aplat plus marqué pour se distinguer est un bloc mal
 placé.
+
+Un quatrième jeton, `--surface-2`, est une **teinte d'interaction** — pas un
+niveau de repos. Il est réservé au survol et à la sélection d'un élément
+**déjà délimité par un filet** (un onglet de navigation, une entrée de liste,
+un bouton de bascule) : jamais un aplat de repos. Amendement posé par
+`feature-019` — le document disait « trois niveaux, jamais plus » alors que le
+code servait déjà ce quatrième jeton depuis avant l'écriture de cette règle.
+Sur ses cinq usages mesurés à l'entrée du cycle, trois étaient des aplats de
+repos (violation littérale de la règle d'origine) et ont migré vers
+`--surface` ; les deux restants étaient déjà des états et sont restés sur
+`--surface-2`.
 
 **Le diagramme est sur `--creux` dans les deux thèmes.** C'est ce qui donne son
 unité à la zone. Le passer au blanc dans le thème clair efface la frontière
@@ -153,6 +167,13 @@ plusieurs diagrammes sans zébrer l'écran.
 ---
 
 ## 4. Typographie
+
+*Appliqué par `feature-019` — voir
+[ADR-0024](adr/0024-une-section-a-la-fois-dans-un-contenu-borne.md). Entrée du
+cycle : **31** usages de la pile à chasse fixe contre **2** de la pile
+sans-serif. Sortie : **16** contre **18**, mesuré par
+`grep -c 'var(--mono)' / 'var(--sans)'` sur `app.css` — chaque usage résiduel
+de `--mono` porte un identifiant technique (chemin, sigle, code).*
 
 | Usage | Taille | Graisse |
 |---|---|---|
@@ -279,7 +300,18 @@ encore moins lisible.
 ## 8. Accessibilité
 
 - Contraste minimal : **4,5:1** pour le texte, **3:1** pour un trait porteur de
-  sens. Vérifié à chaque ajout de couleur, pas à la fin.
+  sens. Vérifié à chaque ajout de couleur, pas à la fin. **Marge de
+  conception : viser un contraste nominal ≥ 4,65:1**, pas 4,5:1 pile — un
+  bit d'arrondi sur 8 bits vaut jusqu'à 0,0585 de ratio sur la plage
+  concernée, et une valeur conçue exactement au seuil peut retomber sous lui
+  une fois arrondie (constaté, voir
+  [ADR-0024](adr/0024-une-section-a-la-fois-dans-un-contenu-borne.md)).
+- `--texte-faible` et `--texte-doux` étaient **sous le seuil** en thème
+  sombre avant `feature-019` (`bug-016`) : `--texte-faible` ne tenait que
+  4,24:1 contre `--fond` et 3,55:1 contre `--surface-2`. Les deux jetons sont
+  désormais mesurés contre les **quatre** surfaces (`--fond`, `--surface`,
+  `--surface-2`, `--creux`), dans les deux thèmes ; le pire cas retenu
+  (thème sombre, `--texte-faible` contre `--surface-2`) tient 4,77:1.
 - **Aucune information portée par la seule couleur.** Un échec se signale par la
   couleur *et* une croix *et* un cercle en pointillé. Un agent en cours par la
   couleur *et* un anneau supplémentaire *et* une graisse de texte.
@@ -290,14 +322,24 @@ encore moins lisible.
 - Les sigles à deux lettres sont **distincts entre eux** : `spec-reader` = `SP`,
   `security-reviewer` = `SE`. Deux agents ne peuvent pas partager un sigle.
 - **Règle de précédence entre les deux familles de jetons** (posée par
-  `ux-ui-designer`, à appliquer par `feature-016`) : **l'identité prend le
-  texte et le sigle, l'état prend le contour et la forme.** Sur un même
-  élément (une entrée d'accordéon, une ligne de liste), la couleur d'agent
-  reste réservée au texte et au sigle qui portent son identité ; un état
-  (en cours, échec, divergence) se lit dans le contour et la forme —
-  jamais en recolorant le texte d'une couleur sémantique par-dessus une
-  couleur d'identité. Non appliquée dans ce cycle : `docs/DESIGN-SYSTEM.md`
-  la fixe avant que `feature-016` et `feature-017` n'aient à la redécouvrir.
+  `ux-ui-designer`) : **l'identité prend le texte et le sigle, l'état prend
+  le contour et la forme.** Sur un même élément (une entrée d'accordéon, une
+  ligne de liste), la couleur d'agent reste réservée au texte et au sigle
+  qui portent son identité ; un état (en cours, échec, divergence) se lit
+  dans le contour et la forme — jamais en recolorant le texte d'une couleur
+  sémantique par-dessus une couleur d'identité. **Appliquée par
+  `feature-016`** dans la liste des cycles en accordéon et sa table des
+  passages d'agent.
+- **Vocabulaire des traits, désormais sans ambiguïté** (ambiguïté trouvée
+  puis levée pendant `feature-016`) :
+  - **bordure pleine en pointillé** = état « sans clôture » (`sans_cloture`,
+    bug-013) ;
+  - **bordure pleine en tirets** = rôle « agent principal » (`AGENT_PRINCIPAL`) ;
+  - **bordure gauche en tirets** = liseré de rebouclage (reprise du même
+    agent).
+  Les trois motifs ne se substituent jamais l'un à l'autre : un élément peut
+  cumuler un état et un rôle, jamais fusionner leurs traits en un seul motif
+  ambigu.
 
 ---
 
@@ -339,11 +381,16 @@ encore moins lisible.
 | 2026-09-15 | Huit rôles teintés : `backend-developer` (220°) et `doc-writer` (336°) ajoutés au tableau des teintes du §2, dernier angle libre à ≥ 35° saturé |
 | 2026-09-15 | Jetons sémantiques régénérés sur un axe propre, séparés de la palette d'identité par un plancher perceptuel ΔE ≥ 0,10 après mappage de gamut ([ADR-0022](adr/0022-deux-familles-de-jetons-couleur-plancher-perceptuel.md)) |
 | 2026-09-15 | Règle de précédence identité/état posée pour feature-016 : l'identité prend le texte et le sigle, l'état prend le contour et la forme |
+| 2026-09-15 | Règle de précédence identité/état **appliquée** par feature-016 (liste des cycles en accordéon) ; vocabulaire des traits fixé pour lever une ambiguïté trouvée en cours de cycle (pointillé = sans clôture, tirets pleins = agent principal, tirets en liseré gauche = rebouclage) |
+| 2026-09-15 | §3 et §4 **appliqués** par feature-019 : colonne de navigation, contenu borné, une section à la fois ; typographie du §4 ramenée de 31 usages de chasse fixe contre 2 de sans-serif à 16 contre 18 ; §3 amendé (`--surface-2` devient une teinte d'interaction, plus un niveau de repos) ; `--texte-faible` et `--texte-doux` relevés au-dessus du seuil du §8, dans les deux thèmes, contre les quatre surfaces (absorption de bug-016) ; règle de marge de conception généralisée aux seuils de contraste ([ADR-0024](adr/0024-une-section-a-la-fois-dans-un-contenu-borne.md)) |
+| 2026-09-15 | §5 **appliqué et verrouillé** par feature-017 (`control-center/web/diagramme.js` + `app.js`) : grammaire figée par [ADR-0025](adr/0025-grammaire-du-diagramme-de-deroule.md) — trois formes du cercle pour les trois grandeurs mesurées, géométrie et rendu séparés dans deux modules distincts |
 
 ## Voir aussi
 
 - [ADR-0006 — zéro dépendance](adr/) et la CSP du serveur
 - [ADR-0022 — deux familles de jetons de couleur, séparées par un plancher perceptuel](adr/0022-deux-familles-de-jetons-couleur-plancher-perceptuel.md)
+- [ADR-0024 — une section à la fois, dans un contenu borné](adr/0024-une-section-a-la-fois-dans-un-contenu-borne.md)
+- [ADR-0025 — la grammaire du diagramme de déroulé](adr/0025-grammaire-du-diagramme-de-deroule.md)
 - [ARCHITECTURE.md](ARCHITECTURE.md)
 - [features/page-centre-de-controle.md](features/page-centre-de-controle.md) — la commande de thème côté écran
 - `control-center/web/app.css` — les valeurs, source unique

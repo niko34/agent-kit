@@ -7,6 +7,112 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 <!-- Les entrées ci-dessous documentent le KIT lui-même. Au démarrage d'un projet,
      les remplacer par le journal du projet. -->
 
+## [0.11.0] - 2026-09-15
+
+### Centre de contrôle
+
+- **Le détail d'un cycle déplié affiche un diagramme du déroulé.** Les
+  anciens maillons textuels en ligne laissent place à un cercle par agent,
+  dimensionné par sa durée, gradué par ses appels d'outils et cerclé d'un
+  liseré selon ses fichiers écrits ; les agents simultanés (par exemple
+  `code-reviewer` et `security-reviewer` en parallèle) s'empilent
+  verticalement dans un créneau unique au lieu d'être racontés en séquence.
+  L'écart horizontal ne mesure jamais le temps — il sert la seule
+  lisibilité. Un rebouclage relie une reprise à l'occurrence précédente du
+  même agent par un arc pointillé ; un échec reste signalé de façon
+  redondante (couleur, croix, contour). La zone défile horizontalement
+  (`Maj` + molette ou glisser) sans jamais se comprimer, et se parcourt au
+  clavier. Voir [ADR-0025](docs/adr/0025-grammaire-du-diagramme-de-deroule.md)
+  et `docs/features/page-centre-de-controle.md` (section « Diagramme du
+  déroulé »).
+  - Trois défauts trouvés et corrigés en cours de cycle, avant livraison :
+    une pastille d'attente pouvait recouvrir le libellé voisin, un arc de
+    rebouclage pouvait dépasser du cadre du diagramme (les deux : espace
+    réservé et rendu calculés séparément — désormais la même fonction fait
+    autorité sur les deux), et un test de non-chevauchement délégait à tort
+    à la fonction de formatage qu'il devait vérifier, le rendant aveugle à
+    une divergence possible entre le texte réservé et le texte peint.
+
+### Documentation
+
+- `docs/adr/0025-grammaire-du-diagramme-de-deroule.md` : nouvel ADR — ce que
+  portent le diamètre, les graduations et le liseré du cercle, pourquoi
+  l'écart horizontal ne mesure pas le temps, les deux alternatives écartées
+  (échelle de temps réelle, deux couloirs pour la simultanéité), et la
+  séparation entre le module de géométrie (`diagramme.js`) et le rendu SVG
+  (`app.js`).
+- `docs/features/page-centre-de-controle.md` : nouvelle section « Diagramme
+  du déroulé ».
+- `docs/DESIGN-SYSTEM.md` : §5 marqué appliqué et verrouillé.
+
+---
+
+## [0.10.0] - 2026-09-15
+
+### Centre de contrôle
+
+- **La page change entièrement de structure.** L'ancien empilement (barre
+  supérieure, colonne latérale ne portant que deux blocs, six autres blocs
+  empilés dans une colonne centrale) laisse place à une colonne de
+  navigation étroite listant six sections (Agents, Système, Développer,
+  Cycles, Fichiers, Événements) et un contenu borné à 880 px et centré, dans
+  lequel **une seule section est visible à la fois**. « Développer » regroupe
+  trois des huit blocs existants (la demande de développement, les
+  spécifications, le pilotage) ; les cinq autres sections en portent un
+  chacune. Aucun bloc n'a disparu. Chaque section a son propre état vide, sa
+  navigation au clavier (motif `tablist`, un seul arrêt de tabulation,
+  flèches pour parcourir, focus déplacé sur le titre à la sélection), et se
+  replie en bande horizontale défilante sous 600 px de large — jamais de
+  section inatteignable. Voir
+  [ADR-0024](docs/adr/0024-une-section-a-la-fois-dans-un-contenu-borne.md).
+- **Un niveau de texte devient lisible en thème sombre.** `--texte-faible`
+  et `--texte-doux` — les mentions secondaires (horodatages, compteurs,
+  libellés d'appoint) — ne tenaient que 4,24:1 et 3,55:1 de contraste dans
+  certains cas, sous le seuil de 4,5:1 que le design system exige pour du
+  texte (`bug-016`, trouvé pendant `feature-015`, corrigé ici). Les deux
+  jetons sont relevés et mesurés contre les quatre surfaces de la page, dans
+  les deux thèmes ; le pire cas retenu tient désormais 4,77:1.
+- Au passage, la typographie et les surfaces du design system sont
+  **appliquées** à l'écran : la pile monospace, jusque-là utilisée sur des
+  libellés d'interface, est désormais réservée aux identifiants techniques
+  (31 usages ramenés à 16, contre 18 en pile sans-serif) ; un quatrième
+  jeton de surface (`--surface-2`), qui servait parfois d'aplat de repos en
+  contradiction avec la règle « trois niveaux, jamais plus », est recentré
+  sur son seul usage légitime — une teinte de survol et de sélection.
+  - ⚠️ **Redémarrer le serveur du centre de contrôle reste nécessaire** si ce
+    n'est pas déjà fait depuis `feature-016` (version 0.9.0) : les deux
+    champs additifs qu'elle a ajoutés à `GET /api/etat` n'apparaissent qu'au
+    redémarrage. Sans lui, l'écran neuf affiche toujours « indéterminé » et
+    des compteurs d'outils à zéro sur la liste des cycles — un défaut déjà
+    documenté, pas une régression de ce cycle.
+
+### Documentation
+
+- `docs/adr/0024-une-section-a-la-fois-dans-un-contenu-borne.md` : nouvel
+  ADR — la structure retenue (colonne de navigation, contenu borné, une
+  section à la fois) et ce qu'elle contraint pour tout écran futur, les
+  alternatives écartées (empilement, onglets horizontaux, navigation par
+  ancres), l'absorption de `bug-016` au titre d'[ADR-0017](docs/adr/0017-un-defaut-qui-desarme-la-garde-livree-entre-dans-le-cycle.md),
+  l'amendement du §3 du design system, et la règle de marge chiffrée pour
+  toute borne de contraste.
+- `docs/DESIGN-SYSTEM.md` : §3 amendé (`--surface-2` devient une teinte
+  d'interaction, plus un niveau de repos) et marqué appliqué ; §4 marqué
+  appliqué, avec le compte d'usages avant/après ; §8 complété par la marge
+  de conception sur les seuils de contraste et la mesure de la correction
+  de `--texte-faible`/`--texte-doux`.
+- `docs/features/page-centre-de-controle.md` : nouvelle section « Structure
+  de la page » — colonne de navigation, six sections et leurs huit blocs,
+  fil d'Ariane, états vides par section, navigation au clavier, repli à
+  600 px.
+- `control-center/PIEGES.md` : six entrées nouvelles sur les pièges de
+  mesure et de mutation rencontrés pendant ce cycle (cascade non testable,
+  mutation neutralisée par la spécificité CSS, `grep -c` qui compte les
+  commentaires, sous-chaîne trouvée à tort dans une prose voisine, capture
+  sans fenêtre qui ne charge pas l'URL ou vide le document selon la version,
+  clone pollué par une mutation en cours).
+
+---
+
 ## [0.9.0] - 2026-09-15
 
 ### Outillage
@@ -101,6 +207,32 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
     pâle en thème sombre ne peut plus être fortement saturée une fois
     placée au-dessus de la bande de clarté des identités d'agent, qui elle
     garde sa palette saturée.
+- **La liste des workflows observés devient une liste de cycles en
+  accordéon.** L'ancien affichage empilait tous les cycles à plat, sans
+  hiérarchie ni sélection — relevé incompréhensible à l'usage. Un seul
+  cycle est désormais déplié à la fois, le plus récent par défaut ; en
+  ouvrir un autre referme le précédent. Chaque ligne porte un état parmi
+  quatre (`termine`, `en_cours`, `sans_cloture`, et l'absence de cycle),
+  rendus avec l'identité de couleur par agent introduite plus haut — un
+  `debugger` et un `test-engineer` se distinguent enfin dans la table des
+  passages, pas seulement au survol. Le détail d'un cycle affiche ses
+  propriétés (durée, appels d'outils, fichiers, rebouclages, agents
+  simultanés) et la table de ses passages d'agent, navigable entièrement au
+  clavier.
+  - ⚠️ **Un cycle n'est plus désigné par un nom de spec, parce que cette
+    donnée n'existe pas.** Ni le journal d'événements ni la reconstruction
+    d'un cycle ne portent le nom d'une spec — une corrélation par fichiers
+    modifiés a été mesurée puis écartée (2 candidats uniques sur 14 cycles
+    réels, et rien dans le journal pour la valider). Un cycle s'affiche
+    désormais par son heure de départ et son agent ouvrant. Voir
+    [ADR-0023](docs/adr/0023-un-cycle-observe-ne-porte-pas-de-nom.md).
+  - ⚠️ **Redémarrer le serveur du centre de contrôle est nécessaire.** Deux
+    champs additifs apparaissent dans la réponse de `GET /api/etat`. Tant
+    que le serveur n'est pas relancé, l'écran neuf reçoit l'ancienne
+    réponse et affiche « indéterminé » partout, avec des compteurs d'outils
+    à zéro. Ce n'est pas un défaut — l'absence de champ est tolérée, comme
+    l'exige la discipline additive du projet — mais l'écran ne redevient
+    exact qu'après redémarrage.
 
 ### Documentation
 
@@ -141,6 +273,23 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
   sans y être encore appliquée ; renvoi vers ADR-0022.
 - `README.md` : mention de la commande de thème du centre de contrôle dans
   la description du contenu du dépôt.
+- `docs/adr/0023-un-cycle-observe-ne-porte-pas-de-nom.md` : nouvel ADR —
+  la donnée « nom de spec » n'existe dans aucun des vingt champs d'un cycle
+  reconstruit, la corrélation heuristique mesurée (2 candidats uniques sur
+  14 cycles) n'est pas invalidable faute de vérité terrain dans le journal,
+  et la désignation retenue (heure de départ + agent ouvrant) a un coût
+  d'erreur nul.
+- `docs/features/page-centre-de-controle.md` : section « Liste des cycles en
+  accordéon » — ce qu'une ligne porte, dépliement exclusif, navigation
+  clavier, bloc de propriétés, table des passages d'agent, et ce que l'écran
+  n'affiche pas (nom de spec, nombre réel de cycles, sens de `segments[]`).
+- `docs/DESIGN-SYSTEM.md` : §8 — règle de précédence identité/état marquée
+  **appliquée** (elle n'était que posée) ; vocabulaire des traits consigné
+  (pointillé = sans clôture, tirets pleins = agent principal, tirets en
+  liseré gauche = rebouclage), pour ne pas redevenir une ambiguïté.
+- `specs/features/doing/feature-016-liste-des-cycles-en-accordeon.md` :
+  amendée — le point A1 ne promet plus « le nom de la spec », renvoi vers
+  ADR-0023.
 
 ---
 
