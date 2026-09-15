@@ -2,9 +2,9 @@
 - **ID** : feature-017
 - **Slug** : diagramme-de-deroule-du-cycle
 - **Type** : feature
-- **Statut** : todo
+- **Statut** : done
 - **Priorité** : haute
-- **Version cible** : 0.9.0
+- **Version cible** : 0.11.0
 - **Dernière mise à jour** : 2026-09-15
 - **Spec(s) liée(s)** : dépend de feature-015 (jetons) et feature-016 (accordéon)
 
@@ -65,8 +65,9 @@ Deux constats issus du journal réel ont façonné cette grammaire :
    au-delà de deux minutes, et la place lui est réservée dans le placement.
 6. **Un rebouclage** relie une reprise à l'occurrence précédente du **même**
    agent, par un arc pointillé avec pointe de direction.
-7. **Un échec** est signalé de façon redondante : couleur, croix, cercle en
-   pointillé.
+7. **Un échec** est signalé de façon redondante : couleur, croix, et contour
+   `--alerte`. Le pointillé reste réservé à l'état « sans clôture »
+   (design system §8).
 8. La zone **défile horizontalement** quand le tracé dépasse la largeur ; elle ne
    se comprime pas. Une **légende** rappelle ce que chaque forme encode.
 
@@ -94,8 +95,8 @@ durée, d'ampleur, ni de simultanéité.
 
 - **SVG écrit à la main**, engendré depuis les données. Aucune bibliothèque de
   graphiques (ADR-0006).
-- Le SVG **lit les jetons** (`var(--a-dbg)`), il ne recopie aucune couleur : un
-  seul diagramme sert les deux thèmes.
+- Le SVG **lit les jetons** (`var(--a-<rôle>)`, ex. `var(--a-debugger)`), il ne
+  recopie aucune couleur : un seul diagramme sert les deux thèmes.
 - Le diagramme est sur `--creux`, jamais sur un fond qui lui serait propre.
 - Molette seule = la page ; `Maj` + molette ou glisser = la zone. La zone prend
   le focus clavier et se parcourt aux flèches.
@@ -111,12 +112,12 @@ durée, d'ampleur, ni de simultanéité.
 - `control-center/web/test_app_diagramme.js` + `.py`
 
 ## Livrables — check-list
-- [ ] A1 — cercle gradué : diamètre, graduations adaptatives, zéro, plafond,
+- [x] A1 — cercle gradué : diamètre, graduations adaptatives, zéro, plafond,
       anneau fantôme, liseré des fichiers
-- [ ] B1 — placement dicté par la lisibilité, socle heure / durée / nom
-- [ ] C1 — groupes simultanés empilés verticalement, cadre au filet, repli au-delà de quatre
-- [ ] D1 — liens, pastilles d'attente, arcs de rebouclage, marquage d'échec
-- [ ] D2 — défilement horizontal, légende, accès clavier
+- [x] B1 — placement dicté par la lisibilité, socle heure / durée / nom
+- [x] C1 — groupes simultanés empilés verticalement, cadre au filet, repli au-delà de quatre
+- [x] D1 — liens, pastilles d'attente, arcs de rebouclage, marquage d'échec
+- [x] D2 — défilement horizontal, légende, accès clavier
 
 ## ADR attendu ?
 - **Probable** : oui
@@ -143,26 +144,27 @@ durée, d'ampleur, ni de simultanéité.
 - `docs/features/page-centre-de-controle.md` — le diagramme et sa lecture
 
 #### Docs transverses
-- `CHANGELOG.md` — entrée 0.9.0
+- `CHANGELOG.md` — entrée 0.11.0
 
 #### Docs immuables
-- `docs/adr/NNNN-grammaire-du-diagramme-de-deroule.md`
+- `docs/adr/0025-grammaire-du-diagramme-de-deroule.md`
 
 ## Critères d'acceptation
-- [ ] Sur un cycle réel de neuf agents, **aucun libellé n'en chevauche un autre**
+- [x] Sur un cycle réel de neuf agents, **aucun libellé n'en chevauche un autre**
       — vérifié par un test qui calcule les boîtes, pas par relecture d'une capture
-- [ ] Deux agents qui se recouvrent dans le temps apparaissent **empilés dans un
+- [x] Deux agents qui se recouvrent dans le temps apparaissent **empilés dans un
       même créneau**, jamais côte à côte
-- [ ] Un groupe de six agents simultanés se replie à quatre plus un « +2 »
-- [ ] Le nombre de graduations allumées d'un agent correspond à son compte
+- [x] Un groupe de six agents simultanés se replie à quatre plus un « +2 »
+- [x] Le nombre de graduations allumées d'un agent correspond à son compte
       d'appels d'outils, à l'arrondi de l'échelle près
-- [ ] Un agent à zéro appel d'outil s'affiche sans graduation allumée et reste lisible
-- [ ] Un cycle de 18 agents ne produit aucun chevauchement et aucun élément hors cadre
-- [ ] Le diagramme est correct dans **les deux thèmes** sans code dupliqué —
+- [x] Un agent à zéro appel d'outil s'affiche sans graduation allumée et reste lisible
+- [x] Un cycle de 18 agents ne produit aucun chevauchement et aucun élément hors cadre
+- [x] Le diagramme est correct dans **les deux thèmes** sans code dupliqué —
       vérifié en changeant de thème sans recharger
-- [ ] Aucun nombre affiché ne provient d'une source absente du journal
-- [ ] Suite de tests complète verte, zéro régression
-- [ ] Lint propre, pas de warning nouveau
+- [x] Aucun nombre affiché ne provient d'une source absente du journal
+- [x] Suite de tests complète verte, zéro régression
+- [x] Lint propre, pas de warning nouveau (aucun linter configuré pour ce
+      module — constat antérieur au cycle, pas un correctif de ce cycle)
 
 ## Plan de test manuel
 1. Déplier le cycle le plus récent : le diagramme s'affiche, les durées lues
@@ -190,3 +192,98 @@ qu'une capture qu'on relit.
 
 Le journal réel est en lecture seule pour les mesures, et il grossit pendant
 qu'on le mesure : figer un instantané.
+
+---
+# Notes d'implémentation
+
+## Plan (architect)
+- Un module de géométrie pur (`control-center/web/diagramme.js`), sans DOM ni
+  couleur, testable seul ; `app.js` reste le seul point de rendu SVG et de
+  lecture des jetons de couleur.
+- Les trois grandeurs mesurées (durée, appels d'outils, fichiers) se répartissent
+  sur les trois formes du cercle (diamètre, graduations, liseré) — pas de
+  quatrième grandeur inventée.
+- ADR : oui — grammaire du diagramme, verrouillée en fin de cycle
+  ([ADR-0025](../../../docs/adr/0025-grammaire-du-diagramme-de-deroule.md)).
+
+## Implémentation
+- **Fichiers créés** : `control-center/web/diagramme.js` (module pur de
+  géométrie), `control-center/web/test_app_diagramme.js` + `.py`,
+  `control-center/web/test_app_accordeon.js` + `.py`.
+- **Fichiers modifiés** : `control-center/web/app.js` (rendu SVG du diagramme,
+  `construireDiagramme` et fonctions associées, chargement de `diagramme.js`
+  avec garde 404) ; `control-center/backend/events.py` (compte additif
+  `outils` sur les passages de sous-agent, alimenté par le même test que le
+  segment principal).
+- **Trois correctifs appliqués en cours de cycle**, tous trouvés avant
+  livraison (deux par mutation, un en revue de code) :
+  1. **`bug-020`** — la pastille d'attente pouvait recouvrir le libellé
+     voisin : sa largeur réservée (un forfait fixe) divergeait de sa largeur
+     rendue (dépendante du texte, recalculée séparément dans `app.js`).
+     Correction : `pastille.largeur`/`cx` calculés une seule fois, dans
+     `disposer()`, jamais recalculés par l'appelant.
+  2. **`bug-021`** — même défaut de principe pour `hauteurArc` : recalculée
+     dans `app.js` sans jamais compter dans l'extension verticale du tracé,
+     elle pouvait dépasser du cadre. Correction : `hauteurArc` vient de
+     `disposer()` et entre dans le calcul de la hauteur totale du tracé.
+  3. **Divergence `texteDuree`** — une garde de non-chevauchement déléguait
+     à `disposer.texteDuree()` pour reconstruire le texte peint, alors
+     qu'`app.js` peint la durée avec sa propre formule indépendante
+     (`duree()`). La délégation rendait la garde aveugle à une divergence
+     réelle entre les deux. Corrigé en revue (code-reviewer) : la formule
+     d'`app.js` est recopiée à la main dans le test
+     (`texteDureeAppJs`, `test_app_diagramme.js:120`).
+- **6 gardes exécutées** en confirmation finale, côté `disposer()` et côté
+  rendu (`app.js`) : chargement absent de `diagramme.js` (404, repli propre) ;
+  `pastille.cx` non recalculé par un milieu entre bords de cercle ; hauteur
+  d'arc non recalculée par l'appelant ; les trois mêmes gardes rejouées côté
+  intégration (`test_app_accordeon.js`).
+
+## Tests (test-engineer)
+- Suite complète : **1319 cas, 0 échec**.
+- Mutations : **11 tentées, 11 tuées**.
+- Mesures sur le journal réel (instantané figé) : **0 recouvrement de
+  libellé**, **0 arc hors cadre**.
+- Lint : aucun outil de lint configuré pour ce module (constat antérieur au
+  cycle, `control-center/` reste zéro-dépendance — ADR-0006).
+
+## Revue (code-reviewer)
+- **Verdict** : Approved.
+- A trouvé la divergence `texteDuree` (délégation aveugle) et demandé la
+  recopie manuelle de la formule de référence — corrigé avant livraison.
+
+## Doc (doc-writer)
+- `docs/adr/0025-grammaire-du-diagramme-de-deroule.md` — créé.
+- `docs/features/page-centre-de-controle.md` — section « Diagramme du
+  déroulé » ajoutée.
+- `docs/DESIGN-SYSTEM.md` — §5 marqué appliqué et verrouillé, table des
+  décisions et « Voir aussi » mis à jour.
+- `CHANGELOG.md` — entrée `[0.11.0]`.
+- `control-center/PIEGES.md` — entrée 30 (test qui délègue à la fonction sous
+  test devient aveugle à sa propre divergence).
+
+## Risques résiduels (non bloquants)
+- **Performance** : le diagramme n'a pas été mesuré sur un cycle de l'ordre de
+  15 000 nœuds SVG (cycle extrêmement long) — le cas limite testé (18 agents)
+  reste très en-deçà. À surveiller si un cycle réel s'en approche.
+- **Lint** : `control-center/` n'a toujours aucun outil de lint configuré ;
+  ce n'est pas un correctif attendu de ce cycle, mais un constat qui reste
+  ouvert.
+
+## Ajustements post-livraison
+
+Après livraison de la feature, deux itérations ont affiné le rendu pour
+correspondance exacte avec la maquette `theme.html` :
+
+1. **Alignement des dimensions et couleurs** (`5ce67ce`, 2026-09-15) —
+   Ajustement des anneaux fantôme (3→3.5) et en cours (5→3.5) pour correspondre
+   à theme.html ; correction des graduations allumées (couleur d'agent au lieu
+   de couleur de contour d'état).
+
+2. **Réécriture complète de `construireCercleAgent`** (`b5e651b`, 2026-09-15) —
+   Refonte pour reproduction pixel-perfect de theme.html : anneau gris guide,
+   barres verticales filigrane blanc/gris, graduations bornes 7px, anneau en
+   cours opacity 0.45, proportions des traits et du sigle adaptées à theme.html.
+
+## Statut final
+✅ Done — 2026-09-15 — commits 53471cd (livraison), 5ce67ce + b5e651b (ajustements visuels)
