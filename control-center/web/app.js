@@ -74,9 +74,10 @@ function nettoyerPriorite(brut) {
 
 /* ------------------------------------------------------- sigle d'agent ---
  * Deux lettres par rôle, déterministes et distinctes (feature-015 A7,
- * docs/DESIGN-SYSTEM.md §8). Livré ici pour feature-016 : AUCUN appelant ne
- * l'utilise encore dans ce cycle — les jetons de couleur (`--a-<rôle>`,
- * `--f-<rôle>`, app.css) ne sont pas non plus appliqués aux maillons ici.
+ * docs/DESIGN-SYSTEM.md §8). Livré par feature-015 SANS appelant ; feature-016
+ * en est le premier — table des passages, désignation d'un cycle, et jetons
+ * de couleur (`--a-<rôle>`/`--f-<rôle>`, app.css) appliqués au texte des
+ * maillons (voir `construireIdentiteAgent`, `couleurIdentite` plus bas).
  *
  * Règle : les deux premières lettres du premier segment du nom, en
  * majuscules (« spec-reader » → SP, « security-reviewer » → SE). En cas de
@@ -133,6 +134,15 @@ function siglesAgents(nomsRoles) {
 function rendreAgents(agents) {
   const liste = $("agents");
   vider(liste);
+  if (!agents.length) {
+    /* État vide explicite, qui dit quoi faire (§8, feature-019) — pas une
+     * liste muette. */
+    liste.appendChild(el("li", "vide",
+      "aucun agent découvert — vérifiez que le dépôt déclare des agents "
+      + "sous .claude/agents/"));
+    $("note-agents").textContent = "";
+    return;
+  }
   agents.forEach((agent) => {
     const ligne = el("li", agent.actif_sur ? "actif" : "");
     const gauche = el("div");
@@ -280,225 +290,938 @@ function indicesRepris(segments) {
   return indices;
 }
 
-function rendreWorkflows(etat) {
+/* --------------------------------------------------------- identité d'agent
+ * feature-016 : PREMIER appelant de `sigleAgent`/`siglesAgents` (ci-dessus) et
+ * des jetons `--a-<rôle>`/`--f-<rôle>` (app.css, §2 du design system). Repli
+ * achromatique (`neutre`) pour tout rôle sans teinte assignée — jamais une
+ * teinte d'agent recyclée (ADR-0022). Précédence identité/état (§8) : cette
+ * couleur ne va JAMAIS sur un contour ou une forme porteurs d'état, toujours
+ * sur du texte ou un sigle qui porte une identité. */
+const ROLES_TEINTES = new Set([
+  "backend-developer", "security-reviewer", "test-engineer", "spec-reader",
+  "code-reviewer", "debugger", "doc-writer", "frontend-developer",
+]);
+function jetonIdentite(nomRole) { return ROLES_TEINTES.has(nomRole) ? nomRole : "neutre"; }
+function couleurIdentite(nomRole) { return "var(--a-" + jetonIdentite(nomRole) + ")"; }
+function remplissageIdentite(nomRole) { return "var(--f-" + jetonIdentite(nomRole) + ")"; }
+
+function construireIdentiteAgent(nom, sigles) {
+  const enveloppe = document.createDocumentFragment();
+  const sigle = el("span", "agent-sigle", (sigles && sigles.get(nom)) || "??");
+  sigle.style.color = couleurIdentite(nom);
+  sigle.style.background = remplissageIdentite(nom);
+  sigle.setAttribute("aria-hidden", "true");
+  const nomSpan = el("span", "agent-nom", nom);
+  nomSpan.style.color = couleurIdentite(nom);
+  enveloppe.appendChild(sigle);
+  enveloppe.appendChild(nomSpan);
+  return enveloppe;
+}
+
+/* ------------------------------------------------------------ état — cycle
+ * Tableau arrêté à QUATRE cases (feature-016), une seule teinte vive
+ * (« en cours »), les trois autres achromatiques — §8 : aucune information
+ * portée par la seule couleur, le glyphe ET le libellé (jamais tronqué,
+ * quelle que soit la largeur) portent le même signal que le contour. */
+const ETATS_CYCLE = {
+  en_cours:     { classe: "en-cours",     glyphe: "●", libelle: "en cours" },
+  termine:      { classe: "termine",      glyphe: "✓", libelle: "terminé" },
+  sans_cloture: { classe: "sans-cloture", glyphe: "⋯", libelle: "sans clôture" },
+  indetermine:  { classe: "indetermine",  glyphe: "?", libelle: "indéterminé" },
+};
+function descripteurEtat(cle) { return ETATS_CYCLE[cle] || ETATS_CYCLE.indetermine; }
+
+function construireBadgeEtat(cle) {
+  const info = descripteurEtat(cle);
+  const badge = el("span", "cycle-etat " + info.classe);
+  const glyphe = el("span", "glyphe", info.glyphe);
+  glyphe.setAttribute("aria-hidden", "true");
+  badge.appendChild(glyphe);
+  badge.appendChild(document.createTextNode(" " + info.libelle));
+  return badge;
+}
+
+/* Dérivation de l'état d'un CYCLE (feature-016) — lit UNIQUEMENT `passages`
+ * (les sous-agents) : le segment principal a `termine: true` par construction
+ * (events.py), l'inclure ferait passer à « terminé » un cycle sans sous-agent
+ * encore actif. JAMAIS depuis `fin_observee_absente` (vrai pour 85,7 % des
+ * cycles, ne distingue donc rien). Un passage sans `etat` (journal antérieur
+ * à bug-013) n'est jamais compté « en cours » par défaut : il fait juste
+ * échouer le test « tous terminés », et le cycle devient indéterminé. */
+function etatCycle(wf) {
+  const passages = wf.passages || [];
+  if (passages.some((p) => p.etat === "en_cours")) return "en_cours";
+  if (passages.some((p) => p.etat === "sans_cloture")) return "sans_cloture";
+  if (passages.length && passages.every((p) => p.etat === "termine")) return "termine";
+  return "indetermine";
+}
+
+function idCycleDom(workflowId) {
+  /* workflow_id assaini avant usage en id HTML (item B) : format
+   * `<session_id>#<indice>`, le `#` et tout caractère hors [A-Za-z0-9_-]
+   * remplacés. */
+  return "cycle-" + String(workflowId).replace(/[^A-Za-z0-9_-]/g, "-");
+}
+
+/* Désignation d'un cycle (feature-016) — N'INVENTE AUCUN NOM : la donnée
+ * « nom de spec » n'existe pas dans le journal. Trois formes seulement,
+ * toutes dérivées de champs réellement présents. */
+function construireDesignation(wf, sigles) {
+  const frag = document.createDocumentFragment();
+  frag.appendChild(document.createTextNode(heure(wf.debut) + " — "));
+  if (wf.bornage === "marqueur-agent" && wf.borne_par) {
+    frag.appendChild(document.createTextNode("ouvert par "));
+    frag.appendChild(construireIdentiteAgent(wf.borne_par, sigles));
+  } else if (wf.bornage === "avant-premier-marqueur") {
+    frag.appendChild(document.createTextNode("avant le premier repère"));
+  } else {
+    frag.appendChild(document.createTextNode("session entière"));
+  }
+  return frag;
+}
+
+function dureeIso(debutIso, finIso) {
+  if (!debutIso || !finIso) return null;
+  const d = Date.parse(debutIso);
+  const f = Date.parse(finIso);
+  if (Number.isNaN(d) || Number.isNaN(f)) return null;
+  const ms = f - d;
+  return ms >= 0 ? ms : null;
+}
+
+function construireResume(wf) {
+  const n = (wf.passages || []).length;
+  const d = duree(dureeIso(wf.debut, wf.fin_observee));
+  const ecoule = dureeDepuisIso(wf.fin_observee);
+  const morceaux = [n + " agent" + (n > 1 ? "s" : ""), d !== null ? d : "durée inconnue"];
+  if (ecoule) morceaux.push("il y a " + ecoule);
+  return morceaux.join(" · ");
+}
+
+/* Dépliement exclusif (item C) : préférence d'affichage LOCALE, tenue HORS
+ * DOM (clé = `workflow_id`) — elle survit à `vider()` + reconstruction
+ * complète du sous-arbre à chaque rafraîchissement. `null` = tout replié
+ * (un ré-clic sur l'en-tête ouvert le referme). */
+/* `null` seulement AVANT le tout premier rendu (aucun cycle encore vu) —
+ * une fois un cycle affiché, un et un seul reste toujours ouvert : le
+ * design (§6) décrit un dépliement EXCLUSIF, jamais un repli total, et
+ * `rendreCycles` retombe de toute façon sur le plus récent si `cycleOuvert`
+ * ne correspond plus à rien d'affiché. Autoriser le repli complet ferait
+ * réapparaître le cycle par défaut au rafraîchissement suivant sans que
+ * rien ne le signale — un aller-retour silencieux, pas un choix retenu. */
+let cycleOuvert = null;
+
+function construireEnteteCycle(wf, sigles, ouvert) {
+  const h3 = el("h3", "cycle-entete");
+  const bouton = el("button", "cycle-bouton");
+  bouton.type = "button";
+  const idBouton = idCycleDom(wf.workflow_id) + "-bouton";
+  const idDetail = idCycleDom(wf.workflow_id) + "-detail";
+  bouton.id = idBouton;
+  bouton.setAttribute("aria-expanded", ouvert ? "true" : "false");
+  bouton.setAttribute("aria-controls", idDetail);
+  bouton.appendChild(construireBadgeEtat(etatCycle(wf)));
+  const designation = el("span", "cycle-designation");
+  designation.appendChild(construireDesignation(wf, sigles));
+  bouton.appendChild(designation);
+  bouton.appendChild(el("span", "cycle-resume", construireResume(wf)));
+  bouton.addEventListener("click", () => {
+    /* Ré-cliquer l'en-tête déjà ouvert ne fait rien : « un seul cycle visible
+     * à la fois » (§6), jamais zéro — voir le commentaire sur `cycleOuvert`. */
+    if (cycleOuvert === wf.workflow_id) return;
+    cycleOuvert = wf.workflow_id;
+    rendreCycles(dernierEtat);
+  });
+  h3.appendChild(bouton);
+  return { h3, idBouton, idDetail };
+}
+
+/* Bloc de propriétés (item D) — chaque valeur RELIT une donnée déjà calculée,
+ * n'invente aucun compte. « Agents simultanés » lit `imbrication_suspectee`
+ * tel quel : c'est une SUSPICION, jamais un dénombrement (le journal ne
+ * permet pas de compter des agents réellement concurrents). */
+function construireProprietes(wf) {
+  const dl = el("dl", "cycle-proprietes");
+  const ajouter = (cle, valeur) => {
+    dl.appendChild(el("dt", "", cle));
+    dl.appendChild(el("dd", "", valeur));
+  };
+  const info = descripteurEtat(etatCycle(wf));
+  ajouter("Statut", info.glyphe + " " + info.libelle);
+  const d = duree(dureeIso(wf.debut, wf.fin_observee));
+  ajouter("Durée", d !== null ? d : "inconnue");
+  const segments = wf.segments || wf.passages || [];
+  const outils = segments.reduce((total, s) => total + (s.outils || 0), 0);
+  ajouter("Appels d'outils", outils);
+  ajouter("Fichiers écrits", (wf.fichiers || []).length);
+  ajouter("Rebouclages", indicesRepris(wf.passages || []).size);
+  ajouter("Agents simultanés", wf.imbrication_suspectee ? "suspectés" : "aucun");
+  return dl;
+}
+
+/* Table des passages (item F) — agent, début, durée, outils, fichiers, état.
+ * Au-delà de 40 lignes (item M, pire cas mesuré : 297), les plus anciennes
+ * sont repliées via `hidden`, JAMAIS retirées du DOM. */
+const LIMITE_PASSAGES_VISIBLES = 40;
+
+function construireLignePassage(passage, sigles, repris) {
+  const tr = el("tr", repris ? "repris" : "");
+  const tdAgent = el("td");
+  const colonne = el("div", "colonne-agent");
+  colonne.appendChild(construireIdentiteAgent(passage.agent, sigles));
+  tdAgent.appendChild(colonne);
+  tr.appendChild(tdAgent);
+  tr.appendChild(el("td", "", heure(passage.debut)));
+  const d = duree(passage.duree_ms);
+  tr.appendChild(el("td", "", d !== null ? d : (passage.termine ? "durée invalide" : "en cours")));
+  tr.appendChild(el("td", "", passage.outils || 0));
+  tr.appendChild(el("td", "", (passage.fichiers || []).length));
+  const tdEtat = el("td");
+  tdEtat.appendChild(construireBadgeEtat(passage.etat));
+  tr.appendChild(tdEtat);
+  return tr;
+}
+
+function construireTablePassages(wf, sigles) {
+  const passages = wf.passages || [];
+  const enveloppe = document.createDocumentFragment();
+  if (!passages.length) {
+    /* Cas limite L : un cycle sans agent typé ne disparaît pas en silence. */
+    enveloppe.appendChild(el("p", "vide", "aucun agent typé n'est apparu dans ce cycle"));
+    return enveloppe;
+  }
+  const reprisesIdx = indicesRepris(passages);
+  const excedent = Math.max(0, passages.length - LIMITE_PASSAGES_VISIBLES);
+  const lignesRepliees = [];
+
+  const table = el("table", "table-passages");
+  const thead = document.createElement("thead");
+  const trEntete = document.createElement("tr");
+  ["Agent", "Début", "Durée", "Outils", "Fichiers", "État"].forEach((libelle) => {
+    trEntete.appendChild(el("th", "", libelle));
+  });
+  thead.appendChild(trEntete);
+  table.appendChild(thead);
+  const tbody = document.createElement("tbody");
+  passages.forEach((passage, index) => {
+    const ligne = construireLignePassage(passage, sigles, reprisesIdx.has(index));
+    if (excedent > 0 && index < excedent) {
+      ligne.hidden = true;
+      lignesRepliees.push(ligne);
+    }
+    tbody.appendChild(ligne);
+  });
+  table.appendChild(tbody);
+
+  if (excedent > 0) {
+    let ouvert = false;
+    const bouton = el("button", "pilotage-secondaire action-repli",
+      "Afficher les " + excedent + " passages plus anciens");
+    bouton.type = "button";
+    bouton.setAttribute("aria-expanded", "false");
+    bouton.addEventListener("click", () => {
+      ouvert = !ouvert;
+      lignesRepliees.forEach((ligne) => { ligne.hidden = !ouvert; });
+      bouton.textContent = ouvert
+        ? "Masquer les " + excedent + " passages plus anciens"
+        : "Afficher les " + excedent + " passages plus anciens";
+      bouton.setAttribute("aria-expanded", ouvert ? "true" : "false");
+    });
+    enveloppe.appendChild(bouton);
+  }
+  enveloppe.appendChild(table);
+  return enveloppe;
+}
+
+/* Chaîne des segments + notes (item E) — placeholder du diagramme visuel de
+ * feature-017 : conservé À L'IDENTIQUE (aucune information perdue), les
+ * libellés et infobulles ne changent pas. Seule modification (item H) : le
+ * texte du maillon (`.mnom`) porte désormais l'identité de l'agent — l'état
+ * reste au contour (CSS), jamais recoloré par-dessus. */
+function construireChaineEtNotes(wf) {
+  const enveloppe = document.createDocumentFragment();
+
+  /* La chaîne montre les SEGMENTS, agent principal compris. Sans lui, elle
+   * racontait un workflow plus creux qu'il n'est : sur un relevé réel, 108
+   * des 110 appels d'outils lui appartenaient et n'apparaissaient nulle part. */
+  const segments = wf.segments || wf.passages || [];
+  /* Seule source de vérité pour un VRAI rebouclage : un autre sous-agent
+   * intercalé entre deux passages du même agent (voir `indicesRepris`
+   * ci-dessus). `wf.reprises` ne fait que NOMMER les agents et leur
+   * compte pour le libellé — il ne décide plus, seul, de l'affichage :
+   * il comptait aussi une simple réapparition après l'agent principal,
+   * un enchaînement normal, comme un rebouclage. */
+  const reprisesChaine = indicesRepris(segments);
+  if (segments.length) {
+    const chaine = el("div", "chaine");
+    segments.forEach((segment, index) => {
+      if (index) chaine.appendChild(el("span", "fleche", "→"));
+      let classe = "maillon";
+      if (segment.type === "principal") classe += " principal";
+      /* `etat` est additif (bug-013) : sur un backend plus ancien, il est
+       * absent — on retombe alors sur le SEUL signal disponible avant lui
+       * (`termine`), jamais sur une affirmation nouvelle par défaut. */
+      const sansCloture = segment.etat === "sans_cloture";
+      if (sansCloture) classe += " sans-cloture";
+      else if (segment.etat === "en_cours") classe += " en-cours";
+      else if (segment.etat === undefined && !segment.termine) classe += " en-cours";
+      /* Jamais cumulée avec `.sans-cloture` : une fin sans annonce n'est ni
+       * un succès ni un échec du travail, l'accusation visuelle (bordure
+       * rouille, marqueur ✕) n'a pas sa place dessus. */
+      if (segment.echecs && !sansCloture) classe += " echec";
+      if (reprisesChaine.has(index)) classe += " repris";
+      const maillon = el("span", classe);
+      const mnom = el("span", "mnom", segment.agent);
+      /* Identité (item H, §8) : jamais sur le segment principal, qui garde
+       * son propre registre visuel (`.principal .mnom`, fond creusé + italique). */
+      if (segment.type !== "principal") mnom.style.color = couleurIdentite(segment.agent);
+      maillon.appendChild(mnom);
+      if (sansCloture) {
+        const ecoule = dureeDepuisIso(segment.derniere_activite);
+        maillon.appendChild(el("span", "mduree",
+          "⋯ fin non observée depuis " + (ecoule || "un temps inconnu")));
+      } else {
+        const d = duree(segment.duree_ms);
+        maillon.appendChild(el("span", "mduree",
+          d !== null ? d : (segment.termine ? "durée invalide" : "en cours")));
+      }
+      const detail = [];
+      if (segment.type === "principal" && segment.outils) detail.push(segment.outils + " outils");
+      if (segment.fichiers && segment.fichiers.length) detail.push(segment.fichiers.length + " fich.");
+      if (detail.length) maillon.appendChild(el("span", "mduree", detail.join(" · ")));
+      if (segment.echecs && !sansCloture) maillon.appendChild(el("span", "mduree", "✕" + segment.echecs));
+      maillon.title = segment.type === "principal"
+        ? "Agent principal — la session Claude Code elle-même, entre deux "
+          + "sous-agents.\nC'est elle qui orchestre : elle lit, écrit, lance "
+          + "les commandes et invoque les agents.\n"
+          + (segment.fichiers || []).join("\n")
+        : "Sous-agent " + segment.agent + "\n" + (segment.fichiers || []).join("\n");
+      chaine.appendChild(maillon);
+    });
+    enveloppe.appendChild(chaine);
+  }
+
+  const notes = [];
+  if (wf.commandes && Object.keys(wf.commandes).length) {
+    notes.push("commandes : " + Object.keys(wf.commandes)
+      .map((c) => c + " ×" + wf.commandes[c]).join(", "));
+  }
+  if (notes.length) enveloppe.appendChild(el("div", "wf-notes", notes.join(" · ")));
+
+  /* Le rebouclage a sa propre bande, distincte d'un enchaînement normal
+   * (feature-010, §8) : `wf.reprises` était affiché comme une ligne de
+   * texte neutre, indiscernable des autres notes. `.repris` sur les
+   * maillons concernés (voir `indicesRepris`, ci-dessus) ancre le même
+   * signal dans la chaîne.
+   * ⚠️ Le bandeau ne se déclenche QUE si `indicesRepris` a réellement
+   * marqué un maillon — jamais sur la seule présence de `wf.reprises`.
+   * Sans ce garde, le bandeau annonçait un rebouclage que la détection
+   * elle-même écartait : deux logiques sur le même fait, dans la même
+   * fonction, en désaccord. Une réapparition après le seul agent
+   * principal reste un fait qu'on signale — sobrement — pas une alerte :
+   * la taire serait un récit muet sur ce qu'il sait.
+   * ⚠️ feature-010 §A2 : ce garde portait sur le DÉCLENCHEMENT du bandeau, pas sur
+   * son CONTENU — `reprises.map(...)` recopiait `wf.reprises` en entier,
+   * y compris des agents que `indicesRepris` n'a marqué nulle part (un
+   * troisième agent reparu seulement après l'agent principal, pendant
+   * qu'un AUTRE agent portait, lui, un vrai rebouclage ailleurs dans la
+   * même chaîne). Le bandeau ne doit NOMMER que les agents dont au moins
+   * un maillon est réellement `.repris` ; les autres basculent dans la
+   * mention neutre — les deux pouvant coexister sur le même workflow. */
+  const agentsAncres = new Set();
+  segments.forEach((segment, index) => {
+    if (reprisesChaine.has(index)) agentsAncres.add(segment.agent);
+  });
+  const reprises = Object.keys(wf.reprises || {});
+  const reprisesAncrees = reprises.filter((a) => agentsAncres.has(a));
+  const reprisesNonAncrees = reprises.filter((a) => !agentsAncres.has(a));
+  if (reprisesAncrees.length) {
+    const bandeau = el("div", "wf-notes reboucle");
+    bandeau.appendChild(el("span", "",
+      "↻ reboucle — reprises : "
+      + reprisesAncrees.map((a) => a + " ×" + wf.reprises[a]).join(", ")));
+    enveloppe.appendChild(bandeau);
+  }
+  if (reprisesNonAncrees.length) {
+    const note = el("div", "wf-notes attendu");
+    note.appendChild(el("span", "",
+      "ℹ agent(s) repassé(s), sans rebouclage détecté : "
+      + reprisesNonAncrees.map((a) => a + " ×" + wf.reprises[a]).join(", ")));
+    note.title =
+      "Ces agents réapparaissent dans la chaîne, mais toujours "
+      + "immédiatement après l'agent principal — jamais après un AUTRE "
+      + "sous-agent. Ce n'est pas un rebouclage : c'est un enchaînement "
+      + "normal.";
+    enveloppe.appendChild(note);
+  }
+
+  /* Les incertitudes sont AFFICHÉES, pas masquées : un récit muet sur ce
+   * qu'il ignore se lit comme un récit complet. */
+  /* `imbrication_suspectee` (bug-013/feature-010, §9) : la mesure sur cycle
+   * réel a montré 9 workflows sur 12 le levant, TOUJOURS pour la même
+   * cause — l'orchestrator cesse son activité avant que le hook n'écrive
+   * sa fin, avec plusieurs secondes de retard. Aucun agent ne peut en
+   * invoquer un autre : ce n'est PAS une anomalie du récit, c'est un
+   * artefact connu de latence d'écriture. Rendu neutre (`.attendu`, comme
+   * les fins de tour du runtime ci-dessous), jamais en alerte — et le
+   * champ backend n'est PAS renommé, seuls le rendu et le libellé le
+   * sont. */
+  if (wf.imbrication_suspectee) {
+    const note = el("div", "wf-notes attendu");
+    const texte = el("span", "",
+      "ℹ ordre approximatif — fin de sous-agent journalisée en retard : "
+      + "l'ordre affiché peut ne pas refléter l'enchaînement réel");
+    texte.title =
+      "Le hook qui journalise la fin d'un sous-agent peut écrire plusieurs "
+      + "secondes après que l'agent a réellement cessé toute activité — un "
+      + "agent suivant peut démarrer avant que cette fermeture ne soit "
+      + "inscrite au journal.\n\n"
+      + "Ce n'est pas un agent qui en invoque un autre : le runtime ne "
+      + "permet pas ce chaînage. Ce drapeau signale un retard d'écriture "
+      + "du hook, pas une anomalie du récit.";
+    note.appendChild(texte);
+    enveloppe.appendChild(note);
+  }
+  if (wf.fermetures_orphelines) {
+    const note = el("div", "wf-notes attendu");
+    const texte = el("span", "",
+      "ℹ " + wf.fermetures_orphelines + " fin(s) de tour du runtime — "
+      + "ce ne sont pas des sous-agents");
+    texte.title =
+      "Claude Code émet un événement « fin de sous-agent » à chaque fois que "
+      + "l'agent principal termine un tour de conversation, avec un identifiant "
+      + "neuf et un nom vide.\n\n"
+      + "Ces événements ne correspondent à aucun sous-agent réel : ils n'ont pas "
+      + "de début associé, et rien ne leur est attribué.\n\n"
+      + "Ils sont comptés ici plutôt qu'ignorés en silence — un événement "
+      + "inexpliqué qu'on tait devient un écart invisible entre le journal et "
+      + "le récit qu'on en tire.";
+    note.appendChild(texte);
+    enveloppe.appendChild(note);
+  }
+  /* Un bornage sur `marqueur-agent` est une CONVENTION posée par la
+   * configuration, pas un fait relevé par le système. ⚠️ Ce commentaire
+   * opposait auparavant le bornage à `imbrication_suspectee`, « qui EST une
+   * anomalie du récit » — c'est FAUX, et le commentaire de ce champ, 35
+   * lignes plus haut, dit désormais l'inverse mesure à l'appui. Deux
+   * commentaires contradictoires sur le même champ valent moins qu'aucun :
+   * le lecteur croit celui qu'il rencontre en premier.
+   * Même registre visuel que les fermetures orphelines : un fait qu'on
+   * signale, pas une alerte. Absent sur un backend en retard : `wf.bornage`
+   * n'existe alors simplement pas. */
+  if (wf.bornage === "marqueur-agent" && wf.borne_par) {
+    const note = el("div", "wf-notes attendu");
+    note.appendChild(el("span", "",
+      "ℹ frontières posées sur l'invocation de " + wf.borne_par + " ; un "
+      + "cycle mené sans cet agent est rattaché au segment précédent"));
+    enveloppe.appendChild(note);
+  }
+  return enveloppe;
+}
+
+/* ------------------------------------------------------------- diagramme --
+ * feature-017, docs/DESIGN-SYSTEM.md §5. La GÉOMÉTRIE (positions, rayons,
+ * graduations, créneaux, liens, arcs) est calculée par le module PUR
+ * `diagramme.js` (`disposer()`, chargé en `<script>` avant celui-ci — voir
+ * index.html ; AUCUN import, AUCUNE dépendance : CSP `default-src 'self'`,
+ * ADR-0006). Ce bloc ne fait que TRADUIRE cette géométrie en SVG et y poser
+ * les jetons de couleur — il n'invente aucun nombre, aucune position.
+ *
+ * Précédence identité/état (§8, déjà appliquée par feature-016 aux
+ * maillons de la chaîne) : l'IDENTITÉ (couleur d'agent) reste réservée au
+ * remplissage du cercle et à son texte (même registre que le fond du sigle,
+ * `remplissageIdentite`, déjà utilisé ainsi par `construireIdentiteAgent`) ;
+ * le CONTOUR et la FORME portent l'ÉTAT — jamais l'inverse. L'agent
+ * `principal` n'a PAS de teinte d'identité (comme dans la chaîne existante,
+ * `.maillon.principal .mnom`) : fond `--creux`, texte `--texte-faible`.
+ */
+const NS_SVG = "http://www.w3.org/2000/svg";
+
+function svgEl(tag, classe) {
+  const noeud = document.createElementNS(NS_SVG, tag);
+  if (classe) noeud.setAttribute("class", classe);
+  return noeud;
+}
+
+function svgAttrs(noeud, attrs) {
+  Object.keys(attrs).forEach((cle) => noeud.setAttribute(cle, attrs[cle]));
+  return noeud;
+}
+
+/* Point sur un cercle, angle en degrés MESURÉ DEPUIS LE HAUT, sens horaire
+ * (0° = 12 h). Utilisé pour les graduations comme pour les ticks. */
+function pointCercle(cx, cy, rayon, angleDeg) {
+  const rad = (angleDeg * Math.PI) / 180;
+  return { x: cx + rayon * Math.sin(rad), y: cy - rayon * Math.cos(rad) };
+}
+
+/* Les traits sont MUTUELLEMENT EXCLUSIFS sur le CONTOUR (design system §8,
+ * vocabulaire des trois motifs) : pointillé = sans clôture, tirets pleins =
+ * agent principal — jamais cumulés. La couleur du contour porte l'ÉTAT
+ * (alerte en cas d'échec), jamais l'identité. */
+function traitsCercle(agent) {
+  const style = agent.sansCloture ? "dg-contour-pointille"
+    : agent.principal ? "dg-contour-tirets"
+    : "dg-contour-plein";
+  const couleurContour = agent.sansCloture ? "var(--contour-etat)"
+    : agent.echec ? "var(--alerte)"
+    : "var(--trait)";
+  const remplissage = agent.principal ? "var(--creux)" : remplissageIdentite(agent.agent);
+  const couleurTexte = agent.principal ? "var(--texte-faible)" : couleurIdentite(agent.agent);
+  return { style, couleurContour, remplissage, couleurTexte };
+}
+
+function construireCercleAgent(agentGeo, sigles) {
+  const g = svgEl("g", "dg-agent" + (agentGeo.enCours ? " dg-en-cours" : ""));
+  const traits = traitsCercle(agentGeo);
+
+  // Anneau fantôme : la pleine échelle, toujours visible — même à zéro
+  // appel d'outil (§5, cas limite « agent à zéro appel d'outil »).
+  const fantome = svgEl("circle", "dg-anneau-fantome");
+  svgAttrs(fantome, { cx: agentGeo.cx, cy: agentGeo.cy, r: agentGeo.rayon + 3.5, fill: "none" });
+  g.appendChild(fantome);
+
+  // Barres verticales (filigrane) au-dessus du cercle — barre blanche puis grise
+  // pour marquer le début des graduations sans confondre avec l'anneau fantôme.
+  const barreBlanche = svgEl("line", "dg-barre-blanche");
+  svgAttrs(barreBlanche, {
+    x1: agentGeo.cx, y1: agentGeo.cy - agentGeo.rayon - 4 + 0.5,
+    x2: agentGeo.cx, y2: agentGeo.cy - agentGeo.rayon - 4 - 8.5,
+    stroke: "var(--creux)",
+  });
+  barreBlanche.style.strokeWidth = 2.6;
+  g.appendChild(barreBlanche);
+
+  const barreGrise = svgEl("line", "dg-barre-liserete");
+  svgAttrs(barreGrise, {
+    x1: agentGeo.cx - 0.6, y1: agentGeo.cy - agentGeo.rayon - 4 + 0.5,
+    x2: agentGeo.cx - 0.6, y2: agentGeo.cy - agentGeo.rayon - 4 - 9.5,
+    stroke: "var(--texte-doux)",
+  });
+  barreGrise.style.strokeWidth = 1;
+  g.appendChild(barreGrise);
+
+  // Graduations : arc de 340°, un vide de 20° en haut sépare l'encoche de
+  // zéro (début, angle 10°) du cran de plafond (fin, angle 350°) — les deux
+  // marques restent DISTINCTES l'une de l'autre au lieu de se confondre sur
+  // un cercle complet (§5 : « une encoche en haut, un cran de plafond »).
+  const total = agentGeo.graduationsTotal;
+  const graduations = svgEl("g", "dg-graduations");
+  for (let i = 0; i < total; i++) {
+    const angle = total > 1 ? 10 + (340 * i) / (total - 1) : 10;
+    const allumee = i < agentGeo.graduationsAllumees;
+    const estBorne = i === 0 || i === total - 1;
+    const interieur = pointCercle(agentGeo.cx, agentGeo.cy, agentGeo.rayon, angle);
+    const exterieur = pointCercle(agentGeo.cx, agentGeo.cy,
+      agentGeo.rayon + (estBorne ? 7 : 4), angle);
+    const trait = svgEl("line", "dg-graduation" + (allumee ? " allumee" : "")
+      + (estBorne ? " borne" : ""));
+    svgAttrs(trait, { x1: interieur.x, y1: interieur.y, x2: exterieur.x, y2: exterieur.y });
+    trait.style.stroke = allumee ? traits.couleurTexte : "var(--trait-fin)";
+    trait.style.strokeWidth = allumee ? 1.8 : 1;
+    graduations.appendChild(trait);
+  }
+  g.appendChild(graduations);
+
+  // Liseré intérieur : nombre de fichiers écrits, en épaisseur de trait —
+  // jamais une couleur d'identité (§8 : le contour/la forme portent l'état
+  // et les mesures, pas l'identité).
+  if (agentGeo.fichiers > 0) {
+    const liseret = svgEl("circle", "dg-liseret");
+    svgAttrs(liseret, {
+      cx: agentGeo.cx, cy: agentGeo.cy, r: Math.max(2, agentGeo.rayon - 6), fill: "none",
+    });
+    liseret.style.strokeWidth = agentGeo.liseretEpaisseur;
+    g.appendChild(liseret);
+  }
+
+  // Le cercle principal : remplissage = identité (ou neutre pour le
+  // principal), contour = état (couleur ET motif).
+  const cercle = svgEl("circle", "dg-cercle " + traits.style);
+  svgAttrs(cercle, { cx: agentGeo.cx, cy: agentGeo.cy, r: agentGeo.rayon });
+  cercle.style.fill = traits.remplissage;
+  cercle.style.stroke = traits.couleurContour;
+  g.appendChild(cercle);
+
+  // Agent « en cours » : anneau SUPPLÉMENTAIRE — jamais la seule couleur
+  // (§8) — plus la graisse du texte du nom (posée sur le socle, plus bas).
+  if (agentGeo.enCours) {
+    const anneau = svgEl("circle", "dg-anneau-en-cours");
+    svgAttrs(anneau, { cx: agentGeo.cx, cy: agentGeo.cy, r: agentGeo.rayon + 3.5, fill: "none" });
+    g.appendChild(anneau);
+  }
+
+  // Échec : redondant à dessein — couleur (déjà sur le contour) ET croix.
+  // Jamais cumulé avec « sans clôture » (une fin sans annonce n'est ni un
+  // succès ni un échec, voir `estEchec` dans diagramme.js).
+  if (agentGeo.echec) {
+    const bras = agentGeo.rayon * 0.42;
+    const croix = svgEl("g", "dg-croix-echec");
+    [[-1, -1, 1, 1], [-1, 1, 1, -1]].forEach(([dx1, dy1, dx2, dy2]) => {
+      const trait = svgEl("line");
+      svgAttrs(trait, {
+        x1: agentGeo.cx + dx1 * bras, y1: agentGeo.cy + dy1 * bras,
+        x2: agentGeo.cx + dx2 * bras, y2: agentGeo.cy + dy2 * bras,
+      });
+      croix.appendChild(trait);
+    });
+    g.appendChild(croix);
+  }
+
+  // Sigle au centre — même identité que la table des passages.
+  const sigle = svgEl("text", "dg-sigle");
+  svgAttrs(sigle, { x: agentGeo.cx, y: agentGeo.cy, "text-anchor": "middle", "dominant-baseline": "central" });
+  sigle.style.fill = traits.couleurTexte;
+  sigle.textContent = (sigles && sigles.get(agentGeo.agent)) || "??";
+  g.appendChild(sigle);
+
+  const titre = svgEl("title");
+  titre.textContent = agentGeo.agent
+    + " — " + agentGeo.outils + " appel(s) d'outil, " + agentGeo.fichiers + " fichier(s) écrit(s)"
+    + (agentGeo.echec ? ", en échec" : "")
+    + (agentGeo.sansCloture ? ", sans clôture" : "")
+    + (agentGeo.enCours ? ", en cours" : "");
+  g.appendChild(titre);
+
+  return g;
+}
+
+/* Socle : heure de départ, puis durée, puis nom (§5 — dans cet ordre, sous
+ * le cercle pour un créneau simple ; à droite pour un créneau empilé, faute
+ * de quoi trois agents empilés dépasseraient six cents pixels de haut). */
+function construireSoclesCreneau(creneauGeo, passagesOrigine) {
+  const g = svgEl("g", "dg-socle");
+  const empile = creneauGeo.agents.length > 1;
+
+  // Le cadre est ajouté EN PREMIER (donc peint SOUS le reste) — jamais via
+  // `insertBefore` : c'est le seul appelant de ce module qui en aurait eu
+  // besoin, autant garder `app.js` sur le même sous-ensemble DOM que le
+  // reste du fichier (`appendChild` uniquement).
+  if (empile) {
+    const rayonMax = Math.max(...creneauGeo.agents.map((a) => a.rayon));
+    const premier = creneauGeo.agents[0];
+    const dernierAgent = creneauGeo.agents[creneauGeo.agents.length - 1];
+    const cadre = svgEl("rect", "dg-cadre-simultane");
+    svgAttrs(cadre, {
+      x: creneauGeo.x - rayonMax - 6,
+      y: premier.cy - premier.rayon - 6,
+      width: 2 * rayonMax + 12,
+      height: (dernierAgent.cy + dernierAgent.rayon) - (premier.cy - premier.rayon) + 12,
+    });
+    // `.style.fill`, jamais l'attribut `fill="var(--creux)"` : une propriété
+    // posée par attribut de présentation ne résout pas toujours un jeton CSS
+    // selon le moteur — même convention que le cercle et les graduations
+    // plus haut dans ce fichier.
+    cadre.style.fill = "var(--creux)";
+    g.appendChild(cadre);
+  }
+
+  creneauGeo.agents.forEach((agentGeo) => {
+    const origine = passagesOrigine[agentGeo.passageIndex] || {};
+    const d = duree(origine.duree_ms);
+    const texteDuree = d !== null ? d : (origine.termine === false ? "en cours" : "durée invalide");
+    const lignes = [heure(origine.debut), texteDuree, agentGeo.agent];
+    const texte = svgEl("text", "dg-libelle" + (agentGeo.enCours ? " dg-libelle-en-cours" : ""));
+    if (empile) {
+      svgAttrs(texte, { x: agentGeo.cx + agentGeo.rayon + 10, y: agentGeo.cy, "text-anchor": "start" });
+    } else {
+      svgAttrs(texte, {
+        x: agentGeo.cx, y: agentGeo.cy + agentGeo.rayon + 16, "text-anchor": "middle",
+      });
+    }
+    lignes.forEach((ligne, i) => {
+      const tspan = svgEl("tspan");
+      tspan.setAttribute("x", texte.getAttribute("x"));
+      tspan.setAttribute("dy", i === 0 ? "0" : "1.2em");
+      tspan.textContent = ligne;
+      texte.appendChild(tspan);
+    });
+    g.appendChild(texte);
+  });
+  if (creneauGeo.repli) {
+    const dernier = creneauGeo.agents[creneauGeo.agents.length - 1];
+    const plus = svgEl("text", "dg-repli");
+    svgAttrs(plus, {
+      x: dernier.cx + dernier.rayon + 10, y: dernier.cy + dernier.rayon + 4, "text-anchor": "start",
+    });
+    plus.textContent = "+" + creneauGeo.repli.masques;
+    const titre = svgEl("title");
+    titre.textContent = creneauGeo.repli.masques + " agent(s) supplémentaire(s), repliés";
+    plus.appendChild(titre);
+    g.appendChild(plus);
+  }
+  return g;
+}
+
+function construireLiensDiagramme(geo) {
+  const g = svgEl("g", "dg-liens");
+  geo.liens.forEach((lien) => {
+    const creneauA = geo.creneaux[lien.deCreneau];
+    const creneauB = geo.creneaux[lien.aCreneau];
+    const yA = (creneauA.agents[0].cy + creneauA.agents[creneauA.agents.length - 1].cy) / 2;
+    const yB = (creneauB.agents[0].cy + creneauB.agents[creneauB.agents.length - 1].cy) / 2;
+    const rA = Math.max(...creneauA.agents.map((a) => a.rayon));
+    const rB = Math.max(...creneauB.agents.map((a) => a.rayon));
+    const x1 = creneauA.x + rA + 4;
+    const x2 = creneauB.x - rB - 4;
+    const trait = svgEl("line", "dg-lien");
+    svgAttrs(trait, { x1, y1: yA, x2, y2: yB });
+    g.appendChild(trait);
+
+    // Géométrie (largeur, hauteur, texte, cx) VENUE DE `disposer()`, jamais
+    // recalculée ici (bug-020, bug-021) : une largeur recalculée séparément
+    // avait fini par déborder de l'espace réservé par le placement
+    // horizontal, et recouvrait le libellé du créneau voisin. Même défaut de
+    // principe pour l'abscisse : `(x1 + x2) / 2` est un milieu entre BORDS DE
+    // CERCLE (rA/rB), pas entre bords de créneau (demiLargeur, asymétrique
+    // pour un créneau empilé) — ça ne coïncide PAS avec l'espace réservé par
+    // `disposer()`, et la pastille pouvait être peinte hors de cet espace.
+    if (lien.pastille) {
+      const cx = lien.pastille.cx;
+      const cy = (yA + yB) / 2;
+      const pastille = svgEl("g", "dg-pastille-attente");
+      const fond = svgEl("rect");
+      const texte = svgEl("text");
+      texte.textContent = lien.pastille.texte;
+      svgAttrs(texte, { x: cx, y: cy, "text-anchor": "middle", "dominant-baseline": "central" });
+      svgAttrs(fond, {
+        x: cx - lien.pastille.largeur / 2, y: cy - lien.pastille.hauteur / 2,
+        width: lien.pastille.largeur, height: lien.pastille.hauteur, rx: lien.pastille.hauteur / 2,
+      });
+      pastille.appendChild(fond);
+      pastille.appendChild(texte);
+      g.appendChild(pastille);
+    }
+  });
+  return g;
+}
+
+/* Rebouclage : arc pointillé reliant une reprise à l'OCCURRENCE PRÉCÉDENTE
+ * du MÊME agent (§5) — jamais un agent arbitraire. Une pointe de direction
+ * (petit triangle) marque le sens de la reprise. */
+function construireArcsDiagramme(geo) {
+  const g = svgEl("g", "dg-arcs");
+  geo.arcs.forEach((arc) => {
+    const source = trouverAgentParPassageIndex(geo, arc.dePassage);
+    const cible = trouverAgentParPassageIndex(geo, arc.aPassage);
+    if (!source || !cible || cible.cx <= source.cx) return; // garde : jamais en arrière
+    const x1 = source.cx;
+    const y1 = source.cy - source.rayon - 4;
+    const x2 = cible.cx;
+    const y2 = cible.cy - cible.rayon - 4;
+    // Hauteur VENUE DE `disposer()` (bug-020), jamais recalculée ici : c'est
+    // cette même valeur qui a dimensionné la marge haute du tracé — la
+    // recalculer séparément pouvait la faire dépasser du cadre.
+    const hauteurArc = arc.hauteurArc;
+    const yControle = Math.min(y1, y2) - hauteurArc;
+    const xControle = (x1 + x2) / 2;
+    const chemin = svgEl("path", "dg-arc-rebouclage");
+    svgAttrs(chemin, { d: "M " + x1 + " " + y1 + " Q " + xControle + " " + yControle + " " + x2 + " " + y2, fill: "none" });
+    const titre = svgEl("title");
+    titre.textContent = "Rebouclage — reprise de " + arc.agent;
+    chemin.appendChild(titre);
+    g.appendChild(chemin);
+
+    // Pointe de direction, orientée le long de la tangente d'arrivée
+    // (approximée par le segment contrôle → point d'arrivée).
+    const angle = Math.atan2(y2 - yControle, x2 - xControle);
+    const taille = 6;
+    const pointe = svgEl("polygon", "dg-arc-pointe");
+    const p1 = { x: x2, y: y2 };
+    const p2 = {
+      x: x2 - taille * Math.cos(angle - Math.PI / 7), y: y2 - taille * Math.sin(angle - Math.PI / 7),
+    };
+    const p3 = {
+      x: x2 - taille * Math.cos(angle + Math.PI / 7), y: y2 - taille * Math.sin(angle + Math.PI / 7),
+    };
+    pointe.setAttribute("points", [p1, p2, p3].map((p) => p.x + "," + p.y).join(" "));
+    g.appendChild(pointe);
+  });
+  return g;
+}
+
+function trouverAgentParPassageIndex(geo, passageIndex) {
+  for (const creneau of geo.creneaux) {
+    for (const agent of creneau.agents) {
+      if (agent.passageIndex === passageIndex) return agent;
+    }
+  }
+  return null; // reboucle vers un agent replié (§5, cas limite) : pas d'arc tracé
+}
+
+/* Légende (§8, item D2) : texte simple, pas un second registre visuel — ce
+ * que chaque forme encode, littéralement (docs/DESIGN-SYSTEM.md §5). */
+function construireLegendeDiagramme() {
+  const dl = el("dl", "diagramme-legende");
+  const ajouter = (forme, sens) => { dl.appendChild(el("dt", "", forme)); dl.appendChild(el("dd", "", sens)); };
+  ajouter("Diamètre du cercle", "durée de l'agent");
+  ajouter("Graduations", "appels d'outils (échelle de 70)");
+  ajouter("Liseré intérieur", "fichiers écrits");
+  ajouter("Cercle pointillé", "sans clôture");
+  ajouter("Cercle en tirets", "agent principal");
+  ajouter("Croix + contour d'alerte", "échec");
+  ajouter("Anneau supplémentaire", "en cours");
+  ajouter("Arc pointillé", "rebouclage vers l'occurrence précédente du même agent");
+  return dl;
+}
+
+/* Défilement au clavier (§6, §8) : `tabindex="0"` sur le conteneur, les
+ * flèches gauche/droite (et Origine/Fin) le parcourent — la molette SEULE
+ * fait défiler la PAGE (comportement natif, rien à faire ici) ; `Maj` +
+ * molette ou le glissement font défiler la ZONE (comportement natif d'un
+ * conteneur `overflow-x: auto`, également rien à coder). */
+function brancherDefilementClavier(conteneur) {
+  conteneur.setAttribute("tabindex", "0");
+  conteneur.setAttribute("role", "group");
+  conteneur.setAttribute("aria-label", "Diagramme du déroulé — parcourir avec les flèches");
+  conteneur.addEventListener("keydown", (evenement) => {
+    const PAS = 80;
+    if (evenement.key === "ArrowRight") { conteneur.scrollLeft += PAS; evenement.preventDefault(); }
+    else if (evenement.key === "ArrowLeft") { conteneur.scrollLeft -= PAS; evenement.preventDefault(); }
+    else if (evenement.key === "Home") { conteneur.scrollLeft = 0; evenement.preventDefault(); }
+    else if (evenement.key === "End") { conteneur.scrollLeft = conteneur.scrollWidth; evenement.preventDefault(); }
+  });
+}
+
+/* Point d'entrée (branché dans `construireDetailCycle`, AVANT la table des
+ * passages). `wf.segments` (agent principal compris) si disponible, repli
+ * sur `wf.passages` sur un backend plus ancien — même convention que
+ * `construireChaineEtNotes`. Un cycle sans aucun segment retombe sur `null`
+ * : l'appelant garde alors le seul état vide déjà affiché par la table. */
+function construireDiagramme(wf, sigles) {
+  const segments = wf.segments || wf.passages || [];
+  if (!segments.length) return null;
+  // Garde (bug-020) : `diagramme.js` est chargé en `<script>` séparé
+  // (index.html, AVANT ce fichier) — s'il est absent (404, cache, oubli de
+  // relancer le serveur après un fichier neuf — PIEGES.md §8), `disposer`
+  // n'existe pas et l'exception remonterait jusqu'au `catch` global de
+  // `rafraichir()`, qui l'afficherait à tort comme « serveur injoignable ».
+  // Se rabattre ici sur l'absence de diagramme, comme un cycle sans segment.
+  if (typeof disposer !== "function") return null;
+
+  const geo = disposer(segments);
+  const enveloppe = document.createDocumentFragment();
+
+  const conteneur = el("div", "diagramme-scroll");
+  brancherDefilementClavier(conteneur);
+
+  const svg = svgEl("svg", "dg-svg");
+  svgAttrs(svg, {
+    viewBox: "0 0 " + Math.max(1, geo.largeur) + " " + Math.max(1, geo.hauteur),
+    width: geo.largeur, height: geo.hauteur, role: "img",
+    "aria-label": "Diagramme du déroulé — " + segments.length + " agent(s)",
+  });
+
+  // Ordre de dessin (peinture SVG = ordre d'apparition) : liens et arcs
+  // D'ABORD (toujours sous les cercles) ; puis le cadre des créneaux
+  // empilés AVEC leurs socles (le cadre, lui, doit rester SOUS les cercles
+  // qu'il entoure) ; les cercles en dernier — jamais masqués par un cadre
+  // ou un lien. Le socle et les cercles n'occupent de toute façon jamais le
+  // même point (texte à côté ou en dessous, jamais superposé au disque).
+  svg.appendChild(construireLiensDiagramme(geo));
+  svg.appendChild(construireArcsDiagramme(geo));
+  geo.creneaux.forEach((creneau) => {
+    svg.appendChild(construireSoclesCreneau(creneau, segments));
+  });
+  geo.creneaux.forEach((creneau) => {
+    creneau.agents.forEach((agentGeo) => {
+      svg.appendChild(construireCercleAgent(agentGeo, sigles));
+    });
+  });
+
+  conteneur.appendChild(svg);
+  enveloppe.appendChild(conteneur);
+  enveloppe.appendChild(construireLegendeDiagramme());
+  return enveloppe;
+}
+
+function construireDetailCycle(wf, sigles) {
+  const detail = document.createDocumentFragment();
+  detail.appendChild(construireProprietes(wf));
+  const diagramme = construireDiagramme(wf, sigles);
+  if (diagramme) detail.appendChild(diagramme);
+  detail.appendChild(construireTablePassages(wf, sigles));
+  detail.appendChild(construireChaineEtNotes(wf));
+  return detail;
+}
+
+/* Rôles apparaissant dans les cycles AFFICHÉS (passages + agents ouvrants
+ * cités en désignation) : `siglesAgents` calcule tous les sigles d'un coup,
+ * dans l'ordre alphabétique, pour rester indépendant de l'ordre d'arrivée. */
+function collecterRoles(workflows) {
+  const roles = new Set();
+  workflows.forEach((wf) => {
+    (wf.passages || []).forEach((p) => roles.add(p.agent));
+    if (wf.borne_par) roles.add(wf.borne_par);
+  });
+  return roles;
+}
+
+/* Liste des cycles en accordéon (feature-016, docs/DESIGN-SYSTEM.md §6). */
+function rendreCycles(etat) {
   const zone = $("workflows");
   vider(zone);
-  const workflows = etat.workflows.slice().reverse();
+  const workflows = (etat.workflows || []).slice().reverse();   // le plus récent en tête
+
   if (!workflows.length) {
-    zone.appendChild(el("div", "vide", "aucun événement encore observé"));
-    $("compteur-workflows").textContent = "";
+    /* Cas limite : état vide explicite, qui dit quoi faire — pas une liste
+     * muette. */
+    zone.appendChild(el("li", "vide",
+      "aucun cycle observé pour l'instant — invoquez un agent depuis la "
+      + "section Développer (bloc Pilotage) pour en amorcer un"));
+    cycleOuvert = null;
+    $("legende-cycles").textContent = "";
+    $("pied-cycles").textContent = "";
     return;
   }
+
+  /* Dépliement exclusif (item C) : le dernier cycle est ouvert par défaut ;
+   * un choix déjà fait survit tant que le cycle choisi reste présent dans la
+   * liste affichée. */
+  const idsPresents = new Set(workflows.map((wf) => wf.workflow_id));
+  if (cycleOuvert === null || !idsPresents.has(cycleOuvert)) {
+    cycleOuvert = workflows[0].workflow_id;
+  }
+
+  const sigles = siglesAgents(Array.from(collecterRoles(workflows)));
+
   workflows.forEach((wf) => {
-    const bloc = el("div", "workflow");
-    const entete = el("div", "wf-entete");
-    const actif = wf.fin_observee_absente;
-    entete.appendChild(el("span", "marqueur " + (actif ? "actif" : "clos"),
-      actif ? "● sans fin observée" : "✓ close"));
-    entete.appendChild(el("span", "session", "session " + String(wf.session_id).slice(0, 8)));
-    /* Deux segments d'une même session partagent le même `session_id` :
-     * sans l'indice de cycle et l'agent ouvrant, ils seraient indiscernables
-     * à l'écran. `cycles_dans_la_session` et `indice_cycle` sont tolérés
-     * absents (backend en retard) : le span n'apparaît alors simplement pas. */
-    if (wf.cycles_dans_la_session > 1) {
-      /* Un segment ANTÉRIEUR au premier repère n'est pas un cycle : le backend
-       * refuse explicitement de l'affirmer (`bornage = avant-premier-marqueur`).
-       * Le libellé visible doit refuser la même chose — sans quoi l'écran en dit
-       * plus que ce que le module sait, ce que ce cycle entier cherche à éviter. */
-      let texteCycle;
-      if (wf.bornage === "avant-premier-marqueur") {
-        texteCycle = "avant le premier repère";
-      } else {
-        texteCycle = "cycle " + (wf.indice_cycle + 1) + "/" + wf.cycles_dans_la_session;
-        if (wf.borne_par) texteCycle += " — ouvert par " + wf.borne_par;
-      }
-      const cycle = el("span", "session", texteCycle);
-      cycle.title = wf.bornage === "marqueur-agent"
-        ? "Segment ouvert par l'agent repère " + wf.borne_par
-        : wf.bornage === "avant-premier-marqueur"
-          ? "Antérieur au premier agent repère rencontré dans la session — "
-            + "n'affirme rien sur son contenu"
-          : "Bornage non établi pour cette session";
-      entete.appendChild(cycle);
-    }
-    entete.appendChild(el("span", "session", heure(wf.debut) + " → " + heure(wf.fin_observee)));
-    entete.appendChild(el("span", "session", wf.fichiers.length + " fichier(s)"));
-    bloc.appendChild(entete);
-
-    /* La chaîne montre les SEGMENTS, agent principal compris. Sans lui, elle
-     * racontait un workflow plus creux qu'il n'est : sur un relevé réel, 108
-     * des 110 appels d'outils lui appartenaient et n'apparaissaient nulle part. */
-    const segments = wf.segments || wf.passages || [];
-    /* Seule source de vérité pour un VRAI rebouclage : un autre sous-agent
-     * intercalé entre deux passages du même agent (voir `indicesRepris`
-     * ci-dessus). `wf.reprises` ne fait que NOMMER les agents et leur
-     * compte pour le libellé — il ne décide plus, seul, de l'affichage :
-     * il comptait aussi une simple réapparition après l'agent principal,
-     * un enchaînement normal, comme un rebouclage. */
-    const reprisesChaine = indicesRepris(segments);
-    if (segments.length) {
-      const chaine = el("div", "chaine");
-      segments.forEach((segment, index) => {
-        if (index) chaine.appendChild(el("span", "fleche", "→"));
-        let classe = "maillon";
-        if (segment.type === "principal") classe += " principal";
-        /* `etat` est additif (bug-013) : sur un backend plus ancien, il est
-         * absent — on retombe alors sur le SEUL signal disponible avant lui
-         * (`termine`), jamais sur une affirmation nouvelle par défaut. */
-        const sansCloture = segment.etat === "sans_cloture";
-        if (sansCloture) classe += " sans-cloture";
-        else if (segment.etat === "en_cours") classe += " en-cours";
-        else if (segment.etat === undefined && !segment.termine) classe += " en-cours";
-        /* Jamais cumulée avec `.sans-cloture` : une fin sans annonce n'est ni
-         * un succès ni un échec du travail, l'accusation visuelle (bordure
-         * rouille, marqueur ✕) n'a pas sa place dessus. */
-        if (segment.echecs && !sansCloture) classe += " echec";
-        if (reprisesChaine.has(index)) classe += " repris";
-        const maillon = el("span", classe);
-        maillon.appendChild(el("span", "mnom", segment.agent));
-        if (sansCloture) {
-          const ecoule = dureeDepuisIso(segment.derniere_activite);
-          maillon.appendChild(el("span", "mduree",
-            "⋯ fin non observée depuis " + (ecoule || "un temps inconnu")));
-        } else {
-          const d = duree(segment.duree_ms);
-          maillon.appendChild(el("span", "mduree",
-            d !== null ? d : (segment.termine ? "durée invalide" : "en cours")));
-        }
-        const detail = [];
-        if (segment.type === "principal" && segment.outils) detail.push(segment.outils + " outils");
-        if (segment.fichiers && segment.fichiers.length) detail.push(segment.fichiers.length + " fich.");
-        if (detail.length) maillon.appendChild(el("span", "mduree", detail.join(" · ")));
-        if (segment.echecs && !sansCloture) maillon.appendChild(el("span", "mduree", "✕" + segment.echecs));
-        maillon.title = segment.type === "principal"
-          ? "Agent principal — la session Claude Code elle-même, entre deux "
-            + "sous-agents.\nC'est elle qui orchestre : elle lit, écrit, lance "
-            + "les commandes et invoque les agents.\n"
-            + (segment.fichiers || []).join("\n")
-          : "Sous-agent " + segment.agent + "\n" + (segment.fichiers || []).join("\n");
-        chaine.appendChild(maillon);
-      });
-      bloc.appendChild(chaine);
-    }
-
-    const notes = [];
-    if (wf.commandes && Object.keys(wf.commandes).length) {
-      notes.push("commandes : " + Object.keys(wf.commandes)
-        .map((c) => c + " ×" + wf.commandes[c]).join(", "));
-    }
-    if (notes.length) bloc.appendChild(el("div", "wf-notes", notes.join(" · ")));
-
-    /* Le rebouclage a sa propre bande, distincte d'un enchaînement normal
-     * (feature-010, §8) : `wf.reprises` était affiché comme une ligne de
-     * texte neutre, indiscernable des autres notes. `.repris` sur les
-     * maillons concernés (voir `indicesRepris`, ci-dessus) ancre le même
-     * signal dans la chaîne.
-     * ⚠️ Le bandeau ne se déclenche QUE si `indicesRepris` a réellement
-     * marqué un maillon — jamais sur la seule présence de `wf.reprises`.
-     * Sans ce garde, le bandeau annonçait un rebouclage que la détection
-     * elle-même écartait : deux logiques sur le même fait, dans la même
-     * fonction, en désaccord. Une réapparition après le seul agent
-     * principal reste un fait qu'on signale — sobrement — pas une alerte :
-     * la taire serait un récit muet sur ce qu'il sait.
-     * ⚠️ feature-010 §A2 : ce garde portait sur le DÉCLENCHEMENT du bandeau, pas sur
-     * son CONTENU — `reprises.map(...)` recopiait `wf.reprises` en entier,
-     * y compris des agents que `indicesRepris` n'a marqué nulle part (un
-     * troisième agent reparu seulement après l'agent principal, pendant
-     * qu'un AUTRE agent portait, lui, un vrai rebouclage ailleurs dans la
-     * même chaîne). Le bandeau ne doit NOMMER que les agents dont au moins
-     * un maillon est réellement `.repris` ; les autres basculent dans la
-     * mention neutre — les deux pouvant coexister sur le même workflow. */
-    const agentsAncres = new Set();
-    segments.forEach((segment, index) => {
-      if (reprisesChaine.has(index)) agentsAncres.add(segment.agent);
-    });
-    const reprises = Object.keys(wf.reprises || {});
-    const reprisesAncrees = reprises.filter((a) => agentsAncres.has(a));
-    const reprisesNonAncrees = reprises.filter((a) => !agentsAncres.has(a));
-    if (reprisesAncrees.length) {
-      const bandeau = el("div", "wf-notes reboucle");
-      bandeau.appendChild(el("span", "",
-        "↻ reboucle — reprises : "
-        + reprisesAncrees.map((a) => a + " ×" + wf.reprises[a]).join(", ")));
-      bloc.appendChild(bandeau);
-    }
-    if (reprisesNonAncrees.length) {
-      const note = el("div", "wf-notes attendu");
-      note.appendChild(el("span", "",
-        "ℹ agent(s) repassé(s), sans rebouclage détecté : "
-        + reprisesNonAncrees.map((a) => a + " ×" + wf.reprises[a]).join(", ")));
-      note.title =
-        "Ces agents réapparaissent dans la chaîne, mais toujours "
-        + "immédiatement après l'agent principal — jamais après un AUTRE "
-        + "sous-agent. Ce n'est pas un rebouclage : c'est un enchaînement "
-        + "normal.";
-      bloc.appendChild(note);
-    }
-
-    /* Les incertitudes sont AFFICHÉES, pas masquées : un récit muet sur ce
-     * qu'il ignore se lit comme un récit complet. */
-    /* `imbrication_suspectee` (bug-013/feature-010, §9) : la mesure sur cycle
-     * réel a montré 9 workflows sur 12 le levant, TOUJOURS pour la même
-     * cause — l'orchestrator cesse son activité avant que le hook n'écrive
-     * sa fin, avec plusieurs secondes de retard. Aucun agent ne peut en
-     * invoquer un autre : ce n'est PAS une anomalie du récit, c'est un
-     * artefact connu de latence d'écriture. Rendu neutre (`.attendu`, comme
-     * les fins de tour du runtime ci-dessous), jamais en alerte — et le
-     * champ backend n'est PAS renommé, seuls le rendu et le libellé le
-     * sont. */
-    if (wf.imbrication_suspectee) {
-      const note = el("div", "wf-notes attendu");
-      const texte = el("span", "",
-        "ℹ ordre approximatif — fin de sous-agent journalisée en retard : "
-        + "l'ordre affiché peut ne pas refléter l'enchaînement réel");
-      texte.title =
-        "Le hook qui journalise la fin d'un sous-agent peut écrire plusieurs "
-        + "secondes après que l'agent a réellement cessé toute activité — un "
-        + "agent suivant peut démarrer avant que cette fermeture ne soit "
-        + "inscrite au journal.\n\n"
-        + "Ce n'est pas un agent qui en invoque un autre : le runtime ne "
-        + "permet pas ce chaînage. Ce drapeau signale un retard d'écriture "
-        + "du hook, pas une anomalie du récit.";
-      note.appendChild(texte);
-      bloc.appendChild(note);
-    }
-    if (wf.fermetures_orphelines) {
-      const note = el("div", "wf-notes attendu");
-      const texte = el("span", "",
-        "ℹ " + wf.fermetures_orphelines + " fin(s) de tour du runtime — "
-        + "ce ne sont pas des sous-agents");
-      texte.title =
-        "Claude Code émet un événement « fin de sous-agent » à chaque fois que "
-        + "l'agent principal termine un tour de conversation, avec un identifiant "
-        + "neuf et un nom vide.\n\n"
-        + "Ces événements ne correspondent à aucun sous-agent réel : ils n'ont pas "
-        + "de début associé, et rien ne leur est attribué.\n\n"
-        + "Ils sont comptés ici plutôt qu'ignorés en silence — un événement "
-        + "inexpliqué qu'on tait devient un écart invisible entre le journal et "
-        + "le récit qu'on en tire.";
-      note.appendChild(texte);
-      bloc.appendChild(note);
-    }
-    /* Un bornage sur `marqueur-agent` est une CONVENTION posée par la
-     * configuration, pas un fait relevé par le système. ⚠️ Ce commentaire
-     * opposait auparavant le bornage à `imbrication_suspectee`, « qui EST une
-     * anomalie du récit » — c'est FAUX, et le commentaire de ce champ, 35
-     * lignes plus haut, dit désormais l'inverse mesure à l'appui. Deux
-     * commentaires contradictoires sur le même champ valent moins qu'aucun :
-     * le lecteur croit celui qu'il rencontre en premier.
-     * Même registre visuel que les fermetures orphelines : un fait qu'on
-     * signale, pas une alerte. Absent sur un backend en retard : `wf.bornage`
-     * n'existe alors simplement pas. */
-    if (wf.bornage === "marqueur-agent" && wf.borne_par) {
-      const note = el("div", "wf-notes attendu");
-      note.appendChild(el("span", "",
-        "ℹ frontières posées sur l'invocation de " + wf.borne_par + " ; un "
-        + "cycle mené sans cet agent est rattaché au segment précédent"));
-      bloc.appendChild(note);
-    }
-    zone.appendChild(bloc);
+    const li = el("li", "cycle");
+    const ouvert = wf.workflow_id === cycleOuvert;
+    const { h3, idDetail } = construireEnteteCycle(wf, sigles, ouvert);
+    li.appendChild(h3);
+    const detail = el("div", "cycle-detail");
+    detail.id = idDetail;
+    detail.setAttribute("role", "region");
+    detail.setAttribute("aria-labelledby", idCycleDom(wf.workflow_id) + "-bouton");
+    detail.hidden = !ouvert;
+    /* Le contenu est construit que le cycle soit ouvert ou non (item M/C :
+     * jamais retiré du DOM) — coûte une reconstruction de plus au clic, en
+     * échange d'un état de dépliement qui ne perd jamais rien au clavier. */
+    detail.appendChild(construireDetailCycle(wf, sigles));
+    li.appendChild(detail);
+    zone.appendChild(li);
   });
-  $("compteur-workflows").textContent = etat.evenements.length + " derniers événements";
+
+  /* Légende fixe au-dessus de la liste (item, comportement attendu) : les
+   * DEUX bornages — combien sont affichés sur le total, et ce qu'est un
+   * cycle. `etat.cycles_total` est additif (feature-016, item K) : absent
+   * sur un backend plus ancien, on retombe sur le seul compte affiché. */
+  const total = typeof etat.cycles_total === "number" ? etat.cycles_total : workflows.length;
+  $("legende-cycles").textContent =
+    workflows.length + (total > workflows.length ? " sur " + total : "")
+    + " cycle" + (total > 1 ? "s" : "") + " affiché" + (total > 1 ? "s" : "") + " — "
+    + "un cycle commence à l'invocation d'un agent ouvrant configuré ; sans "
+    + "agent ouvrant, une session reste un seul cycle, dit « session entière ».";
+
+  /* Pied de liste (item K) : `evenements_hors_session` était calculé puis
+   * jeté — des événements écrits avant qu'une session ne soit connue, jamais
+   * absorbés dans un cycle fabriqué pour l'occasion. */
+  const horsSession = typeof etat.evenements_hors_session === "number"
+    ? etat.evenements_hors_session : 0;
+  $("pied-cycles").textContent = horsSession
+    ? horsSession + " événement(s) sans session associée — ne forment aucun cycle"
+    : "";
 }
 
 /* -------------------------------------------------------------- fichiers -- */
@@ -525,7 +1248,10 @@ function rendreFichiers(etat) {
   (etat.git.commits || []).slice(0, 4).forEach((commit) => {
     const ligne = el("div", "fichier");
     ligne.appendChild(el("span", "fcode", commit.hash));
-    ligne.appendChild(el("span", "fchemin", commit.sujet));
+    // `.fsujet`, pas `.fchemin` (feature-019) : `commit.sujet` est une phrase
+    // écrite par un humain, jamais un chemin — la chasse fixe de `.fchemin`
+    // n'a rien à y faire.
+    ligne.appendChild(el("span", "fsujet", commit.sujet));
     zone.appendChild(ligne);
   });
 }
@@ -536,7 +1262,9 @@ function rendreTimeline(etat) {
   vider(liste);
   const evenements = etat.evenements.slice().reverse();
   if (!evenements.length) {
-    liste.appendChild(el("li", "vide", "journal vide"));
+    liste.appendChild(el("li", "vide",
+      "journal vide — aucun événement observé pour l'instant ; il se "
+      + "remplit dès qu'un agent est invoqué"));
     return;
   }
   evenements.forEach((e) => {
@@ -1078,7 +1806,9 @@ function rendrePilotage() {
     corps.appendChild(note);
   } else if (pilotage.phase === "pret") {
     if (!pilotage.commandes.length) {
-      corps.appendChild(el("p", "vide", "aucune commande déclarée dans [commandes]"));
+      corps.appendChild(el("p", "vide",
+        "aucune commande déclarée — ajoutez-en une sous [commandes] dans la "
+        + "configuration pour activer le pilotage"));
       return;
     }
     corps.appendChild(rendreSelecteurPilotage());
@@ -1448,7 +2178,7 @@ async function rafraichir() {
     rendreAgents(etat.agents);
     rendreSysteme(etat);
     rendreKanban(etat);
-    rendreWorkflows(etat);
+    rendreCycles(etat);
     rendreFichiers(etat);
     rendreTimeline(etat);
     actualiserPilotage(etat);
@@ -1606,6 +2336,148 @@ if (mqSombre) {
 }
 
 rafraichirCommandeTheme();
+
+/* ============================================================ navigation ==
+ * Colonne de navigation à onglets (feature-019, §5/§6) : une section visible
+ * à la fois, `hidden` réel comme SEUL mécanisme de masquage. Même motif
+ * WAI-ARIA que `.bascule-theme` ci-dessus — roving tabindex, les flèches
+ * déplacent le focus ET la sélection — dupliqué plutôt que factorisé : les
+ * deux groupes ont des tailles et des sémantiques différentes (radiogroup à
+ * trois choix mutuellement exclusifs vs tablist à six sections).
+ * ========================================================================= */
+
+const SECTIONS = ["agents", "systeme", "developper", "cycles", "fichiers", "evenements"];
+const CLE_SECTION = "section";
+
+/* RELAIS D'AMORÇAGE, pas un état vivant (revue) : `theme.js` écrit
+ * `data-section` sur `<html>` UNE SEULE FOIS, avant que ce fichier ne
+ * s'exécute, en relisant `localStorage` sous son propre `try/catch` — c'est
+ * ce relais qui évite à `app.js` de relire `localStorage` une seconde fois
+ * juste pour cette valeur. Lu ICI, une seule fois, à l'appel initial
+ * (voir plus bas `appliquerSection(sectionActuelle(), false)`).
+ * `appliquerSection` ne réécrit PLUS cet attribut à chaque navigation
+ * (retiré en revue : app.css n'a aucune règle qui en dépend depuis que la
+ * garde `.section[hidden]` a cessé d'être concurrencée — la réécriture ne
+ * pilotait plus rien, seulement `hidden` et `localStorage` comptent après
+ * le chargement). Ne pas le reprendre pour « tenir l'attribut à jour » :
+ * ce serait remettre en circulation un état qui n'a plus de lecteur. */
+function sectionActuelle() {
+  const racine = document.documentElement;
+  const valeur = racine && racine.getAttribute("data-section");
+  return SECTIONS.indexOf(valeur) !== -1 ? valeur : SECTIONS[0];
+}
+
+/* Lecture ET écriture protégées (feature-019) : `localStorage` peut échouer
+ * (fenêtre privée, données bloquées, quota) — jamais d'exception remontée à
+ * l'appelant. Miroir de `memoriserTheme` ci-dessus. */
+function memoriserSection(slug) {
+  try {
+    localStorage.setItem(CLE_SECTION, slug);
+  } catch (erreur) {
+    // localStorage indisponible : la préférence ne survit pas au
+    // rechargement, la page reste par ailleurs pleinement fonctionnelle.
+  }
+}
+
+/* `deplacerFocus` : false lors de la synchronisation initiale (la page vient
+ * de se charger, rien à annoncer — voler le focus au chargement serait une
+ * régression d'accessibilité) ; true sur toute activation ultérieure
+ * (clic ou clavier), où la spec exige le focus programmatique sur le titre
+ * de la section nouvellement visible. */
+function appliquerSection(slug, deplacerFocus) {
+  if (SECTIONS.indexOf(slug) === -1) slug = SECTIONS[0];
+  // Pas de `racine.setAttribute("data-section", slug)` ici : `data-section`
+  // n'est plus qu'un relais d'amorçage lu une fois par `sectionActuelle()`
+  // (voir son commentaire) — le réécrire à chaque navigation n'a plus aucun
+  // lecteur depuis que la garde `.section[hidden]` a cessé d'être
+  // concurrencée en CSS. `hidden`, ci-dessous, est désormais la SEULE
+  // source de vérité de l'affichage ; `memoriserSection`, plus bas, celle
+  // de la persistance.
+
+  SECTIONS.forEach((s) => {
+    const section = $("section-" + s);
+    const onglet = $("onglet-" + s);
+    if (section) section.hidden = s !== slug;   // condition de sécurité 1 : `hidden`, rien d'autre
+    if (onglet) {
+      const actif = s === slug;
+      onglet.setAttribute("aria-selected", actif ? "true" : "false");
+      onglet.tabIndex = actif ? 0 : -1;
+    }
+  });
+
+  memoriserSection(slug);
+
+  if (deplacerFocus) {
+    const titre = $("titre-section-" + slug);
+    if (titre && titre.focus) titre.focus();
+  }
+}
+
+/* Le focus suit la SECTION, pas l'onglet (§6 : « focus programmatique sur le
+ * titre de la section nouvellement visible », à chaque changement — clic
+ * COMME clavier). Différence assumée avec `.bascule-theme` ci-dessus (qui
+ * ramène le focus sur le bouton) : ici la navigation change de PAGE, pas
+ * seulement de réglage — le motif accessible établi pour un changement de
+ * route est de poser le focus sur le titre de la page arrivée. */
+SECTIONS.forEach((slug, index) => {
+  const onglet = $("onglet-" + slug);
+  if (!onglet) return;
+  onglet.addEventListener("click", () => appliquerSection(slug, true));
+  onglet.addEventListener("keydown", (evenement) => {
+    const touche = evenement.key;
+    let indexSuivant;
+    if (touche === "ArrowRight" || touche === "ArrowDown") {
+      indexSuivant = (index + 1) % SECTIONS.length;
+    } else if (touche === "ArrowLeft" || touche === "ArrowUp") {
+      indexSuivant = (index - 1 + SECTIONS.length) % SECTIONS.length;
+    } else if (touche === "Home") {
+      indexSuivant = 0;
+    } else if (touche === "End") {
+      indexSuivant = SECTIONS.length - 1;
+    } else {
+      return;
+    }
+    evenement.preventDefault();
+    appliquerSection(SECTIONS[indexSuivant], true);
+  });
+});
+
+/* Synchronisation initiale, SANS déplacer le focus (§6) : `theme.js` a pu
+ * poser `data-section` avant le premier rendu (préférence retrouvée dans
+ * `localStorage`) — mais `app.css` n'a AUCUNE règle qui affiche une section
+ * d'après cet attribut (retiré en revue : il entrait en concurrence de
+ * spécificité avec `.section[hidden]{display:none}`, la garde de sécurité,
+ * et pouvait la faire perdre — voir app.css). `hidden` est donc encore à
+ * son état statique du HTML servi à cet instant (seule « agents » visible) ;
+ * cet appel pose le VRAI `hidden` sur chaque section dès que le DOM existe,
+ * sans attendre d'autre événement. Si aucune préférence n'était posée,
+ * `sectionActuelle()` retombe sur « agents » : no-op. */
+appliquerSection(sectionActuelle(), false);
+
+/* ------------------------------------------------ hauteur réelle de .barre
+ * `--hauteur-barre` (app.css) fixe le repli de `.nav-sections` (`position:
+ * sticky; top`) à 62px, la hauteur de `.barre` sur UNE ligne. `.barre` porte
+ * `flex-wrap: wrap` : à une largeur intermédiaire, elle peut passer sur
+ * deux lignes et dépasser 62px — la nav collante se retrouverait alors
+ * SOUS la barre repliée (revue). `ResizeObserver` mesure la hauteur
+ * RÉELLEMENT rendue et corrige la variable en conséquence, dans les deux
+ * sens (une barre qui repasse sur une ligne doit aussi redescendre). Repli
+ * silencieux si l'API est absente (navigateur ancien, ou bac à sable de
+ * test) : la valeur par défaut d'app.css reste en vigueur. */
+(function observerHauteurBarre() {
+  if (typeof ResizeObserver !== "function") return;
+  const barre = $("barre");   // pas de querySelector (convention du module)
+  const racine = document.documentElement;
+  if (!barre || !racine || !racine.style) return;
+  const observateur = new ResizeObserver((entrees) => {
+    const entree = entrees[entrees.length - 1];
+    const hauteur = entree && entree.borderBoxSize && entree.borderBoxSize[0]
+      ? entree.borderBoxSize[0].blockSize
+      : barre.offsetHeight;
+    if (hauteur) racine.style.setProperty("--hauteur-barre", hauteur + "px");
+  });
+  observateur.observe(barre);
+})();
 
 /* Filtrer ne redemande RIEN au serveur : on redessine l'état déjà chargé. Une
  * requête par frappe ferait tourner `git status` et relire 167 fichiers à chaque
