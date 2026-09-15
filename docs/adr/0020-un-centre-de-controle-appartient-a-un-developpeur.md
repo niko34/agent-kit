@@ -150,3 +150,30 @@ contrainte n'était pas dans la spec ; elle y entre par cet ADR.
   pour arbitrer un `NO GO`.
 - **Le canal d'échange interactif** entre un cycle et le tableau de bord : cet
   ADR le simplifie, il ne le conçoit pas.
+
+> **Note (2026-09-15)** : l'audit de sécurité mené pendant `feature-010` (rôle
+> AUDIT, sur l'assemblage complet — pas un diff) a établi que cet ADR est
+> **muet sur le transport**, et qu'un ADR muet n'assume rien. Le jeton décrit
+> en Décision (§2) est un secret **porteur, statique, sans rotation**,
+> présenté en clair dans l'en-tête `Authorization: Bearer` à chaque requête ;
+> `server.py` ne fait tourner aucun TLS. Sur un segment réseau où un tiers
+> peut écouter passivement, ce tiers obtient **exactement** les droits du
+> propriétaire — lecture de toute l'activité de développement, lancement de
+> toute commande déclarée, dépense du budget configuré. Ce n'est **pas** une
+> conséquence assumée par cet ADR : rien dans la Décision ci-dessus ne dit
+> sur quel segment réseau ce trafic est censé circuler.
+>
+> **L'hypothèse manquante, à tenir pour acquise jusqu'à ce qu'une spec la
+> traite explicitement** : le segment réseau entre le navigateur et le
+> serveur est **de confiance** — sinon, la terminaison TLS revient à un
+> intermédiaire **local** (reverse proxy sur la même machine ou le même
+> conteneur), avec `fichier_jeton` déclaré dans ce cas précis, exactement
+> comme le §2 de la Décision le prévoit déjà pour « tout intermédiaire
+> local » (« le jeton reste vérifié même en local, et c'est ce qui protège »).
+> Cet ADR ne conçoit pas ce mécanisme de terminaison, il en nomme ici la
+> nécessité.
+>
+> **Ce que cette note ne touche pas** : l'invariant « un centre de contrôle
+> appartient à un développeur » et le jeton comme barrière de rattachement
+> (§1-2) restent valides sans changement. Le trou concerne le **transport**
+> du secret, pas le modèle de **rattachement** qu'il porte.

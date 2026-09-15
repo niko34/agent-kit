@@ -2,7 +2,7 @@
 - **ID** : feature-010
 - **Slug** : scenario-de-bout-en-bout-avec-echec
 - **Type** : feature
-- **Statut** : todo
+- **Statut** : done
 - **Priorité** : haute
 - **Version cible** : 0.7.0
 - **Dernière mise à jour** : 2026-09-12
@@ -198,18 +198,18 @@ entier.
 - Aucun ADR attendu
 
 ## Critères d'acceptation
-- [ ] Un cycle complet a été mené, avec au moins un échec réel, et le tableau
+- [x] Un cycle complet a été mené, avec au moins un échec réel, et le tableau
       de bord en donne un récit **fidèle** — vérifié en comparant le récit
       affiché au déroulement réellement vécu
-- [ ] Le rebouclage apparaît comme tel, distinct d'un enchaînement normal
+- [x] Le rebouclage apparaît comme tel, distinct d'un enchaînement normal
 - [ ] Le compte d'appels d'outils du récit correspond au compte réel
-- [ ] Les compteurs d'anomalies sont expliqués, chiffres à l'appui
+- [x] Les compteurs d'anomalies sont expliqués, chiffres à l'appui
 - [ ] L'apparence de l'interface est vérifiée contre un attendu écrit, ou ce
       qui reste non vérifié est dit explicitement
-- [ ] Le scénario est rejouable par quelqu'un d'autre à partir de sa seule
+- [x] Le scénario est rejouable par quelqu'un d'autre à partir de sa seule
       description
-- [ ] Suite de tests complète verte, zéro régression
-- [ ] Lint propre, pas de warning nouveau
+- [x] Suite de tests complète verte, zéro régression
+- [x] Lint propre, pas de warning nouveau
 
 ## Plan de test manuel
 1. **Cycle nominal** : mener une spec de `todo/` à `done/` en suivant le
@@ -293,3 +293,152 @@ L'aveuglement était **impossible par construction** : il se construit dans l'en
 - **Un serveur de l'utilisateur tourne sur le port 8788.** Ne pas le tuer, ne pas occuper ce port.
 - **Tout arrêt de processus vise un PID capturé**, jamais un motif : un `pkill -f` a déjà tué le mauvais processus.
 - Le journal réel est **vivant** — il grandit pendant qu'on le mesure. Travailler sur un **instantané figé**.
+
+---
+
+## A2 — Le scénario JOUÉ, relevé du 2026-09-14
+
+**Joué dans le vrai dépôt**, pas dans un clone : les hooks ont émis de vrais
+événements et le tableau de bord de l'utilisateur les a reçus en direct. Le
+scénario suppose un observateur extérieur au cycle ; ici l'agent principal
+**était** le cycle, et l'observation a été faite par l'humain, sur son écran.
+
+### Ce qui a été provoqué, et comment
+
+Spec porteuse : **`bug-005`**, menée de `todo/` à son correctif complet.
+
+L'échec a été planté **dans le code**, jamais dans le journal : une boucle sur
+les octets 128-255 ajoutée à `forme_lisible_chemin()`, remplaçant **tout** octet
+non-ASCII par une étiquette. Mutation réaliste — le raccourci qu'un développeur
+pressé écrit de bonne foi (« échappons tout ce qui n'est pas ASCII »).
+
+Effets, mesurés :
+```
+révision.md → r[0xc3 OCTET NON ASCII][0xa9 OCTET NON ASCII]vision.md
+ESPACE INSÉCABLE → ESPACE INS[0xc3 …][0x89 …]CABLE   (la fonction corrompt
+                                                       ses propres étiquettes)
+shellcheck → 0 warning                                (le lint ne voit rien)
+```
+
+`test-engineer` a été invoqué avec un brief **ordinaire**, sans un mot sur le
+défaut.
+
+### Résultat — la question centrale est répondue
+
+**Le dispositif attrape une faute qu'on lui a cachée.** Sans aucun indice,
+`test-engineer` a rendu **Bloqué**, avec les deux tests rouges, leur sortie
+brute, la cause racine, et cette phrase : *« c'est exactement le correctif naïf
+que la spec écarte explicitement »*. Il a identifié la violation du critère
+d'acceptation n°2 et l'effet de bord sur les étiquettes. Et il a respecté la
+consigne la plus difficile : **rapporter sans corriger**.
+
+**Le rebouclage a été observé, pour la première fois depuis la création du
+module.** Relevé du journal :
+```
+19:57:11  debugger
+20:06:13  test-engineer      ← un autre sous-agent s'intercale
+20:09:43  debugger
+```
+Et **à l'écran** : les deux liserés ambre posés sur `test-engineer` et sur la
+seconde occurrence de `debugger`, avec le bandeau `↻ reboucle`. La zone que
+`feature-002` avait laissée non vérifiée, et que trois étapes avaient traînée,
+est close **par observation** — jamais par déduction.
+
+**Le lint ne protège de rien ici** : `shellcheck` est resté à zéro sur un code
+qui mutilait tous les noms accentués. Seul un test pouvait le voir. C'est la
+justification, a posteriori, de l'insistance de ce dépôt sur la validation par
+mutation.
+
+### ⚠️ Un effet de bord de l'essai en aveugle, à ne pas laisser au journal
+
+Le rapport de `test-engineer` écrit : *« Le développeur annonce 104 cas verts —
+**faux**, vérifié par exécution. »*
+
+**C'était vrai.** Le correctif livré par `debugger` était juste — quatre motifs
+d'octets nommés, précis, `$chemin` jamais modifié. La boucle fautive a été
+ajoutée **par l'agent principal**, délibérément. `test-engineer` ne pouvait pas
+le savoir, et il impute donc au `debugger` une faute qui n'est pas la sienne.
+
+Le journal d'événements gardera cette attribution. Elle est corrigée ici.
+
+### Ce que le cycle a soulevé, et qui n'était pas dans sa spec
+
+**Le récit est fidèle, et illisible.** Constat de l'utilisateur, en regardant son
+propre écran : un maillon sur deux est un `(agent principal)` qui ne dit rien,
+tout a le même poids visuel, la chaîne se replie sur onze lignes sans marque de
+continuation, douze workflows sont dépliés d'un coup, et les reprises sont
+énoncées **à côté** de la chaîne plutôt que dedans.
+
+Ce module a été construit sur des **relevés** — des requêtes sur un journal — et
+jamais sur un écran regardé par quelqu'un qui cherche à comprendre. Chaque
+information ajoutée était juste **individuellement** ; personne n'a jamais posé
+la question « qu'est-ce qu'on lit en premier ? ».
+
+**C'est la meilleure question que ce cycle ait produite**, et elle mérite sa
+propre spec, avec un vrai passage `ux-ui-designer` partant de l'usage réel — pas
+un rattrapage de fin de cycle.
+
+### Deux défauts trouvés en REGARDANT, que les tests n'ont pas vus
+
+1. Le **bandeau de rebouclage** se déclenchait sans condition, alors que la
+   détection `.repris` distinguait correctement. Le harnais mettait les deux cas
+   côte à côte dans sa propre fixture — et **aucune assertion ne portait sur le
+   bandeau**. 34 tests verts, défaut sous les yeux.
+2. Le **libellé** du bandeau énumère des agents que la chaîne ne marque pas.
+   Trouvé par l'utilisateur, sur le tableau de bord réel.
+
+> Un test vérifie ce qu'on a pensé à lui demander. Une image montre le reste.
+
+### Déclaré NON FAIT
+
+- **`A8`, cas limites** : session interrompue en plein cycle, deux sessions
+  simultanées dans le même dépôt, journal d'un collecteur antérieur. Le
+  scénario a répondu à sa question centrale ; ces trois cas sont réels mais
+  n'ont pas été joués. Deux d'entre eux ont été mesurés incidemment
+  (`SessionEnd` sur session courte, session portant deux `SessionStart`).
+- **`A5`/`A7`** : comparaison chiffre à chiffre du compte d'appels d'outils, et
+  suffisance de l'horodatage à la milliseconde pour ordonner deux événements du
+  même tour.
+- **La calibration en aveugle** (`A4`) : perdue, cause et remplacement écrits
+  plus haut.
+
+---
+
+# Clôture — 2026-09-15
+
+## Ce qui reste décoché, et pourquoi
+- **Compte d'appels d'outils comparé chiffre à chiffre** (`A5`/`A7`) et
+  **vérification de l'apparence contre l'attendu écrit sur les dix états**
+  (`B3`) : déclarés non faits par la spec elle-même, section « Déclaré NON
+  FAIT ». Ils ne sont pas oubliés, ils sont assumés.
+- La **lisibilité du récit** — la meilleure question produite par ce cycle —
+  part dans ses propres specs : `feature-016` (liste des cycles en accordéon) et
+  `feature-017` (diagramme de déroulé), avec un vrai passage `ux-ui-designer`
+  partant de l'usage réel, et non un rattrapage de fin de cycle.
+
+## Revue (code-reviewer)
+Verdict après corrections : les quatre points bloquants sont traités — profil
+Copilot régénéré (la CI repasse au vert), documentation livrée, specs mises en
+état, et les trois étiquettes de spec fausses corrigées (un commentaire attribué
+à `bug-005`, cinq assertions nommées `BUG013_*` alors que l'origine est ce
+cycle-ci).
+
+## Audit de sécurité (security-reviewer, rôle AUDIT) — étape `S1`
+Fait sur l'assemblage complet, sur clone jetable. **Aucun constat ne rend
+inatteignable une garde livrée par ce cycle** : le critère d'absorption
+d'ADR-0017 ne s'applique pas, les constats partent en specs.
+
+Trois constats graves, à ouvrir :
+1. **Un anonyme du réseau verrouille le propriétaire**, lecture comprise, sans
+   présenter de jeton. Le freinage est global et consulté avant toute
+   comparaison. Mesuré dans la configuration de déploiement réelle. Prolonge
+   `bug-010`. Le README affirmait le contraire — **corrigé dans ce cycle**,
+   côté documentation seulement.
+2. **Le jeton voyage en clair** et aucun document ne le disait. ADR-0020 était
+   **muet**, et un ADR muet n'assume rien. **Note datée ajoutée dans ce cycle.**
+3. **Deux formes de fuite de mot de passe** de plus dans le collecteur
+   (`mysql -psecretword`, `echo passphrase | sudo -S`). La garde ne tient que
+   par les chiffres ; un mot de passe entièrement en minuscules passe.
+
+## Statut final
+✅ Done — 2026-09-15 — commit à renseigner à la validation

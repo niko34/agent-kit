@@ -98,7 +98,21 @@ Ces règles s'appliquent à **toute** commande de ce scénario, sans exception :
 ```bash
 # Un répertoire de travail, hors du dépôt, nommé pour être reconnaissable.
 DIR=$(mktemp -d /tmp/scenario-e2e-feature010.XXXXXX)
-git clone /root/agent-kit "$DIR/agent-kit"
+SOURCE="${SOURCE:-/root/agent-kit}"
+
+# ⚠️ COPIE DE L'ARBRE DE TRAVAIL (`cp -a`), JAMAIS `git clone`.
+# Constaté par exécution le 2026-09-14 : un `git clone` de ce dépôt rendait le
+# scénario INJOUABLE à partir de sa section 4.5 — le clone ne contenait ni
+# `forme_lisible_chemin`, ni le correctif du bandeau, ni `bug-005` dans
+# `doing/`, parce que ce travail n'était pas encore commité. Un scénario qui
+# ne se rejoue que sur un dépôt propre n'est pas rejouable : il l'est le jour
+# où tout est commité, et pas les autres jours — c'est-à-dire justement ceux
+# où l'on veut s'en servir.
+#
+# Si vous voulez délibérément partir d'un état commité, exportez
+# SOURCE=<chemin d'un clone git à jour> avant de lancer cette procédure, et
+# dites-le dans le relevé : ce n'est pas le même objet qu'on mesure.
+cp -a "$SOURCE" "$DIR/agent-kit"
 cd "$DIR/agent-kit"
 
 # Vérifier qu'il s'agit bien d'un dépôt autonome, distinct de l'original.

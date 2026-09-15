@@ -48,6 +48,12 @@
  *   mention neutre (`.attendu`) le remplace (T8, cas positif ET négatif
  *   dans le même test — le bandeau ne suit plus `wf.reprises` seul, il
  *   suit la détection réelle sur les segments).
+ * - feature-010 §A2 : le bandeau ne NOMME que les agents réellement ancrés par
+ *   `indicesRepris` — un workflow MIXTE (un vrai rebouclage sur `debugger`
+ *   ET une simple réapparition de `frontend-developer` après le seul
+ *   agent principal, dans la MÊME chaîne) affiche le bandeau ambre pour
+ *   `debugger` et la mention neutre pour `frontend-developer`, jamais
+ *   l'inverse ni les deux noms mélangés dans le même bloc.
  *
  * Ce que ce harnais NE peut PAS établir : le rendu visuel réel (couleurs,
  * bordures pointillées), ni le comportement d'un VRAI `EventSource` de
@@ -572,6 +578,58 @@ async function testRebouclageAncreDansLaChaine() {
     "classes : " + negatifs.map((m) => classes(m).join(" ")).join(" | "));
 }
 
+// -- feature-010 §A2 : le bandeau ne doit NOMMER que les agents réellement marqués
+// par `indicesRepris` — jamais recopier `wf.reprises` brut. Cas MIXTE, tel
+// qu'observé sur le tableau de bord réel : un vrai rebouclage (debugger,
+// intercalé par test-engineer) coexiste, dans la MÊME chaîne, avec une
+// simple réapparition après le seul agent principal (frontend-developer).
+// `wf.reprises` cite les deux ; le rendu doit les séparer.
+async function testBandeauNommeSeulementLesAgentsAncres() {
+  const seg = (type, agent, extra) => Object.assign({
+    type, agent, termine: true, etat: "termine", duree_ms: 500, fichiers: [], echecs: 0,
+  }, type === "principal" ? { outils: 1 } : {}, extra || {});
+
+  const workflow = {
+    session_id: "cccc3333", fin_observee_absente: false, cycles_dans_la_session: 1,
+    debut: "2026-09-14T09:00:00.000Z", fin_observee: "2026-09-14T09:20:00.000Z", fichiers: [],
+    segments: [
+      seg("principal", "(agent principal)"),
+      seg("sousagent", "frontend-developer"),
+      seg("principal", "(agent principal)"),
+      seg("sousagent", "frontend-developer"), // repasse APRÈS le seul principal : pas un rebouclage
+      seg("principal", "(agent principal)"),
+      seg("sousagent", "debugger"),
+      seg("principal", "(agent principal)"),
+      seg("sousagent", "test-engineer"),      // s'intercale : le prochain debugger EST un rebouclage
+      seg("principal", "(agent principal)"),
+      seg("sousagent", "debugger"),
+    ],
+    reprises: { "frontend-developer": 2, debugger: 2 }, commandes: {},
+    imbrication_suspectee: false, fermetures_orphelines: 0,
+  };
+
+  const bac = await chargerAvecEtat({ workflows: [workflow] });
+
+  const bandeaux = notesWorkflows(bac, "reboucle");
+  check("F010_un_seul_bandeau_reboucle", bandeaux.length === 1,
+    "obtenu " + bandeaux.length);
+  const texteBandeau = bandeaux.map((b) => b.textContent).join(" | ");
+  check("F010_bandeau_nomme_debugger", texteBandeau.indexOf("debugger ×2") !== -1,
+    "obtenu : " + JSON.stringify(texteBandeau));
+  check("F010_bandeau_ne_nomme_pas_frontend_developer",
+    texteBandeau.indexOf("frontend-developer") === -1,
+    "obtenu : " + JSON.stringify(texteBandeau));
+
+  const attendues = notesWorkflows(bac, "attendu");
+  const texteAttendues = attendues.map((n) => n.textContent).join(" | ");
+  check("F010_mention_neutre_nomme_frontend_developer",
+    texteAttendues.indexOf("frontend-developer ×2") !== -1,
+    "obtenu : " + JSON.stringify(texteAttendues));
+  check("F010_mention_neutre_ne_nomme_pas_debugger",
+    texteAttendues.indexOf("debugger") === -1,
+    "obtenu : " + JSON.stringify(texteAttendues));
+}
+
 // -- T5 : la jauge PEUT annoncer « reconnexion », mais seulement quand un
 // EventSource réel existe et se rompt (source.onerror) -------------------
 async function testReconnexionSeulementSiEventSource() {
@@ -601,6 +659,7 @@ async function main() {
   await testSansCloture();
   await testImbricationDevientOrdreApproximatif();
   await testRebouclageAncreDansLaChaine();
+  await testBandeauNommeSeulementLesAgentsAncres();
   await testReconnexionSeulementSiEventSource();
 
   console.log("\n" + _tests + " cas, " + _echecs.length + " echec(s)");

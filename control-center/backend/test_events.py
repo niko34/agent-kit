@@ -536,6 +536,35 @@ def main():
           "obtenu imbrication_suspectee=%r, etat[0]=%r"
           % (w["imbrication_suspectee"], w["passages"][0]["etat"]))
 
+    # B7 — la borne au seuil exact : le code compare `minutes > seuil`, donc
+    # STRICTEMENT au-delà. Pile au seuil, c'est encore `ETAT_EN_COURS` — c'est
+    # une décision (documentée ici, pas un hasard d'écriture) : la mutation
+    # `>` -> `>=` doit faire échouer ce cas précis.
+    evenements_b7 = [ev(TM(0), "SubagentStart", agent_type="test-engineer", agent_id="a1")]
+    w_pile = un(E.reconstruire(evenements_b7, maintenant=MAINTENANT(36), seuil_abandon_minutes=36))
+    check("test_B7a_pile_au_seuil_reste_en_cours",
+          w_pile["passages"][0]["etat"] == E.ETAT_EN_COURS,
+          "obtenu %r — 36 min d'inactivité pour un seuil de 36 : `>` ne "
+          "déclenche PAS à l'égalité (décision testée, pas hasard)"
+          % w_pile["passages"][0]["etat"])
+    w_juste_apres = un(E.reconstruire(evenements_b7, maintenant=MAINTENANT(37), seuil_abandon_minutes=36))
+    check("test_B7b_une_minute_au_dela_du_seuil_devient_sans_cloture",
+          w_juste_apres["passages"][0]["etat"] == E.ETAT_SANS_CLOTURE,
+          "obtenu %r" % w_juste_apres["passages"][0]["etat"])
+
+    # B8 — `maintenant` fourni SANS seuil déclaré : la garde reste inerte,
+    # au lieu de lever une `TypeError` sur `minutes > None`. La clause
+    # `seuil_abandon_minutes is None` protège ce chemin précis (aucun test
+    # existant ne le sollicitait : `maintenant` était None chaque fois que
+    # le seuil manquait).
+    w = un(E.reconstruire([
+        ev(TM(0), "SubagentStart", agent_type="test-engineer", agent_id="a1"),
+    ], maintenant=MAINTENANT(9999)))  # seuil_abandon_minutes=None (défaut)
+    check("test_B8_maintenant_fourni_sans_seuil_ne_leve_pas_et_reste_en_cours",
+          w["passages"][0]["etat"] == E.ETAT_EN_COURS,
+          "obtenu %r — sans seuil déclaré, `minutes > seuil_abandon_minutes` "
+          "ne doit jamais s'évaluer" % w["passages"][0]["etat"])
+
     # B6 — `evenements_hors_session` : les événements `LancementDemande` /
     # `LancementTermine` (pas de `session_id` connu au moment de l'écriture,
     # cf. `server.py`) sont COMPTÉS, jamais absorbés dans une session

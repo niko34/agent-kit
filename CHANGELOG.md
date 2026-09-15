@@ -7,6 +7,95 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 <!-- Les entrées ci-dessous documentent le KIT lui-même. Au démarrage d'un projet,
      les remplacer par le journal du projet. -->
 
+## [0.9.0] - 2026-09-15
+
+### Outillage
+
+- **`tools/update_kit.sh` : un chemin invisible ne se cache plus derrière un
+  chemin qui lui ressemble trait pour trait.** Un chemin déclaré dans
+  `.kit-paths` mais absent du kit produisait un message d'avertissement qui
+  affichait le chemin tel quel (`echo` brut) : quand ce chemin contenait un
+  caractère **invisible à l'affichage** — un BOM en tête de fichier, une
+  espace insécable au lieu d'une espace ordinaire, un `\r` intérieur —, le
+  message montrait un chemin visuellement identique au fichier réellement
+  présent. L'utilisateur cherchait alors la cause ailleurs. Une ligne de
+  diagnostic supplémentaire est désormais émise sur stderr, **avant** la
+  ligne brute, qui nomme le caractère entre crochets (ex.
+  `[U+00A0 ESPACE INSÉCABLE]`). Le chemin déclaré lui-même n'est **jamais
+  modifié** — le correctif rend visible, il ne corrige pas à la place de
+  l'utilisateur.
+  - Couvre, à la livraison initiale : BOM (U+FEFF), espace insécable
+    (U+00A0), `\r` intérieur, tabulation, contrôles ASCII 0-31 et 0x7F.
+  - **Depuis la revue de code**, six familles de plus : U+200B (espace sans
+    chasse), U+00AD (trait d'union conditionnel), U+2028/U+2029 (séparateurs
+    de ligne/paragraphe), U+3000 (espace idéographique), les onze espaces
+    typographiques U+2000–U+200A, et les contrôles C1 U+0080–U+009F.
+  - Un chemin accentué **légitime** (non-ASCII mais imprimable, ex.
+    `révision.md`) continue de s'afficher tel quel, sans échappement — les
+    deux correctifs naïfs envisagés (`printf '%q'`, `cat -v`) ont été écartés
+    parce qu'ils l'auraient mutilé à l'affichage.
+  - **Pourquoi la forme repérable s'affiche avant la ligne brute** : un
+    chemin peut contenir une séquence ANSI (`\x1b[2J` efface l'écran) —
+    l'annoncer après l'aurait fait disparaître sous ce qu'elle explique.
+
+### Centre de contrôle
+
+- **Un agent tué par le runtime cesse d'être affiché « en cours » pour
+  toujours.** Un agent dont la session est interrompue avant qu'il ait pu
+  émettre son événement de fin (limite de session atteinte, processus tué,
+  machine arrêtée) restait affiché « en cours » indéfiniment — relevé par
+  l'utilisateur, sur son propre tableau de bord, 22 heures après les faits.
+  Un troisième état apparaît désormais à l'écran : `sans_cloture`, additif à
+  `termine`/`en_cours`, rendu en gris pointillé, visuellement distinct des
+  deux autres. Ce n'est ni un succès ni un échec du travail — une fin
+  **sans annonce**, jamais un verdict.
+  - Un passage « en cours » dont **aucun événement** n'est rattaché depuis
+    plus de `[workflows] seuil_abandon_minutes` minutes (défaut **120**,
+    borné `[60, 10080]`) est requalifié `sans_cloture`. Les compteurs
+    d'agents actifs ne le comptent plus comme actif.
+  - **Le seuil ne vient pas de la durée maximale d'un agent** (24 minutes
+    mesurées, 36 retenues en borne de test) mais du **silence légitime** —
+    un `architect` a émis un seul appel d'outil en 127 secondes sans que le
+    cycle soit à l'arrêt. Accuser à tort un agent vivant coûte plus cher
+    qu'afficher trop longtemps un agent mort : on relancerait un travail en
+    cours.
+  - Un agent réellement en cours depuis longtemps n'est jamais requalifié —
+    la garde reste **inerte** tant qu'aucune horloge n'est fournie, et une
+    valeur de seuil non finie (`nan`, `inf`) est rejetée, sans quoi elle
+    désarmerait silencieusement la requalification.
+  - **Trouvé en jouant, pas en relisant** : le scénario de bout en bout de
+    `feature-010`, joué pour de vrai (une vraie spec, un vrai échec planté
+    dans le code, `test-engineer` invoqué sans un mot sur le défaut), a
+    confirmé le dispositif — rebouclage observé et affiché à l'écran pour la
+    première fois depuis la création du module — et révélé deux défauts de
+    plus dans le rendu du récit (bandeau de rebouclage sans condition,
+    libellé énumérant des agents non marqués).
+
+### Documentation
+
+- `docs/adr/0021-etat-sans-cloture-additif-et-seuil-declare.md` : nouvel ADR
+  — l'état `sans_cloture`, additif au contrat existant, et le seuil déclaré
+  en configuration, avec sa justification (silence légitime, pas durée
+  maximale) et la garde `math.isfinite`.
+- Note additive datée (2026-09-15) en pied d'
+  [ADR-0014](docs/adr/0014-bornage-des-cycles-par-marqueur-declare.md) :
+  « `SessionEnd` ne se déclenche jamais » était faux par généralisation —
+  mesuré vrai sur les sessions courtes proprement closes, jamais sur une
+  session longue reprise. La Décision (bornage par marqueur déclaré) reste
+  valide. Corps non modifié.
+- Note additive datée (2026-09-15) en pied d'
+  [ADR-0020](docs/adr/0020-un-centre-de-controle-appartient-a-un-developpeur.md) :
+  l'ADR était muet sur le transport — le jeton circule en clair, sans TLS.
+  L'hypothèse manquante (segment réseau de confiance, sinon terminaison TLS
+  par un intermédiaire local) est désormais écrite. Corps non modifié.
+- `control-center/README.md` : documentation de `[workflows]
+  seuil_abandon_minutes` à côté d'`agents_ouvrants` ; correction d'une
+  affirmation inexacte sur le freinage (`429`) — vraie en lecture, fausse en
+  écriture (défaut ouvert, voir `bug-010`) ; rappel de l'hypothèse de
+  confiance réseau en tête de la section sur le modèle de déploiement.
+
+---
+
 ## [0.8.0] - 2026-09-14
 
 ### Centre de contrôle

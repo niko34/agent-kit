@@ -23,6 +23,16 @@ indépendamment.
 
 ## Le modèle de déploiement (ADR-0020), à lire avant tout le reste
 
+⚠️ **Hypothèse non écrite avant le 2026-09-15, désormais explicite** : le
+segment réseau entre le navigateur et le serveur est supposé **de
+confiance**. Le jeton est un secret statique, présenté en clair dans
+`Authorization: Bearer` ; `server.py` ne fait tourner aucun TLS. Un tiers en
+écoute passive sur ce segment obtient exactement les droits du propriétaire.
+Si l'hypothèse ne tient pas, la terminaison TLS revient à un intermédiaire
+**local** (reverse proxy sur la même machine ou le même conteneur), avec
+`fichier_jeton` déclaré — voir la note du 2026-09-15 en pied d'
+[ADR-0020](../docs/adr/0020-un-centre-de-controle-appartient-a-un-developpeur.md).
+
 > Un centre de contrôle **appartient à un développeur** et pilote une session
 > Claude liée à **son** compte. Où il tourne — portable, conteneur, machine
 > distante — est un choix de déploiement, jamais un changement de nature.
@@ -131,6 +141,22 @@ reconstruire un segment est un tri chronologique, pas une résolution d'arbre.
 > [ADR-0014](../docs/adr/0014-bornage-des-cycles-par-marqueur-declare.md), qui
 > le supersède sur ce seul point. Le graphe reste plat : ADR-0002 n'est pas
 > remis en cause sur l'absence de `Task` et le tri chronologique.
+
+> ⚠️ **Un troisième état de passage, additif : `sans_cloture`.** Un passage
+> sans `SubagentStop` — agent tué par le runtime, session interrompue — restait
+> affiché « en cours » indéfiniment (`bug-013`, relevé par l'utilisateur, 22 h
+> après les faits, sur son propre tableau de bord). `reconstruire()`
+> requalifie désormais un passage ouvert sans **aucun** événement rattaché
+> depuis `[workflows] seuil_abandon_minutes` minutes (défaut **120**, borné
+> `[60, 10080]`) en `sans_cloture` — un troisième état, additif à
+> `termine`/`en_cours`, qui ne porte aucun verdict sur le travail. **Pourquoi
+> 120, et pas la durée maximale mesurée (24 min, 36 retenues en borne de
+> test)** : le seuil ne protège pas contre un cycle long, il protège contre un
+> **silence légitime** à l'intérieur d'un passage vivant — un `architect` a
+> émis un seul appel d'outil en 127 secondes. Accuser à tort un agent vivant
+> coûte plus cher qu'afficher trop longtemps un agent mort : on relancerait un
+> travail déjà en cours. Voir
+> [ADR-0021](../docs/adr/0021-etat-sans-cloture-additif-et-seuil-declare.md).
 
 ### Ce que le collecteur ne fait jamais
 
@@ -458,9 +484,20 @@ secret.
     autorisé » de « le flux temps réel peut-il s'authentifier » —
     `EventSource` ne pouvant porter aucun en-tête (`web/app.js`, `modeAuth`).
 - **`Content-Security-Policy: frame-ancestors 'none'`** est posé sur `/`.
-- Le freinage (`429`) ne compte **que** les jetons **présents et faux** —
-  une requête distante sans jeton du tout ne l'alimente pas, pour ne pas
-  aggraver le périmètre déjà connu de `bug-010`.
+- **En lecture** (`GET`, `_autorisation_lecture`), le freinage (`429`) ne
+  compte **que** les jetons **présents et faux** — une requête distante sans
+  jeton du tout ne l'alimente pas, pour ne pas aggraver le périmètre déjà
+  connu de `bug-010`.
+  ⚠️ **Faux en écriture** (`POST`, `do_POST`) : `enregistrer_echec()` y est
+  appelé que le jeton soit absent ou faux (`server.py:924-925`), sans la
+  garde `if presente:` que porte la branche de lecture. Établi par exécution
+  pendant l'audit de sécurité de `feature-010` : 20 `POST` distants sans
+  en-tête, puis une requête depuis `127.0.0.1` munie du jeton valide → `429`,
+  aussi bien en lecture qu'en écriture. Le test qui garde cette propriété
+  (`test_server_bug012.py:277-297`, cas `T7`) ne couvre que la lecture — un
+  cas T7 symétrique côté écriture n'existe pas. **Non corrigé ici** : le
+  comportement relève de `bug-010`, déjà ouvert ; cette ligne documentait un
+  invariant plus large que ce que le code garantit réellement.
 
 **Ce que ce correctif a mis au jour**, consigné parce que ça ne se relit pas
 dans le code : quatre tests de la suite précédente certifiaient l'ancien

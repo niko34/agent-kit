@@ -131,3 +131,78 @@ par ce canal ; c'est ce qui a forcé le repli sur polling décrit dans
 reste ouvert sans jeton, comme prévu par ADR-0020. Ce que `bug-012` **ne
 règle pas** : la limite de connexions SSE simultanées (fin du point 2 et
 correctif attendu ci-dessus) — toujours absente.
+
+---
+
+## Addendum du 2026-09-15 — établi par EXÉCUTION, et plus grave que le constat d'origine
+
+Le symptôme ci-dessus était relevé **par lecture du code**, non reproduit. Il l'est
+désormais, par l'audit de sécurité en rôle AUDIT (étape `S1` de `feature-010`), sur
+un clone jetable écoutant `0.0.0.0`, frappé depuis `127.0.0.1` puis depuis l'adresse
+du réseau local.
+
+### Ce qui a été mesuré
+
+Régime **« jeton valide déclaré, `hote = 0.0.0.0` »** — c'est-à-dire la configuration
+de déploiement réellement utilisée :
+
+```
+20 × POST /api/lancer distants, SANS aucun en-tête Authorization  →  401 puis 429
+puis, depuis 127.0.0.1 AVEC le jeton valide :
+    GET  /api/etat       → 429
+    POST /api/lancer     → 429
+    GET  /api/lancement  → 429
+```
+
+**Un tiers sans aucune connaissance verrouille le propriétaire hors de son propre
+tableau de bord, lecture comprise.** Fenêtre glissante de 60 s à 20 échecs : une
+requête toutes les trois secondes suffit à tenir le verrou indéfiniment. Coût nul
+pour l'attaquant, et invisible pour le propriétaire autrement que par un `429`
+qu'il n'a pas provoqué.
+
+### La cause exacte
+
+`do_POST` appelle `enregistrer_echec()` **que le jeton soit absent ou faux**
+(`server.py:924-927`), sans la garde `if presente:` que porte la branche de lecture
+(`server.py:733-736`). Le compteur est **global** (`server.py:482`, `:492-494`), et
+`frein_actif()` est consulté **avant** toute comparaison (`server.py:729-731`,
+`:921-923`) : un jeton valide ne peut donc pas prouver son porteur une fois le frein
+déclenché.
+
+### Le point d'assemblage à retenir
+
+En régime « aucun jeton déclaré », le `POST` distant rend `403` **avant** de compter :
+25 tentatives n'ont rien déclenché. **Le verrouillage n'existe que dans le déploiement
+qu'ADR-0020 prescrit précisément pour sortir de la machine.** La garde et le trou
+arrivent ensemble.
+
+### Une sentinelle qui déclarait acquis ce qu'elle devait surveiller
+
+`control-center/README.md` affirmait que le freinage ne compte que les jetons
+**présents et faux**. Vrai en lecture, faux en écriture. Le test qui garde cette
+propriété (`test_server_bug012.py:277-297`, cas `T7`) **ne couvre que la lecture** :
+la propriété était documentée comme globale, testée sur une moitié, absente de
+l'autre. La documentation a été corrigée le 2026-09-15 ; **le code, non** — c'est
+l'objet de cette spec.
+
+### Correctif attendu, complété
+
+1. **Compteur par adresse source**, avec une borne sur le nombre d'adresses suivies
+   (sinon le suivi devient lui-même un vecteur d'épuisement mémoire).
+2. Le compteur de la **boucle locale n'est jamais alimenté par une adresse distante**.
+3. **Décision écrite** sur les jetons absents en `do_POST` : soit aligner sur la règle
+   documentée (ne compter que les jetons présents), soit assumer l'écart et le dire.
+4. `401` **uniforme** sur `do_POST` distant : aujourd'hui `403` et `401` distinguent
+   les régimes et renseignent un anonyme sur la présence d'un tableau de bord ouvert
+   en local.
+
+### Critères d'acceptation ajoutés
+
+- [ ] 20 échecs distants consécutifs, puis le **propriétaire local muni du jeton
+      valide obtient 200** en lecture et 202 en écriture — le test qui manque
+      aujourd'hui
+- [ ] Le jumeau de `T7` existe **côté écriture**, symétrique de celui de la lecture
+- [ ] Le nombre d'adresses suivies est borné, et la borne est déclarée, jamais devinée
+- [ ] Un anonyme distant ne peut plus distinguer « jeton déclaré » de « aucun jeton
+      déclaré » par le seul code de réponse
+

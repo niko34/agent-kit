@@ -1319,6 +1319,182 @@ class NomsCitesTest(unittest.TestCase):
         self.assertEqual(bloc_simulation, bloc_reel)
 
 
+class CaracteresInvisiblesTest(unittest.TestCase):
+    """bug-005 : `echo "... : $chemin"` affichait un chemin déclaré ABSENT
+    en injectant `$chemin` BRUT — un octet invisible à l'affichage (BOM,
+    espace insécable U+00A0, `\\r` INTÉRIEUR, jamais retiré par le trim de
+    feature-012 qui ne coupe que le `\\r` TERMINAL) rendait ce chemin
+    visuellement IDENTIQUE au fichier réellement présent dans le kit.
+
+    ⚠️ RÉGRESSION, pas garde-fou : chaque cas est vu ÉCHOUER sur le code
+    d'avant le fix — la ligne de diagnostic supplémentaire est ABSENTE, et
+    le chemin déclaré ressort visuellement indiscernable du chemin réel
+    (`GUI\xa0DE.md` affiché comme `GUI DE.md`). Vérifié par exécution
+    directe de `tools/update_kit.sh` au commit `375be53` (avant ce lot).
+
+    Non-régression couverte séparément : un chemin ACCENTUÉ (non-ASCII mais
+    imprimable, ADR-0013 / `NomsAccentuesTest` / `NomsCitesTest`) ne
+    correspond à AUCUN motif détecté ici et ne doit JAMAIS déclencher la
+    ligne de diagnostic ajoutée par ce lot.
+    """
+
+    def setUp(self) -> None:
+        self.contexte = fabriquer_kit_et_projet()
+        self.addCleanup(self.contexte.fermer)
+
+    def _diagnostic_avec_chemin_valide_a_cote(
+        self, chemin_suspect: str, *, ligne_brute_attendue: str | None = None
+    ) -> str:
+        """Déclare `GUIDE.md` (présent côté kit) ET `chemin_suspect` (absent),
+        même schéma que `test_chemin_absent_du_kit_nomme_avec_un_chemin_valide_a_cote`
+        : la présence d'un chemin valide prouve que la synchronisation
+        continue malgré le chemin suspect, et isole la sortie propre à ce
+        dernier.
+
+        `ligne_brute_attendue` : par défaut, `chemin_suspect` lui-même — SAUF
+        pour `\\r`, où `subprocess.run(text=True)` applique la traduction
+        universelle des fins de ligne de Python (`\\r` → `\\n`) AVANT que le
+        test ne voie la chaîne capturée. Ce n'est pas le correctif qui
+        mutile le chemin (`echo` du script continue de l'émettre brut, aucun
+        octet perdu — voir la reproduction manuelle de la spec), c'est un
+        artefact du harnais de capture ; le test le rend explicite plutôt
+        que de le laisser masquer une régression future."""
+        if ligne_brute_attendue is None:
+            ligne_brute_attendue = chemin_suspect
+        self.contexte.committer_dans_kit("GUIDE.md", "contenu du kit\n")
+        self.contexte.ecrire_kit_paths(["GUIDE.md", chemin_suspect])
+
+        resultat = self.contexte.executer_update_kit("--dry-run")
+
+        affirmer_seule_garde(self, resultat, None)
+        self.assertEqual(0, resultat.returncode)
+        sortie = resultat.stdout + resultat.stderr
+        self.assertIn("À CRÉER", sortie)
+        self.assertIn("GUIDE.md", sortie)
+        # Le chemin déclaré ressort BRUT sur la première ligne — jamais
+        # mutilé : c'est la non-régression centrale de ce correctif.
+        self.assertIn(
+            f"Déclaré dans .kit-paths mais absent de kit/main : {ligne_brute_attendue}",
+            sortie,
+        )
+        return sortie
+
+    def test_espace_insecable_rendue_visible_et_nommee(self) -> None:
+        chemin_suspect = "GUI DE.md"  # U+00A0, espace insécable
+
+        sortie = self._diagnostic_avec_chemin_valide_a_cote(chemin_suspect)
+
+        self.assertIn(
+            "forme repérable : GUI[U+00A0 ESPACE INSÉCABLE]DE.md", sortie
+        )
+
+    def test_retour_chariot_interieur_rendu_visible_et_nomme(self) -> None:
+        chemin_suspect = "GUI\rDE.md"  # \r INTÉRIEUR, jamais en fin de ligne
+
+        sortie = self._diagnostic_avec_chemin_valide_a_cote(
+            chemin_suspect, ligne_brute_attendue=chemin_suspect.replace("\r", "\n")
+        )
+
+        self.assertIn(
+            "forme repérable : GUI[\\r RETOUR CHARIOT]DE.md", sortie
+        )
+
+    def test_bom_rendu_visible_et_nomme(self) -> None:
+        chemin_suspect = "GUI﻿DE.md"  # U+FEFF, marqueur d'ordre des octets
+
+        sortie = self._diagnostic_avec_chemin_valide_a_cote(chemin_suspect)
+
+        self.assertIn("forme repérable : GUI[U+FEFF BOM]DE.md", sortie)
+
+    def test_espace_sans_chasse_rendue_visible_et_nommee(self) -> None:
+        """U+200B : strictement invisible, le cas d'école du bug. Laissé
+        passer en silence par la première livraison — trouvé en revue le
+        2026-09-15, vu échouer avant correctif."""
+        sortie = self._diagnostic_avec_chemin_valide_a_cote("GUI\u200bDE.md")
+
+        self.assertIn(
+            "forme repérable : GUI[U+200B ESPACE SANS CHASSE]DE.md", sortie
+        )
+
+    def test_espace_typographique_rendue_visible_et_nommee(self) -> None:
+        """U+2000 : rendue comme une espace ordinaire par la plupart des
+        terminaux — mot pour mot le symptôme que la spec décrit pour U+00A0.
+        Onze caractères de U+2000 à U+200A partagent ce défaut."""
+        sortie = self._diagnostic_avec_chemin_valide_a_cote("GUI\u2000DE.md")
+
+        self.assertIn(
+            "forme repérable : GUI[U+2000 ESPACE TYPOGRAPHIQUE]DE.md", sortie
+        )
+
+    def test_espace_ideographique_rendue_visible_et_nommee(self) -> None:
+        sortie = self._diagnostic_avec_chemin_valide_a_cote("GUI\u3000DE.md")
+
+        self.assertIn(
+            "forme repérable : GUI[U+3000 ESPACE IDÉOGRAPHIQUE]DE.md", sortie
+        )
+
+    def test_controle_c1_rendu_visible_et_nomme(self) -> None:
+        """U+0085 (NEL) est un caractère de CONTRÔLE, terme employé par le
+        correctif attendu de la spec — la plage ASCII 0-31 était traitée, la
+        plage C1 U+0080–U+009F ne l'était pas."""
+        sortie = self._diagnostic_avec_chemin_valide_a_cote("GUI\u0085DE.md")
+
+        self.assertIn(
+            "forme repérable : GUI[U+0085 OCTET DE CONTRÔLE C1]DE.md", sortie
+        )
+
+    def test_trait_union_conditionnel_rendu_visible_et_nomme(self) -> None:
+        sortie = self._diagnostic_avec_chemin_valide_a_cote("GUI\u00adDE.md")
+
+        self.assertIn(
+            "forme repérable : GUI[U+00AD TRAIT D UNION CONDITIONNEL]DE.md",
+            sortie,
+        )
+
+    def test_separateur_de_ligne_rendu_visible_et_nomme(self) -> None:
+        sortie = self._diagnostic_avec_chemin_valide_a_cote("GUI\u2028DE.md")
+
+        self.assertIn(
+            "forme repérable : GUI[U+2028 SÉPARATEUR DE LIGNE]DE.md", sortie
+        )
+
+    def test_sequence_ansi_la_forme_reperable_precede_la_ligne_brute(self) -> None:
+        """⚠️ Un chemin contenant `\x1b[2J` EFFACE l'écran quand la ligne
+        brute l'émet. Annoncée après, l'explication serait effacée par ce
+        qu'elle explique — un diagnostic qui se supprime lui-même, soit
+        exactement la classe de défaut que bug-005 existe pour fermer.
+
+        Ce test porte sur l'ORDRE, pas sur le contenu : il meurt si on
+        remet la ligne brute en premier."""
+        chemin_suspect = "GUI\x1b[2JDE.md"
+
+        sortie = self._diagnostic_avec_chemin_valide_a_cote(chemin_suspect)
+
+        position_forme = sortie.index("forme repérable :")
+        position_brute = sortie.index(
+            f"Déclaré dans .kit-paths mais absent de kit/main : {chemin_suspect}"
+        )
+        self.assertLess(
+            position_forme,
+            position_brute,
+            "la forme repérable doit précéder la ligne brute, sinon la "
+            "séquence ANSI efface l'explication avant qu'elle ne s'affiche",
+        )
+        self.assertIn("[0x1b OCTET DE CONTRÔLE]", sortie)
+
+    def test_nom_accentue_absent_aucune_ligne_de_diagnostic_ajoutee(self) -> None:
+        """Non-régression ADR-0013 : un chemin accentué ABSENT du kit reste
+        nommé mot pour mot, SANS la ligne « caractère invisible » neuve —
+        un octet non-ASCII légitime ne doit jamais être confondu avec un
+        octet invisible."""
+        chemin_suspect = ".claude/agents/révision-fantôme.md"
+
+        sortie = self._diagnostic_avec_chemin_valide_a_cote(chemin_suspect)
+
+        self.assertNotIn("caractère invisible", sortie)
+        self.assertNotIn("forme repérable", sortie)
+
+
 class RepertoireEnTraversTest(unittest.TestCase):
     """bug-009 : un RÉPERTOIRE SUIVI occupant la place d'un FICHIER gelé
     réussit `git ls-files --error-unmatch` (suivi dès qu'il contient au

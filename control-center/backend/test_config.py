@@ -20,6 +20,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config as C  # noqa: E402
+import events as E  # noqa: E402
 
 _echecs = []
 _tests = 0
@@ -204,6 +205,51 @@ affiches = -3
               "un booléen est un `int` en Python — piège explicitement écarté, "
               "comme pour `workflows_affiches()` ; obtenu %r" % c.seuil_abandon_minutes())
 
+        # --- audit (rôle AUDIT, post bug-013) : `nan`/`inf`/`-inf` sont des
+        # littéraux TOML valides. Une comparaison avec `nan` est TOUJOURS
+        # fausse : sans contrôle de finitude explicite, `nan` traverserait la
+        # borne [60, 10080] sans jamais la déclencher, et la requalification
+        # de `events.py` (`minutes > seuil`) ne se produirait plus JAMAIS —
+        # la garde de bug-013 resterait déclarée, mais inatteignable.
+        for toml, nom in (
+            ('[workflows]\nseuil_abandon_minutes = nan\n', "test_seuil_abandon_nan_retombe_sur_le_defaut"),
+            ('[workflows]\nseuil_abandon_minutes = inf\n', "test_seuil_abandon_inf_retombe_sur_le_defaut"),
+            ('[workflows]\nseuil_abandon_minutes = -inf\n', "test_seuil_abandon_moins_inf_retombe_sur_le_defaut"),
+        ):
+            c = C.charger(chemin=ecrire(tmp, toml), racine_projet=tmp)
+            check(nom, c.seuil_abandon_minutes() == 120,
+                  "une valeur non finie ne compare jamais vrai avec les bornes ; "
+                  "obtenu %r" % c.seuil_abandon_minutes())
+
+        # --- le test qui compte : un seuil `nan` déclaré en configuration ne
+        # doit PAS désarmer la garde de bug-013. `Config.seuil_abandon_minutes()`
+        # doit rendre le défaut (120), qu'`events.reconstruire()` peut alors
+        # comparer normalement — l'agent mort depuis longtemps reste
+        # requalifié `sans_cloture`. Sans le contrôle de finitude, ce test
+        # échoue car `nan` remonterait tel quel jusqu'à `events.py`.
+        c = C.charger(chemin=ecrire(tmp, '[workflows]\nseuil_abandon_minutes = nan\n'),
+                      racine_projet=tmp)
+        seuil_resolu = c.seuil_abandon_minutes()
+        import datetime as _dt
+
+        def _st(iso):
+            return _dt.datetime.strptime(iso, "%Y-%m-%dT%H:%M:%S.%fZ").utctimetuple()
+
+        # agent mort depuis SIX ANS (2020 -> "maintenant" fixé en 2026) : le cas
+        # le plus extrême possible, pour qu'aucune marge d'arrondi ne masque un
+        # défaut de comparaison.
+        evenement = {"ts": "2020-01-01T00:00:00.000Z", "hook_event_name": "SubagentStart",
+                     "session_id": "s1", "agent_type": "test-engineer", "agent_id": "a1",
+                     "runtime": "claude-code"}
+        workflows = E.reconstruire([evenement], maintenant=_st("2026-01-01T00:00:00.000Z"),
+                                    seuil_abandon_minutes=seuil_resolu)
+        w = workflows[0]
+        check("test_seuil_nan_la_garde_bug013_reste_atteignable",
+              w["passages"][0]["etat"] == E.ETAT_SANS_CLOTURE,
+              "avec seuil_abandon_minutes=nan déclaré, le défaut résolu (%r) "
+              "doit encore requalifier un agent mort depuis SIX ANS ; obtenu %r"
+              % (seuil_resolu, w["passages"][0]["etat"]))
+
         # --- feature-007 lot 1 : les accesseurs des trois garde-fous, ENFIN lus --
         c = C.charger(chemin=os.path.join(tmp, "absent4.toml"), racine_projet=tmp)
         check("test_fichier_jeton_absent_rend_none",
@@ -244,6 +290,20 @@ affiches = -3
             check(nom, c.budget_max_usd() == 5.0,
                   "un plafond à 0 ou négatif interdirait tout lancement SANS "
                   "le dire clairement ; obtenu %r" % c.budget_max_usd())
+
+        # --- audit (rôle AUDIT, post bug-013) : `budget_max_usd` n'a AUCUNE
+        # borne haute ; `inf <= 0` est faux comme `nan <= 0`, donc les deux
+        # traverseraient la seule comparaison existante et seraient transmis
+        # tels quels à `--max-budget-usd`.
+        for toml, nom in (
+            ('[garde_fous]\nbudget_max_usd = nan\n', "test_budget_nan_retombe_sur_le_defaut"),
+            ('[garde_fous]\nbudget_max_usd = inf\n', "test_budget_inf_retombe_sur_le_defaut"),
+            ('[garde_fous]\nbudget_max_usd = -inf\n', "test_budget_moins_inf_retombe_sur_le_defaut"),
+        ):
+            c = C.charger(chemin=ecrire(tmp, toml), racine_projet=tmp)
+            check(nom, c.budget_max_usd() == 5.0,
+                  "une valeur non finie ne doit jamais atteindre "
+                  "--max-budget-usd ; obtenu %r" % c.budget_max_usd())
 
         # --- ecrivains_simultanes : borné entier >= 1 ---------------------------
         c = C.charger(chemin=ecrire(tmp, "[garde_fous]\necrivains_simultanes = 3\n"),

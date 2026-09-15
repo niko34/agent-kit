@@ -28,6 +28,7 @@ une configuration utilisable. L'absence de configuration n'est pas une erreur,
 c'est un projet qui n'a rien de particulier à déclarer.
 """
 
+import math
 import os
 
 try:
@@ -186,10 +187,17 @@ class Config(dict):
         aberrante ne doit pas faire planter la reconstruction, ni accuser à
         tort un agent vivant (borne basse) ni laisser un abandon invisible
         pour toujours (borne haute) — on retombe alors sur le défaut.
+
+        ⚠️ `nan` n'est ni `< 60` ni `> 10080` : toute comparaison avec `nan`
+        est fausse, donc la borne le laisserait passer et la requalification
+        de `events.py` (`minutes > seuil`) ne se déclencherait plus jamais.
+        `math.isfinite` rejette `nan` ET `inf`/`-inf` avant toute comparaison.
         """
         defaut = _DEFAUTS["workflows"]["seuil_abandon_minutes"]
         brut = self.section("workflows").get("seuil_abandon_minutes", defaut)
         if isinstance(brut, bool) or not isinstance(brut, (int, float)):
+            return defaut
+        if not math.isfinite(brut):
             return defaut
         if brut < 60 or brut > 10080:
             return defaut
@@ -213,10 +221,18 @@ class Config(dict):
     def budget_max_usd(self):
         """Plafond de dépense, strictement positif. Retombe sur le défaut si
         absent, du mauvais type, ou négatif/nul — un plafond à 0 ou négatif
-        interdirait tout lancement sans le dire clairement, silencieusement."""
+        interdirait tout lancement sans le dire clairement, silencieusement.
+
+        ⚠️ `nan <= 0` est faux et `inf <= 0` aussi : sans un contrôle de
+        finitude explicite, les deux traversent la borne et `inf`/`nan`
+        seraient transmis tels quels à `--max-budget-usd`. `math.isfinite`
+        les rejette avant toute comparaison.
+        """
         defaut = _DEFAUTS["garde_fous"]["budget_max_usd"]
         brut = self.section("garde_fous").get("budget_max_usd", defaut)
         if isinstance(brut, bool) or not isinstance(brut, (int, float)):
+            return defaut
+        if not math.isfinite(brut):
             return defaut
         if brut <= 0:
             return defaut

@@ -243,6 +243,93 @@ git fetch "$DISTANT" "$BRANCHE" --quiet || {
   exit 1
 }
 
+# ── Rendre visible un octet invisible dans un chemin déclaré (bug-005) ─────
+# `$chemin` peut contenir un octet qui ne s'affiche PAS sur un terminal : un
+# BOM (U+FEFF), une espace insécable (U+00A0 — rendue INDISCERNABLE d'une
+# espace ASCII), un `\r` INTÉRIEUR (jamais en fin de ligne : le trim plus
+# haut ne retire que le `\r` TERMINAL, cf. ADR-0015 — un `\r` au milieu du
+# chemin lui survit), une tabulation ou tout autre octet de contrôle ASCII.
+# Sans traitement, le message plus bas nommerait un chemin visuellement
+# IDENTIQUE au fichier réellement présent — constaté pendant l'audit
+# sécurité de feature-012 (voir la spec bug-005).
+#
+# Construit une SECONDE chaîne, réservée à l'affichage, en remplaçant
+# UNIQUEMENT les motifs d'octets ci-dessus par un jeton nommé entre
+# crochets, EN PLACE — jamais `$chemin` lui-même, qui reste transmis intact
+# au reste du script (hors périmètre de ce correctif : aucune normalisation
+# du chemin, voir « Hors périmètre » de la spec). Un octet non-ASCII qui ne
+# correspond à AUCUN de ces motifs précis — un chemin accentué, ADR-0013 —
+# ne matche rien ci-dessous et ressort donc INCHANGÉ : vérifié par exécution
+# (tests/test_update_kit.py::CaracteresInvisiblesTest, non-régression sur
+# NomsAccentuesTest/NomsCitesTest).
+forme_lisible_chemin() {
+  local chemin="$1" forme octet_nbsp octet_bom octet_controle octet_brut etiquette octet_del
+  forme="$chemin"
+  octet_nbsp=$'\xc2\xa0'
+  octet_bom=$'\xef\xbb\xbf'
+  forme="${forme//$octet_bom/[U+FEFF BOM]}"
+  forme="${forme//$octet_nbsp/[U+00A0 ESPACE INSÉCABLE]}"
+  forme="${forme//$'\r'/[\\r RETOUR CHARIOT]}"
+  forme="${forme//$'\t'/[\\t TABULATION]}"
+  octet_controle=0
+  while [ "$octet_controle" -le 31 ]; do
+    case "$octet_controle" in
+      9 | 13) ;; # \t et \r déjà nommés ci-dessus
+      *)
+        printf -v octet_brut '%b' "\\$(printf '%03o' "$octet_controle")"
+        etiquette="$(printf '[0x%02x OCTET DE CONTRÔLE]' "$octet_controle")"
+        forme="${forme//$octet_brut/$etiquette}"
+        ;;
+    esac
+    octet_controle=$((octet_controle + 1))
+  done
+  printf -v octet_del '%b' '\177'
+  forme="${forme//$octet_del/[0x7f OCTET DE CONTRÔLE]}"
+  # Invisibles hors ASCII. Chacun est une séquence UTF-8 COMPLÈTE, donc sûre :
+  # en UTF-8 un octet de tête (C2, E2, E3…) ne peut JAMAIS apparaître comme
+  # octet de continuation d'un autre caractère (les continuations valent
+  # 0x80-0xBF). Une séquence nommée ne peut donc pas couper `révision.md` en
+  # deux, contrairement à la boucle 128-255 interdite plus bas. Vérifié par
+  # exécution (NomsAccentuesTest, cyrillique, émoji).
+  forme="${forme//$'\xe2\x80\x8b'/[U+200B ESPACE SANS CHASSE]}"
+  forme="${forme//$'\xc2\xad'/[U+00AD TRAIT D UNION CONDITIONNEL]}"
+  forme="${forme//$'\xe2\x80\xa8'/[U+2028 SÉPARATEUR DE LIGNE]}"
+  forme="${forme//$'\xe2\x80\xa9'/[U+2029 SÉPARATEUR DE PARAGRAPHE]}"
+  forme="${forme//$'\xe3\x80\x80'/[U+3000 ESPACE IDÉOGRAPHIQUE]}"
+  # U+2000 à U+200A : onze espaces typographiques, toutes rendues comme une
+  # espace ordinaire par la plupart des terminaux — exactement le symptôme
+  # décrit par la spec pour U+00A0.
+  octet_controle=0
+  while [ "$octet_controle" -le 10 ]; do
+    printf -v octet_brut '%b' "\342\200\\$(printf '%03o' $((0x80 + octet_controle)))"
+    printf -v etiquette '[U+%04X ESPACE TYPOGRAPHIQUE]' $((0x2000 + octet_controle))
+    forme="${forme//$octet_brut/$etiquette}"
+    octet_controle=$((octet_controle + 1))
+  done
+  # Contrôles C1, U+0080 à U+009F — dont NEL (U+0085), qui est un caractère
+  # de contrôle au même titre que ceux de la plage ASCII traitée plus haut.
+  octet_controle=128
+  while [ "$octet_controle" -le 159 ]; do
+    printf -v octet_brut '%b' "\302\\$(printf '%03o' $octet_controle)"
+    printf -v etiquette '[U+%04X OCTET DE CONTRÔLE C1]' "$octet_controle"
+    forme="${forme//$octet_brut/$etiquette}"
+    octet_controle=$((octet_controle + 1))
+  done
+  # ⚠️ NE PAS boucler sur 128-255 pour « tout nommer par sécurité ». Ce
+  # raccourci paraît prudent et il est faux à deux titres, constatés par
+  # exécution le 2026-09-14 pendant le scénario de bout en bout de
+  # feature-010 :
+  #   1. il MUTILE les octets UTF-8 légitimes — `révision.md` devient
+  #      `r[0xc3 …][0xa9 …]vision.md`, soit la régression exacte que bug-003
+  #      a fermée ;
+  #   2. il opère sur `forme` DÉJÀ substituée, donc il corrompt les étiquettes
+  #      de cette fonction elle-même : « ESPACE INSÉCABLE » ressort
+  #      « ESPACE INS[0xc3 …][0x89 …]CABLE ».
+  # Les tests attrapent les deux (shellcheck, lui, ne voit rien) — mais un
+  # test dit QUE c'est faux, pas POURQUOI on est tenté de l'écrire.
+  printf '%s' "$forme"
+}
+
 # Ne garder que les chemins réellement présents côté kit. Lecture ligne à
 # ligne (jamais `for chemin in $CHEMINS` : le word-splitting par défaut
 # découpait un chemin contenant une espace). `presents` est un tableau
@@ -257,6 +344,18 @@ while IFS= read -r chemin; do
     # défaut, un chemin absent du kit est une situation normale (un projet
     # peut ne pas avoir encore reçu tel fichier récent) — le nommer là
     # produirait un avertissement à chaque synchronisation, pour rien.
+    forme_lisible="$(forme_lisible_chemin "$chemin")"
+    if [ "$forme_lisible" != "$chemin" ]; then
+      # bug-005 : au moins un octet invisible détecté dans le chemin déclaré.
+      # ⚠️ La forme repérable s'affiche AVANT la ligne brute, jamais après.
+      # Un chemin peut contenir une séquence ANSI — `\x1b[2J` efface l'écran —
+      # et la ligne brute EXÉCUTE cette séquence sur le terminal : annoncée
+      # ensuite, l'explication serait effacée par ce qu'elle explique.
+      # Constaté par exécution le 2026-09-15 (revue de bug-005).
+      echo "⚠️  Un chemin déclaré dans .kit-paths contient un caractère invisible" >&2
+      echo "   forme repérable : $forme_lisible" >&2
+      echo "   (la ligne suivante le montre brut, tel que déclaré)" >&2
+    fi
     echo "⚠️  Déclaré dans .kit-paths mais absent de $DISTANT/$BRANCHE : $chemin" >&2
   fi
 done <<<"$CHEMINS"

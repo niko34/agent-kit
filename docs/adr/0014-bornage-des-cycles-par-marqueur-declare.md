@@ -191,3 +191,38 @@ qu'ADR-0002 avait, sans le vouloir, laissé s'installer.
   `[workflows]`.
 - Spec : `specs/features/doing/bug-004-plusieurs-cycles-dans-un-seul-workflow.md`.
 - ADR superseded (sur ce point précis) : [ADR-0002](0002-graphe-execution-plat.md).
+
+> **Note (2026-09-15)** : l'affirmation « `SessionEnd` ne se déclenche
+> jamais » (Contexte, et Conséquences/Négatives ci-dessus) est **fausse par
+> généralisation, vraie sur son sous-ensemble**. Mesuré le 2026-09-15, dans le
+> cadre du scénario de bout en bout de `feature-010`, sur un instantané figé
+> de 6 802 événements :
+>
+> ```
+> SessionStart 5 · SessionEnd 2
+>   session 0a51b0a1 : 1 début · 1 fin ·     2 événements
+>   session dc11d595 : 1 début · 1 fin ·    10 événements
+>   session 602ebd5c : 3 débuts · 0 fin · 6 788 événements
+> ```
+>
+> Le signal part sur les sessions **courtes, proprement closes**. Il ne part
+> **jamais** sur une session **longue, reprise** — celle qui porte l'essentiel
+> du volume observé (6 788 événements sur 6 802). Le relevé de 1563
+> événements qui fondait le constat du Contexte appartenait précisément à ce
+> second cas : d'où la généralisation à « jamais », qui n'était vraie que du
+> sous-ensemble mesuré à l'époque.
+>
+> **Ce que cette note ne touche pas** : la Décision — bornage des cycles par
+> marqueur déclaré (`agents_ouvrants`), jamais par `SessionEnd` — reste
+> valide sans changement. Elle ne devient pas fausse : elle reposait sur une
+> prémisse trop large, et la prémisse plus étroite (« `SessionEnd` ne se
+> déclenche jamais sur une session longue reprise ») continue de justifier le
+> même choix, puisque c'est précisément sur ce cas que la question du
+> bornage se pose.
+>
+> **Correction mineure, même principe d'immutabilité** : la ligne « Spec :
+> `specs/features/doing/bug-004-plusieurs-cycles-dans-un-seul-workflow.md` »
+> ci-dessus pointe un emplacement obsolète — cette spec vit désormais dans
+> `specs/features/done/`. `tools/check_doc_links.sh` ne l'attrape pas : c'est
+> un chemin cité en prose entre backticks, pas un lien Markdown résolu par le
+> script. Non corrigé dans le corps (immutabilité), signalé ici.

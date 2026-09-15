@@ -10,7 +10,7 @@ Supprimer ce bloc commentaire.
 # Bug — un chemin déclaré « absent » ne montre pas le caractère qui le rend introuvable, quand ce caractère est invisible
 
 - **Type** : bug (format minimal `specs/modele.md`)
-- **Statut** : todo
+- **Statut** : done
 - **Version cible** : 0.7.0 (non taggée à ce jour)
 - **Créée** : 2026-09-13 (constat de l'audit sécurité pendant le cycle
   feature-012, arbitré par `code-reviewer` : signalé, mais volontairement
@@ -108,18 +108,18 @@ fait : c'est précisément ce qui transforme ce bug en sujet de conception.
 
 ## Critères d'acceptation
 
-- [ ] Un chemin déclaré contenant un caractère non imprimable (BOM, espace
+- [x] Un chemin déclaré contenant un caractère non imprimable (BOM, espace
       insécable, `\r` intérieur) produit un message qui rend ce caractère
       **visible et identifiable**, distinct du chemin sans ce caractère
-- [ ] Un chemin déclaré accentué (non-ASCII mais imprimable) continue de
+- [x] Un chemin déclaré accentué (non-ASCII mais imprimable) continue de
       s'afficher **tel quel**, sans échappement — non-régression du cas
       couvert par ADR-0013 / `NomsAccentuesTest`
-- [ ] Aucun chemin sensible (auth, permissions, données personnelles) touché
+- [x] Aucun chemin sensible (auth, permissions, données personnelles) touché
       — sinon basculer sur le template feature
-- [ ] Suite de tests verte (+ test de non-régression ajouté couvrant ce bug)
-- [ ] Le test de non-régression a été **vu échouer sur le code d'avant le
+- [x] Suite de tests verte (+ test de non-régression ajouté couvrant ce bug)
+- [x] Le test de non-régression a été **vu échouer sur le code d'avant le
       fix** — sinon il ne protège rien
-- [ ] Lint propre (`shellcheck`), pas de warning nouveau
+- [x] Lint propre (`shellcheck`), pas de warning nouveau
 
 ## Hors périmètre
 
@@ -129,3 +129,54 @@ fait : c'est précisément ce qui transforme ce bug en sujet de conception.
 - Toute normalisation qui **réinterpréterait** silencieusement un chemin
   (par exemple : retirer un BOM du chemin avant comparaison) — ce bug
   demande de le **montrer**, pas de le corriger à la place de l'utilisateur.
+
+---
+
+# Notes d'implémentation
+
+## Plan (architect)
+Fonction `forme_lisible_chemin()` extraite dans `tools/update_kit.sh` : construit
+une **seconde** chaîne réservée à l'affichage, en remplaçant des motifs d'octets
+**nommés un à un** par une étiquette entre crochets. `$chemin` n'est jamais
+modifié et continue d'être transmis intact au reste du script.
+
+## Tests (test-engineer)
+- Suite du kit : **104 → 111 tests**, verte. Le compte augmente : le correctif
+  tardif a bien rouvert les tests.
+- `CaracteresInvisiblesTest` : 13 cas, dont 6 ajoutés en revue.
+- **Validation par mutation**, deux mutants, tous deux syntaxiquement valides :
+  - retirer les motifs invisibles hors ASCII → **6 tests meurent** ;
+  - remettre la ligne brute avant le diagnostic → **exactement 1 test meurt**,
+    celui qui porte sur l'ordre.
+- `shellcheck -S warning tools/update_kit.sh` : 0 warning.
+
+## Revue (code-reviewer)
+Verdict initial : **Request changes**. Deux défauts retenus comme appartenant à
+ce cycle au titre d'ADR-0017 — la garde livrée était **inatteignable** sur toute
+une famille de cas :
+
+1. **Six familles d'invisibles non couvertes** — U+200B (le cas d'école du bug,
+   strictement invisible), U+00AD, U+2028/U+2029, U+3000, les onze espaces
+   U+2000–U+200A et les contrôles C1 U+0080–U+009F. Le critère d'acceptation
+   n°1 n'était donc pas tenu. **Corrigé dans ce cycle.**
+2. **La ligne brute précédait le diagnostic.** Un chemin contenant `\x1b[2J`
+   efface l'écran quand la ligne brute l'émet : l'explication était supprimée
+   par ce qu'elle explique. Exactement la classe de défaut que cette spec existe
+   pour fermer. **Ordre inversé dans ce cycle.**
+
+## ⚠️ Faute corrigée en route, trouvée par exécution seule
+Les deux boucles neuves portaient `\$(` au lieu de `\\$(` — un dollar échappé,
+donc **aucune substitution de commande**. La syntaxe était valable, `shellcheck`
+restait vert, et les deux plages ne nommaient rien du tout. Seule l'épreuve
+directe de la fonction l'a montrée. Consigné ici parce que la relecture ne
+pouvait pas l'attraper.
+
+## Pourquoi jamais de boucle 128-255
+Un garde-commentaire l'interdit dans le code, adossé à un test qui meurt si on la
+réintroduit. En UTF-8, un octet de tête (C2, E2, E3…) ne peut jamais apparaître
+comme octet de continuation : une **séquence complète nommée** est sûre, une
+boucle par octet mutile `révision.md` et corrompt les étiquettes de la fonction
+elle-même.
+
+## Statut final
+✅ Done — 2026-09-15 — commit à renseigner à la validation

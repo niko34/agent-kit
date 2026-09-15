@@ -342,19 +342,34 @@ function rendreWorkflows(etat) {
      * elle-même écartait : deux logiques sur le même fait, dans la même
      * fonction, en désaccord. Une réapparition après le seul agent
      * principal reste un fait qu'on signale — sobrement — pas une alerte :
-     * la taire serait un récit muet sur ce qu'il sait. */
+     * la taire serait un récit muet sur ce qu'il sait.
+     * ⚠️ feature-010 §A2 : ce garde portait sur le DÉCLENCHEMENT du bandeau, pas sur
+     * son CONTENU — `reprises.map(...)` recopiait `wf.reprises` en entier,
+     * y compris des agents que `indicesRepris` n'a marqué nulle part (un
+     * troisième agent reparu seulement après l'agent principal, pendant
+     * qu'un AUTRE agent portait, lui, un vrai rebouclage ailleurs dans la
+     * même chaîne). Le bandeau ne doit NOMMER que les agents dont au moins
+     * un maillon est réellement `.repris` ; les autres basculent dans la
+     * mention neutre — les deux pouvant coexister sur le même workflow. */
+    const agentsAncres = new Set();
+    segments.forEach((segment, index) => {
+      if (reprisesChaine.has(index)) agentsAncres.add(segment.agent);
+    });
     const reprises = Object.keys(wf.reprises || {});
-    if (reprises.length && reprisesChaine.size) {
+    const reprisesAncrees = reprises.filter((a) => agentsAncres.has(a));
+    const reprisesNonAncrees = reprises.filter((a) => !agentsAncres.has(a));
+    if (reprisesAncrees.length) {
       const bandeau = el("div", "wf-notes reboucle");
       bandeau.appendChild(el("span", "",
         "↻ reboucle — reprises : "
-        + reprises.map((a) => a + " ×" + wf.reprises[a]).join(", ")));
+        + reprisesAncrees.map((a) => a + " ×" + wf.reprises[a]).join(", ")));
       bloc.appendChild(bandeau);
-    } else if (reprises.length) {
+    }
+    if (reprisesNonAncrees.length) {
       const note = el("div", "wf-notes attendu");
       note.appendChild(el("span", "",
         "ℹ agent(s) repassé(s), sans rebouclage détecté : "
-        + reprises.map((a) => a + " ×" + wf.reprises[a]).join(", ")));
+        + reprisesNonAncrees.map((a) => a + " ×" + wf.reprises[a]).join(", ")));
       note.title =
         "Ces agents réapparaissent dans la chaîne, mais toujours "
         + "immédiatement après l'agent principal — jamais après un AUTRE "

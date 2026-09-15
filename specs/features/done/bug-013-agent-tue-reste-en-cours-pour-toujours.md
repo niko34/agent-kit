@@ -86,20 +86,20 @@ particulier.
 
 ## Critères d'acceptation
 
-- [ ] Un agent dont le dernier événement remonte au-delà du seuil n'est plus
+- [x] Un agent dont le dernier événement remonte au-delà du seuil n'est plus
       affiché « en cours »
-- [ ] L'état neuf est **distinct** de « terminé » et de « échoué » — il dit une
+- [x] L'état neuf est **distinct** de « terminé » et de « échoué » — il dit une
       fin **sans clôture**, pas un verdict sur le travail
-- [ ] Le seuil est **déclaré** dans la configuration, jamais codé en dur, et sa
+- [x] Le seuil est **déclaré** dans la configuration, jamais codé en dur, et sa
       valeur par défaut est justifiée par une mesure
-- [ ] Un agent **réellement en cours** depuis longtemps n'est **jamais** requalifié
+- [x] Un agent **réellement en cours** depuis longtemps n'est **jamais** requalifié
       — cas de test explicite, avec une durée supérieure à la plus longue mesurée
       sur ce dépôt
-- [ ] Le cas de `test-engineer afa8010143f2` (2026-09-13T19:11:54Z, sans fin)
+- [x] Le cas de `test-engineer afa8010143f2` (2026-09-13T19:11:54Z, sans fin)
       est couvert par un test sur des événements réels
-- [ ] Les compteurs de cycles ne comptent pas un agent abandonné comme actif
-- [ ] Suite verte, compte de cas strictement supérieur à l'entrée
-- [ ] Matrice de mutation ; le seuil doit être muté (raccourci **et** allongé)
+- [x] Les compteurs de cycles ne comptent pas un agent abandonné comme actif
+- [x] Suite verte, compte de cas strictement supérieur à l'entrée
+- [x] Matrice de mutation ; le seuil doit être muté (raccourci **et** allongé)
 
 ## Notes pour agent
 
@@ -148,3 +148,36 @@ de contrat, le seuil déclaré un verrouillage), et clôture **conjointe** avec
 n'émis **qu'un seul appel d'outil en 127 secondes**. Accuser un agent vivant
 coûte plus cher qu'afficher trop longtemps un agent mort — on relancerait un
 travail en cours.
+
+---
+
+# Notes d'implémentation — clôture du 2026-09-15
+
+## Tests (test-engineer)
+Centre de contrôle : **527 cas sur 13 suites, 0 échec**. Entrée du cycle : 471.
+
+## Revue (code-reviewer)
+La garde `math.isfinite` est prouvée **atteignable jusqu'au JSON servi**, pas
+seulement en appel direct. Contre-épreuve sur deux serveurs jetables, même
+journal figé, `seuil_abandon_minutes = nan` déclaré en TOML :
+
+| | `sans_cloture` | `en_cours` |
+|---|---|---|
+| code livré | **1** | 2 |
+| sans `math.isfinite` | **0** | 3 |
+
+Sans la garde, la protection annoncée n'existait pas. Tous les mutants plantés
+sont morts, dont celui qui change `>` en `>=` sur la borne du seuil.
+
+`derniere_activite` est bien rafraîchie par un `PostToolUse` nu : un agent qui
+lit et cherche sans écrire n'est plus déclaré mort. C'est la forme majoritaire
+du journal — 3 806 `PostToolUse` sur 5 926 événements.
+
+## Documentation (doc-writer)
+- `CHANGELOG.md` : entrée 0.9.0.
+- `control-center/README.md` : `[workflows] seuil_abandon_minutes` documentée à
+  côté d'`agents_ouvrants`, avec la justification du **silence légitime**.
+- **ADR-0021** créé : l'état additif et le seuil déclaré.
+
+## Statut final
+✅ Done — 2026-09-15 — commit à renseigner à la validation
