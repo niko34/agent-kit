@@ -963,31 +963,47 @@ function construireLiensDiagramme(geo) {
     const rB = Math.max(...creneauB.agents.map((a) => a.rayon));
     const x1 = creneauA.x + rA + 4;
     const x2 = creneauB.x - rB - 4;
-    const trait = svgEl("line", "dg-lien");
+
+    // Lien principal
+    const trait = svgEl("line");
     svgAttrs(trait, { x1, y1: yA, x2, y2: yB });
+    trait.style.stroke = "var(--bd2)";
+    trait.style.strokeWidth = 1.2;
     g.appendChild(trait);
 
-    // Géométrie (largeur, hauteur, texte, cx) VENUE DE `disposer()`, jamais
-    // recalculée ici (bug-020, bug-021) : une largeur recalculée séparément
-    // avait fini par déborder de l'espace réservé par le placement
-    // horizontal, et recouvrait le libellé du créneau voisin. Même défaut de
-    // principe pour l'abscisse : `(x1 + x2) / 2` est un milieu entre BORDS DE
-    // CERCLE (rA/rB), pas entre bords de créneau (demiLargeur, asymétrique
-    // pour un créneau empilé) — ça ne coïncide PAS avec l'espace réservé par
-    // `disposer()`, et la pastille pouvait être peinte hors de cet espace.
+    // Pointe de direction
+    const pointe = svgEl("path");
+    svgAttrs(pointe, {
+      d: `M ${x2-5} ${yB-2.6} L ${x2} ${yB} L ${x2-5} ${yB+2.6}`,
+      fill: "none",
+      "stroke-linejoin": "round",
+    });
+    pointe.style.stroke = "var(--texte-doux)";
+    pointe.style.strokeWidth = 1;
+    g.appendChild(pointe);
+
+    // Pastille d'attente si > 120s
     if (lien.pastille) {
       const cx = lien.pastille.cx;
       const cy = (yA + yB) / 2;
       const pastille = svgEl("g", "dg-pastille-attente");
+
       const fond = svgEl("rect");
-      const texte = svgEl("text");
-      texte.textContent = lien.pastille.texte;
-      svgAttrs(texte, { x: cx, y: cy, "text-anchor": "middle", "dominant-baseline": "central" });
       svgAttrs(fond, {
         x: cx - lien.pastille.largeur / 2, y: cy - lien.pastille.hauteur / 2,
-        width: lien.pastille.largeur, height: lien.pastille.hauteur, rx: lien.pastille.hauteur / 2,
+        width: lien.pastille.largeur, height: lien.pastille.hauteur,
+        rx: lien.pastille.hauteur / 2,
       });
+      fond.style.fill = "var(--creux)";
+      fond.style.stroke = "var(--bd)";
+      fond.style.strokeWidth = 1;
       pastille.appendChild(fond);
+
+      const texte = svgEl("text");
+      svgAttrs(texte, { x: cx, y: cy, "text-anchor": "middle", "dominant-baseline": "central" });
+      texte.style.fontSize = "10.5";
+      texte.style.fill = "var(--texte-doux)";
+      texte.textContent = lien.pastille.texte;
       pastille.appendChild(texte);
       g.appendChild(pastille);
     }
@@ -1005,36 +1021,42 @@ function construireArcsDiagramme(geo) {
     const cible = trouverAgentParPassageIndex(geo, arc.aPassage);
     if (!source || !cible || cible.cx <= source.cx) return; // garde : jamais en arrière
     const x1 = source.cx;
-    const y1 = source.cy - source.rayon - 4;
+    const y1 = source.cy - source.rayon - 16;
     const x2 = cible.cx;
-    const y2 = cible.cy - cible.rayon - 4;
+    const y2 = cible.cy - cible.rayon - 16;
     // Hauteur VENUE DE `disposer()` (bug-020), jamais recalculée ici : c'est
     // cette même valeur qui a dimensionné la marge haute du tracé — la
     // recalculer séparément pouvait la faire dépasser du cadre.
     const hauteurArc = arc.hauteurArc;
     const yControle = Math.min(y1, y2) - hauteurArc;
     const xControle = (x1 + x2) / 2;
-    const chemin = svgEl("path", "dg-arc-rebouclage");
-    svgAttrs(chemin, { d: "M " + x1 + " " + y1 + " Q " + xControle + " " + yControle + " " + x2 + " " + y2, fill: "none" });
+
+    // Arc pointillé
+    const chemin = svgEl("path");
+    svgAttrs(chemin, {
+      d: `M ${x1} ${y1} C ${x1} ${yControle}, ${x2} ${yControle}, ${x2} ${y2}`,
+      fill: "none",
+    });
+    chemin.style.stroke = couleurIdentite(arc.agent);
+    chemin.style.strokeWidth = 1.3;
+    chemin.style.strokeDasharray = "3 3";
+    chemin.style.opacity = 0.75;
+
     const titre = svgEl("title");
     titre.textContent = "Rebouclage — reprise de " + arc.agent;
     chemin.appendChild(titre);
     g.appendChild(chemin);
 
-    // Pointe de direction, orientée le long de la tangente d'arrivée
-    // (approximée par le segment contrôle → point d'arrivée).
-    const angle = Math.atan2(y2 - yControle, x2 - xControle);
-    const taille = 6;
-    const pointe = svgEl("polygon", "dg-arc-pointe");
-    const p1 = { x: x2, y: y2 };
-    const p2 = {
-      x: x2 - taille * Math.cos(angle - Math.PI / 7), y: y2 - taille * Math.sin(angle - Math.PI / 7),
-    };
-    const p3 = {
-      x: x2 - taille * Math.cos(angle + Math.PI / 7), y: y2 - taille * Math.sin(angle + Math.PI / 7),
-    };
-    pointe.setAttribute("points", [p1, p2, p3].map((p) => p.x + "," + p.y).join(" "));
-    g.appendChild(pointe);
+    // Texte "↻ reboucle" au sommet de l'arc
+    const texte = svgEl("text");
+    svgAttrs(texte, {
+      x: (x1 + x2) / 2, y: yControle - 4,
+      "text-anchor": "middle",
+    });
+    texte.style.fontSize = "10.5";
+    texte.style.fill = couleurIdentite(arc.agent);
+    texte.textContent = "↻ reboucle";
+    g.appendChild(texte);
   });
   return g;
 }
