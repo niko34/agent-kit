@@ -65,6 +65,9 @@ docs/
   API.md                      # Contrat REST (squelette)
   ARCHITECTURE.md             # Vue d'ensemble (squelette)
   features/, subsystems/      # Docs vivantes par écran / par module
+                               #   ex. page-centre-de-controle.md : commande
+                               #   de thème clair/système/sombre du tableau
+                               #   de bord fourni avec le kit
 CHANGELOG.md                  # Journal des changements visibles
 .gitignore                    # Base raisonnable
 ```

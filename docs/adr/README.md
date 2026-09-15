@@ -49,3 +49,4 @@ Une simple préférence de style, un choix réversible en une heure ou un détai
 | [0019](0019-jeton-comme-unique-barriere-et-table-des-routes-fermee.md) | Ce qui remplace l'absence de route d'écriture : une table des routes fermée et le jeton comme unique barrière | Accepté |
 | [0020](0020-un-centre-de-controle-appartient-a-un-developpeur.md) | Un centre de contrôle appartient à un développeur, et le jeton dépend du déploiement | Accepté |
 | [0021](0021-etat-sans-cloture-additif-et-seuil-declare.md) | Un état de passage additif (`sans_cloture`), gouverné par un seuil déclaré en configuration | Accepté |
+| [0022](0022-deux-familles-de-jetons-couleur-plancher-perceptuel.md) | Deux familles de jetons de couleur, séparées par un plancher perceptuel | Accepté |

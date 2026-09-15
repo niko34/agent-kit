@@ -70,6 +70,37 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
     première fois depuis la création du module — et révélé deux défauts de
     plus dans le rendu du récit (bandeau de rebouclage sans condition,
     libellé énumérant des agents non marqués).
+- **Second thème clair, et une couleur d'identité par agent.** Le tableau de
+  bord n'avait qu'un thème sombre figé et affichait tous les agents dans la
+  même couleur — un `debugger` et un `test-engineer` étaient visuellement
+  indiscernables. Une commande à trois positions apparaît désormais en haut
+  à droite de la barre :
+  - **Clair**, **système** (par défaut) et **sombre**. La position « système »
+    annonce l'apparence à laquelle elle aboutit à cet instant — icône et
+    libellé accessible suivent le thème résolu (« Suivre le système
+    (actuellement sombre) ») — les deux autres positions gardent un libellé
+    fixe.
+  - Le choix persiste entre deux ouvertures et s'applique **avant le premier
+    rendu** : aucune image ne montre le mauvais thème avant le bon. Avec
+    `localStorage` indisponible (fenêtre privée, données bloquées), la page
+    s'affiche normalement en position « système ».
+  - En position « système », un changement de préférence de l'OS pendant que
+    la page reste ouverte est suivi **sans rechargement**.
+  - Chaque agent (huit rôles) reçoit désormais une couleur propre — trait,
+    sigle et graduations — et un remplissage assorti, tenus dans les deux
+    thèmes ; deux rôles n'ont jamais la même couleur ni le même sigle. Un type
+    d'agent non reconnu reçoit un rendu neutre plutôt qu'une couleur recyclée.
+  - ⚠️ **Les quatre couleurs d'état du thème sombre changent d'aspect** —
+    conséquence mécanique de la séparation entre les couleurs d'état
+    (gravité) et les couleurs d'identité (agent), désormais tenues à l'écart
+    l'une de l'autre pour ne plus jamais se confondre visuellement :
+    l'accent (bouton d'action) passe du laiton à un crème pâle, l'alerte de
+    l'ambre à un pêche pâle, l'échec de la rouille à un rose pâle, et l'état
+    « agent en cours » du teal à une menthe vive. Le contraste du bouton
+    d'action monte de 8,0:1 à 13,8:1. Arbitré et accepté : une couleur d'état
+    pâle en thème sombre ne peut plus être fortement saturée une fois
+    placée au-dessus de la bande de clarté des identités d'agent, qui elle
+    garde sa palette saturée.
 
 ### Documentation
 
@@ -93,6 +124,23 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
   affirmation inexacte sur le freinage (`429`) — vraie en lecture, fausse en
   écriture (défaut ouvert, voir `bug-010`) ; rappel de l'hypothèse de
   confiance réseau en tête de la section sur le modèle de déploiement.
+- `docs/features/page-centre-de-controle.md` : première fiche du répertoire
+  (jusque-là vide) — commande de thème à trois positions, persistance,
+  suivi de l'OS sans rechargement, identité de couleur par agent.
+- `docs/adr/0022-deux-familles-de-jetons-couleur-plancher-perceptuel.md` :
+  nouvel ADR — méthode d'une palette catégorielle à clarté et intensité
+  constantes, saturation du cercle de teintes à huit rôles, séparation des
+  jetons sémantiques et des jetons d'identité par un plancher perceptuel
+  ΔE ≥ 0,10, méthode de mappage de gamut (réduction d'intensité, jamais
+  d'écrêtage canal par canal) et marge de conception.
+- `docs/DESIGN-SYSTEM.md` : tableau des teintes du §2 complété
+  (`backend-developer` 220°, `doc-writer` 336°) ; correction du nombre de
+  teintes bridées par le gamut en thème clair (quatre, pas deux) ; règle de
+  précédence identité/état ajoutée au §8 (« l'identité prend le texte et le
+  sigle, l'état prend le contour et la forme »), posée pour `feature-016`
+  sans y être encore appliquée ; renvoi vers ADR-0022.
+- `README.md` : mention de la commande de thème du centre de contrôle dans
+  la description du contenu du dépôt.
 
 ---
 

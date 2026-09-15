@@ -7,27 +7,272 @@
  * Parti pris visuel : outil de développeur, pas tableau de bord d'entreprise.
  * Forte densité, une seule couleur d'accent, et la couleur sémantique réservée
  * à ce qui demande une décision — une divergence, un échec, un agent actif.
+ *
+ * Deux thèmes, une seule palette (docs/DESIGN-SYSTEM.md §2 et §7) : chaque
+ * couleur n'apparaît qu'UNE FOIS, comme littéral `--clair-<jeton>` ou
+ * `--sombre-<jeton>`, dans le premier bloc `:root` ci-dessous. Les jetons
+ * SERVIS (`--fond`, `--a-debugger`…) ne contiennent plus jamais de littéral :
+ * uniquement des `var()` vers l'un de ces deux jeux. C'est ce qui permet de
+ * vérifier mécaniquement qu'aucun hexadécimal ne traîne ailleurs dans la
+ * feuille (`grep` sur `#` / `rgba(` hors de ce premier bloc).
+ *
+ * Les identités d'agent (`--a-<rôle>` trait/sigle/graduations,
+ * `--f-<rôle>` remplissage) sont engendrées par la méthode du §2 : teinte
+ * fixe par rôle, clarté et intensité constantes à l'intérieur d'un thème.
+ * `--a-neutre` / `--f-neutre` sont le repli achromatique (C=0) pour un type
+ * d'agent qui n'a pas encore de teinte assignée — jamais une teinte recyclée.
  */
 
 :root {
-  --fond:        #14171a;
-  --surface:     #1b1f23;
-  --surface-2:   #22272c;
-  --creux:       #101315;
-  --trait:       #2e343a;
-  --trait-fin:   #262b30;
+  /* ============================== littéraux =============================
+   * Un hexadécimal (ou une `rgba()`) par ligne, jamais recopié ailleurs.
+   * Groupés par thème ; c'est la SEULE section où une couleur est écrite en
+   * dur. */
 
-  --texte:       #e8e6e1;
-  --texte-doux:  #a8b0b7;
-  --texte-faible:#737c84;
+  /* -- littéraux clairs -- */
+  --clair-fond:        #f5f7f9;
+  --clair-surface:     #ffffff;
+  --clair-surface-2:   #eef0f4;
+  --clair-creux:       #ebedf1;
+  --clair-trait:       #c4c7ce;
+  --clair-trait-fin:   #d3d6db;
 
-  --accent:      #d9a441;   /* laiton — lampe témoin */
-  --actif:       #5ec4ad;   /* teal — en cours */
-  --alerte:      #e0a03f;   /* ambre — divergence */
-  --echec:       #e08272;   /* rouille — échec */
+  --clair-texte:       #1d1f23;
+  --clair-texte-doux:  #52555c;
+  --clair-texte-faible:#60636a;
+
+  /* Arbitré (feature-015, revue ux-ui-designer) : les jetons sémantiques
+   * portent une gravité, donc un ordre — ils ne suivent PAS le tableau L/C
+   * du §2 (catégoriel, « sans ordre ni grandeur »). Ils sont régénérés sur
+   * leur propre axe et tenus à ≥ 0,10 d'écart perceptuel de toute teinte
+   * d'agent, calculé APRÈS mappage de gamut — jamais recopié ici, la source
+   * reste ce bloc de littéraux. Le mappage réduit l'INTENSITÉ à clarté et
+   * teinte conservées, jamais un écrêtage canal par canal : un écrêtage
+   * déplace la clarté, ce qui casse la constante d'une palette catégorielle
+   * exactement là où le gamut mord — tout ajout futur doit réduire, pas
+   * écrêter. `--accent` clair est un brun profond, pas un laiton : à sa
+   * bande de clarté (L ≤ 0,315), l'ambre n'atteint pas plus d'intensité en
+   * sRGB ; la variante qui gardait le laiton faisait tomber le contraste de
+   * `.action-ecriture` de 8,1:1 à 5,0:1 — écartée. */
+  --clair-accent:      #282012;
+  --clair-actif:       #142f28;
+  --clair-alerte:      #3f260e;
+  --clair-echec:       #560b03;
+
+  /* Ombre portée (tiroir) : sur fond clair, une ombre franche redevient
+   * lisible avec une opacité beaucoup plus faible qu'en sombre — une ombre à
+   * 45% sur blanc écraserait la page. */
+  --clair-ombre: rgba(29, 31, 35, 0.16);
+
+  --clair-a-backend-developer: #005568;
+  --clair-f-backend-developer: #9ae6ff;
+  --clair-a-security-reviewer: #00594b;
+  --clair-f-security-reviewer: #9debd8;
+  --clair-a-test-engineer:     #5a3090;
+  --clair-f-test-engineer:     #dfd0ff;
+  --clair-a-spec-reader:       #1f439d;
+  --clair-f-spec-reader:       #c7daff;
+  --clair-a-code-reviewer:     #8c190a;
+  --clair-f-code-reviewer:     #ffcbc1;
+  --clair-a-debugger:          #644500;
+  --clair-f-debugger:          #f6d49b;
+  --clair-a-doc-writer:        #7a1e6a;
+  --clair-f-doc-writer:        #fdc5ee;
+  --clair-a-frontend-developer:#375700;
+  --clair-f-frontend-developer:#c7e5ab;
+  --clair-a-neutre:            #4c4c4c;
+  --clair-f-neutre:            #d9d9d9;
+
+  /* -- littéraux sombres -- */
+  --sombre-fond:        #14171a;
+  --sombre-surface:     #1b1f23;
+  --sombre-surface-2:   #22272c;
+  --sombre-creux:       #101315;
+  --sombre-trait:       #2e343a;
+  --sombre-trait-fin:   #262b30;
+
+  --sombre-texte:       #e8e6e1;
+  --sombre-texte-doux:  #a8b0b7;
+  --sombre-texte-faible:#737c84;
+
+  /* Pâles à dessein : la bande de gravité est placée AU-DESSUS de celle des
+   * identités en clarté (L élevé), et une couleur claire ne peut pas être
+   * fortement saturée — ne pas les resaturer, ça rouvre la collision avec
+   * les identités d'agent (voir le commentaire du bloc clair ci-dessus). */
+  --sombre-accent:      #f1dfbf;   /* crème pâle — lampe témoin */
+  --sombre-actif:       #7df0d6;   /* teal — en cours */
+  --sombre-alerte:      #f6cba5;   /* pêche pâle — divergence */
+  --sombre-echec:       #fdc5ba;   /* rose pâle — échec */
+
+  --sombre-ombre: rgba(0, 0, 0, 0.45);
+
+  /* Voile de la porte d'authentification (`.porte-fond`) : UNE SEULE valeur,
+   * utilisée dans les trois blocs de service ci-dessous — exception assumée
+   * à la règle « une couleur par thème ». Un voile qui isole la modale doit
+   * rester sombre même sur un fond clair : un voile blanc sur page blanche
+   * n'obscurcit rien et ne signale aucune modalité. Le littéral reprend
+   * `--clair-texte` (#1d1f23 = rgb(29,31,35)) en `rgba`, pas un nouveau
+   * noir arbitraire. */
+  --sombre-voile: rgba(29, 31, 35, 0.45);
+
+  --sombre-a-backend-developer: #25c0e6;
+  --sombre-f-backend-developer: #001f27;
+  --sombre-a-security-reviewer: #2dc8ac;
+  --sombre-f-security-reviewer: #00211a;
+  --sombre-a-test-engineer:     #bb9af4;
+  --sombre-f-test-engineer:     #250047;
+  --sombre-a-spec-reader:       #84acff;
+  --sombre-f-spec-reader:       #000c54;
+  --sombre-a-code-reviewer:     #f58d7b;
+  --sombre-f-code-reviewer:     #390200;
+  --sombre-a-debugger:          #d9a440;
+  --sombre-f-debugger:          #261800;
+  --sombre-a-doc-writer:        #e18dcd;
+  --sombre-f-doc-writer:        #33002b;
+  --sombre-a-frontend-developer:#92be62;
+  --sombre-f-frontend-developer:#112000;
+  --sombre-a-neutre:            #aeaeae;
+  --sombre-f-neutre:            #1b1b1b;
+
+  /* ========================= jetons servis (clair) =======================
+   * Thème par défaut : aucun `data-theme` posé, aucune préférence système
+   * consultée. `color-scheme: light` fait correspondre les éléments natifs
+   * (défilement, champs) au même registre. */
+  --fond:        var(--clair-fond);
+  --surface:     var(--clair-surface);
+  --surface-2:   var(--clair-surface-2);
+  --creux:       var(--clair-creux);
+  --trait:       var(--clair-trait);
+  --trait-fin:   var(--clair-trait-fin);
+
+  --texte:       var(--clair-texte);
+  --texte-doux:  var(--clair-texte-doux);
+  --texte-faible:var(--clair-texte-faible);
+
+  --accent:      var(--clair-accent);
+  --actif:       var(--clair-actif);
+  --alerte:      var(--clair-alerte);
+  --echec:       var(--clair-echec);
+
+  --ombre: var(--clair-ombre);
+  --voile: var(--sombre-voile);   /* invariant — voir le littéral */
+
+  --a-backend-developer: var(--clair-a-backend-developer);
+  --f-backend-developer: var(--clair-f-backend-developer);
+  --a-security-reviewer: var(--clair-a-security-reviewer);
+  --f-security-reviewer: var(--clair-f-security-reviewer);
+  --a-test-engineer:     var(--clair-a-test-engineer);
+  --f-test-engineer:     var(--clair-f-test-engineer);
+  --a-spec-reader:       var(--clair-a-spec-reader);
+  --f-spec-reader:       var(--clair-f-spec-reader);
+  --a-code-reviewer:     var(--clair-a-code-reviewer);
+  --f-code-reviewer:     var(--clair-f-code-reviewer);
+  --a-debugger:          var(--clair-a-debugger);
+  --f-debugger:          var(--clair-f-debugger);
+  --a-doc-writer:        var(--clair-a-doc-writer);
+  --f-doc-writer:        var(--clair-f-doc-writer);
+  --a-frontend-developer:var(--clair-a-frontend-developer);
+  --f-frontend-developer:var(--clair-f-frontend-developer);
+  --a-neutre:            var(--clair-a-neutre);
+  --f-neutre:            var(--clair-f-neutre);
 
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+
+  color-scheme: light;
+}
+
+/* ====================== jetons servis (préférence système) ================
+ * Deuxième des TROIS déclarations (docs/DESIGN-SYSTEM.md §7) : seulement si
+ * l'OS préfère le sombre ET qu'aucun choix explicite n'a posé
+ * `data-theme="clair"`. Sans le `:not(...)`, un choix explicite « clair »
+ * perdrait contre la préférence système. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="clair"]) {
+    --fond:        var(--sombre-fond);
+    --surface:     var(--sombre-surface);
+    --surface-2:   var(--sombre-surface-2);
+    --creux:       var(--sombre-creux);
+    --trait:       var(--sombre-trait);
+    --trait-fin:   var(--sombre-trait-fin);
+
+    --texte:       var(--sombre-texte);
+    --texte-doux:  var(--sombre-texte-doux);
+    --texte-faible:var(--sombre-texte-faible);
+
+    --accent:      var(--sombre-accent);
+    --actif:       var(--sombre-actif);
+    --alerte:      var(--sombre-alerte);
+    --echec:       var(--sombre-echec);
+
+    --ombre: var(--sombre-ombre);
+    --voile: var(--sombre-voile);
+
+    --a-backend-developer: var(--sombre-a-backend-developer);
+    --f-backend-developer: var(--sombre-f-backend-developer);
+    --a-security-reviewer: var(--sombre-a-security-reviewer);
+    --f-security-reviewer: var(--sombre-f-security-reviewer);
+    --a-test-engineer:     var(--sombre-a-test-engineer);
+    --f-test-engineer:     var(--sombre-f-test-engineer);
+    --a-spec-reader:       var(--sombre-a-spec-reader);
+    --f-spec-reader:       var(--sombre-f-spec-reader);
+    --a-code-reviewer:     var(--sombre-a-code-reviewer);
+    --f-code-reviewer:     var(--sombre-f-code-reviewer);
+    --a-debugger:          var(--sombre-a-debugger);
+    --f-debugger:          var(--sombre-f-debugger);
+    --a-doc-writer:        var(--sombre-a-doc-writer);
+    --f-doc-writer:        var(--sombre-f-doc-writer);
+    --a-frontend-developer:var(--sombre-a-frontend-developer);
+    --f-frontend-developer:var(--sombre-f-frontend-developer);
+    --a-neutre:            var(--sombre-a-neutre);
+    --f-neutre:            var(--sombre-f-neutre);
+
+    color-scheme: dark;
+  }
+}
+
+/* ========================= jetons servis (choix explicite) ================
+ * Troisième déclaration, OBLIGATOIRE (docs/DESIGN-SYSTEM.md §7) : sans elle,
+ * un choix explicite « sombre » ne gagne pas contre un système resté clair.
+ * Contenu IDENTIQUE au bloc `@media` ci-dessus — même jeu de `var()`. */
+:root[data-theme="sombre"] {
+  --fond:        var(--sombre-fond);
+  --surface:     var(--sombre-surface);
+  --surface-2:   var(--sombre-surface-2);
+  --creux:       var(--sombre-creux);
+  --trait:       var(--sombre-trait);
+  --trait-fin:   var(--sombre-trait-fin);
+
+  --texte:       var(--sombre-texte);
+  --texte-doux:  var(--sombre-texte-doux);
+  --texte-faible:var(--sombre-texte-faible);
+
+  --accent:      var(--sombre-accent);
+  --actif:       var(--sombre-actif);
+  --alerte:      var(--sombre-alerte);
+  --echec:       var(--sombre-echec);
+
+  --ombre: var(--sombre-ombre);
+  --voile: var(--sombre-voile);
+
+  --a-backend-developer: var(--sombre-a-backend-developer);
+  --f-backend-developer: var(--sombre-f-backend-developer);
+  --a-security-reviewer: var(--sombre-a-security-reviewer);
+  --f-security-reviewer: var(--sombre-f-security-reviewer);
+  --a-test-engineer:     var(--sombre-a-test-engineer);
+  --f-test-engineer:     var(--sombre-f-test-engineer);
+  --a-spec-reader:       var(--sombre-a-spec-reader);
+  --f-spec-reader:       var(--sombre-f-spec-reader);
+  --a-code-reviewer:     var(--sombre-a-code-reviewer);
+  --f-code-reviewer:     var(--sombre-f-code-reviewer);
+  --a-debugger:          var(--sombre-a-debugger);
+  --f-debugger:          var(--sombre-f-debugger);
+  --a-doc-writer:        var(--sombre-a-doc-writer);
+  --f-doc-writer:        var(--sombre-f-doc-writer);
+  --a-frontend-developer:var(--sombre-a-frontend-developer);
+  --f-frontend-developer:var(--sombre-f-frontend-developer);
+  --a-neutre:            var(--sombre-a-neutre);
+  --f-neutre:            var(--sombre-f-neutre);
 
   color-scheme: dark;
 }
@@ -70,6 +315,22 @@ body {
   color: var(--texte-doux);
   white-space: nowrap;
 }
+/* ---------------- bascule de thème ---------------- */
+.bascule-theme {
+  display: inline-flex; align-items: center; gap: 2px;
+  border: 1px solid var(--trait); border-radius: 2px; padding: 2px;
+}
+.theme-bouton {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0;
+  background: none; border: none; border-radius: 2px;
+  color: var(--texte-faible); cursor: pointer;
+  transition: color 120ms ease, background-color 120ms ease;
+}
+.theme-bouton:hover { color: var(--texte); }
+.theme-bouton:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.theme-bouton[aria-checked="true"] { background: var(--surface-2); color: var(--accent); }
+
 .jauge.ok { color: var(--actif); border-color: color-mix(in srgb, var(--actif) 40%, var(--trait)); }
 .jauge.ko { color: var(--echec); border-color: color-mix(in srgb, var(--echec) 40%, var(--trait)); }
 .jauge.lecture-seule { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--trait)); }
@@ -331,7 +592,10 @@ body {
   background: var(--accent); color: var(--fond); border: none; border-radius: 2px;
   font-weight: 600; font: inherit; cursor: pointer;
 }
-.action-ecriture:hover { background: color-mix(in srgb, var(--accent) 88%, white); }
+/* `var(--texte)` plutôt qu'un littéral « white » : en sombre `--texte` est
+ * clair (le mélange ÉCLAIRCIT), en clair `--texte` est sombre (le mélange
+ * ASSOMBRIT) — une seule règle qui fait le bon effet dans les deux thèmes. */
+.action-ecriture:hover { background: color-mix(in srgb, var(--accent) 88%, var(--texte)); }
 .action-ecriture:focus-visible { outline: 2px solid var(--texte); outline-offset: 2px; }
 .action-ecriture:disabled { opacity: 0.55; cursor: not-allowed; }
 
@@ -386,7 +650,7 @@ body {
   position: fixed; inset: 0 0 0 auto; width: min(760px, 100%);
   background: var(--surface); border-left: 1px solid var(--trait);
   display: flex; flex-direction: column; z-index: 20;
-  box-shadow: -16px 0 40px rgba(0, 0, 0, 0.45);
+  box-shadow: -16px 0 40px var(--ombre);
 }
 .tiroir[hidden] { display: none; }
 .tiroir-barre {
@@ -415,7 +679,7 @@ body {
   display: flex; align-items: center; justify-content: center;
 }
 .porte[hidden] { display: none; }
-.porte-fond { position: absolute; inset: 0; background: rgba(10, 12, 14, 0.72); }
+.porte-fond { position: absolute; inset: 0; background: var(--voile); }
 .porte-carte {
   /* Mêmes déclarations que `.bloc` — le gabarit imposé par le design ne
    * porte pas la classe `bloc` en plus de `porte-carte`, donc on les

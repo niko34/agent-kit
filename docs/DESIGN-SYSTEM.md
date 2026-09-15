@@ -65,19 +65,53 @@ Paramètres de génération, en OKLCH :
 | `frontend-developer` | 130° |
 | `code-reviewer` | 31° |
 | `security-reviewer` | 177° |
+| `backend-developer` | 220° |
+| `doc-writer` | 336° |
 
 | Usage | Thème sombre | Thème clair |
 |---|---|---|
 | Trait, sigle, graduations | L 0,75 · C 0,13 | L 0,415 · C 0,152 |
 | Remplissage du cercle | L 0,22 mêlé au fond | L 0,885 · C 0,082 |
 
-Deux teintes — l'ambre et le vert d'eau — n'atteignent pas l'intensité visée
-dans le thème clair : l'écran ne sait pas les afficher plus vives à cette
-clarté. C'est une limite de gamut, pas un réglage à corriger.
+Quatre teintes — `debugger` (80°), `frontend-developer` (130°),
+`security-reviewer` (177°) et `backend-developer` (220°) — n'atteignent pas
+l'intensité visée pour le trait, le sigle et les graduations dans le thème
+clair : l'écran ne sait pas les afficher plus vives à cette clarté. C'est une
+limite de gamut, pas un réglage à corriger.
 
 **Pour ajouter un agent** : choisir un angle de teinte à au moins 35° de tous
 les autres, puis appliquer les L et C du tableau. Ne jamais choisir une couleur
 à l'œil, et ne jamais reprendre un hexadécimal trouvé ailleurs.
+
+Avec ces huit rôles, la règle des 35° a **saturé** le cercle : `backend-developer`
+(220°) et `doc-writer` (336°) occupaient les deux seuls angles encore libres à
+au moins 35° de tous les autres. **Un neuvième rôle teinté est aujourd'hui
+impossible** sans rouvrir la méthode elle-même (voir
+[ADR-0022](adr/0022-deux-familles-de-jetons-couleur-plancher-perceptuel.md)).
+
+### Jetons sémantiques : une autre famille, un plancher qui les sépare
+
+Les jetons sémantiques (`--accent`, `--actif`, `--alerte`, `--echec`) portent
+une **gravité**, donc un ordre — ce que la méthode catégorielle ci-dessus
+exclut par construction (« sans ordre ni grandeur »). Ils ne suivent **pas**
+le tableau L/C de cette section ; ils sont engendrés sur leur propre axe.
+
+Quatre règles, détaillées avec leurs chiffres dans
+[ADR-0022](adr/0022-deux-familles-de-jetons-couleur-plancher-perceptuel.md),
+tiennent les deux familles séparées :
+
+- **Plancher de séparation** : écart perceptuel ΔE (OKLab) **≥ 0,10** entre
+  tout jeton sémantique et tout jeton d'identité, dans les deux thèmes,
+  calculé sur les couleurs **effectivement peintes** — après mappage de
+  gamut, jamais sur les paramètres nominaux.
+- **Repli achromatique** : un type d'agent sans teinte assignée (l'ensemble
+  des types est ouvert) reçoit `--a-neutre` / `--f-neutre`, jamais une teinte
+  d'agent recyclée.
+- **Méthode de mappage de gamut** : réduire l'**intensité**, à clarté et
+  teinte conservées ; jamais un écrêtage canal par canal, qui déplace la
+  clarté et casse la constante de la palette catégorielle.
+- **Marge de conception** : viser ΔL ≥ 0,12 sur les paramètres nominaux,
+  pour tenir le plancher dur de 0,10 une fois l'arrondi hexadécimal appliqué.
 
 ### Contrastes tenus
 
@@ -255,6 +289,15 @@ encore moins lisible.
   rien qui bouge en continu.
 - Les sigles à deux lettres sont **distincts entre eux** : `spec-reader` = `SP`,
   `security-reviewer` = `SE`. Deux agents ne peuvent pas partager un sigle.
+- **Règle de précédence entre les deux familles de jetons** (posée par
+  `ux-ui-designer`, à appliquer par `feature-016`) : **l'identité prend le
+  texte et le sigle, l'état prend le contour et la forme.** Sur un même
+  élément (une entrée d'accordéon, une ligne de liste), la couleur d'agent
+  reste réservée au texte et au sigle qui portent son identité ; un état
+  (en cours, échec, divergence) se lit dans le contour et la forme —
+  jamais en recolorant le texte d'une couleur sémantique par-dessus une
+  couleur d'identité. Non appliquée dans ce cycle : `docs/DESIGN-SYSTEM.md`
+  la fixe avant que `feature-016` et `feature-017` n'aient à la redécouvrir.
 
 ---
 
@@ -293,9 +336,14 @@ encore moins lisible.
 | 2026-09-15 | Agents simultanés empilés verticalement dans un créneau unique |
 | 2026-09-15 | Le diagramme est sur `--creux`, jamais sur un fond qui lui est propre |
 | 2026-09-15 | Trois positions de thème, dont « système » qui annonce sa résolution |
+| 2026-09-15 | Huit rôles teintés : `backend-developer` (220°) et `doc-writer` (336°) ajoutés au tableau des teintes du §2, dernier angle libre à ≥ 35° saturé |
+| 2026-09-15 | Jetons sémantiques régénérés sur un axe propre, séparés de la palette d'identité par un plancher perceptuel ΔE ≥ 0,10 après mappage de gamut ([ADR-0022](adr/0022-deux-familles-de-jetons-couleur-plancher-perceptuel.md)) |
+| 2026-09-15 | Règle de précédence identité/état posée pour feature-016 : l'identité prend le texte et le sigle, l'état prend le contour et la forme |
 
 ## Voir aussi
 
 - [ADR-0006 — zéro dépendance](adr/) et la CSP du serveur
+- [ADR-0022 — deux familles de jetons de couleur, séparées par un plancher perceptuel](adr/0022-deux-familles-de-jetons-couleur-plancher-perceptuel.md)
 - [ARCHITECTURE.md](ARCHITECTURE.md)
+- [features/page-centre-de-controle.md](features/page-centre-de-controle.md) — la commande de thème côté écran
 - `control-center/web/app.css` — les valeurs, source unique

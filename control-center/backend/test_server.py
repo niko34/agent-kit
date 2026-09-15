@@ -175,6 +175,18 @@ def main():
         code, _ = appeler(base, "/app.css")
         check("test_css_servi", code == 200)
 
+        # --- E10 (feature-015) : atteignabilité de `theme.js` ----------------
+        # Un fichier neuf dans `web/` doit être RAMASSÉ par `_fichiers_servables()`
+        # au démarrage réel du serveur, pas seulement lisible en `file://` — sinon
+        # la garde CSP/amorçage-synchrone documentée par la spec est une garde
+        # livrée mais inatteignable (404 en HTTP alors que le CSS reste 200).
+        # Mesuré sur la VRAIE racine web (`serveur.servables` déjà calculé plus
+        # haut par `_fichiers_servables()` sur le dépôt réel, pas un `faux_web`).
+        check("test_theme_js_dans_servables", "theme.js" in serveur.servables,
+              "clés trouvées : %r" % sorted(serveur.servables))
+        code, _ = appeler(base, "/theme.js")
+        check("test_theme_js_servi", code == 200, "obtenu %d" % code)
+
         # --- ce qui doit refuser --------------------------------------------
         refus = [
             ("/api/spec?id=../../../etc/passwd", "spec par remontée"),

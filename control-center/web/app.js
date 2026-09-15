@@ -72,6 +72,63 @@ function nettoyerPriorite(brut) {
   return texte || null;
 }
 
+/* ------------------------------------------------------- sigle d'agent ---
+ * Deux lettres par rôle, déterministes et distinctes (feature-015 A7,
+ * docs/DESIGN-SYSTEM.md §8). Livré ici pour feature-016 : AUCUN appelant ne
+ * l'utilise encore dans ce cycle — les jetons de couleur (`--a-<rôle>`,
+ * `--f-<rôle>`, app.css) ne sont pas non plus appliqués aux maillons ici.
+ *
+ * Règle : les deux premières lettres du premier segment du nom, en
+ * majuscules (« spec-reader » → SP, « security-reviewer » → SE). En cas de
+ * collision, désambiguïsation déterministe et INDÉPENDANTE de l'ordre
+ * d'arrivée : les rôles sont d'abord triés alphabétiquement, puis pour
+ * chaque collision on essaie la première lettre suivie d'une lettre encore
+ * libre du même segment, puis, à défaut, la première lettre suivie d'un
+ * chiffre dérivé d'un FNV-1a du nom complet — jamais un compteur qui
+ * dépendrait de l'ordre de découverte. */
+function empreinteFnv1a(texte) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < texte.length; i++) {
+    h ^= texte.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+function sigleAgent(nomRole, siglesDejaPris) {
+  const pris = siglesDejaPris || new Set();
+  const segment = String(nomRole).split("-")[0].toUpperCase();
+  const premiere = segment[0] || "?";
+  let candidat = premiere + (segment[1] || "");
+  if (!pris.has(candidat)) return candidat;
+  for (let i = 2; i < segment.length; i++) {
+    candidat = premiere + segment[i];
+    if (!pris.has(candidat)) return candidat;
+  }
+  const empreinte = empreinteFnv1a(String(nomRole));
+  for (let decalage = 0; decalage < 10; decalage++) {
+    candidat = premiere + String((empreinte + decalage) % 10);
+    if (!pris.has(candidat)) return candidat;
+  }
+  return candidat; // improbable : segment épuisé ET les 10 chiffres pris
+}
+
+/* Calcule les sigles de TOUT un ensemble de rôles en une passe, dans l'ordre
+ * alphabétique — c'est ce qui rend le résultat indépendant de l'ordre
+ * d'arrivée des rôles (un agent découvert plus tard ne redistribue jamais
+ * les sigles déjà attribués aux autres). */
+function siglesAgents(nomsRoles) {
+  const tries = Array.from(new Set(nomsRoles)).sort((a, b) => a.localeCompare(b, "fr"));
+  const pris = new Set();
+  const resultat = new Map();
+  for (const nom of tries) {
+    const sigle = sigleAgent(nom, pris);
+    pris.add(sigle);
+    resultat.set(nom, sigle);
+  }
+  return resultat;
+}
+
 /* ---------------------------------------------------------------- agents -- */
 function rendreAgents(agents) {
   const liste = $("agents");
@@ -1415,6 +1472,140 @@ function brancherFlux() {
     /* EventSource se reconnecte tout seul : on ne double pas sa logique. */
   };
 }
+
+/* --------------------------------------------------------------- thème ---
+ * Bascule à trois positions — clair, système, sombre (feature-015,
+ * docs/DESIGN-SYSTEM.md §7). `theme.js`, chargé SYNCHRONE dans <head>, a
+ * déjà posé — ou pas — `data-theme` sur `<html>` avant que ce fichier ne
+ * s'exécute. Ce module commande les trois boutons, écrit le choix, et suit
+ * `matchMedia` seulement en position « système ».
+ *
+ * `document.documentElement` est ABSENT du bac à sable Node de
+ * `test_app_bug012.js` (le faux `document` n'y modélise pas l'élément
+ * racine) : chaque accès est donc gardé par un test de vérité, jamais
+ * déréférencé directement — c'est ce qui permet à ce module de charger sans
+ * exception dans ce harnais comme dans un navigateur réel. Même prudence
+ * pour `matchMedia`, absent du bac à sable : vérifié par `typeof` avant tout
+ * appel, jamais réclamé nu. */
+const CLE_THEME = "theme";
+
+function attributeThemeActuel() {
+  const racine = document.documentElement;
+  return racine ? racine.getAttribute("data-theme") : null;
+}
+
+function memoriserTheme(choix) {
+  try {
+    if (choix === "systeme") localStorage.removeItem(CLE_THEME);
+    else localStorage.setItem(CLE_THEME, choix);
+  } catch (erreur) {
+    // `localStorage` indisponible (fenêtre privée, données bloquées, quota) :
+    // le choix ne survit pas au rechargement, la page reste correcte quand
+    // même — aucune exception ne doit remonter à l'appelant (C2/C3).
+  }
+}
+
+const mqSombre = (typeof matchMedia === "function")
+  ? matchMedia("(prefers-color-scheme: dark)")
+  : null;
+
+/* L'OS sans préférence exprimée vaut clair (D2) : `mqSombre` absent ou
+ * `matches` faux mènent tous deux à "clair". */
+function themeResolu() {
+  const choix = attributeThemeActuel();
+  if (choix === "clair" || choix === "sombre") return choix;
+  return (mqSombre && mqSombre.matches) ? "sombre" : "clair";
+}
+
+function positionActiveTheme() {
+  const choix = attributeThemeActuel();
+  if (choix === "clair") return "theme-clair";
+  if (choix === "sombre") return "theme-sombre";
+  return "theme-systeme";
+}
+
+function appliquerTheme(choix) {
+  const racine = document.documentElement;
+  if (racine) {
+    if (choix === "clair" || choix === "sombre") racine.setAttribute("data-theme", choix);
+    else racine.removeAttribute("data-theme");
+  }
+  memoriserTheme(choix);
+  rafraichirCommandeTheme();
+}
+
+const BOUTONS_THEME = ["theme-clair", "theme-systeme", "theme-sombre"];
+function idVersChoix(id) {
+  return id === "theme-clair" ? "clair" : id === "theme-sombre" ? "sombre" : "systeme";
+}
+
+/* La position « système » annonce sa résolution (B2) : son icône ET son
+ * libellé accessible suivent le thème auquel elle aboutit À CET INSTANT. Les
+ * deux autres positions gardent un libellé fixe (posé une fois dans le
+ * HTML). Aucun `innerHTML` : uniquement `setAttribute`/`hidden`/`title`. */
+function rafraichirCommandeTheme() {
+  const active = positionActiveTheme();
+  BOUTONS_THEME.forEach((id) => {
+    const bouton = $(id);
+    if (!bouton) return;
+    const coche = id === active;
+    bouton.setAttribute("aria-checked", coche ? "true" : "false");
+    bouton.tabIndex = coche ? 0 : -1;
+  });
+  const resolu = themeResolu();
+  const iconeClair = $("icone-systeme-clair");
+  const iconeSombre = $("icone-systeme-sombre");
+  if (iconeClair) iconeClair.hidden = resolu !== "clair";
+  if (iconeSombre) iconeSombre.hidden = resolu !== "sombre";
+  const boutonSysteme = $("theme-systeme");
+  if (boutonSysteme) {
+    const libelle = "Suivre le système (actuellement " + resolu + ")";
+    boutonSysteme.setAttribute("aria-label", libelle);
+    boutonSysteme.title = libelle;
+  }
+}
+
+BOUTONS_THEME.forEach((id, index) => {
+  const bouton = $(id);
+  if (!bouton) return;
+  bouton.addEventListener("click", () => appliquerTheme(idVersChoix(id)));
+  /* Roving tabindex : le motif WAI-ARIA `radiogroup` complet — flèches
+   * gauche/droite ET haut/bas (un groupe peut se présenter en ligne comme en
+   * colonne selon la mise en page), plus Origine/Fin pour atteindre le
+   * premier et le dernier bouton d'un coup. Le focus suit la sélection dans
+   * tous les cas (B3 — clavier seul, focus visible via
+   * `.theme-bouton:focus-visible` dans app.css). */
+  bouton.addEventListener("keydown", (evenement) => {
+    const touche = evenement.key;
+    let indexSuivant;
+    if (touche === "ArrowRight" || touche === "ArrowDown") {
+      indexSuivant = (index + 1) % BOUTONS_THEME.length;
+    } else if (touche === "ArrowLeft" || touche === "ArrowUp") {
+      indexSuivant = (index - 1 + BOUTONS_THEME.length) % BOUTONS_THEME.length;
+    } else if (touche === "Home") {
+      indexSuivant = 0;
+    } else if (touche === "End") {
+      indexSuivant = BOUTONS_THEME.length - 1;
+    } else {
+      return;
+    }
+    evenement.preventDefault();
+    const suivant = BOUTONS_THEME[indexSuivant];
+    appliquerTheme(idVersChoix(suivant));
+    const boutonSuivant = $(suivant);
+    if (boutonSuivant && boutonSuivant.focus) boutonSuivant.focus();
+  });
+});
+
+if (mqSombre) {
+  /* Actif SEULEMENT en position « système » (D1) : un choix explicite ne
+   * doit pas se remettre à suivre l'OS parce que l'OS a changé d'avis. */
+  mqSombre.addEventListener("change", () => {
+    if (positionActiveTheme() === "theme-systeme") rafraichirCommandeTheme();
+  });
+}
+
+rafraichirCommandeTheme();
 
 /* Filtrer ne redemande RIEN au serveur : on redessine l'état déjà chargé. Une
  * requête par frappe ferait tourner `git status` et relire 167 fichiers à chaque

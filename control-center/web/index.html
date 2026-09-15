@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Centre de contrôle</title>
 <link rel="stylesheet" href="/app.css">
+<!-- Amorçage synchrone (feature-015) : pose `data-theme` sur <html> AVANT le
+     premier rendu, pour qu'aucune image ne montre le mauvais thème avant le
+     bon. Doit rester un fichier SERVI (pas de `<script>` inline : la CSP
+     `default-src 'self'` interdit `unsafe-inline`, voir server.py). -->
+<script src="/theme.js"></script>
 </head>
 <body>
 
@@ -23,6 +28,57 @@
     <span class="jauge" id="jauge-git">git …</span>
     <span class="jauge lecture-seule" id="jauge-pilotage" title="chargement de l'état d'écriture…">lecture seule</span>
     <span class="horodatage" id="horodatage"></span>
+
+    <!-- Trois positions, jamais deux (docs/DESIGN-SYSTEM.md §7) : « système »
+         est le défaut et annonce sa résolution — son icône et son libellé
+         accessible changent avec le thème auquel il aboutit. Roving
+         tabindex : un seul arrêt de tabulation, les flèches déplacent le
+         focus ET la sélection (app.js). -->
+    <div class="bascule-theme" id="bascule-theme" role="radiogroup" aria-label="Thème d'affichage">
+      <button type="button" id="theme-clair" class="theme-bouton" role="radio"
+              aria-checked="false" tabindex="-1" aria-label="Clair" title="Clair">
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false">
+          <circle cx="8" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <g stroke="currentColor" stroke-width="1.3" stroke-linecap="round">
+            <line x1="8" y1="0.6" x2="8" y2="2.4"/>
+            <line x1="8" y1="13.6" x2="8" y2="15.4"/>
+            <line x1="0.6" y1="8" x2="2.4" y2="8"/>
+            <line x1="13.6" y1="8" x2="15.4" y2="8"/>
+            <line x1="2.5" y1="2.5" x2="3.8" y2="3.8"/>
+            <line x1="12.2" y1="12.2" x2="13.5" y2="13.5"/>
+            <line x1="2.5" y1="13.5" x2="3.8" y2="12.2"/>
+            <line x1="12.2" y1="3.8" x2="13.5" y2="2.5"/>
+          </g>
+        </svg>
+      </button>
+      <button type="button" id="theme-systeme" class="theme-bouton" role="radio"
+              aria-checked="true" tabindex="0" aria-label="Suivre le système" title="Suivre le système">
+        <!-- L'icône ET le libellé accessible (aria-label ci-dessus) sont mis à
+             jour par app.js à chaque résolution — jamais via innerHTML. -->
+        <svg id="icone-systeme-clair" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false">
+          <circle cx="8" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <g stroke="currentColor" stroke-width="1.3" stroke-linecap="round">
+            <line x1="8" y1="0.6" x2="8" y2="2.4"/>
+            <line x1="8" y1="13.6" x2="8" y2="15.4"/>
+            <line x1="0.6" y1="8" x2="2.4" y2="8"/>
+            <line x1="13.6" y1="8" x2="15.4" y2="8"/>
+            <line x1="2.5" y1="2.5" x2="3.8" y2="3.8"/>
+            <line x1="12.2" y1="12.2" x2="13.5" y2="13.5"/>
+            <line x1="2.5" y1="13.5" x2="3.8" y2="12.2"/>
+            <line x1="12.2" y1="3.8" x2="13.5" y2="2.5"/>
+          </g>
+        </svg>
+        <svg id="icone-systeme-sombre" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false" hidden>
+          <path d="M13.2 10.1A6 6 0 1 1 5.9 2.8 4.7 4.7 0 0 0 13.2 10.1Z" fill="currentColor"/>
+        </svg>
+      </button>
+      <button type="button" id="theme-sombre" class="theme-bouton" role="radio"
+              aria-checked="false" tabindex="-1" aria-label="Sombre" title="Sombre">
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false">
+          <path d="M13.2 10.1A6 6 0 1 1 5.9 2.8 4.7 4.7 0 0 0 13.2 10.1Z" fill="currentColor"/>
+        </svg>
+      </button>
+    </div>
   </div>
 </header>
 
