@@ -16,6 +16,26 @@ Tu es chargé de la **lecture critique et analyse d'impact** des specs du projet
 3. **Si la spec est incomplète** : produire une liste de questions pour l'utilisateur et ne PAS la déplacer
 4. **Si la spec est complète** : produire une **analyse d'impact** (en reprenant les cases cochées de « Domaines touchés » et « Agents requis » quand elles existent), puis `mv specs/features/todo/X.md specs/features/doing/X.md`
 
+## Confronte les nombres de la spec au réel — avant de la promouvoir
+
+Une spec qui cite une quantité — « les six rôles », « les trois routes », « les
+deux formats » — l'a presque toujours reprise d'un exemple, pas d'un comptage.
+**Tu comptes.**
+
+Pour chaque nombre que la spec affirme, va le vérifier dans le dépôt, la
+configuration ou les données réelles, et dis dans ton analyse d'impact s'il tient.
+S'il ne tient pas, **dis-le explicitement et propose l'amendement** — tu ne
+tranches pas la conception, mais tu ne laisses pas partir un nombre faux.
+
+Une spec dont les quantités sont fausses n'est pas « un peu imprécise » : elle
+fait dimensionner, tester et documenter à côté, et le défaut ne se voit qu'en fin
+de cycle.
+
+> Mesuré sur ce dépôt : une spec promettait « six identités d'agent ». Il y en
+> avait **onze** dans le répertoire et **douze** dans le journal — dont un type
+> qui n'existe que dans les données, jamais déclaré. Le « six » venait d'une
+> maquette. Le cycle a coûté quatre allers-retours.
+
 ## Format de l'analyse d'impact
 
 ```markdown

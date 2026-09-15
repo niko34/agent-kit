@@ -43,6 +43,35 @@ une affirmation fausse présentée comme un fait ne l'est pas.
 > bloqué par la garde de X » — elle était fausse, le trou est resté ouvert, et
 > il a fallu un cycle entier de plus pour le refermer.
 
+## Les grandeurs que tu affirmes
+
+La règle ci-dessus vaut pour le **comportement**. Elle vaut aussi, et le projet
+l'a payé cher, pour les **nombres**.
+
+Toute quantité que ton plan cite — combien d'agents, combien de routes, combien
+de cas, quelle valeur d'un jeton, quelle borne — s'établit **par mesure**, et tu
+écris la commande qui l'a produite. Un nombre repris d'une spec, d'une maquette
+ou de ta propre table précédente n'est pas une mesure.
+
+Deux règles qui découlent directement de défauts constatés :
+
+1. **Tu mesures contre l'artefact livré, jamais contre ton propre plan.** Si tu
+   as produit une table de valeurs au tour précédent, tu la **relis depuis le
+   fichier** avant de la citer à nouveau. Mesuré sur ce dépôt : un plan a comparé
+   ses valeurs planifiées à ce qu'il croyait livré ; les deux divergeaient parce
+   que l'implémentation avait choisi une autre méthode de conversion — et c'est
+   l'implémentation qui avait raison.
+
+2. **Une borne posée exactement à sa valeur est décidée par l'arrondi, pas par
+   toi.** Tout seuil numérique que tu introduis se vérifie **avec marge** contre
+   la quantification réelle du support, et tu dis quelle marge tu retiens et
+   pourquoi ce chiffre-là. Mesuré : un écart conçu à exactement 0,10 est ressorti
+   à 0,0995 après quantification sur 8 bits, et un test l'a rejeté à juste titre.
+
+> Mesuré sur ce dépôt : sur un cycle, **quatre allers-retours sur quatre**
+> venaient d'affirmations numériques non vérifiées. Aucun n'était une faute de
+> code.
+
 ## Si ton plan ajoute une garde
 
 Une garde ne vaut que ce que vaut le chemin qui y mène. Avant de la concevoir,
@@ -116,5 +145,9 @@ ADR requis (critère N : <lequel>) | Aucun des 4 critères rempli
 - **Aucune affirmation sur le comportement existant sans exécution** — ou alors
   étiquetée « hypothèse non vérifiée ». Une affirmation fausse présentée comme un
   fait est la faute la plus coûteuse mesurée sur ce projet
+- **Aucune grandeur sans mesure, et la mesure se fait contre l'artefact livré**,
+  jamais contre ton plan précédent
+- **Aucun seuil posé au ras de sa borne** : marge chiffrée et justifiée, sinon
+  c'est l'arrondi qui décide
 - **Si le plan ajoute une garde** : dire par où on l'atteint, et si un défaut
   ouvert la rend inatteignable — auquel cas il entre dans ce cycle

@@ -65,6 +65,11 @@ mention « architect tranche » si pertinent.
 1. [remplir]
 2. [remplir]
 
+## Grandeurs mesurées
+<!-- Obligatoire si la spec cite un nombre. Chaque quantité avec la commande qui
+     l'a produite — un nombre repris d'un exemple n'est pas une mesure. -->
+- [remplir, ou « aucune quantité affirmée »]
+
 ## Critères d'acceptation
 
 - [ ] [le symptôme ne se reproduit plus dans le scénario de reproduction ci-dessus]

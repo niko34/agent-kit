@@ -90,6 +90,38 @@ Corollaire de conception : si une logique est **impossible à muter sans démarr
 l'application**, c'est un signal — signale-le à l'`architect`, elle mérite d'être extraite
 dans une fonction pure.
 
+## Une assertion globale ne prouve pas l'appariement
+
+Un test qui vérifie une propriété **d'ensemble** — « tous distincts », « tous
+au-dessus de X », « aucun doublon » — laisse passer **toutes les permutations**.
+Deux éléments peuvent échanger leurs valeurs sans qu'il proteste.
+
+Chaque fois que tu écris une assertion de cette forme, **double-la d'assertions
+épinglées** : celui-ci vaut cela, nommément. Sinon tu vérifies une propriété
+mathématique, pas le comportement attendu.
+
+> Mesuré sur ce dépôt, **deux fois dans le même cycle** : un sigle codé en dur
+> pour le mauvais agent n'a tué **aucun test**, parce que la suite ne vérifiait
+> que la distinction globale. L'audit demandé ensuite a trouvé le **même défaut
+> sur les couleurs**. Deux agents pouvaient échanger leur identité sans qu'un
+> seul test ne tombe.
+
+## Tes tests lisent l'artefact, jamais une copie
+
+Un test qui embarque sa propre table de valeurs attendues vérifie que cette table
+est cohérente avec elle-même. Il ne vérifie pas le code.
+
+Les valeurs attendues se **lisent depuis le fichier livré** — feuille de style,
+configuration, journal — et se comparent à ce que le code en fait. Quand tu ne
+peux pas faire autrement, dis-le dans le test, en une ligne.
+
+## Un défaut trouvé se laisse rouge
+
+Si ta passe révèle un défaut réel, tu **rends un verdict bloqué** avec le test
+qui échoue, laissé rouge et nommé. Tu n'ajustes jamais un seuil, une borne ou une
+tolérance pour faire passer une suite : c'est précisément le geste que personne
+ne verra, et qui transforme une mesure en décoration.
+
 ## Format du rapport
 
 ```markdown
@@ -140,3 +172,8 @@ dans une fonction pure.
   comportement neuf n'est protégé par rien
 - ❌ Déclarer une garde couverte sans avoir vérifié qu'elle est **atteinte** :
   un test qui passe parce que le chemin s'arrête avant la garde ne prouve rien
+- ❌ Écrire une assertion d'ensemble (« tous distincts », « tous au-dessus de X »)
+  sans l'accompagner d'assertions épinglées élément par élément
+- ❌ Recopier dans le test les valeurs attendues au lieu de les lire depuis
+  l'artefact livré
+- ❌ Ajuster un seuil ou une tolérance pour faire passer une suite

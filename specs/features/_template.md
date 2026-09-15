@@ -16,6 +16,22 @@ Les sections marquées (optionnelle) peuvent être supprimées si non pertinente
 - **Dernière mise à jour** : [remplir : YYYY-MM-DD]
 - **Spec(s) liée(s)** : [remplir ou « aucune »]
 
+## Grandeurs mesurées
+<!--
+OBLIGATOIRE dès que la spec cite un nombre : « les six rôles », « les trois
+routes », « les deux formats ». Chaque quantité affirmée plus bas se mesure ICI
+avant d'être promise, avec la commande qui l'a produite.
+
+Un nombre repris d'un exemple, d'une maquette ou d'une autre spec n'est PAS une
+mesure — et l'ensemble compté est rarement fermé : compte AUSSI ce qui apparaît
+dans les données sans être déclaré dans le dépôt.
+
+Mesuré sur le projet d'origine : une spec promettait « six identités d'agent ».
+Il y en avait onze déclarées et douze observées. Quatre allers-retours.
+-->
+- `<quantité affirmée>` = **<valeur>** — mesurée par `<commande>` le `<date>`
+- [remplir, ou « aucune quantité affirmée »]
+
 ## Domaines touchés
 <!-- Cocher tout ce que la spec modifie ou consomme — guide l'orchestrator -->
 - [ ] API REST (endpoints, contrats, codes d'erreur)
