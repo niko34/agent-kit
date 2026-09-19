@@ -1,8 +1,15 @@
 # Mémoire de projet — ce que l'expérience a appris
 
-Ce dossier est la mémoire accumulée par Claude Code au fil du projet : pièges
-rencontrés, hypothèses **réfutées**, incidents, et principes que l'utilisateur a dû
-rappeler plusieurs fois.
+Ce dossier est la mémoire accumulée par Claude Code au fil du projet :
+hypothèses **réfutées**, incidents, décisions prises hors du code, et principes
+que l'utilisateur a dû rappeler plusieurs fois.
+
+> **Ce n'est pas le fichier de pièges d'un module.** La frontière n'est pas le
+> contenu, c'est le **destinataire** : un sous-agent **ne reçoit jamais** cette
+> mémoire — elle est chargée dans la session principale, pas dans les agents
+> qu'elle invoque. Tout ce dont un agent a besoin pour travailler doit donc
+> vivre dans un fichier qu'on lui **dit de lire**, par exemple
+> `<module>/PIEGES.md`. Voir « Mémoire ou pièges de module ? » plus bas.
 
 `MEMORY.md` est l'index — une ligne par fichier. Les autres fichiers portent un fait
 chacun.
@@ -25,13 +32,33 @@ déjà réfutée coûte plusieurs cycles à chaque fois.
 
 - **Une hypothèse réfutée**, avec ce qui l'a réfutée. C'est le contenu à plus fort
   rendement : il empêche de refaire le trajet.
-- **Un piège récidivant** : le défaut qui revient sous une forme différente.
+- **Un piège récidivant qui dépasse un module** : le défaut qui revient sous une
+  forme différente, dans plusieurs endroits du projet. Un piège **propre à un
+  module** va dans le `PIEGES.md` de ce module, pas ici.
 - **Un rappel de l'utilisateur** sur la façon de travailler, avec son *pourquoi*.
 - **Une décision prise hors du code** (« on ne fait pas X, et voici pourquoi »).
 - **Un incident** et sa cause racine réelle.
 
-Ce qui n'y a **pas** sa place : ce que le dépôt dit déjà (structure du code, historique
-git, `CLAUDE.md`), et ce qui ne vaut que pour la conversation en cours.
+Ce qui n'y a **pas** sa place : ce que le dépôt dit déjà (structure du code,
+historique git, `CLAUDE.md`), ce qui ne vaut que pour la conversation en cours, et
+ce qu'un **agent** doit savoir pour travailler sur un module — il ne le lira pas.
+
+## Mémoire ou pièges de module ?
+
+| | `.claude/memory/` | `<module>/PIEGES.md` |
+|---|---|---|
+| **Qui le lit** | la session principale, au démarrage | les agents, parce qu'un brief le leur dit |
+| **Portée** | le projet, et la façon d'y travailler | **un** module |
+| **Contenu** | hypothèses réfutées, préférences de l'utilisateur, incidents, décisions hors code | contraintes opérationnelles, faits qui trompent, faux-semblants de mesure |
+| **Qui écrit** | la session principale, quand elle apprend | `doc-writer`, en clôture de cycle, depuis les rapports |
+| **Durée de vie** | tant que le fait reste vrai | tant que le code le rend vrai — **une entrée périmée se retire** |
+
+Le test qui tranche : **est-ce qu'un agent en a besoin pour faire son travail ?**
+Si oui, c'est un piège de module, quel que soit le sujet. Sinon, c'est une
+mémoire.
+
+> Écrit le 2026-09-15, après avoir constaté que « pièges rencontrés » figurait
+> dans les deux endroits — donc que ni l'un ni l'autre ne serait lu.
 
 ## Format d'un fichier
 
