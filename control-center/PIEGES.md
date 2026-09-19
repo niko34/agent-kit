@@ -303,6 +303,63 @@ censée mettre en défaut.**
 
 ---
 
+## 31. Un attribut de présentation SVG perd contre n'importe quelle règle CSS de classe
+
+`font-size="11"` posé sur un élément depuis le contrat de géométrie
+(`disposer()`) est **neutralisé** par une règle de classe qui pose
+`font-size` — `.dg-socle-nom { font-size: 10.5px }` gagne toujours contre
+l'attribut, quelle que soit la valeur de l'attribut, parce qu'une règle CSS
+de classe l'emporte sur un attribut de présentation dans la cascade.
+
+Aucune sonde du bac à sable `vm` (qui relit l'**attribut** posé par le code,
+pas le style **calculé**) ne voit cette divergence. Trouvé seulement en
+mesurant `getComputedStyle` dans un vrai moteur de rendu (Chromium).
+
+C'est une variante de §25 (mutation neutralisée par la spécificité CSS), mais
+côté **attribut contre règle** plutôt que **règle contre règle** : un attribut
+de présentation n'a aucune spécificité face à un sélecteur de classe.
+
+**Conséquence directe** : le texte que le contrat réserve comme espace
+(taille utilisée pour calculer la largeur à ne pas dépasser) et le texte
+réellement peint (taille imposée par la feuille de style) peuvent diverger
+sans qu'aucun test basé sur l'attribut ne s'en aperçoive.
+
+**Toute garde sur une taille de texte réellement peinte doit lire le style
+calculé (`getComputedStyle`), jamais l'attribut posé par le code.**
+
+## 32. Un compte de cas mesuré dans le clone jetable n'est comparable au dépôt qu'à `docs/` près
+
+Le même fichier de test, octet pour octet identique, comptait **199** cas
+dans un clone jetable (§1) et **200** dans le dépôt d'origine. Cause : une
+assertion du fichier lit `docs/DESIGN-SYSTEM.md` — que le clone ne copie
+jamais, puisque §1 ne clone que `control-center/` et `.claude/agents/`. Le
+test qui la porte se **saute en silence** (fichier absent → cas non compté)
+au lieu d'échouer bruyamment.
+
+**Une baisse du compte de cas mesurée dans un clone peut n'être que
+l'absence d'un fichier hors périmètre du clone, pas une régression.** Avant
+de conclure à une régression sur un compte de cas, vérifier si un test du
+lot dépend d'un chemin hors de ce que §1 clone.
+
+## 33. Une règle CSS vide ne protège rien, même déclarée « pour la parité »
+
+Supprimer `.dg-graduation{}`, `.dg-liseret{}` ou `.dg-cercle{}` (des règles
+sans déclaration, posées pour que la classe existe dans la feuille) ne
+faisait échouer **aucun** des 504 cas de test concernés — mesuré par
+mutation. Un invariant « toute classe posée par `app.js` est déclarée dans
+`app.css`, et réciproquement » affiché en commentaire au-dessus du bloc n'est
+**pas** une garde : rien ne l'évalue, il documente une intention.
+
+Ce module porte désormais une garde exécutable pour cet invariant
+(`sondePariteClassesDgPoseesEtDeclarees`, `test_app_diagramme.js`) : elle lit
+les classes réellement posées par le SVG produit et les classes réellement
+déclarées dans la feuille de style, et échoue sur tout écart dans un sens ou
+dans l'autre.
+
+**Un invariant énoncé en commentaire n'est une garde que si un test l'évalue
+— sinon c'est de la documentation qui peut mentir sans qu'aucune suite ne le
+remarque.**
+
 ## Voir aussi
 
 - `docs/DESIGN-SYSTEM.md` — règles de couleur, de surface et de typographie

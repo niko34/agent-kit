@@ -123,6 +123,12 @@ def main():
     check("test_segment_principal_compte_ses_outils",
           w["segments"][0]["outils"] == 2 and w["segments"][2]["outils"] == 1,
           "obtenu %r" % [s.get("outils") for s in w["segments"]])
+    # feature-016 (item J) : jusqu'ici SEUL le segment principal comptait ses
+    # outils — sans ce compteur sur le sous-agent, la table des passages
+    # (feature-016) n'a aucune donnée « outils » à afficher.
+    check("test_segment_sousagent_compte_aussi_ses_outils",
+          w["segments"][1]["outils"] == 1,
+          "obtenu %r" % w["segments"][1].get("outils"))
     check("test_segment_principal_porte_ses_fichiers",
           w["segments"][0]["fichiers"] == ["a.py"]
           and w["segments"][2]["fichiers"] == ["d.py"],
@@ -168,6 +174,27 @@ def main():
           "obtenu %r" % w["reprises"])
     check("test_echec_attribue_au_bon_passage",
           w["echecs"] == 1 and w["passages"][0]["echecs"] == 1)
+
+    # --- feature-016 (item J) : compteur d'outils d'un passage ---------------
+    w = un(E.reconstruire([
+        ev(T(1), "SubagentStart", agent_type="test-engineer", agent_id="a1"),
+        ev(T(2), "PostToolUse", tool="Bash", command_head="pio test"),
+        ev(T(3), "PostToolUse", tool="Read"),
+        ev(T(4), "PostToolUseFailure", tool="Bash"),
+        ev(T(5), "SubagentStop", agent_id="a1"),
+    ], ("pio test",)))
+    check("test_passage_compte_trois_outils_echec_inclus",
+          w["passages"][0]["outils"] == 3,
+          "obtenu %r" % w["passages"][0]["outils"])
+
+    w = un(E.reconstruire([
+        ev(T(1), "SubagentStart", agent_type="doc-writer", agent_id="a1"),
+        ev(T(2), "PostToolUseFailure"),  # échec SANS `tool` : ne compte pas
+        ev(T(3), "SubagentStop", agent_id="a1"),
+    ]))
+    check("test_passage_sans_outil_reste_a_zero",
+          w["passages"][0]["outils"] == 0,
+          "obtenu %r" % w["passages"][0]["outils"])
 
     # --- deux sessions entrelacées ------------------------------------------
     a = ev(T(1), "SubagentStart", agent_type="architect", agent_id="a1")

@@ -37,6 +37,12 @@
   --clair-trait:       #c4c7ce;
   --clair-trait-fin:   #d3d6db;
 
+  /* Jeton d'état achromatique (feature-016, item I) — le contour de « sans
+   * clôture » et d'« indéterminé », JAMAIS de couleur vive : la seule teinte
+   * réservée à un état est `--actif`, pour « en cours ». Mesuré par
+   * l'architecte : 3,92:1 contre `--clair-surface`. */
+  --clair-contour-etat: #777777;
+
   --clair-texte:       #1d1f23;
   --clair-texte-doux:  #52555c;
   --clair-texte-faible:#60636a;
@@ -91,9 +97,17 @@
   --sombre-trait:       #2e343a;
   --sombre-trait-fin:   #262b30;
 
+  /* Voir `--clair-contour-etat` ci-dessus — 3,92:1 contre `--sombre-surface`. */
+  --sombre-contour-etat: #828282;
+
   --sombre-texte:       #e8e6e1;
   --sombre-texte-doux:  #a8b0b7;
-  --sombre-texte-faible:#737c84;
+  /* Relevé (bug-016/feature-019, ADR-0017) : #737c84 mesurait 4,24:1 contre
+   * --sombre-fond, sous le seuil de 4,5:1 (§8). #8a9299 mesure 4,7700
+   * nominal, 4,7091 après arrondi d'un bit — tient la marge. #889098,
+   * envisagé, a été ÉCARTÉ : 4,6530 nominal mais 4,65 après arrondi, au ras
+   * du plancher exigé. */
+  --sombre-texte-faible:#8a9299;
 
   /* Pâles à dessein : la bande de gravité est placée AU-DESSUS de celle des
    * identités en clarté (L élevé), et une couleur claire ne peut pas être
@@ -144,6 +158,7 @@
   --creux:       var(--clair-creux);
   --trait:       var(--clair-trait);
   --trait-fin:   var(--clair-trait-fin);
+  --contour-etat:var(--clair-contour-etat);
 
   --texte:       var(--clair-texte);
   --texte-doux:  var(--clair-texte-doux);
@@ -176,8 +191,25 @@
   --a-neutre:            var(--clair-a-neutre);
   --f-neutre:            var(--clair-f-neutre);
 
+  /* Alias neuf (feature-020, correspondance de jetons T.ye) : l'arc de
+   * rebouclage porte une couleur FIXE, pas une identité d'agent (décision
+   * R) — `var(--a-debugger)` se résout déjà par thème, ce alias n'a donc
+   * besoin d'être déclaré qu'UNE fois : la résolution de `var()` est vive,
+   * elle suit `--a-debugger` quel que soit le thème actif sans duplication. */
+  --rebouclage: var(--a-debugger);
+
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+
+  /* Constante de mise en page (feature-019, revue) — PAS une couleur, donc
+   * hors du bloc de littéraux ci-dessus, mais nommée UNE FOIS pour ne plus
+   * répéter le nombre magique dans les trois règles qui en dépendaient
+   * (`.mise-en-page`, `.nav-sections` ×2). Valeur de repli pour `.barre` sur
+   * UNE seule ligne ; `.barre` peut passer à la ligne (`flex-wrap: wrap`)
+   * et dépasser cette hauteur — `app.js` mesure alors la hauteur RÉELLEMENT
+   * rendue et corrige cette variable (`ResizeObserver`), pour que la nav
+   * collante ne se retrouve jamais sous la barre repliée sur deux lignes. */
+  --hauteur-barre: 62px;
 
   color-scheme: light;
 }
@@ -195,6 +227,7 @@
     --creux:       var(--sombre-creux);
     --trait:       var(--sombre-trait);
     --trait-fin:   var(--sombre-trait-fin);
+    --contour-etat:var(--sombre-contour-etat);
 
     --texte:       var(--sombre-texte);
     --texte-doux:  var(--sombre-texte-doux);
@@ -242,6 +275,7 @@
   --creux:       var(--sombre-creux);
   --trait:       var(--sombre-trait);
   --trait-fin:   var(--sombre-trait-fin);
+  --contour-etat:var(--sombre-contour-etat);
 
   --texte:       var(--sombre-texte);
   --texte-doux:  var(--sombre-texte-doux);
@@ -307,7 +341,7 @@ body {
 .projet { font-family: var(--mono); font-size: 12px; color: var(--texte-faible); }
 .etat-barre { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .jauge {
-  font-family: var(--mono);
+  font-family: var(--sans);
   font-size: 11px;
   padding: 2px 8px;
   border: 1px solid var(--trait);
@@ -338,7 +372,7 @@ body {
  * quand le poste ne peut pas transmettre de jeton à `EventSource`, pas une
  * panne du flux — teinte neutre, jamais teal ni rouille (bug-012). */
 .jauge.sondage { color: var(--texte-doux); border-color: var(--trait); cursor: help; }
-.horodatage { font-family: var(--mono); font-size: 11px; color: var(--texte-faible); }
+.horodatage { font-family: var(--sans); font-size: 11px; color: var(--texte-faible); font-variant-numeric: tabular-nums; }
 
 /* ---------------- bandeau hôte ---------------- */
 /* Distinct de la porte : un hôte non reconnu (421) ou une panne réseau ne se
@@ -349,25 +383,97 @@ body {
   display: flex; align-items: center; justify-content: space-between; gap: 14px;
   flex-wrap: wrap;
   padding: 10px 16px;
-  background: var(--surface-2);
+  /* var(--surface), pas var(--surface-2) (feature-019, §3) : le bandeau est
+   * déjà délimité par son filet (border-bottom) — un aplat plus marqué en
+   * plus violait « un bloc se délimite par son filet ». */
+  background: var(--surface);
   border-bottom: 1px solid color-mix(in srgb, var(--echec) 50%, var(--trait));
 }
 .bandeau-hote[hidden] { display: none; }
 .bandeau-hote p { margin: 0; font-size: 12.5px; color: var(--texte-doux); }
 
-/* ---------------- grille ---------------- */
-.grille {
-  display: grid;
-  grid-template-columns: 250px minmax(0, 1fr);
-  gap: 14px;
-  padding: 14px;
-  align-items: start;
-}
-@media (max-width: 900px) { .grille { grid-template-columns: 1fr; } }
+/* ---------------- mise en page (feature-019, §5/§6 du design system) ----------------
+ * Colonne de navigation étroite + contenu borné et centré, une section
+ * visible à la fois — remplace l'ancien empilement (`.grille`/`.rail`/
+ * `.centre`, feature-015/016). */
+.mise-en-page { display: flex; align-items: flex-start; min-height: calc(100vh - var(--hauteur-barre)); }
 
-.rail { display: flex; flex-direction: column; gap: 14px; position: sticky; top: 62px; }
-@media (max-width: 900px) { .rail { position: static; } }
-.centre { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+/* Nav : NAVIGUE, ne porte aucun contenu (§5). Reste sous la profondeur 30
+ * (§6, condition de sécurité 3) : 11, un cran au-dessus de `.barre` (10),
+ * nettement sous le tiroir (20) et la porte (30). */
+.nav-sections {
+  flex: none;
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 10px;
+  position: sticky;
+  top: var(--hauteur-barre);
+  align-self: flex-start;
+  max-height: calc(100vh - var(--hauteur-barre));
+  overflow-y: auto;
+  border-right: 1px solid var(--trait);
+  z-index: 11;
+}
+.nav-onglet {
+  min-height: 44px;
+  display: flex; align-items: center;
+  padding: 8px 12px;
+  background: none; border: none; border-radius: 2px;
+  color: var(--texte-doux);
+  font: inherit; font-size: 13.5px; text-align: left; cursor: pointer;
+}
+.nav-onglet:hover { color: var(--texte); background: var(--surface-2); }
+.nav-onglet:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.nav-onglet[aria-selected="true"] {
+  color: var(--accent); font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.contenu { flex: 1 1 auto; min-width: 0; padding: 24px; }
+.section { max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+/* L'attribut `hidden`, posé STATIQUEMENT dans le HTML servi pour toute
+ * section autre que la section par défaut (condition de sécurité 5), est le
+ * SEUL mécanisme de masquage (condition 1) : `display: none`, rien d'autre —
+ * ni opacité, ni hors-écran, ni hauteur nulle. Cette règle doit rester
+ * déclarée APRÈS toute autre règle `display` d'auteur sur `.section`
+ * (condition 2) : `.section` ci-dessus est la SEULE règle `display`
+ * d'auteur qui reste sur ce sélecteur, elle précède celle-ci dans la
+ * feuille, et sa spécificité (0,1,0 — une classe) reste sous celle de
+ * `.section[hidden]` (0,2,0 — classe + attribut) : aucune concurrence
+ * possible, dans un sens comme dans l'autre.
+ *
+ * ⚠️ Défaut corrigé (revue) : une première version ajoutait ici un bloc
+ * `:root[data-section="X"] .section[data-section="X"] { display: flex }`
+ * pour éviter un flash de la section par défaut avant `app.js`. Sa
+ * spécificité (0,4,0) battait CETTE règle malgré l'ordre — mesuré : la
+ * section calculait `display: flex` tout en portant `hidden`. Retiré : la
+ * garde de sécurité prime sur le confort visuel, qui n'a plus d'autre
+ * mécanisme que `hidden` lui-même. Le flash résiduel est borné à la durée
+ * du parsing du `<body>` — `app.js`, en dernière ligne du document,
+ * synchronise `hidden` de façon synchrone dès qu'il s'exécute, avant tout
+ * retour à la boucle d'événements. */
+.section[hidden] { display: none; }
+
+.fil-ariane { margin: 0; font-size: 12px; color: var(--texte-faible); }
+.section-titre { margin: 0; font-size: 27px; font-weight: 700; color: var(--texte); }
+.section-titre:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (max-width: 600px) {
+  /* Repli en bande horizontale défilante sous l'en-tête (§9) : mêmes
+   * boutons, même ordre — pas de tiroir ni de menu escamotable, ça éviterait
+   * un état ouvert/fermé et une gestion de focus supplémentaires. */
+  .mise-en-page { flex-direction: column; min-height: 0; }
+  .nav-sections {
+    width: 100%; flex-direction: row; overflow-x: auto; overflow-y: visible;
+    max-height: none; position: static;
+    border-right: none; border-bottom: 1px solid var(--trait);
+    padding: 8px 10px;
+  }
+  .nav-onglet { flex: none; white-space: nowrap; }
+  .contenu { padding: 16px; }
+}
 
 .bloc {
   background: var(--surface);
@@ -375,18 +481,21 @@ body {
   border-radius: 3px;
   padding: 12px 14px;
 }
+/* Titre de section (§4) : corrige trois divergences à la fois (feature-019) —
+ * chasse fixe sur un libellé, 11 px au lieu des 18 px d'un titre de section,
+ * et le jeton de texte le plus faible sur un titre. Les capitales et
+ * l'interlettrage n'avaient plus de justification une fois la taille
+ * corrigée : retirés avec le reste. */
 .bloc h2 {
   margin: 0 0 8px;
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--texte-faible);
+  font-size: 18px;
+  color: var(--texte);
   font-weight: 600;
-  font-family: var(--mono);
+  font-family: var(--sans);
 }
 .entete-bloc { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .entete-bloc h2 { margin-bottom: 8px; }
-.compteur { font-family: var(--mono); font-size: 11px; color: var(--texte-faible); }
+.compteur { font-family: var(--sans); font-size: 11px; color: var(--texte-faible); font-variant-numeric: tabular-nums; }
 .note { margin: 0 0 8px; font-size: 12px; color: var(--texte-faible); }
 .note.avert { color: var(--texte-doux); border-left: 2px solid var(--accent); padding-left: 10px; }
 .note code { font-family: var(--mono); font-size: 11.5px; color: var(--accent); }
@@ -416,7 +525,7 @@ body {
 
 .systeme { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 12px; }
 .systeme dt { color: var(--texte-faible); }
-.systeme dd { margin: 0; font-family: var(--mono); font-size: 11.5px; text-align: right; }
+.systeme dd { margin: 0; font-family: var(--sans); font-size: 11.5px; text-align: right; font-variant-numeric: tabular-nums; }
 .systeme dd .suffixe-ecriture { color: var(--texte-faible); }
 
 /* ---------------- demande ---------------- */
@@ -442,7 +551,7 @@ body {
   border: 1px solid var(--trait);
   border-radius: 2px;
   color: var(--texte);
-  font-family: var(--mono);
+  font-family: var(--sans);
   font-size: 12px;
   padding: 5px 9px;
 }
@@ -455,7 +564,7 @@ body {
 .colonne { flex: 1 1 0; min-width: 210px; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
 .colonne-entete {
   display: flex; justify-content: space-between; align-items: baseline;
-  font-family: var(--mono); font-size: 11px; color: var(--texte-faible);
+  font-family: var(--sans); font-size: 11px; color: var(--texte-faible); font-variant-numeric: tabular-nums;
   border-bottom: 1px solid var(--trait); padding-bottom: 5px;
   position: sticky; top: 0; background: var(--surface); z-index: 1;
 }
@@ -473,7 +582,9 @@ body {
 .colonne-liste::-webkit-scrollbar-thumb { background: var(--trait); border-radius: 4px; }
 .colonne-liste::-webkit-scrollbar-track { background: transparent; }
 .carte {
-  background: var(--surface-2);
+  /* var(--surface), pas var(--surface-2) (feature-019, §3) : la carte est
+   * déjà délimitée par son propre filet ci-dessous. */
+  background: var(--surface);
   border: 1px solid var(--trait-fin);
   border-left: 2px solid var(--trait);
   border-radius: 2px;
@@ -496,37 +607,257 @@ body {
 }
 .carte .cbas { display: flex; gap: 6px; align-items: center; margin-top: 5px; flex-wrap: wrap; }
 .etiquette {
-  font-family: var(--mono); font-size: 10px; padding: 1px 5px; border-radius: 2px;
+  font-family: var(--sans); font-size: 10px; padding: 1px 5px; border-radius: 2px;
   border: 1px solid var(--trait); color: var(--texte-faible);
 }
 .etiquette.divergence { color: var(--alerte); border-color: color-mix(in srgb, var(--alerte) 45%, var(--trait)); }
 .etiquette.priorite-haute, .etiquette.priorite-critique { color: var(--echec); border-color: color-mix(in srgb, var(--echec) 45%, var(--trait)); }
 
-/* ---------------- workflows ---------------- */
-.workflow { border-top: 1px solid var(--trait-fin); padding: 9px 0; }
-.workflow:first-child { border-top: none; padding-top: 0; }
-.wf-entete { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; font-family: var(--mono); font-size: 11.5px; }
-.wf-entete .session { color: var(--texte-doux); }
-.wf-entete .marqueur.actif { color: var(--actif); }
-.wf-entete .marqueur.clos { color: var(--texte-faible); }
-.chaine { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-top: 7px; }
+/* ---------------- cycles (feature-016) ----------------
+ * Liste en accordéon (docs/DESIGN-SYSTEM.md §6) : un seul détail ouvert à la
+ * fois, le plus récent par défaut. Précédence identité/état (§8), appliquée
+ * ICI pour la première fois : l'identité d'un agent colore son TEXTE et son
+ * sigle (`.agent-nom`, `.agent-sigle`, couleur posée en ligne par app.js
+ * depuis les jetons `--a-<rôle>` / `--f-<rôle>`) ; un état se lit dans le
+ * CONTOUR et la FORME d'un badge dédié (`.cycle-etat`), jamais en recolorant
+ * un texte d'identité par-dessus. */
+.cycles { list-style: none; margin: 0; padding: 0; }
+.cycle { border-top: 1px solid var(--trait-fin); }
+.cycle:first-child { border-top: none; }
+.cycle-entete { margin: 0; }
+.cycle-bouton {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  width: 100%; text-align: left; padding: 9px 2px; margin: 0;
+  background: none; border: none; color: inherit; font: inherit; cursor: pointer;
+}
+.cycle-bouton:hover { background: var(--surface-2); }
+.cycle-bouton:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cycle-designation { font-family: var(--sans); font-size: 12.5px; }
+.cycle-resume { color: var(--texte-faible); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+
+/* Badge d'état — tableau arrêté à quatre cases (feature-016). Le libellé
+ * n'est JAMAIS tronqué, à aucune largeur : c'est ce qui rend acceptable le
+ * contour de « terminé », mesuré à 1,20:1 (illisible seul) — mais SEULEMENT
+ * parce que le libellé, lui, tient le seuil texte (4,5:1). Revue : le
+ * libellé des trois états achromatiques peignait `--texte-faible`, mesuré
+ * (fond `.bloc` = `--surface`) à 3,90:1 en thème sombre (6,02 en clair) —
+ * sous le seuil. `--texte` mesuré PAR CE CORRECTIF sur la même paire :
+ * 13,29:1 sombre, 16,5:1 clair — la couleur vive reste réservée à
+ * « en cours » (`--actif`), ce badge ne gagne aucune teinte neuve. */
+.cycle-etat {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 7px; border-radius: 2px; font-family: var(--sans);
+  font-size: 11px; white-space: normal;
+}
+.cycle-etat .glyphe { font-size: 11px; line-height: 1; }
+.cycle-etat.en-cours { border: 1px solid var(--actif); color: var(--actif); }
+.cycle-etat.termine { border: 1px solid var(--trait); color: var(--texte); }
+/* Pointillé (`dotted`), PAS tirets (`dashed`, revue) : les tirets sont
+ * réservés au RÔLE (`.maillon.principal`) ailleurs dans cette feuille —
+ * un même état ne peut pas se dessiner en pointillé dans la chaîne
+ * (`.maillon.sans-cloture`, plus bas) et en tirets dans ce badge. */
+.cycle-etat.sans-cloture { border: 1px dotted var(--contour-etat); color: var(--texte); }
+/* Contour double = deuxième forme distincte, réservée à « indéterminé » —
+ * aucun autre état de ce tableau ne la porte. */
+.cycle-etat.indetermine { border: 3px double var(--contour-etat); color: var(--texte); }
+
+.cycle-detail { padding: 0 2px 12px; }
+.cycle-proprietes {
+  margin: 0 0 12px; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px;
+  font-size: 12px; max-width: 420px;
+}
+.cycle-proprietes dt { color: var(--texte-faible); }
+.cycle-proprietes dd { margin: 0; font-family: var(--sans); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+
+/* ---- table des passages ---- */
+.table-passages { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 10px; }
+.table-passages th, .table-passages td { text-align: left; padding: 3px 8px 3px 0; }
+.table-passages th {
+  color: var(--texte-faible); font-weight: 400; font-size: 11px;
+  border-bottom: 1px solid var(--trait-fin);
+}
+.table-passages td { border-bottom: 1px solid var(--trait-fin); font-variant-numeric: tabular-nums; }
+.table-passages tr:last-child td { border-bottom: none; }
+/* Ancrage du rebouclage sur SA ligne (réutilise `indicesRepris`) : même
+ * grammaire que `.maillon.repris` dans la chaîne — un liseré, jamais un fond
+ * ni une bordure complète. */
+.table-passages tr.repris { border-left: 2px dashed var(--alerte); }
+.table-passages .colonne-agent { display: flex; align-items: center; gap: 6px; }
+.agent-sigle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 18px; height: 18px; flex: none; border-radius: 50%;
+  font-family: var(--mono); font-size: 9.5px; font-weight: 600;
+}
+.agent-nom { font-family: var(--mono); font-size: 11.5px; }
+
+.cycle-detail .vide { margin: 0 0 10px; }
+
+/* ==================== diagramme de déroulé (feature-017, feature-020) =====
+ * docs/DESIGN-SYSTEM.md §5. Géométrie calculée par `diagramme.js`
+ * (`disposer()`, module pur) ; ce bloc ne fait que peindre — AUCUN
+ * hexadécimal ici, uniquement des `var(--...)` déjà déclarés plus haut dans
+ * ce fichier (§9 du design system : « un hexadécimal ailleurs que dans le
+ * bloc `:root` » est interdit).
+ *
+ * feature-020 aligne le tracé sur `control-center/maquettes/2026-09-15-
+ * diagramme-reference.html`. Correspondance de jetons (mesurée, spec
+ * feature-020) : T.bd → --trait-fin (le plus clair : anneau guide, contour
+ * de pastille) ; T.bd2 → --trait (le plus sombre : graduations éteintes,
+ * contour de cercle inactif, liens) ; T.t3 → --texte-faible (heure, nom,
+ * barre grise du zéro, pointe de lien) ; T.tx → --texte (durée, vedette du
+ * socle) ; T.bloc/T.creux → --creux (fond de pastille, barre blanche du
+ * zéro) ; T.cadre → --trait (filet du cadre de groupe parallèle) ;
+ * T.ye → --rebouclage (arc, alias vers --a-debugger, déclaré en tête de
+ * fichier).
+ *
+ * Toute liste de classes ci-dessous a été vérifiée POSÉE ⇔ DÉCLARÉE
+ * (feature-020, item C1) : aucune classe déclarée sans être peinte par
+ * `app.js`, aucune classe peinte sans règle ici.
+ *
+ * Défilement : molette seule = la page ; `Maj` + molette ou glisser = la
+ * zone (comportement natif d'`overflow-x: auto`, rien à coder). Le
+ * conteneur porte `tabindex="0"` (posé par `app.js`) et se parcourt aux
+ * flèches — le focus doit rester VISIBLE dessus comme sur tout élément
+ * atteignable au clavier (§8). */
+.dg-entete { display: flex; align-items: baseline; gap: 10px; margin: 16px 2px 6px; }
+.dg-entete-titre { font-size: 13px; font-weight: 600; }
+.dg-entete-phrase { font-size: 12px; color: var(--texte-faible); }
+
+/* -- piste (item S/C3) : radius 6, fond creux, voiles latéraux signalant le
+ * défilement caché — le VOILE est un simple dégradé CSS, aucun script. */
+.dg-piste {
+  position: relative;
+  background: var(--creux); border: 1px solid var(--trait); border-radius: 6px;
+  margin-bottom: 10px;
+}
+.diagramme-scroll { overflow-x: auto; overflow-y: hidden; padding: 8px 0 2px; }
+.diagramme-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.dg-svg { display: block; }
+.dg-voile {
+  position: absolute; top: 1px; bottom: 11px; width: 34px; pointer-events: none;
+}
+.dg-voile.g { left: 1px; background: linear-gradient(90deg, var(--creux), transparent); }
+.dg-voile.d { right: 1px; background: linear-gradient(270deg, var(--creux), transparent); }
+
+/* -- groupes structurants — le rendu vient entièrement de leurs enfants ;
+ * déclarés explicitement pour que « posé ⇔ déclaré » (item C1) reste
+ * vérifiable sans exception, `<title>` compris (le survol doit continuer à
+ * atteindre le cercle qu'ils enveloppent — aucun `pointer-events` ici). */
+.dg-agent, .dg-liens, .dg-arcs, .dg-socle { }
+
+/* -- cercle d'agent -- */
+.dg-guide { fill: none; }
+/* .dg-graduation reste sans propriété fixe : l'épaisseur (allumée 1,8 /
+ * éteinte 1) est un signal D3 exposé par `disposer()` — testé directement
+ * sur le contrat géométrique (`graduations[].epaisseur`) — donc ce n'est
+ * PAS une constante de pur trait au sens de C2, elle reste posée en ligne
+ * par `app.js` plutôt que déclarée ici. */
+.dg-graduation { }
+/* Épaisseur constante (1px), ne participe à AUCUNE réservation d'espace
+ * dans `disposer()` (le liseré est intérieur au disque, feature-020 C2) :
+ * vit ici plutôt qu'en ligne dans `app.js`. */
+.dg-liseret { stroke-width: 1px; }
+/* .dg-cercle reste sans propriété fixe pour la même raison que
+ * .dg-graduation : `contourLargeur` dépend du rôle (échec/sans
+ * clôture/en cours/nominal, D1/D4) et est testé sur le contrat
+ * (`a.contourLargeur`) — posé en ligne, pas déclaré ici. */
+.dg-cercle { }
+/* Vocabulaire des traits (§8) : UN SEUL motif restant sur le cercle — le
+ * pointillé (« sans clôture »). L'agent principal a quitté les tirets
+ * (défaut A, D1) : trop fréquent pour être une exception visuelle. */
+.dg-contour-plein { stroke-dasharray: none; }
+.dg-contour-pointille { stroke-dasharray: 2 3; }
+.dg-croix-echec line { stroke: var(--alerte); stroke-width: 2; stroke-linecap: round; }
+.dg-anneau-en-cours { stroke-width: 1; }
+/* `pointer-events: none` laisse le survol ATTEINDRE le cercle sous le
+ * texte (le sigle est peint dessus, au même point). */
+.dg-sigle { font-family: var(--mono); font-weight: 600; pointer-events: none; }
+
+/* -- barres du zéro (marqueur de départ des graduations) : deux classes
+ * distinctes, une par barre, car les épaisseurs (2,6px / 1px) diffèrent et
+ * ne participent à AUCUNE réservation d'espace (feature-020 C2) — la
+ * couleur, elle, reste posée en ligne par `app.js` (blanche vs grise). */
+.dg-barre-zero-blanche { stroke-width: 2.6px; }
+.dg-barre-zero-grise { stroke-width: 1px; }
+
+/* -- socle : heure, durée, nom (créneau simple) / heure·durée, nom (empilé) —
+ * classes posées EXPLICITEMENT par rôle (item L), jamais par position :
+ * `tspan:last-child` perdait contre la spécificité d'un sélecteur plus
+ * fort (PIEGES §25), c'est ce qui rendait la vedette invisible.
+ *
+ * AUCUN `font-size` ici, jamais (prolongement de la règle C2, revue
+ * feature-020 point 1) : `taillePx` vient de `disposer()` et PARTICIPE à
+ * la réservation d'espace (`largeurTexte()`) — un même rôle prend 10,5px en
+ * créneau simple et 11px en créneau empilé (le nom, notamment). Une classe
+ * unique ne peut pas porter les deux valeurs ; posée ici, elle gagnerait
+ * de toute façon contre l'attribut de présentation `font-size` que pose
+ * `app.js` (une classe l'emporte toujours sur un attribut de présentation),
+ * et le texte réellement peint divergerait du texte mesuré pour la
+ * réservation — c'est le défaut mesuré (PIEGES §25). La taille se pose
+ * donc en ligne, dans `element.style.fontSize`, qui gagne sur l'un ET
+ * l'autre. */
+.dg-socle-heure, .dg-socle-nom {
+  font-family: var(--sans); fill: var(--texte-faible);
+  font-variant-numeric: tabular-nums;
+}
+.dg-socle-duree, .dg-socle-heure-duree {
+  font-family: var(--mono); fill: var(--texte); font-variant-numeric: tabular-nums;
+}
+.dg-socle-duree.actif, .dg-socle-heure-duree.actif { font-weight: 700; }
+.dg-repli, .dg-libelle-cadre { font-family: var(--sans); fill: var(--texte-faible); }
+
+/* -- créneau empilé (agents simultanés) -- */
+.dg-cadre-simultane { stroke: var(--trait); stroke-width: 1; }
+.dg-libelle-cadre-masque { }
+
+/* -- liens et pastilles d'attente -- */
+.dg-lien { stroke: var(--trait); stroke-width: 1.2; }
+.dg-lien-pointe { stroke: var(--texte-faible); stroke-width: 1; stroke-linejoin: round; }
+.dg-pastille-attente rect {
+  fill: var(--creux); stroke: var(--trait-fin); stroke-width: 1;
+}
+.dg-pastille-attente text {
+  font-family: var(--sans); font-size: 10.5px; fill: var(--texte-faible);
+}
+
+/* -- rebouclage -- */
+/* Couleur FIXE (décision R, feature-020) : plus une identité d'agent, un
+ * alias dédié — aucun style inline à surclasser. */
+.dg-arc-rebouclage { stroke: var(--rebouclage); stroke-width: 1.3; stroke-dasharray: 3 3; opacity: .75; fill: none; }
+.dg-arc-libelle { font-family: var(--sans); fill: var(--rebouclage); }
+
+.diagramme-legende {
+  margin: 0 0 12px; display: grid; grid-template-columns: auto 1fr;
+  gap: 2px 10px; font-size: 11px; color: var(--texte-faible); max-width: 480px;
+}
+.diagramme-legende dt { font-family: var(--sans); }
+.diagramme-legende dd { margin: 0; }
+
+/* ---- chaîne des segments (repli textuel du diagramme ci-dessus, §5) ---- */
+.chaine { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-bottom: 10px; }
 .maillon {
   display: inline-flex; align-items: baseline; gap: 6px;
-  background: var(--surface-2); border: 1px solid var(--trait-fin);
+  /* var(--surface), pas var(--surface-2) (feature-019, §3) : le maillon est
+   * déjà délimité par son propre filet ci-dessous. */
+  background: var(--surface); border: 1px solid var(--trait-fin);
   border-radius: 2px; padding: 3px 7px; font-size: 12px;
 }
 .maillon .mnom { font-family: var(--mono); font-size: 11.5px; }
-.maillon .mduree { font-family: var(--mono); font-size: 10.5px; color: var(--texte-faible); }
+.maillon .mduree { font-family: var(--sans); font-size: 10.5px; color: var(--texte-faible); font-variant-numeric: tabular-nums; }
+/* Précédence identité/état (§8) : le texte (`.mnom`) ne porte plus la
+ * couleur d'état — l'identité de l'agent la porte désormais (couleur posée
+ * en ligne par app.js). L'état reste lisible au CONTOUR ci-dessous. */
 .maillon.en-cours { border-color: color-mix(in srgb, var(--actif) 50%, var(--trait)); }
-.maillon.en-cours .mnom { color: var(--actif); }
 .maillon.echec { border-color: color-mix(in srgb, var(--echec) 50%, var(--trait)); }
-.maillon.echec .mnom { color: var(--echec); }
 /* Fin sans annonce (bug-013/feature-010) : NI teal (en cours) ni rouille
  * (échec) — ce n'est ni un succès ni un échec du travail, un simple fait
- * signalé. Bordure pointillée pour le distinguer visuellement d'un maillon
- * clos normal, sans emprunter au registre de l'alerte. */
-.maillon.sans-cloture { border-color: var(--trait); border-style: dashed; }
-.maillon.sans-cloture .mnom { color: var(--texte-faible); font-style: italic; }
+ * signalé. Bordure EN POINTILLÉ (`dotted`) pour le distinguer visuellement
+ * d'un maillon clos normal, sans emprunter au registre de l'alerte — et
+ * SURTOUT distincte des TIRETS (`dashed`) de `.principal` ci-dessous
+ * (revue, §8) : un même trait ne peut pas porter à la fois un rôle et un
+ * état. Combinaison impossible par construction (events.py) : le segment
+ * principal a `termine: true` fixé à la création, jamais `sans_cloture`. */
+.maillon.sans-cloture { border-color: var(--trait); border-style: dotted; }
 /* Ancrage du rebouclage dans la chaîne (feature-010, §8) : un simple liseré,
  * jamais un fond ni une bordure complète — le maillon reste lisible comme un
  * agent normal, ce trait ajoute juste le contexte « déjà vu ». */
@@ -534,17 +865,22 @@ body {
 
 /* L'agent principal est un acteur à part : c'est lui qui orchestre. Un fond
  * creusé et un nom en retrait le distinguent des sous-agents sans le mettre en
- * avant — il est le fil, pas l'événement. */
+ * avant — il est le fil, pas l'événement. Le retrait (italique) ET les
+ * TIRETS (`dashed`) restent le registre du RÔLE (`.principal`) — jamais
+ * réutilisés pour un état : l'état s'écrit en POINTILLÉ (`dotted`,
+ * `.sans-cloture` ci-dessus), jamais en tirets. */
 .maillon.principal { background: var(--creux); border-style: dashed; }
 .maillon.principal .mnom { color: var(--texte-faible); font-style: italic; }
 .fleche { color: var(--texte-faible); font-size: 11px; }
-.wf-notes { margin-top: 6px; font-size: 11.5px; color: var(--texte-faible); }
+.wf-notes { margin-top: 6px; margin-bottom: 6px; font-size: 11.5px; color: var(--texte-faible); }
 .wf-notes .alerte { color: var(--alerte); }
 /* Une information ATTENDUE ne se peint pas comme une anomalie. */
 .wf-notes.attendu { color: var(--texte-faible); cursor: help; }
 /* Le rebouclage EST une anomalie du déroulement nominal (pas du récit) :
- * seule bande en ambre du bloc workflow, distincte de `.attendu`. */
+ * seule bande en ambre du bloc de détail, distincte de `.attendu`. */
 .wf-notes.reboucle { color: var(--alerte); }
+
+.action-repli { margin-bottom: 8px; }
 
 /* ---------------- pilotage ---------------- */
 /* Un bouton qui écrit dans le dépôt et dépense de l'argent n'a pas la
@@ -567,7 +903,7 @@ body {
   outline: 2px solid var(--accent); outline-offset: 1px;
 }
 
-.pilotage-ligne { font-family: var(--mono); font-size: 12.5px; margin: 0 0 8px; }
+.pilotage-ligne { font-family: var(--sans); font-size: 12.5px; margin: 0 0 8px; }
 .pilotage-ligne.en-cours { color: var(--actif); }
 .pilotage-ligne.bloque { color: var(--alerte); }
 .pilotage-ligne.termine { color: var(--actif); }
@@ -575,7 +911,7 @@ body {
 .pilotage-ligne.interrompu { color: var(--texte-faible); }
 
 .pilotage-tronque {
-  font-family: var(--mono); font-size: 11.5px; color: var(--alerte);
+  font-family: var(--sans); font-size: 11.5px; color: var(--alerte);
   border: 1px solid color-mix(in srgb, var(--alerte) 45%, var(--trait));
   border-radius: 2px; padding: 4px 8px; margin-bottom: 6px;
 }
@@ -618,27 +954,33 @@ body {
   .porte-carte { padding: 14px 12px; }
 }
 
-/* ---------------- fichiers & timeline ---------------- */
-.deux-colonnes { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
-@media (max-width: 1100px) { .deux-colonnes { grid-template-columns: 1fr; } }
-
+/* ---------------- fichiers & timeline ----------------
+ * Fichiers et Événements vivent désormais dans deux sections distinctes
+ * (feature-019, §5) — `.deux-colonnes` (mise en page à deux blocs côte à
+ * côte de l'ancien empilement) n'a plus d'usage et a été retirée. */
 .fichier {
   display: grid; grid-template-columns: 76px 1fr; gap: 8px; align-items: baseline;
   padding: 3px 0; font-size: 12px; width: 100%;
   background: none; border: none; color: inherit; text-align: left; cursor: pointer;
   border-bottom: 1px solid var(--trait-fin);
 }
-.fichier:hover .fchemin { color: var(--accent); }
+.fichier:hover .fchemin, .fichier:hover .fsujet { color: var(--accent); }
 .fichier:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .fichier .fcode { font-family: var(--mono); font-size: 10.5px; color: var(--texte-faible); }
+/* Chemin de fichier — un identifiant technique (§4), chasse fixe. */
 .fichier .fchemin { font-family: var(--mono); font-size: 11.5px; overflow-wrap: anywhere; }
+/* Sujet de commit (feature-019) — une phrase écrite par un humain, pas un
+ * chemin : `.fchemin` était réutilisée ici (app.js, `rendreFichiers`), ce
+ * qui mettait un texte de commit en chasse fixe. Classe distincte, en
+ * sans-serif, mêmes proportions que `.fchemin`. */
+.fichier .fsujet { font-family: var(--sans); font-size: 11.5px; overflow-wrap: anywhere; }
 
 .timeline { list-style: none; margin: 0; padding: 0; max-height: 340px; overflow-y: auto; }
 .timeline li {
   display: grid; grid-template-columns: 74px 1fr; gap: 9px;
   padding: 2px 0; font-size: 12px; border-bottom: 1px solid var(--trait-fin);
 }
-.timeline .heure { font-family: var(--mono); font-size: 11px; color: var(--texte-faible); }
+.timeline .heure { font-family: var(--sans); font-size: 11px; color: var(--texte-faible); font-variant-numeric: tabular-nums; }
 .timeline .quoi { font-family: var(--mono); font-size: 11.5px; overflow-wrap: anywhere; }
 .timeline li.echec .quoi { color: var(--echec); }
 .timeline li.agent .quoi { color: var(--actif); }

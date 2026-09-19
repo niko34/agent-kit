@@ -2,7 +2,7 @@
 - **ID** : feature-016
 - **Slug** : liste-des-cycles-en-accordeon
 - **Type** : feature
-- **Statut** : todo
+- **Statut** : done
 - **Priorité** : haute
 - **Version cible** : 0.9.0
 - **Dernière mise à jour** : 2026-09-15
@@ -40,7 +40,14 @@ feature-017 ; d'ici là le détail est déjà utile sans lui.
 ## Comportement attendu
 
 1. Une **liste** des cycles, le plus récent en tête. Chaque ligne porte : son
-   état, le nom de la spec, le nombre d'agents, la durée totale, l'ancienneté.
+   état, sa désignation, le nombre d'agents, la durée totale, l'ancienneté.
+   **Amendement (2026-09-15)** : la ligne ne porte pas « le nom de la spec »
+   — cette donnée n'existe dans aucun des vingt champs produits par
+   `reconstruire()`, et la corrélation heuristique envisagée s'est révélée
+   non invalidable (2 cas sur 14 mesurés désignent un candidat unique). La
+   désignation retenue est l'**heure de départ** et l'**agent ouvrant**
+   (ou la mention du bornage en son absence) — voir
+   [ADR-0023](../../../docs/adr/0023-un-cycle-observe-ne-porte-pas-de-nom.md).
 2. Le **dernier cycle est déplié par défaut**.
 3. Déplier un autre cycle **referme le précédent**. Jamais deux détails ouverts.
 4. Le détail contient :
@@ -94,10 +101,14 @@ sont noyés.
 - [ ] D1 — table des agents avec identité de couleur et reprises
 
 ## ADR attendu ?
-- **Probable** : non
-- **Critère(s) candidat(s)** : aucun
-- **Sujet pressenti** : aucun — la décision « un seul cycle à la fois » est déjà
-  consignée dans `docs/DESIGN-SYSTEM.md` §6
+- **Probable** : non, à l'écriture de la spec
+- **Statué par l'architecte, en cours d'implémentation** : oui — **critères 1
+  et 3** (contrainte structurante sur `feature-017` et les écrans futurs ;
+  alternative crédible étudiée et écartée). La décision « un seul cycle à la
+  fois » restait bien consignée dans `docs/DESIGN-SYSTEM.md` §6, mais un
+  second sujet est apparu en cours de travail : la spec promettait « le nom
+  de la spec » sur chaque ligne, une donnée qui n'existe nulle part. Voir
+  [ADR-0023](../../../docs/adr/0023-un-cycle-observe-ne-porte-pas-de-nom.md).
 
 ## Éléments visibles (pour doc-writer)
 
@@ -112,24 +123,27 @@ sont noyés.
 
 ### Documentation à produire / mettre à jour
 #### Docs vivantes
-- `docs/features/page-centre-de-controle.md` — la liste et son dépliement
+- `docs/features/page-centre-de-controle.md` — la liste et son dépliement, et
+  ce que l'écran n'affiche pas (nom de spec, nombre de cycles)
 
 #### Docs transverses
 - `CHANGELOG.md` — entrée 0.9.0
+- `docs/adr/0023-un-cycle-observe-ne-porte-pas-de-nom.md` — ADR créé en cours
+  de cycle (critères 1 et 3), amendant le point A1 ci-dessus
 
 ## Critères d'acceptation
-- [ ] À l'ouverture, exactement un cycle est déplié, et c'est le plus récent
-- [ ] Déplier un autre cycle referme le précédent — jamais deux détails ouverts
+- [x] À l'ouverture, exactement un cycle est déplié, et c'est le plus récent
+- [x] Déplier un autre cycle referme le précédent — jamais deux détails ouverts
       simultanément, vérifié par un test
-- [ ] Sans aucun cycle, un état vide explicite s'affiche
-- [ ] Un agent sans clôture s'affiche dans son propre état, distinct de
+- [x] Sans aucun cycle, un état vide explicite s'affiche
+- [x] Un agent sans clôture s'affiche dans son propre état, distinct de
       « en cours » et de « terminé »
-- [ ] Un rafraîchissement pendant qu'un cycle est déplié ne le referme pas
-- [ ] Les totaux affichés dans les propriétés égalent la somme des lignes de la
+- [x] Un rafraîchissement pendant qu'un cycle est déplié ne le referme pas
+- [x] Les totaux affichés dans les propriétés égalent la somme des lignes de la
       table — vérifié par un test, pas par relecture
-- [ ] Navigation clavier complète : atteindre, déplier, replier, parcourir
-- [ ] Suite de tests complète verte, zéro régression
-- [ ] Lint propre, pas de warning nouveau
+- [x] Navigation clavier complète : atteindre, déplier, replier, parcourir
+- [x] Suite de tests complète verte, zéro régression
+- [x] Lint propre, pas de warning nouveau
 
 ## Plan de test manuel
 1. Ouvrir le centre de contrôle : le cycle le plus récent est déplié.
@@ -154,3 +168,99 @@ pas le tuer. Tout arrêt de processus vise un PID capturé, jamais un motif.
 Le journal réel `control-center/var/agent-events.jsonl` est en **lecture seule**
 pour les mesures, et il **grossit pendant qu'on le mesure** : travailler sur un
 instantané figé, sinon deux comptages successifs se contredisent sans raison.
+
+---
+
+# Clôture — 2026-09-15
+
+## La spec promettait une donnée inexistante
+
+Elle annonçait une ligne portant **« le nom de la spec »**. Mesuré : les vingt
+clés d'un cycle reconstruit et les dix-sept clés du journal n'en portent
+**aucune**. La corrélation avec les specs du dépôt ne désigne un candidat unique
+que dans **2 cas sur 14** — et surtout, son taux d'erreur **n'est pas mesurable**,
+faute de vérité terrain dans le journal.
+
+C'est la **deuxième fois de la journée** qu'une spec issue d'une maquette promet
+une donnée que rien ne produit : les comptes de jetons de `feature-017`, puis ce
+nom. Une maquette montre ce qu'on veut voir, pas ce qu'on peut mesurer.
+
+⇒ **ADR-0023** : un cycle est désigné par son heure de départ et son agent
+ouvrant. La spec est amendée.
+
+## Trois défauts trouvés qu'aucun critère ne demandait
+
+1. **Un critère livrable mort.** `fin_observee_absente` vaut vrai pour
+   **85,7 %** des cycles — `SessionEnd` ne se déclenche jamais. Lire l'état du
+   cycle là-dessus aurait affiché « en cours » partout.
+2. **Un contour sous le plancher, absorbé** (ADR-0017). L'état « sans clôture »
+   était porté par un contour à **1,20:1**, livré par `bug-013`. Il ne devenait
+   bloquant que parce que ce cycle fait du contour le **porteur exclusif** de
+   l'état. Jeton neuf, achromatique, mesuré à 3,92:1.
+3. **Une chaîne de justification circulaire**, trouvée en revue. Le contour de
+   « terminé » à 1,20:1 n'était acceptable **que parce que le libellé est
+   toujours affiché** — or ce libellé était peint à **3,90:1**, sous le seuil.
+   *Le contour cédait au libellé, le libellé cédait au jeton.* Chaque règle était
+   formellement respectée ; la chaîne, non. Corrigé : 13,29:1.
+
+## Une ambiguïté de vocabulaire levée
+
+Le trait en tirets signifiait **à la fois un état et un rôle**. La garde « l'état
+se lit par la forme » était donc déjà vide de sens avant ce cycle. Désormais :
+pointillé = état, tirets pleins = rôle, tirets en liseré gauche = rebouclage.
+Consigné au §8 pour ne pas revenir.
+
+⚠️ La correction a dû être faite **deux fois** : levée d'abord sur les nouveaux
+badges, elle laissait la chaîne inchangée ; puis l'inverse. Une correction
+s'arrête au premier endroit signalé, pas au dernier endroit où la règle
+s'applique.
+
+## Deux ajouts backend, strictement additifs
+
+- `outils` sur les passages de sous-agent — il n'existait que sur l'agent
+  principal, ce qui rendait une colonne entière invendable. **4 921 appels**
+  enfin attribués.
+- `evenements_hors_session`, calculé depuis toujours et **jeté** avant d'être
+  servi.
+
+Vérifié par exécution sur un instantané figé : sortie de `reconstruire`
+identique hors la clé neuve.
+
+## Comptes
+
+| | entrée | sortie |
+|---|---|---|
+| Centre de contrôle | 15 suites, 827 cas | **16 suites, 959 cas** |
+| Kit | 111 tests | 111 tests |
+| Mutations | — | **10 tentées, 10 tuées** |
+
+Dont un mutant qui avait **survécu** à la première passe : la garde anti-repli
+total de l'accordéon était juste, écrite, commentée — et couverte par rien.
+
+## Verdicts
+
+- `spec-reader` : spec promouvable, sous-spécifiée sur un point, signalé
+- `architect` : quatre arbitrages établis par exécution ; a **corrigé les
+  chiffres du brief**, qui mélangeaient deux configurations
+- `ux-ui-designer` : conforme sous réserve — une seule couleur vive, réservée à
+  « en cours »
+- `test-engineer` : vert, puis **un mutant survivant** rattrapé après revue
+- `code-reviewer` : Request changes → **corrigé** → gardes exécutées et
+  atteignables
+- `security-reviewer` rôle GATE : **non requis**, lecture seule, confirmé
+
+## Reste ouvert
+
+- `bug-016` — les durées et compteurs secondaires de la table héritent d'un
+  jeton à 3,55:1. **À traiter juste après ce cycle.**
+- `feature-017` — le diagramme de déroulé s'insère dans le détail.
+- **Le langage visuel n'a jamais été spécifié.** Les trois specs couvrent les
+  jetons, le comportement et le diagramme ; la structure de page, la typographie
+  et les espacements des maquettes n'ont fait l'objet d'aucune spec. C'est un
+  manque du découpage, pas de l'exécution.
+- ⚠️ **Le serveur doit être redémarré** : il sert l'ancien code Python avec la
+  nouvelle interface, donc « indéterminé » partout et des compteurs à zéro.
+  L'interface tolère l'absence — c'est la règle qui joue, pas un défaut.
+
+## Statut final
+✅ Done — 2026-09-15 — commit à renseigner à la validation

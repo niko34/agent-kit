@@ -2,7 +2,7 @@
 - **ID** : feature-019
 - **Slug** : langage-visuel-navigation-et-page-centree
 - **Type** : feature
-- **Statut** : todo
+- **Statut** : done
 - **Priorité** : haute
 - **Version cible** : 0.10.0
 - **Dernière mise à jour** : 2026-09-15
@@ -11,14 +11,20 @@
 
 ## Grandeurs mesurées
 <!-- Mesuré le 2026-09-15 avant écriture, conformément au gabarit. -->
-- **Blocs de contenu de la page** = **8** — mesuré par
-  `grep -c '<h2' control-center/web/index.html` : Agents · Système · Que
+- **Blocs de contenu de la page** = **8** — mesuré **dans `<main>` seulement** :
+  `grep -c '<h2' index.html` rend **9**, le neuvième étant le titre de la modale
+  d'authentification, posée hors du contenu. ⚠️ Corrigé le 2026-09-15 : la
+  commande d'origine ne reproduisait pas le chiffre annoncé.
+  Les huit sont : Agents · Système · Que
   souhaitez-vous développer ? · Spécifications · Pilotage · Cycles · Fichiers
   touchés · Derniers événements
 - **Usages de la pile à chasse fixe** = **31**, **usages de la pile sans-serif**
   = **2** — mesuré par `grep -c 'var(--mono)' / 'var(--sans)'` sur `app.css`
 - **Surfaces concernées** = `index.html` 193 lignes · `app.css` 803 · `app.js`
   1 921
+- **Usages de `--surface-2`** = **5** — quatrième surface, alors que le §3 du
+  design system dit « trois niveaux, jamais plus ». Divergence antérieure à cette
+  spec, à trancher : amender le §3, ou retirer le jeton.
 - **Contraste de `--texte-faible`** = **3,55:1** sur `--surface-2` en thème
   sombre, **4,24:1** sur `--fond` — sous le seuil de 4,5:1 du §8 (origine de
   `bug-016`, absorbée ici)
@@ -143,15 +149,19 @@ l'exige l'exception de `CLAUDE.md`.
 - [ ] B2 — surfaces du §3 appliquées ; un bloc se délimite par son filet
 - [ ] C1 — les huit blocs replacés, aucun perdu sans décision écrite
 - [ ] C2 — `--texte-faible` et `--texte-doux` au-dessus du seuil, dans les deux
-      thèmes, sur les trois surfaces (absorption de `bug-016`)
+      thèmes, sur les **quatre** surfaces (`--fond`, `--surface`,
+      `--surface-2`, `--creux` — absorption de `bug-016`)
 - [ ] D1 — navigation au clavier, section courante annoncée, repli en écran étroit
 
 ## ADR attendu ?
-- **Probable** : oui
-- **Critère(s) candidat(s)** : 1, 4
+- **Probable** : oui — statué par `architect`
+- **Critère(s) retenus** : 1, 3, 4 (le critère 3 — alternatives crédibles — a
+  été ajouté au vu des trois options écartées : empilement, onglets
+  horizontaux, navigation par ancres)
 - **Sujet pressenti** : le centre de contrôle affiche **une section à la fois**
   dans un contenu borné, et la navigation est une colonne qui ne porte aucun
   contenu. Contraint tout écran futur, et verrouille l'abandon de l'empilement.
+- **Livré** : [ADR-0024](../../../docs/adr/0024-une-section-a-la-fois-dans-un-contenu-borne.md)
 
 ## Éléments visibles (pour doc-writer)
 
@@ -170,26 +180,26 @@ l'exige l'exception de `CLAUDE.md`.
 - `docs/DESIGN-SYSTEM.md` — §3 et §4 marqués appliqués ; jetons de texte corrigés
 
 #### Docs immuables
-- `docs/adr/NNNN-une-section-a-la-fois-dans-un-contenu-borne.md`
+- `docs/adr/0024-une-section-a-la-fois-dans-un-contenu-borne.md` — créé
 
 ## Critères d'acceptation
-- [ ] **Exactement une section visible** à la fois, vérifié par un test qui
+- [x] **Exactement une section visible** à la fois, vérifié par un test qui
       épingle laquelle — pas seulement « une seule »
-- [ ] Le **monospace n'apparaît plus que sur des identifiants techniques** —
+- [x] Le **monospace n'apparaît plus que sur des identifiants techniques** —
       vérifié par un test qui lit la feuille, pas par relecture. Entrée du
       cycle : **31 usages contre 2**
-- [ ] **Tous les jetons de texte** atteignent **≥ 4,5:1** contre `--fond`,
-      `--surface` et `--creux`, **dans les deux thèmes**, contraste **calculé
+- [x] **Tous les jetons de texte** atteignent **≥ 4,5:1** contre `--fond`,
+      `--surface`, `--surface-2` et `--creux`, **dans les deux thèmes**, contraste **calculé
       depuis les jetons** — et le test couvre **tous** les jetons de texte, pas
       seulement les deux corrigés, sinon le prochain ajouté y échappera
-- [ ] La **hiérarchie des trois niveaux de texte reste lisible** : un jeton
+- [x] La **hiérarchie des trois niveaux de texte reste lisible** : un jeton
       relevé jusqu'à se confondre avec son voisin ne corrige rien
-- [ ] **Les huit blocs sont atteignables** après refonte, vérifié un par un
-- [ ] Un **rafraîchissement** ne change pas la section affichée ni la position
-- [ ] **Navigation au clavier seul** : chaque section atteinte, l'active annoncée
-- [ ] À **600 px de large**, aucune section n'est inatteignable
-- [ ] Suite complète verte, compte de cas **strictement supérieur** à l'entrée
-- [ ] Validation par **mutation** : décaler un jeton de texte sous le seuil ;
+- [x] **Les huit blocs sont atteignables** après refonte, vérifié un par un
+- [x] Un **rafraîchissement** ne change pas la section affichée ni la position
+- [x] **Navigation au clavier seul** : chaque section atteinte, l'active annoncée
+- [x] À **600 px de large**, aucune section n'est inatteignable
+- [x] Suite complète verte, compte de cas **strictement supérieur** à l'entrée
+- [x] Validation par **mutation** : décaler un jeton de texte sous le seuil ;
       rendre deux sections visibles ; remettre du monospace sur un libellé
 
 ## Plan de test manuel
@@ -200,7 +210,10 @@ l'exige l'exception de `CLAUDE.md`.
    couleur.
 4. Laisser le rafraîchissement périodique tourner sur une section : elle ne
    change pas, la position de lecture est conservée.
-5. Comparer à la maquette `theme.html` : l'écart restant doit être **nommé**,
+5. Comparer à la **structure décrite au §6 du design system** — la maquette qui
+   a servi de référence visuelle vit hors du dépôt et n'est pas rejouable.
+   ⚠️ Corrigé le 2026-09-15 : la version d'origine renvoyait à un fichier absent,
+   ce qui rendait cette étape inexécutable. L'écart restant doit être **nommé**,
    pas constaté.
 
 ## Notes pour agent
@@ -227,3 +240,113 @@ La capture d'écran sans fenêtre est disponible et utile pour **constater** —
 `chromium --headless=new --screenshot` — mais elle ne remplace aucun test. Sur ce
 module, deux défauts ont été trouvés en regardant une image et deux autres en
 mesurant des couleurs peintes ; aucun en relisant du code.
+
+---
+
+# Clôture — 2026-09-15
+
+## Ce cycle a corrigé trois de mes erreurs avant d'écrire une ligne de code
+
+- Les critères d'acceptation énuméraient **trois surfaces** et omettaient la
+  quatrième — celle qui portait le pire défaut. Un cycle suivant la lettre aurait
+  laissé le cas rouge et annoncé le défaut corrigé.
+- La **commande de mesure** du bloc « Grandeurs mesurées » rendait **9** quand
+  elle annonçait 8 : elle comptait la modale, hors contenu.
+- Le plan de test renvoyait à une maquette **absente du dépôt**, donc
+  inexécutable.
+
+Même motif à chaque fois : **une énumération écrite de mémoire au lieu d'être
+lue depuis l'artefact.** Le design system souffrait du même défaut — trois
+surfaces déclarées, cinq usages d'une quatrième.
+
+## Une condition de sécurité mal formulée, et livrée morte
+
+J'avais écrit : *« la règle de masquage doit venir **après** toute règle
+d'affichage d'auteur »*. Le développeur l'a respectée à la lettre — et la
+cascade a tranché autrement, la règle concurrente ayant une **spécificité
+supérieure**. Mesuré en navigateur : une section calculait un affichage **tout
+en portant son attribut de masquage**.
+
+Le test censé garder cette condition comparait des **positions dans le fichier
+texte**. Il était le miroir fidèle de l'erreur qu'il devait attraper : ajouter
+une règle après lui faisait apparaître les six sections d'un coup, **suite
+verte**.
+
+Reformulation retenue, par l'auditeur : *« aucune règle `display` d'auteur ne
+peut **battre** `.section[hidden]` en cascade »* — spécificité, origine,
+`!important`, ordre.
+
+**Correctif** : la règle concurrente est **supprimée**, pas ajustée. Motif du
+développeur : *« le masquage sécuritaire ne doit souffrir aucune concurrence ».*
+
+## Ce que les deux passages sécurité ont trouvé
+
+**P1** — masquer visuellement **ne neutralise pas** : `opacity:0`, le hors-écran,
+une hauteur nulle et le détourage laissent un contrôle d'écriture **focalisable
+au clavier**. Seuls `hidden`, `display:none`, `visibility:hidden` et `inert`
+neutralisent.
+
+**P2** — la fuite de focus sous la porte s'**élargit** : la barre de navigation
+est atteignable sous la modale, donc on peut changer de section pendant que la
+porte est levée. Pas une faille d'autorité — le serveur revalide — mais un
+élargissement causé par ce cycle. ⇒ **`bug-017`** ouverte.
+
+## Absorption de `bug-016`
+
+Justifiée et vérifiée : ce cycle applique la typographie, donc il bâtit sur les
+jetons de texte, dont l'un était sous le seuil sur **les quatre** surfaces.
+Corrigé et mesuré : **les six jetons × quatre surfaces × deux thèmes**, minimum
+**4,77:1**.
+
+⚠️ Le plancher transmis à l'origine — 4,5039 en nominal — **échouait après
+arrondi** (4,4454). Un bit vaut **0,0585 de ratio**. Marge exigée : nominal
+≥ 4,65.
+
+## Ce qui a fermé une classe plutôt qu'un symptôme
+
+- La liste d'identifiants du harnais web, tenue à la main, a reçu une **garde
+  structurelle** qui la compare au document réel à chaque exécution. Le piège
+  §7 ne peut plus se reproduire en silence.
+- La garde de cascade compare désormais des **spécificités**, y compris sur les
+  sélecteurs descendants et sous `@media`, et traite `!important` — ce dernier
+  ajout trouvé **par mutation**, pas par relecture.
+
+## Comptes
+
+| | entrée | sortie |
+|---|---|---|
+| Centre de contrôle | 16 suites, 959 cas | **18 suites, 1 219 cas** |
+| Kit | 111 tests | 111 tests |
+| Mutations | — | **13 tentées, 13 tuées** |
+| `var(--mono)` / `var(--sans)` | 31 / 2 | **16 / 18** |
+| `var(--surface-2)` | 5 | **3**, toutes teintes d'interaction |
+
+## Verdicts
+
+- `spec-reader` : promue, trois écarts signalés dont deux dans mes specs
+- `architect` : cinq arbitrages par exécution ; a **déclenché lui-même** un
+  passage sécurité sur un point qu'il étiquetait « hypothèse non vérifiée »
+- `security-reviewer` P1 puis P2 : **GO sous conditions**, conditions levées
+- `ux-ui-designer` : conforme sous réserves ; a **durci** le verdict de
+  l'architecte sur la quatrième surface après avoir regardé les usages qu'il
+  n'avait pas examinés
+- `test-engineer` : vert, puis une garde réécrite après la revue
+- `code-reviewer` : **Request changes** → corrigé
+
+## Une erreur de conduite, à moi
+
+J'ai lancé la revue et l'audit **en parallèle**. Les deux ont trouvé le même
+défaut — ce qui valide la méthode — mais l'audit a mesuré pendant trois quarts
+d'heure un code qui changeait sous lui, et il a fallu une seconde passe. Le
+parallélisme vaut quand les deux **lisent** ; pas quand l'un déclenche une
+correction. Un piège en est né : **un clone pris pendant les mutations d'un
+autre agent copie le mutant.**
+
+## Reste ouvert
+
+- **`bug-017`** — la page n'est pas inerte sous la modale
+- **`feature-017`** — le diagramme de déroulé
+- ⚠️ **Le serveur doit être redémarré** pour servir les champs additifs
+
+## Statut final
+✅ Done — 2026-09-15 — commit à renseigner à la validation

@@ -49,6 +49,17 @@ fantôme donnant la pleine échelle — un agent à zéro appel d'outil reste
 visible (cercle sans graduation allumée), et un agent qui dépasse
 l'échelle nominale ne casse pas le tracé, il sature.
 
+> **Superseded partiellement par [ADR-0026](0026-trois-echelles-du-diagramme-alignees-sur-la-maquette.md)
+> (2026-09-19)** : quatre paragraphes ci-dessus sont remplacés par
+> l'ADR-0026, alignés sur la maquette de référence retenue par le
+> commanditaire (`control-center/maquettes/2026-09-15-diagramme-reference.html`) —
+> la formule du rayon, le nombre de graduations, l'encodage du liseré, et
+> **le paragraphe qui précède cette note** : le cran de plafond et l'anneau
+> fantôme n'ont plus de rendu visuel, et l'encoche de zéro est remplacée par
+> deux barres superposées. Ce qui reste effectivement en vigueur dans cette
+> section : la répartition en trois formes pour trois grandeurs, et
+> l'absence de forme pour les jetons.
+
 **Les jetons ne sont pas mesurés** et n'ont donc aucune forme : le journal ne
 les porte pas, et en inventer une donnerait un nombre qui n'existe dans
 aucune source. Voir `docs/DESIGN-SYSTEM.md` §5.

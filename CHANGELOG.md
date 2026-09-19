@@ -7,6 +7,67 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 <!-- Les entrées ci-dessous documentent le KIT lui-même. Au démarrage d'un projet,
      les remplacer par le journal du projet. -->
 
+## [0.11.1] - 2026-09-19
+
+### Centre de contrôle
+
+- **Le diagramme de déroulé est désormais conforme à la maquette de
+  référence, sur mesure plutôt qu'à l'œil** (troisième itération sur la même
+  demande, `feature-020`). Le rayon du cercle, le nombre de ses graduations
+  et l'encodage du liseré des fichiers suivent la maquette
+  (`control-center/maquettes/2026-09-15-diagramme-reference.html`) — voir
+  [ADR-0026](docs/adr/0026-trois-echelles-du-diagramme-alignees-sur-la-maquette.md),
+  qui remplace [ADR-0025](docs/adr/0025-grammaire-du-diagramme-de-deroule.md)
+  §1 sur ces trois points.
+  - **Le liseré des fichiers écrits est désormais visible.** Il était peint
+    sous le disque opaque du cercle depuis sa livraison initiale : une des
+    trois grandeurs que le diagramme prétend encoder (durée, appels
+    d'outils, fichiers) n'existait donc à l'écran nulle part.
+  - **L'agent principal quitte les tirets** et porte le sigle « **AP** » — il
+    affichait « ?? », faute d'être vu par le calcul des sigles.
+  - **Les durées s'écrivent « 1 min 07 » partout**, dans le diagramme et dans
+    la table des passages d'agent, qui les écrivait jusqu'ici différemment
+    (« 1 min 7 s »).
+  - La zone porte un titre (« Déroulé ») et une phrase de lecture, deux
+    voiles latéraux signalant le contenu masqué par le défilement, et le
+    cadre des agents simultanés perd son aplat de fond (filet seul, coins
+    arrondis, libellé « N agents en parallèle »).
+  - Le contour du cercle ne porte plus qu'un seul motif en pointillé,
+    désormais réservé à l'état « sans clôture » ; un échec se signale par la
+    croix et le contour `--alerte`, sans pointillé.
+  - L'arc de rebouclage perd sa pointe de direction et sa couleur
+    d'identité — couleur fixe, comme la maquette.
+  - **Cette entrée revient sur deux affirmations du [0.11.0](#0110---2026-09-15)
+    ci-dessous**, aux ajustements post-livraison de `feature-017` : les
+    dimensions de « l'anneau fantôme » évoquées alors ne s'appliquent plus,
+    ce rendu ayant depuis disparu (l'information de plafond ne vit plus que
+    dans l'infobulle du cercle) ; l'arc de rebouclage, qui portait alors une
+    pointe, n'en porte plus. Ces réglages étaient réels au moment où ils ont
+    été écrits — ce cycle les révise à la lumière de la maquette, il ne les
+    dément pas rétroactivement.
+
+### Documentation
+
+- `docs/adr/0026-trois-echelles-du-diagramme-alignees-sur-la-maquette.md` :
+  nouvel ADR — remplace `ADR-0025 §1` sur la formule du rayon, le nombre de
+  graduations et l'encodage du liseré, nomme les alternatives écartées et
+  les trois écarts assumés à la maquette (pastille d'attente, plafond de
+  rayon, branche « heures »).
+- `docs/adr/0025-grammaire-du-diagramme-de-deroule.md` : mention de
+  remplacement ajoutée sur les trois paragraphes concernés du §1.
+- `docs/DESIGN-SYSTEM.md` : §5 (table des formes du cercle mise à jour, plus
+  de rendu pour l'anneau fantôme et le cran de plafond) et §8 (vocabulaire
+  des traits : le pointillé du contour du cercle ne désigne plus que « sans
+  clôture » ; exception nommée à la règle de précédence identité/état pour
+  le contour de l'agent en cours) mis d'accord — contradiction levée entre
+  les deux sections.
+- `docs/features/page-centre-de-controle.md` : section « Diagramme du
+  déroulé » mise à jour (socle, titre de zone, voiles, cadre de créneau,
+  sigle de l'agent principal, renvois vers l'ADR-0026).
+- `control-center/PIEGES.md` : trois entrées ajoutées (§31-§33).
+
+---
+
 ## [0.11.0] - 2026-09-15
 
 ### Centre de contrôle
@@ -32,6 +93,13 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
     autorité sur les deux), et un test de non-chevauchement délégait à tort
     à la fonction de formatage qu'il devait vérifier, le rendant aveugle à
     une divergence possible entre le texte réservé et le texte peint.
+  - Après une première livraison, la comparaison avec la maquette de
+    référence a fait apparaître cinq écarts de rendu, tous corrigés sans
+    toucher à ce que le diagramme encode : dimensions des anneaux fantôme et
+    « en cours », couleur des graduations allumées (identité de l'agent, pas
+    l'état), structure complète du cercle (anneau guide, barres en
+    filigrane), style des liens et de leur pastille d'attente, et arcs de
+    rebouclage désormais annotés « ↻ reboucle ».
 
 ### Documentation
 

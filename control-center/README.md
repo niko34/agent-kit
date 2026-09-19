@@ -21,6 +21,11 @@ côté de Claude Code, elle ne le remplace pas : **l'orchestration reste dans
 `CLAUDE.md` et les agents**, et le terminal continue de fonctionner
 indépendamment.
 
+> **Avant de travailler sur ce module** : [`PIEGES.md`](PIEGES.md) recense les
+> contraintes opérationnelles et les faux-semblants **mesurés** — port occupé,
+> clone jetable, conventions de test, harnais qui prouvent moins qu'ils n'en ont
+> l'air. Chaque entrée y a été payée une fois.
+
 ## Le modèle de déploiement (ADR-0020), à lire avant tout le reste
 
 ⚠️ **Hypothèse non écrite avant le 2026-09-15, désormais explicite** : le

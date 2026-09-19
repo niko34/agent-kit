@@ -430,22 +430,28 @@ const CSS_SANS_COMMENTAIRES = sansCommentairesCSS(CSS);
   // item 3 — le sujet de commit, une phrase humaine, jamais un
   // identifiant). feature-017 (diagramme de déroulé) ajoute DEUX
   // identifiants techniques de plus en chasse fixe (`.dg-sigle`, le sigle
-  // d'agent dans le cercle ; `.dg-libelle tspan:last-child`, le nom d'agent
-  // du socle — même registre que `.agent-sigle`/`.agent-nom` déjà en mono)
-  // et QUATRE libellés de plus en sans-serif (`.dg-libelle`, `.dg-repli`,
-  // `.dg-pastille-attente text`, `.diagramme-legende dt` — heure/durée,
-  // compte replié, attente, légende : des phrases ou des nombres lus, pas
-  // des identifiants). Mesuré par PARCOURS DES RÈGLES (voir E3 plus bas),
-  // pas recompté à l'œil (PIEGES.md §21).
+  // d'agent dans le cercle ; le socle du diagramme, pour sa DURÉE — vedette
+  // du socle) et des libellés de plus en sans-serif (heure/nom du socle,
+  // compte replié, attente, légende — des phrases ou des nombres lus, pas
+  // des identifiants).
+  // feature-020 (conformité à la maquette) reprend le socle du diagramme :
+  // `.dg-libelle tspan:last-child` (texte multi-lignes reconstruit par
+  // `app.js`) disparaît, remplacé par des classes posées PAR RÔLE et déjà
+  // séparées dans `disposer()` — `.dg-socle-duree`/`.dg-socle-heure-duree`
+  // (la DURÉE, vedette, reste en chasse fixe) et `.dg-socle-heure`/
+  // `.dg-socle-nom` (déjà en sans-serif). Un libellé d'arc sans-serif de
+  // plus (`.dg-arc-libelle`, « reboucle » — une phrase, pas un
+  // identifiant). Mesuré par PARCOURS DES RÈGLES (voir E3 plus bas), pas
+  // recompté à l'oeil (PIEGES.md paragraphe 21).
   check("C_compte_mono_final_dix_huit", compteMono === 18, "obtenu " + compteMono);
-  check("C_compte_sans_final_vingt_deux", compteSans === 22, "obtenu " + compteSans);
+  check("C_compte_sans_final_vingt_trois", compteSans === 23, "obtenu " + compteSans);
 
   // Sélecteurs qui DOIVENT rester en chasse fixe (identifiants techniques :
   // slugs, sigles, codes, chemins, sorties brutes, jeton).
   const DOIT_RESTER_MONO = [
     ".projet", ".note code", ".agents .nom", ".agents .modele",
     ".carte .cid", ".agent-sigle", ".agent-nom", ".maillon .mnom",
-    ".dg-sigle", ".dg-libelle tspan:last-child",
+    ".dg-sigle", ".dg-socle-duree", ".dg-socle-heure-duree",
     ".pilotage-jeton input", "#sortie-lancement", ".fichier .fcode",
     ".fichier .fchemin", ".timeline .quoi", ".tiroir-barre",
     "#tiroir-contenu", "#porte-champ",
@@ -556,9 +562,14 @@ function analyserReglesCSS(css) {
   const LISTE_BLANCHE_MONO = [
     ".projet", ".note code", ".agents .nom", ".agents .modele",
     ".carte .cid", ".agent-sigle", ".agent-nom", ".maillon .mnom",
-    // feature-017 : sigle et nom d'agent DANS le diagramme — même nature
-    // d'identifiant que `.agent-sigle`/`.agent-nom` ci-dessus.
-    ".dg-sigle", ".dg-libelle tspan:last-child",
+    // feature-017 : sigle d'agent DANS le diagramme — même nature
+    // d'identifiant que `.agent-sigle` ci-dessus.
+    // feature-020 : le socle du diagramme est désormais peint par CLASSE DE
+    // RÔLE (`disposer()`/`construireSoclesCreneau`, jamais par position) —
+    // `.dg-libelle tspan:last-child` (texte reconstruit à la main par
+    // `app.js`) disparaît ; la DURÉE (vedette du socle, §8) reste en chasse
+    // fixe sous ses deux formes (créneau simple / empilé).
+    ".dg-sigle", ".dg-socle-duree", ".dg-socle-heure-duree",
     ".pilotage-jeton input", ".pilotage-select select", "#sortie-lancement",
     ".fichier .fcode", ".fichier .fchemin", ".timeline .quoi",
     ".tiroir-barre", "#tiroir-contenu", "#porte-champ",

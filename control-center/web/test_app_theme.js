@@ -362,6 +362,106 @@ function verifierGolden(nomCas, hexReel, H, L, Ccible) {
 })();
 
 /* ===================================================================== *
+ * Section 3bis — E7 : contraste des jetons de TEXTE (bug-016/feature-019,
+ * absorbé au titre d'ADR-0017), sur les quatre surfaces, dans les deux
+ * thèmes — calculé depuis les jetons, jamais supposé.
+ *
+ * Les jetons sont découverts DYNAMIQUEMENT (`texte*` dans le bloc de
+ * littéraux), pas listés à la main : un futur jeton de texte ajouté au bloc
+ * de littéraux est automatiquement couvert, sans modifier ce fichier — c'est
+ * précisément ce que le critère d'acceptation exige.
+ * ===================================================================== */
+
+const JETONS_TEXTE = Object.keys(LIT_CLAIR).filter((k) => k.indexOf("texte") === 0);
+
+/* Les SURFACES, elles aussi, se lisent depuis la feuille — jamais une liste
+ * écrite à la main. C'est la faute mesurée deux fois le 2026-09-15 (§21 de
+ * `PIEGES.md`) : deux specs énuméraient « fond, surface, creux » en omettant
+ * `--surface-2`, précisément le jeton qui portait le pire défaut.
+ *
+ * Dérivation : dans le bloc « jetons servis (clair) », les jetons `--X: var
+ * (--clair-X);` qui suivent immédiatement `--fond` forment le groupe des
+ * niveaux structurels — le fichier lui-même les distingue du groupe suivant
+ * par sa propre prose (DESIGN-SYSTEM.md §3 : « ce n'est pas le fond qui
+ * délimite un bloc, c'est son filet (--trait) »). On arrête donc de
+ * consommer dès le premier jeton dont le nom commence par `trait` : ce
+ * qui reste avant est le groupe des surfaces, quel que soit son cardinal
+ * (3 aujourd'hui plus `surface-2`, 5 demain si un jeton y est inséré).
+ */
+function extraireSurfacesServies(css) {
+  const iServis = css.indexOf("jetons servis (clair)");
+  if (iServis === -1) return [];
+  const region = css.slice(iServis);
+  const re = /--([a-z0-9-]+):\s*var\(--clair-\1\);/g;
+  const surfaces = [];
+  let m;
+  while ((m = re.exec(region))) {
+    if (/^trait/.test(m[1])) break;
+    surfaces.push(m[1]);
+  }
+  return surfaces;
+}
+const FONDS_TEXTE = extraireSurfacesServies(CSS);
+
+(function testPrealableJetonsTexteDecouverts() {
+  check("prealable_au_moins_trois_jetons_texte", JETONS_TEXTE.length >= 3,
+    JETONS_TEXTE.length + " jeton(s) : " + JETONS_TEXTE.join(", "));
+  ["texte", "texte-doux", "texte-faible"].forEach((attendu) => {
+    check("prealable_jeton_texte_" + attendu + "_present", JETONS_TEXTE.indexOf(attendu) !== -1,
+      "jetons découverts : " + JETONS_TEXTE.join(", "));
+  });
+})();
+
+(function testPrealableSurfacesDecouvertesDepuisLaFeuille() {
+  // Épinglé un par un — pas seulement « quatre surfaces trouvées » : c'est
+  // justement une assertion d'ensemble qui laisserait passer l'omission
+  // ciblée d'un jeton nommé.
+  check("prealable_quatre_surfaces_decouvertes", FONDS_TEXTE.length === 4,
+    FONDS_TEXTE.length + " surface(s) : " + FONDS_TEXTE.join(", "));
+  ["fond", "surface", "surface-2", "creux"].forEach((attendu) => {
+    check("prealable_surface_" + attendu + "_decouverte", FONDS_TEXTE.indexOf(attendu) !== -1,
+      "surfaces découvertes : " + FONDS_TEXTE.join(", "));
+  });
+})();
+
+(function testE7ContrasteJetonsTexte() {
+  for (const [theme, lit] of [["clair", LIT_CLAIR], ["sombre", LIT_SOMBRE]]) {
+    for (const jeton of JETONS_TEXTE) {
+      const hexTexte = lit[jeton];
+      for (const nomFond of FONDS_TEXTE) {
+        const hexFond = lit[nomFond];
+        const c = contraste(hexTexte, hexFond);
+        check("E7_" + theme + "_" + jeton + "_contre_" + nomFond, c >= 4.5,
+          "obtenu " + c.toFixed(4) + ":1 (" + hexTexte + " / " + hexFond + ")");
+      }
+    }
+  }
+})();
+
+// Hiérarchie des trois niveaux (critère d'acceptation dédié) : un
+// `--texte-faible` relevé jusqu'à se confondre avec `--texte-doux` ne
+// corrigerait rien. Épinglé par le CONTRASTE relatif contre `--fond` — pas
+// par un simple ordre alphabétique des hexadécimaux, qui ne dirait rien de
+// la lisibilité réelle.
+(function testE7HierarchieRestelisible() {
+  for (const [theme, lit] of [["clair", LIT_CLAIR], ["sombre", LIT_SOMBRE]]) {
+    const cTexte = contraste(lit["texte"], lit["fond"]);
+    const cDoux = contraste(lit["texte-doux"], lit["fond"]);
+    const cFaible = contraste(lit["texte-faible"], lit["fond"]);
+    check("E7_hierarchie_" + theme + "_texte_plus_contraste_que_doux", cTexte > cDoux,
+      "texte=" + cTexte.toFixed(2) + " doux=" + cDoux.toFixed(2));
+    check("E7_hierarchie_" + theme + "_doux_plus_contraste_que_faible", cDoux > cFaible,
+      "doux=" + cDoux.toFixed(2) + " faible=" + cFaible.toFixed(2));
+    // Écart minimal entre les paliers : un jeton relevé au ras de son voisin
+    // (par ex. 4,50 vs 4,51) tiendrait le seuil mais confondrait les deux
+    // niveaux à l'œil.
+    check("E7_hierarchie_" + theme + "_ecart_doux_faible_perceptible",
+      (cDoux - cFaible) >= 0.3,
+      "écart mesuré " + (cDoux - cFaible).toFixed(3) + " — trop proche pour rester distinct");
+  }
+})();
+
+/* ===================================================================== *
  * Section 4 — E3b : écart perceptuel ΔE OKLab, sémantique <-> identité.
  * ===================================================================== */
 
@@ -669,14 +769,15 @@ class FakeNode {
 
 const IDS_APP = [
   "agents", "bandeau-hote", "bandeau-hote-bouton", "bandeau-hote-texte",
-  "bascule-theme", "compteur-specs", "compteur-workflows", "fichiers",
+  "bascule-theme", "compteur-specs", "fichiers",
   "filtre", "filtre-divergences", "horodatage", "icone-systeme-clair",
   "icone-systeme-sombre", "jauge-flux", "jauge-git", "jauge-pilotage",
-  "kanban", "note-agents", "pilotage-corps", "porte-aide", "porte-bouton",
-  "porte-champ", "porte-corps", "porte-erreur", "porte-jeton", "porte-titre",
-  "projet", "prompt", "systeme", "theme-clair", "theme-sombre",
-  "theme-systeme", "timeline", "tiroir", "tiroir-contenu", "tiroir-fermer",
-  "tiroir-titre", "titre-demande", "titre-pilotage", "workflows",
+  "kanban", "legende-cycles", "note-agents", "pied-cycles", "pilotage-corps",
+  "porte-aide", "porte-bouton", "porte-champ", "porte-corps", "porte-erreur",
+  "porte-jeton", "porte-titre", "projet", "prompt", "systeme", "theme-clair",
+  "theme-sombre", "theme-systeme", "timeline", "tiroir", "tiroir-contenu",
+  "tiroir-fermer", "tiroir-titre", "titre-cycles", "titre-demande",
+  "titre-pilotage", "workflows",
 ];
 const CACHES_PAR_DEFAUT = new Set([
   "bandeau-hote", "tiroir", "porte-jeton", "porte-erreur", "icone-systeme-sombre",
@@ -703,6 +804,8 @@ function creerBacApp(options) {
     documentElement,
     getElementById: (id) => elements.get(id) || null,
     createElement: (tag) => new FakeNode(tag),
+    // feature-017 : `construireDiagramme` (app.js) construit du SVG réel.
+    createElementNS: (_ns, tag) => new FakeNode(tag),
     createTextNode: (t) => { const n = new FakeNode("#text"); n.textContent = t; return n; },
     createDocumentFragment: () => new FakeNode("#fragment"),
     addEventListener: () => {},
@@ -759,6 +862,10 @@ function creerLocalStorageMemoire() {
 }
 
 function chargerAppJS(bac) {
+  // feature-017 : `disposer()` (diagramme.js) doit exister dans le contexte
+  // AVANT `app.js`, même ordre que les deux `<script>` d'index.html.
+  const sourceDiagramme = fs.readFileSync(path.join(__dirname, "diagramme.js"), "utf8");
+  new vm.Script(sourceDiagramme, { filename: "diagramme.js" }).runInContext(bac.sandbox);
   const source = fs.readFileSync(APP_JS_PATH, "utf8");
   new vm.Script(source, { filename: "app.js" }).runInContext(bac.sandbox);
 }

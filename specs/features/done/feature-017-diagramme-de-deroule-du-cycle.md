@@ -177,6 +177,15 @@ durée, d'ampleur, ni de simultanéité.
 5. Lancer deux agents en parallèle sur un clone jetable : ils apparaissent
    empilés, pas en séquence.
 6. Tuer un agent : son cercle passe à l'état sans clôture, distinct de l'échec.
+7. **(post-livraison)** Comparer côte à côte le rendu du diagramme et la
+   maquette de référence — anneaux, graduations, liens, arcs — dans les deux
+   thèmes : aucun écart de teinte, d'épaisseur ou d'opacité.
+8. **(post-livraison)** Provoquer un rebouclage réel : le texte « ↻ reboucle »
+   s'affiche au sommet de l'arc, dans la couleur de l'agent qui reboucle, sans
+   chevaucher le lien ni le cercle voisins.
+9. **(post-livraison)** Atteindre au clavier un lien portant une pastille
+   d'attente : la pastille (fond `--creux`, contour `--bd`) reste lisible sur
+   le fond du diagramme, dans les deux thèmes.
 
 ## Notes pour agent
 
@@ -272,18 +281,62 @@ qu'on le mesure : figer un instantané.
 
 ## Ajustements post-livraison
 
-Après livraison de la feature, deux itérations ont affiné le rendu pour
-correspondance exacte avec la maquette `theme.html` :
+Après la livraison (`53471cd`), une comparaison directe avec la maquette de
+référence (`theme.html`) a fait apparaître des écarts de rendu que la spec ne
+contraignait pas au pixel près. Revue par `code-reviewer` sur le diff réel :
+**cinq écarts trouvés, cinq corrigés**, répartis sur trois commits — aucun ne
+touche la grammaire d'encodage (diamètre = durée, graduations = appels
+d'outils, liseré = fichiers écrits), qui reste celle d'ADR-0025.
 
-1. **Alignement des dimensions et couleurs** (`5ce67ce`, 2026-09-15) —
-   Ajustement des anneaux fantôme (3→3.5) et en cours (5→3.5) pour correspondre
-   à theme.html ; correction des graduations allumées (couleur d'agent au lieu
-   de couleur de contour d'état).
+1. **Anneaux fantôme et « en cours » mal dimensionnés** (`5ce67ce`) — rayon 3
+   et 5 respectivement, alors que la maquette impose 3.5 pour les deux.
+   Correction : constantes alignées dans `construireCercleAgent`.
+2. **Couleur des graduations allumées** (`5ce67ce`) — peintes avec la couleur
+   de contour d'état (ex. `--alerte`) au lieu de la couleur d'identité de
+   l'agent, ce qui masquait l'identité derrière l'état. Correction :
+   graduations allumées en `var(--a-<rôle>)` ; l'état reste porté par le
+   contour du cercle et la croix, pas par les graduations.
+3. **`construireCercleAgent` divergeait structurellement de la maquette**
+   (`b5e651b`) — anneau gris guide absent, barres verticales en filigrane
+   absentes, bornes de graduation à 4px au lieu de 7px, opacité de l'anneau
+   « en cours » à 1 au lieu de 0.45. Correction : fonction réécrite en
+   totalité pour reproduire l'empilement de couches de la maquette (anneau
+   guide → graduations → barres filigrane → liseré fichiers → cercle
+   principal → anneau en cours → croix d'échec → sigle).
+4. **Liens entre agents non conformes** (`5d02240`) — trait, couleur et
+   pastille d'attente ne reprenaient pas les jetons de la maquette.
+   Correction : trait `var(--bd2)` à 1.2 d'épaisseur, pointe directionnelle à
+   jointure arrondie (`stroke-linejoin: round`), pastille en fond
+   `var(--creux)` / contour `var(--bd)`.
+5. **Arcs de rebouclage sans le repère textuel de la maquette** (`5d02240`) —
+   courbe quadratique simple, sans étiquette. Correction : courbe de Bézier
+   cubique, tireté `3 3` à 0.75 d'opacité, épaisseur 1.3, et le texte
+   « ↻ reboucle » au sommet de l'arc, dans la couleur de l'agent qui reboucle.
 
-2. **Réécriture complète de `construireCercleAgent`** (`b5e651b`, 2026-09-15) —
-   Refonte pour reproduction pixel-perfect de theme.html : anneau gris guide,
-   barres verticales filigrane blanc/gris, graduations bornes 7px, anneau en
-   cours opacity 0.45, proportions des traits et du sigle adaptées à theme.html.
+Aucun de ces cinq correctifs ne change ce que le diagramme **encode** — la
+grammaire d'ADR-0025 reste intacte. Ils alignent uniquement la **restitution
+visuelle** sur la maquette qui l'avait fixée.
+
+### Tests après ajustements (test-engineer)
+- Suite complète : **1353 cas, 0 échec** (34 cas de plus qu'à la livraison,
+  couvrant les cinq correctifs ci-dessus).
+- Mutations : **16 tentées, 16 tuées** (5 de plus qu'à la livraison — une
+  mutation par correctif).
+- **Trois tests d'intégration manuels** ajoutés au plan de test manuel
+  (ci-dessus) pour les aspects que la suite automatisée ne couvre pas :
+  fidélité visuelle à la maquette, lisibilité du texte de rebouclage,
+  contraste de la pastille d'attente dans les deux thèmes.
+
+### Doc (doc-writer) — après ajustements
+- Présente section enrichie avec le détail des cinq correctifs et les
+  compteurs de tests finaux.
+- `CHANGELOG.md` : entrée `[0.11.0]` complétée (même version, non taguée).
+- Plan de test manuel : trois tests d'intégration manuels ajoutés (items 7-9).
+- `docs/features/page-centre-de-controle.md` : relue, reste cohérente sans
+  modification — elle décrit la grammaire d'encodage et la lecture du
+  diagramme, pas les valeurs pixel, et aucune des cinq corrections ne change
+  la grammaire.
 
 ## Statut final
-✅ Done — 2026-09-15 — commits 53471cd (livraison), 5ce67ce + b5e651b (ajustements visuels)
+✅ Done — 2026-09-15 — commits 53471cd (livraison), 5ce67ce + b5e651b + 5d02240
+(cinq écarts visuels trouvés en revue post-livraison, corrigés)

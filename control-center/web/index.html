@@ -18,7 +18,7 @@
   <button type="button" id="bandeau-hote-bouton" class="action-ecriture">Réessayer</button>
 </div>
 
-<header class="barre">
+<header class="barre" id="barre">
   <div class="titre">
     <span class="marque">Centre de contrôle</span>
     <span class="projet" id="projet">…</span>
@@ -82,79 +82,140 @@
   </div>
 </header>
 
-<main class="grille">
+<div class="mise-en-page">
 
-  <aside class="rail">
-    <section class="bloc">
-      <h2>Agents</h2>
-      <p class="note" id="note-agents">découverts dans le dépôt</p>
-      <ul class="agents" id="agents"></ul>
+  <!-- Colonne de navigation (feature-019, §5 du design system) : NAVIGUE,
+       ne porte aucun contenu. Motif WAI-ARIA `tablist` complet — roving
+       tabindex, les flèches déplacent le focus ET la sélection — repris du
+       motif déjà écrit pour `.bascule-theme` ci-dessus (app.js).
+       `section-agents` seule dépourvue de `hidden` : c'est l'état posé
+       STATIQUEMENT dans le HTML servi, qui tient le cas « sans JavaScript »
+       (rien n'est ajouté par app.js au chargement — voir app.css). -->
+  <nav class="nav-sections" id="nav-sections" role="tablist" aria-label="Sections du centre de contrôle">
+    <button type="button" class="nav-onglet" id="onglet-agents" role="tab"
+            aria-selected="true" aria-controls="section-agents" tabindex="0">Agents</button>
+    <button type="button" class="nav-onglet" id="onglet-systeme" role="tab"
+            aria-selected="false" aria-controls="section-systeme" tabindex="-1">Système</button>
+    <button type="button" class="nav-onglet" id="onglet-developper" role="tab"
+            aria-selected="false" aria-controls="section-developper" tabindex="-1">Développer</button>
+    <button type="button" class="nav-onglet" id="onglet-cycles" role="tab"
+            aria-selected="false" aria-controls="section-cycles" tabindex="-1">Cycles</button>
+    <button type="button" class="nav-onglet" id="onglet-fichiers" role="tab"
+            aria-selected="false" aria-controls="section-fichiers" tabindex="-1">Fichiers</button>
+    <button type="button" class="nav-onglet" id="onglet-evenements" role="tab"
+            aria-selected="false" aria-controls="section-evenements" tabindex="-1">Événements</button>
+  </nav>
+
+  <main class="contenu">
+
+    <section class="section" id="section-agents" data-section="agents" role="tabpanel" aria-labelledby="onglet-agents">
+      <p class="fil-ariane">Centre de contrôle</p>
+      <h1 class="section-titre" id="titre-section-agents" tabindex="-1">Agents</h1>
+
+      <section class="bloc">
+        <h2>Agents</h2>
+        <p class="note" id="note-agents">découverts dans le dépôt</p>
+        <ul class="agents" id="agents"></ul>
+      </section>
     </section>
 
-    <section class="bloc">
-      <h2>Système</h2>
-      <dl class="systeme" id="systeme"></dl>
-    </section>
-  </aside>
+    <section class="section" id="section-systeme" data-section="systeme" hidden role="tabpanel" aria-labelledby="onglet-systeme">
+      <p class="fil-ariane">Centre de contrôle</p>
+      <h1 class="section-titre" id="titre-section-systeme" tabindex="-1">Système</h1>
 
-  <section class="centre">
-
-    <section class="bloc demande" aria-labelledby="titre-demande">
-      <h2 id="titre-demande">Que souhaitez-vous développer&nbsp;?</h2>
-      <textarea id="prompt" rows="2" disabled
-        placeholder="Décrire une fonctionnalité en langage naturel…"></textarea>
-      <p class="note avert">
-        Inactif à dessein. La création de spec depuis un prompt arrive à
-        l'étape&nbsp;E ; <code>do_POST</code> existe désormais mais ne route que
-        le lancement d'une commande déclarée (bloc « Pilotage » ci-dessous),
-        pas encore la création de spec.
-      </p>
+      <section class="bloc">
+        <h2>Système</h2>
+        <dl class="systeme" id="systeme"></dl>
+      </section>
     </section>
 
-    <section class="bloc">
-      <div class="entete-bloc">
-        <h2>Spécifications</h2>
-        <span class="compteur" id="compteur-specs"></span>
-      </div>
-      <div class="filtres">
-        <input type="search" id="filtre" placeholder="Filtrer par identifiant, titre ou statut…"
-               autocomplete="off" spellcheck="false">
-        <label class="bascule">
-          <input type="checkbox" id="filtre-divergences">
-          <span>divergences seulement</span>
-        </label>
-      </div>
-      <div class="kanban" id="kanban"></div>
+    <section class="section" id="section-developper" data-section="developper" hidden role="tabpanel" aria-labelledby="onglet-developper">
+      <p class="fil-ariane">Centre de contrôle</p>
+      <h1 class="section-titre" id="titre-section-developper" tabindex="-1">Développer</h1>
+
+      <section class="bloc demande" aria-labelledby="titre-demande">
+        <h2 id="titre-demande">Que souhaitez-vous développer&nbsp;?</h2>
+        <textarea id="prompt" rows="2" disabled
+          placeholder="Décrire une fonctionnalité en langage naturel…"></textarea>
+        <p class="note avert">
+          Inactif à dessein. La création de spec depuis un prompt arrive à
+          l'étape&nbsp;E ; <code>do_POST</code> existe désormais mais ne route que
+          le lancement d'une commande déclarée (bloc « Pilotage » ci-dessous),
+          pas encore la création de spec.
+        </p>
+      </section>
+
+      <section class="bloc">
+        <div class="entete-bloc">
+          <h2>Spécifications</h2>
+          <span class="compteur" id="compteur-specs"></span>
+        </div>
+        <div class="filtres">
+          <input type="search" id="filtre" placeholder="Filtrer par identifiant, titre ou statut…"
+                 autocomplete="off" spellcheck="false">
+          <label class="bascule">
+            <input type="checkbox" id="filtre-divergences">
+            <span>divergences seulement</span>
+          </label>
+        </div>
+        <div class="kanban" id="kanban"></div>
+      </section>
+
+      <section class="bloc pilotage" aria-labelledby="titre-pilotage">
+        <h2 id="titre-pilotage">Pilotage</h2>
+        <div id="pilotage-corps">
+          <p class="vide">chargement…</p>
+        </div>
+      </section>
     </section>
 
-    <section class="bloc pilotage" aria-labelledby="titre-pilotage">
-      <h2 id="titre-pilotage">Pilotage</h2>
-      <div id="pilotage-corps">
-        <p class="vide">chargement…</p>
-      </div>
+    <section class="section" id="section-cycles" data-section="cycles" hidden role="tabpanel" aria-labelledby="onglet-cycles">
+      <p class="fil-ariane">Centre de contrôle</p>
+      <h1 class="section-titre" id="titre-section-cycles" tabindex="-1">Cycles</h1>
+
+      <section class="bloc" aria-labelledby="titre-cycles">
+        <div class="entete-bloc">
+          <h2 id="titre-cycles">Cycles</h2>
+        </div>
+        <!-- Légende fixe (feature-016) : les deux bornages — cycles affichés
+             sur le total, et ce qu'est un cycle. Remplie par app.js, jamais
+             statique : le compte dépend de l'état chargé. Remplace l'ancien
+             compteur-workflows (« N derniers événements »), retiré : plus
+             aucun écrivain depuis la bascule vers la liste en accordéon. -->
+        <p class="note" id="legende-cycles"></p>
+        <!-- Liste en accordéon : un seul détail déplié à la fois, le plus
+             récent par défaut (docs/DESIGN-SYSTEM.md §6). Chaque en-tête est un
+             <button aria-expanded aria-controls> dans un <h3> ; le détail est
+             un <div role="region" aria-labelledby hidden>. La chaîne de
+             maillons (diagramme, feature-017) vit dans le détail d'un cycle :
+             elle ne bouge pas avec cette refonte. -->
+        <ul id="workflows" class="cycles"></ul>
+        <p class="note" id="pied-cycles"></p>
+      </section>
     </section>
 
-    <section class="bloc">
-      <div class="entete-bloc">
-        <h2>Workflows observés</h2>
-        <span class="compteur" id="compteur-workflows"></span>
-      </div>
-      <div id="workflows"></div>
-    </section>
+    <section class="section" id="section-fichiers" data-section="fichiers" hidden role="tabpanel" aria-labelledby="onglet-fichiers">
+      <p class="fil-ariane">Centre de contrôle</p>
+      <h1 class="section-titre" id="titre-section-fichiers" tabindex="-1">Fichiers</h1>
 
-    <div class="deux-colonnes">
       <section class="bloc">
         <h2>Fichiers touchés</h2>
         <div id="fichiers"></div>
       </section>
+    </section>
+
+    <section class="section" id="section-evenements" data-section="evenements" hidden role="tabpanel" aria-labelledby="onglet-evenements">
+      <p class="fil-ariane">Centre de contrôle</p>
+      <h1 class="section-titre" id="titre-section-evenements" tabindex="-1">Événements</h1>
+
       <section class="bloc">
         <h2>Derniers événements</h2>
         <ol class="timeline" id="timeline"></ol>
       </section>
-    </div>
+    </section>
 
-  </section>
-</main>
+  </main>
+</div>
 
 <div class="tiroir" id="tiroir" hidden>
   <div class="tiroir-barre">
@@ -178,6 +239,11 @@
   </div>
 </div>
 
+<!-- Module PUR du diagramme de déroulé (feature-017) — chargé AVANT app.js,
+     qui appelle sa fonction `disposer()`. Zéro dépendance (ADR-0006), zéro
+     import : les deux fichiers partagent la portée globale d'un script
+     classique, pas un module. -->
+<script src="/diagramme.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

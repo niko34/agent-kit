@@ -1110,6 +1110,33 @@ function fixtureGeometrieSondee() {
   return [passage0, passage1, passage2];
 }
 
+async function sondeLienPorteClasseDgLien() {
+  const passages = fixtureGeometrieSondee();
+  const wf = workflow({
+    workflow_id: "sessLien#0", segments: passages, passages: passages,
+  });
+  const bac = await chargerAvecEtat({ workflows: [wf] });
+  const { detail } = enteteEtDetail(cyclesLi(bac)[0]);
+
+  // Aucune pastille sur le deuxième lien → le groupe dg-liens contient au
+  // moins un trait (lien entre créneau 0 et 1, sans attente > 2 min)
+  const noeuds = tousLesNoeuds(detail);
+  const liens = noeuds.filter(
+    (n) => n.tagName === "LINE" && aClasseSvg(n, "dg-lien"));
+  check("sondeLienPorteClasseDgLien_au_moins_un_lien_peint",
+    liens.length >= 1, "obtenu " + liens.length);
+  liens.forEach((lien, i) => {
+    const stroke = lien.getAttribute("style")
+      ? lien.style.stroke : window.getComputedStyle(lien).stroke;
+    // La classe dg-lien ne pose rien (cf. app.css §751), tout vient du CSS.
+    // Si la classe est absente, stroke calcule `none` (héritage + valeur
+    // initiale) — c'est le bug que cette sonde protège.
+    check("sondeLienPorteClasseDgLien[" + i + "]_couleur_trait",
+      stroke !== "none" && stroke !== "",
+      "obtenu stroke=" + JSON.stringify(stroke));
+  });
+}
+
 async function sondePastilleCxVientDeDisposer() {
   const passages = fixtureGeometrieSondee();
   const wf = workflow({
@@ -1126,7 +1153,8 @@ async function sondePastilleCxVientDeDisposer() {
   check("sondePastilleCxVientDeDisposer_precondition_une_pastille_calculee",
     !!geo.liens[0] && !!geo.liens[0].pastille && !geo.liens[1].pastille,
     "obtenu : " + JSON.stringify(geo.liens.map((l) => !!l.pastille)));
-  const cxAttendu = geo.liens[0].pastille.cx;
+  // feature-020 : le champ s'appelle désormais `x` (centre), plus `cx`.
+  const cxAttendu = geo.liens[0].pastille.x;
 
   // Piège (ordre des nœuds SVG non garanti dans le groupe) : chercher PAR
   // CLASSE et par tagName, jamais par indice fixe.
@@ -1149,7 +1177,15 @@ async function sondePastilleCxVientDeDisposer() {
     + " écart=" + Math.abs(cxPeint - cxAttendu));
 }
 
-async function sondeArcHauteurVientDeDisposer() {
+// feature-020 (défaut R/bug-020) : `hauteurArc` a disparu du contrat,
+// remplacé par `sommetY` — un ABSOLU commun à tout arc, plus de recalcul
+// par paire d'agents. `trouverAgentParPassageIndex` n'existe plus dans
+// `app.js` (il n'y a plus de source/cible à retrouver pour dessiner l'arc :
+// `disposer()` fournit `depart`/`arrivee`/`controle1`/`controle2` tout
+// faits) — cette sonde vérifie donc directement que le tracé PEINT reprend
+// le `sommetY` CALCULÉ PAR `disposer()`, jamais une valeur recalculée par
+// `app.js`.
+async function sondeArcSommetVientDeDisposer() {
   const passages = fixtureGeometrieSondee();
   const wf = workflow({
     workflow_id: "sessQ#0", segments: passages, passages: passages,
@@ -1158,42 +1194,731 @@ async function sondeArcHauteurVientDeDisposer() {
   const { detail } = enteteEtDetail(cyclesLi(bac)[0]);
 
   const geo = bac.sandbox.disposer(passages);
-  check("sondeArcHauteurVientDeDisposer_precondition_un_arc_calcule",
+  check("sondeArcSommetVientDeDisposer_precondition_un_arc_calcule",
     geo.arcs.length === 1, "obtenu " + geo.arcs.length);
   const arc = geo.arcs[0];
-
-  // Source et cible retrouvées par le MÊME helper que `construireArcsDiagramme`
-  // (app.js, exposé global dans ce contexte vm) — jamais par un indice de
-  // créneau supposé, pour ne dépendre que du contrat, pas de la fixture.
-  const source = bac.sandbox.trouverAgentParPassageIndex(geo, arc.dePassage);
-  const cible = bac.sandbox.trouverAgentParPassageIndex(geo, arc.aPassage);
-  check("sondeArcHauteurVientDeDisposer_precondition_source_et_cible_identifiees",
-    !!source && !!cible && source.agent === "backend-developer" && cible.agent === "backend-developer",
-    "source=" + JSON.stringify(source) + " cible=" + JSON.stringify(cible));
-
-  const y1 = source.cy - source.rayon - 4;
-  const y2 = cible.cy - cible.rayon - 4;
-  const ycAttendu = Math.min(y1, y2) - arc.hauteurArc;
-  check("sondeArcHauteurVientDeDisposer_apex_attendu_dans_le_cadre",
-    ycAttendu >= 0, "obtenu " + ycAttendu);
+  const ycAttendu = arc.sommetY;
 
   const noeuds = tousLesNoeuds(detail);
   const chemin = noeuds.find(
     (n) => n.tagName === "PATH" && aClasseSvg(n, "dg-arc-rebouclage"));
-  check("sondeArcHauteurVientDeDisposer_arc_peint", !!chemin);
+  check("sondeArcSommetVientDeDisposer_arc_peint", !!chemin);
   const d = chemin ? String(chemin.d) : "";
-  const correspondance = /Q\s+(-?[0-9.]+)\s+(-?[0-9.]+)\s+/.exec(d);
-  check("sondeArcHauteurVientDeDisposer_d_parsable", !!correspondance, "d=" + JSON.stringify(d));
+  // Courbe de Bézier CUBIQUE (`C x1 yc, x2 yc, x2 y2`, deux points de
+  // contrôle confondus en hauteur, tous deux à `sommetY`) : le premier
+  // nombre capturé après `C` est l'ordonnée du premier point de contrôle.
+  const correspondance = /C\s+(-?[0-9.]+)\s+(-?[0-9.]+),/.exec(d);
+  check("sondeArcSommetVientDeDisposer_d_parsable", !!correspondance, "d=" + JSON.stringify(d));
   const ycPeint = correspondance ? Number(correspondance[2]) : NaN;
 
-  // ⚠️ Garde réelle : si `app.js` recalcule `hauteurArc` localement
-  // (mutation bug-020) au lieu de lire `arc.hauteurArc` (`disposer()`), le
-  // sommet de l'arc diverge — mesuré apex y = -86 sur cette fixture (hors
-  // cadre, sous 0).
-  check("sondeArcHauteurVientDeDisposer",
+  // ⚠️ Garde réelle : si `app.js` recalculait `sommetY` localement (mutation
+  // bug-020) au lieu de lire `arc.sommetY` (`disposer()`), le sommet peint
+  // divergerait de la valeur calculée.
+  check("sondeArcSommetVientDeDisposer",
     Math.abs(ycPeint - ycAttendu) < 0.1,
     "peint=" + ycPeint + " attendu(disposer)=" + ycAttendu
     + " écart=" + Math.abs(ycPeint - ycAttendu));
+}
+
+// ===================================================================== //
+// Renfort post-revue (code-reviewer) : cinq corrections apportées au      //
+// diagramme (`dg-lien`/`dg-pastille-attente` rebranchés sur `--trait`,    //
+// `traitsCercle()` rebranché au cercle principal, pointe d'arc rétablie)  //
+// n'étaient couvertes par AUCUNE assertion — établi par mutation :        //
+// remettre `var(--bd2)`/`var(--bd)`, débrancher `traitsCercle()` du       //
+// cercle principal, ou supprimer la pointe d'arc, ne faisait mourir       //
+// AUCUN des 1319 cas existants. Les sondes suivantes ferment ce trou.     //
+// ===================================================================== //
+
+// Le jeton attendu est lu dans `docs/DESIGN-SYSTEM.md` (§ filets) QUAND ce
+// fichier est atteignable, pas recopié à la main : c'est LUI qui déclare
+// que le filet d'un bloc porte `--trait`, indépendamment de ce que `app.css`
+// en fait aujourd'hui. `control-center/` est conçu pour être déplacé seul
+// (PIEGES.md §1 : un clone jetable ne contient que `control-center/` et
+// `.claude/agents/`) — `docs/` du dépôt hôte n'est alors pas là. Dans ce
+// cas, ce sondage particulier se SAUTE proprement (comme `test_specs.py`
+// sans spec réelle) plutôt que d'échouer pour une raison qui n'a rien à
+// voir avec `app.css` ; les deux sondes qui suivent, elles, gardent la
+// valeur `--trait` en dur — c'est la garde qui reste même hors du dépôt
+// complet.
+function jetonFiletDeclareOuNull() {
+  let doc;
+  try {
+    doc = fs.readFileSync(path.join(__dirname, "..", "..", "docs", "DESIGN-SYSTEM.md"), "utf8");
+  } catch (erreur) {
+    return null;
+  }
+  const trouve = /filet[^`]*`(--trait)`/.exec(doc) || /`(--trait)`\)[^.]*filet/i.exec(doc);
+  return trouve ? trouve[1] : null;
+}
+
+function extraireRegleCss(css, selecteur) {
+  const debut = css.indexOf(selecteur);
+  if (debut === -1) return null;
+  const finAccolade = css.indexOf("}", debut);
+  return finAccolade === -1 ? null : css.slice(debut, finAccolade + 1);
+}
+
+function sondeJetonsCssDesLiensEtPastilles() {
+  const jetonDoc = jetonFiletDeclareOuNull();
+  if (jetonDoc === null) {
+    console.log("  sauté  sondeJeton_declare_dans_design_system — docs/DESIGN-SYSTEM.md hors du clone");
+  } else {
+    check("sondeJeton_declare_dans_design_system", jetonDoc === "--trait", "obtenu " + jetonDoc);
+  }
+  const jeton = "--trait";
+
+  const css = fs.readFileSync(path.join(__dirname, "app.css"), "utf8");
+
+  const regleLien = extraireRegleCss(css, ".dg-lien {");
+  check("sonde_dg_lien_regle_presente", !!regleLien);
+  check("sonde_dg_lien_porte_var_trait",
+    !!regleLien && new RegExp("stroke:\\s*var\\(" + jeton + "\\)").test(regleLien),
+    "règle=" + regleLien);
+
+  // feature-020 (table de correspondance de jetons) : le contour de la
+  // pastille suit `T.bd` (le plus clair), au même titre que l'anneau guide
+  // — soit `--trait-fin`, PAS `--trait` (qui reste, lui, le jeton des liens
+  // et des graduations éteintes, `T.bd2`).
+  const jetonPastille = "--trait-fin";
+  const reglePastille = extraireRegleCss(css, ".dg-pastille-attente rect");
+  check("sonde_dg_pastille_attente_regle_presente", !!reglePastille);
+  check("sonde_dg_pastille_attente_porte_var_trait_fin",
+    !!reglePastille && new RegExp("stroke:\\s*var\\(" + jetonPastille + "\\)").test(reglePastille),
+    "règle=" + reglePastille);
+}
+
+function trouverGroupeAgent(detail, nomAgent) {
+  return tousLesNoeuds(detail).find((n) => n.tagName === "G" && aClasseSvg(n, "dg-agent")
+    && n.children.some((c) => c.tagName === "TITLE" && String(c.textContent).indexOf(nomAgent + " —") === 0));
+}
+function cerclePrincipalDeGroupe(g) {
+  return g.children.find((n) => n.tagName === "CIRCLE" && (
+    aClasseSvg(n, "dg-contour-plein")
+    || aClasseSvg(n, "dg-contour-tirets")
+    || aClasseSvg(n, "dg-contour-pointille")));
+}
+
+// B3 (feature-020, défaut E) : l'anneau GUIDE porte le jeton le plus CLAIR
+// (`--trait-fin`), les graduations ÉTEINTES le plus SOMBRE (`--trait`) —
+// l'inversion exacte de l'ancien rendu. Aucune sonde ne couvrait
+// jusqu'ici le jeton du GUIDE spécifiquement (seule la pastille d'attente
+// était vérifiée sur ce même jeton, `sondeJetonsCssDesLiensEtPastilles`).
+async function sondeGuideEtGraduationEteinteJetonsCorrects() {
+  const passages = [
+    segment("sousagent", "backend-developer", {
+      debut: "2026-09-14T09:00:00.000Z", fin: "2026-09-14T09:00:03.000Z", duree_ms: 3000,
+      outils: 0,
+    }),
+  ];
+  const wf = workflow({ workflow_id: "sessGuide#0", segments: passages, passages });
+  const bac = await chargerAvecEtat({ workflows: [wf] });
+  const { detail } = enteteEtDetail(cyclesLi(bac)[0]);
+
+  const g = trouverGroupeAgent(detail, "backend-developer");
+  check("guide_groupe_agent_trouve", !!g);
+  if (!g) return;
+  const guide = g.children.find((n) => n.tagName === "CIRCLE" && aClasseSvg(n, "dg-guide"));
+  check("guide_element_trouve", !!guide);
+  check("guide_stroke_trait_fin", !!guide && guide.style.stroke === "var(--trait-fin)",
+    "stroke=" + (guide && guide.style.stroke));
+
+  // 0 outils -> toutes les graduations sont ÉTEINTES.
+  const graduation = g.children.find((n) => n.tagName === "LINE" && aClasseSvg(n, "dg-graduation"));
+  check("graduation_eteinte_element_trouve", !!graduation);
+  check("graduation_eteinte_stroke_trait", !!graduation && graduation.style.stroke === "var(--trait)",
+    "stroke=" + (graduation && graduation.style.stroke));
+}
+
+// Cinq états, épinglés un par un (jamais une propriété d'ensemble) : agent
+// principal (D1 — nominal IDENTIQUE, plus de tirets), agent sans clôture,
+// agent en échec, agent EN COURS (D4 — identité sur le contour, seule
+// exception à « l'identité ne va jamais sur un contour »), sous-agent
+// ordinaire.
+async function sondeContourCerclePourChaqueEtat() {
+  const passages = [
+    segment("principal", "orchestrator", {
+      debut: "2026-09-14T09:00:00.000Z", fin: "2026-09-14T09:00:05.000Z", duree_ms: 5000,
+    }),
+    segment("sousagent", "backend-developer", {
+      debut: "2026-09-14T09:05:00.000Z", fin: "2026-09-14T09:05:03.000Z", duree_ms: 3000,
+      etat: "sans_cloture", termine: false,
+    }),
+    segment("sousagent", "test-engineer", {
+      debut: "2026-09-14T09:10:00.000Z", fin: "2026-09-14T09:10:03.000Z", duree_ms: 3000,
+      echecs: 2, etat: "termine",
+    }),
+    segment("sousagent", "code-reviewer", {
+      debut: "2026-09-14T09:15:00.000Z", fin: "2026-09-14T09:15:03.000Z", duree_ms: 3000,
+    }),
+    segment("sousagent", "security-reviewer", {
+      debut: "2026-09-14T09:20:00.000Z", fin: "2026-09-14T09:20:03.000Z", duree_ms: 3000,
+      etat: "en_cours", termine: false,
+    }),
+  ];
+  const wf = workflow({ workflow_id: "sessR#0", segments: passages, passages });
+  const bac = await chargerAvecEtat({ workflows: [wf] });
+  const { detail } = enteteEtDetail(cyclesLi(bac)[0]);
+
+  // D1 : l'agent principal, terminé sans échec, est désormais IDENTIQUE au
+  // rendu nominal — contour PLEIN (plus de `dg-contour-tirets`, régression de
+  // revue feature-017 corrigée par ce cycle). Il ne se distingue plus QUE par
+  // son fond (`--creux`) et son sigle dédié (couvert par une autre sonde).
+  const gPrincipal = trouverGroupeAgent(detail, "orchestrator");
+  check("contourCercle_principal_groupe_trouve", !!gPrincipal);
+  const cPrincipal = gPrincipal && cerclePrincipalDeGroupe(gPrincipal);
+  check("contourCercle_principal_cercle_trouve", !!cPrincipal);
+  check("contourCercle_principal_classe_plein", !!cPrincipal && aClasseSvg(cPrincipal, "dg-contour-plein"),
+    "classe=" + (cPrincipal && cPrincipal.class));
+  check("contourCercle_principal_fill_creux", !!cPrincipal && cPrincipal.style.fill === "var(--creux)",
+    "fill=" + (cPrincipal && cPrincipal.style.fill));
+  check("contourCercle_principal_stroke_trait", !!cPrincipal && cPrincipal.style.stroke === "var(--trait)",
+    "stroke=" + (cPrincipal && cPrincipal.style.stroke));
+  check("contourCercle_principal_strokewidth_1_2", !!cPrincipal && Number(cPrincipal.style.strokeWidth) === 1.2,
+    "strokeWidth=" + (cPrincipal && cPrincipal.style.strokeWidth));
+
+  const gSansCloture = trouverGroupeAgent(detail, "backend-developer");
+  check("contourCercle_sans_cloture_groupe_trouve", !!gSansCloture);
+  const cSansCloture = gSansCloture && cerclePrincipalDeGroupe(gSansCloture);
+  check("contourCercle_sans_cloture_classe_pointille", !!cSansCloture && aClasseSvg(cSansCloture, "dg-contour-pointille"),
+    "classe=" + (cSansCloture && cSansCloture.class));
+  check("contourCercle_sans_cloture_stroke_contour_etat",
+    !!cSansCloture && cSansCloture.style.stroke === "var(--contour-etat)",
+    "stroke=" + (cSansCloture && cSansCloture.style.stroke));
+
+  const gEchec = trouverGroupeAgent(detail, "test-engineer");
+  check("contourCercle_echec_groupe_trouve", !!gEchec);
+  const cEchec = gEchec && cerclePrincipalDeGroupe(gEchec);
+  check("contourCercle_echec_classe_plein", !!cEchec && aClasseSvg(cEchec, "dg-contour-plein"),
+    "classe=" + (cEchec && cEchec.class));
+  check("contourCercle_echec_stroke_alerte", !!cEchec && cEchec.style.stroke === "var(--alerte)",
+    "stroke=" + (cEchec && cEchec.style.stroke));
+  check("contourCercle_echec_strokewidth_2", !!cEchec && Number(cEchec.style.strokeWidth) === 2,
+    "strokeWidth=" + (cEchec && cEchec.style.strokeWidth));
+
+  const gOrdinaire = trouverGroupeAgent(detail, "code-reviewer");
+  check("contourCercle_ordinaire_groupe_trouve", !!gOrdinaire);
+  const cOrdinaire = gOrdinaire && cerclePrincipalDeGroupe(gOrdinaire);
+  check("contourCercle_ordinaire_classe_plein", !!cOrdinaire && aClasseSvg(cOrdinaire, "dg-contour-plein"),
+    "classe=" + (cOrdinaire && cOrdinaire.class));
+  check("contourCercle_ordinaire_stroke_trait", !!cOrdinaire && cOrdinaire.style.stroke === "var(--trait)",
+    "stroke=" + (cOrdinaire && cOrdinaire.style.stroke));
+  check("contourCercle_ordinaire_strokewidth_1_2", !!cOrdinaire && Number(cOrdinaire.style.strokeWidth) === 1.2,
+    "strokeWidth=" + (cOrdinaire && cOrdinaire.style.strokeWidth));
+
+  // D4 : l'agent EN COURS est la SEULE exception où l'identité va sur le
+  // contour (la maquette elle-même colore ainsi son agent actif).
+  const gEnCours = trouverGroupeAgent(detail, "security-reviewer");
+  check("contourCercle_en_cours_groupe_trouve", !!gEnCours);
+  const cEnCours = gEnCours && cerclePrincipalDeGroupe(gEnCours);
+  check("contourCercle_en_cours_classe_plein", !!cEnCours && aClasseSvg(cEnCours, "dg-contour-plein"),
+    "classe=" + (cEnCours && cEnCours.class));
+  check("contourCercle_en_cours_stroke_identite",
+    !!cEnCours && cEnCours.style.stroke === "var(--a-security-reviewer)",
+    "stroke=" + (cEnCours && cEnCours.style.stroke));
+  check("contourCercle_en_cours_strokewidth_1_8", !!cEnCours && Number(cEnCours.style.strokeWidth) === 1.8,
+    "strokeWidth=" + (cEnCours && cEnCours.style.strokeWidth));
+
+  // Garde globale (D1) : AUCUN cercle du diagramme ne porte plus jamais
+  // `dg-contour-tirets` — la classe existait avant ce cycle pour distinguer
+  // visuellement l'agent principal ; sa réapparition serait la régression
+  // que ce cycle corrige.
+  const tousLesCercles = tousLesNoeuds(detail).filter((n) => n.tagName === "CIRCLE");
+  check("contourCercle_aucun_cercle_en_tirets",
+    !tousLesCercles.some((c) => aClasseSvg(c, "dg-contour-tirets")),
+    "cercles en tirets trouvés : " + tousLesCercles.filter((c) => aClasseSvg(c, "dg-contour-tirets")).length);
+}
+
+// feature-020 (décision R) : l'arc de rebouclage n'a plus AUCUNE pointe —
+// la maquette de référence n'en trace pas (`pose()`/`graphe()`), c'est un
+// ajout du cycle précédent qui n'a pas d'équivalent dans la référence
+// visuelle. Cette sonde protège la décision dans les DEUX sens : l'arc est
+// bien peint, et `dg-arc-pointe` (l'élément ET la règle CSS) n'existe nulle
+// part — sa réapparition serait la régression inverse de celle que ce
+// cycle corrige.
+async function sondeArcRebouclageNAPlusDePointe() {
+  const passages = fixtureGeometrieSondee();
+  const wf = workflow({ workflow_id: "sessS#0", segments: passages, passages });
+  const bac = await chargerAvecEtat({ workflows: [wf] });
+  const { detail } = enteteEtDetail(cyclesLi(bac)[0]);
+
+  const noeuds = tousLesNoeuds(detail);
+  const arc = noeuds.find((n) => n.tagName === "PATH" && aClasseSvg(n, "dg-arc-rebouclage"));
+  check("arc_rebouclage_present", !!arc);
+  const pointe = noeuds.find((n) => aClasseSvg(n, "dg-arc-pointe"));
+  check("arc_sans_pointe_de_direction", !pointe,
+    "un élément dg-arc-pointe a été trouvé alors que la décision R l'exclut");
+
+  // Le libellé de l'arc était la DERNIÈRE taille venue du contrat encore
+  // posée en attribut de présentation (relevé en revue) : aucune règle CSS
+  // ne la concurrence aujourd'hui, mais un `font-size` futur sur
+  // `.dg-arc-libelle` rouvrirait le piège du socle (PIEGES.md, attribut
+  // contre règle). 10,5 px est recopié de la maquette (l.210).
+  const libelleArc = noeuds.find((n) => n.tagName === "TEXT" && aClasseSvg(n, "dg-arc-libelle"));
+  verifierPoliceEnStyleAvecUnitePx(libelleArc, "police_libelle_arc", 10.5);
+}
+
+function sondeCssNeDeclarePlusDgArcPointe() {
+  const css = fs.readFileSync(path.join(__dirname, "app.css"), "utf8");
+  const regle = extraireRegleCss(css, ".dg-arc-pointe {");
+  check("sonde_dg_arc_pointe_absente_du_css", regle === null,
+    "règle trouvée alors que la décision R (aucune pointe) l'exclut : " + regle);
+}
+
+// feature-020 (D1/B2) : le sigle porte désormais la couleur d'IDENTITÉ pour
+// TOUS les agents, y compris le principal — c'est le comportement de la
+// maquette de référence (`pose()`, `fill: c` inconditionnel, l.180), et la
+// régression de revue (`--texte-faible` pour le principal) que ce cycle
+// corrige. « orchestrator » n'a pas de teinte assignée (`ROLES_TEINTES`) :
+// son sigle retombe donc sur le jeton NEUTRE, pas sur `--texte-faible` — les
+// deux valeurs sont épinglées NOMMÉMENT (PIEGES.md, « une assertion globale
+// ne prouve pas l'appariement »), jamais seulement « les deux sigles
+// diffèrent ».
+async function sondeSigleEnCouleurIdentitePourTousLesAgents() {
+  const passages = [
+    segment("principal", "orchestrator", {
+      debut: "2026-09-14T09:00:00.000Z", fin: "2026-09-14T09:00:05.000Z", duree_ms: 5000,
+    }),
+    segment("sousagent", "code-reviewer", {
+      debut: "2026-09-14T09:05:00.000Z", fin: "2026-09-14T09:05:03.000Z", duree_ms: 3000,
+    }),
+  ];
+  const wf = workflow({ workflow_id: "sessT#0", segments: passages, passages });
+  const bac = await chargerAvecEtat({ workflows: [wf] });
+  const { detail } = enteteEtDetail(cyclesLi(bac)[0]);
+
+  const gPrincipal = trouverGroupeAgent(detail, "orchestrator");
+  check("sondeSigle_principal_groupe_trouve", !!gPrincipal);
+  const sPrincipal = gPrincipal && gPrincipal.children.find((n) => n.tagName === "TEXT");
+  check("sondeSigle_principal_texte_trouve", !!sPrincipal);
+  check("sondeSigle_principal_couleur_identite_neutre",
+    !!sPrincipal && sPrincipal.style.fill === "var(--a-neutre)",
+    "fill=" + (sPrincipal && sPrincipal.style.fill));
+
+  const gOrdinaire = trouverGroupeAgent(detail, "code-reviewer");
+  check("sondeSigle_ordinaire_groupe_trouve", !!gOrdinaire);
+  const sOrdinaire = gOrdinaire && gOrdinaire.children.find((n) => n.tagName === "TEXT");
+  check("sondeSigle_ordinaire_texte_trouve", !!sOrdinaire);
+  check("sondeSigle_ordinaire_couleur_identite",
+    !!sOrdinaire && sOrdinaire.style.fill === "var(--a-code-reviewer)",
+    "fill=" + (sOrdinaire && sOrdinaire.style.fill));
+}
+
+// ===================================================================== //
+// feature-020 — livrables E4/E5 et garde architecte « zéro arithmétique »  //
+// ===================================================================== //
+
+// E4 (défaut H) : le liseré des fichiers doit être VISIBLE — peint APRÈS le
+// disque opaque, jamais avant. ⚠️ La médiane du journal réel est de 0
+// fichier (architect) : une fixture PAR DÉFAUT n'a PAS de liseré — cette
+// garde ASSERTE D'ABORD SA PRÉSENCE (fixture à fichiers ≥ 1), puis SEULEMENT
+// ENSUITE l'ordre de peinture. Une garde écrite « si je trouve un liseré
+// alors... » serait verte À VIDE. Mutant de contrôle : échanger les deux
+// `appendChild` (disque puis liseré) dans `construireCercleAgent`.
+async function sondeLiseretPeintApresLeDisque() {
+  const passages = [
+    segment("sousagent", "backend-developer", {
+      debut: "2026-09-14T09:00:00.000Z", fin: "2026-09-14T09:00:03.000Z", duree_ms: 3000,
+      fichiers: ["a.py", "b.py", "c.py"],
+    }),
+  ];
+  const wf = workflow({ workflow_id: "sessW#0", segments: passages, passages });
+  const bac = await chargerAvecEtat({ workflows: [wf] });
+  const { detail } = enteteEtDetail(cyclesLi(bac)[0]);
+
+  const gAgent = trouverGroupeAgent(detail, "backend-developer");
+  check("liseret_groupe_agent_trouve", !!gAgent);
+  if (!gAgent) return;
+  const indexDisque = gAgent.children.findIndex((n) => n.tagName === "CIRCLE" && aClasseSvg(n, "dg-cercle"));
+  const indexLiseret = gAgent.children.findIndex((n) => n.tagName === "CIRCLE" && aClasseSvg(n, "dg-liseret"));
+  check("liseret_present_pour_cette_fixture", indexLiseret !== -1,
+    "aucun élément dg-liseret trouvé alors que fichiers.length=3 (D2 : le liseré doit être VISIBLE)");
+  check("disque_present_pour_cette_fixture", indexDisque !== -1);
+  if (indexLiseret !== -1 && indexDisque !== -1) {
+    check("liseret_peint_apres_le_disque", indexDisque < indexLiseret,
+      "index disque=" + indexDisque + " index liseret=" + indexLiseret);
+  }
+}
+
+// E5 : le sigle de l'agent principal — épinglé EXACTEMENT sur "AP", jamais
+// seulement "différent de ??" (mesuré par l'architect : réparer
+// `collecterRoles` seul, SANS la table `SIGLES_SPECIAUX`, produit "(A", un
+// sigle FAUX qui passerait une garde écrite en négatif).
+async function sondeSigleAgentPrincipalEstAP() {
+  const principal = segment("principal", "(agent principal)", {
+    debut: "2026-09-14T09:00:00.000Z", fin: "2026-09-14T09:00:05.000Z", duree_ms: 5000,
+  });
+  const sousAgent = segment("sousagent", "backend-developer", {
+    debut: "2026-09-14T09:05:00.000Z", fin: "2026-09-14T09:05:03.000Z", duree_ms: 3000,
+  });
+  // `wf.passages` ne porte JAMAIS le segment principal (convention réelle du
+  // backend, voir le commentaire de `construireChaineEtNotes` : « on ne lit
+  // jamais le segment principal depuis passages ») — seul `wf.segments` le
+  // porte. Une fixture qui mettrait le principal dans LES DEUX resterait
+  // aveugle à une régression de `collecterRoles` qui retomberait sur
+  // `wf.passages` (défaut G, mesuré par l'architect : produirait "(A").
+  const wf = workflow({
+    workflow_id: "sessU#0", segments: [principal, sousAgent], passages: [sousAgent],
+  });
+  const bac = await chargerAvecEtat({ workflows: [wf] });
+  const { detail } = enteteEtDetail(cyclesLi(bac)[0]);
+
+  const gPrincipal = trouverGroupeAgent(detail, "(agent principal)");
+  check("sigleAP_principal_groupe_trouve", !!gPrincipal);
+  const sPrincipal = gPrincipal && gPrincipal.children.find((n) => n.tagName === "TEXT" && aClasseSvg(n, "dg-sigle"));
+  check("sigleAP_principal_texte_trouve", !!sPrincipal);
+  check("sigleAP_principal_vaut_exactement_AP",
+    !!sPrincipal && sPrincipal.textContent === "AP",
+    "obtenu " + JSON.stringify(sPrincipal && sPrincipal.textContent));
+}
+
+// Cas voisin à NE PAS déclencher (feature-020, E5) : un agent RÉEL dont le
+// nom commence par « ap » garde son sigle CALCULÉ — la table
+// `SIGLES_SPECIAUX` ne porte QUE sur la sentinelle EXACTE
+// `(agent principal)`, jamais sur un préfixe de nom.
+async function sondeAgentReelPrefixeApGardeSigleCalcule() {
+  const principal = segment("principal", "(agent principal)", {
+    debut: "2026-09-14T09:00:00.000Z", fin: "2026-09-14T09:00:05.000Z", duree_ms: 5000,
+  });
+  const sousAgent = segment("sousagent", "ap-integrateur", {
+    debut: "2026-09-14T09:05:00.000Z", fin: "2026-09-14T09:05:03.000Z", duree_ms: 3000,
+  });
+  // Même prudence que `sondeSigleAgentPrincipalEstAP` : `wf.passages` ne
+  // porte pas le principal.
+  const wf = workflow({
+    workflow_id: "sessV#0", segments: [principal, sousAgent], passages: [sousAgent],
+  });
+  const bac = await chargerAvecEtat({ workflows: [wf] });
+  const { detail } = enteteEtDetail(cyclesLi(bac)[0]);
+
+  // `SIGLES_SPECIAUX` est une constante de module (`const`), jamais exposée
+  // comme propriété du contexte `vm` (contrairement aux DÉCLARATIONS de
+  // fonction, qui s'attachent à l'objet global d'un script classique) —
+  // cette sonde ne peut donc l'inspecter QUE par son EFFET observable :
+  // le sigle réellement peint pour "ap-integrateur", ci-dessous.
+  const gPrincipal = trouverGroupeAgent(detail, "(agent principal)");
+  const sPrincipal = gPrincipal && gPrincipal.children.find((n) => n.tagName === "TEXT" && aClasseSvg(n, "dg-sigle"));
+  check("sigleAP_voisin_principal_vaut_AP",
+    !!sPrincipal && sPrincipal.textContent === "AP",
+    "obtenu " + JSON.stringify(sPrincipal && sPrincipal.textContent));
+
+  const gVoisin = trouverGroupeAgent(detail, "ap-integrateur");
+  check("sigleAP_voisin_groupe_trouve", !!gVoisin);
+  const sVoisin = gVoisin && gVoisin.children.find((n) => n.tagName === "TEXT" && aClasseSvg(n, "dg-sigle"));
+  check("sigleAP_voisin_texte_trouve", !!sVoisin);
+  // "AP" est déjà pris par le principal (alphabétiquement premier : "(" est
+  // avant toute lettre) : l'agent réel préfixé "ap-" retombe donc sur le
+  // repli déterministe (FNV-1a) de `sigleAgent` — jamais "AP" (qu'une table
+  // trop permissive pourrait lui attribuer quand même), jamais "??" (repli
+  // d'échec). Le repli attendu est reconstruit à partir de la même fonction
+  // de hachage EXPOSÉE (`empreinteFnv1a`, un utilitaire pur non concerné par
+  // le défaut visé ici), sans jamais rappeler `sigleAgent` lui-même.
+  const empreinte = bac.sandbox.empreinteFnv1a("ap-integrateur");
+  let attendu = null;
+  for (let d = 0; d < 10 && attendu === null; d++) {
+    const candidat = "A" + String((empreinte + d) % 10);
+    if (candidat !== "AP") attendu = candidat;
+  }
+  check("sigleAP_voisin_ne_vaut_pas_AP", !!sVoisin && sVoisin.textContent !== "AP",
+    "obtenu " + JSON.stringify(sVoisin && sVoisin.textContent));
+  check("sigleAP_voisin_ne_vaut_pas_repli_echec", !!sVoisin && sVoisin.textContent !== "??",
+    "obtenu " + JSON.stringify(sVoisin && sVoisin.textContent));
+  check("sigleAP_voisin_vaut_le_repli_attendu",
+    !!sVoisin && sVoisin.textContent === attendu,
+    "obtenu " + JSON.stringify(sVoisin && sVoisin.textContent) + " attendu " + JSON.stringify(attendu));
+}
+
+// feature-020 (C1/C2, mutant de contrôle M16) : le cadre d'un créneau empilé
+// ne doit JAMAIS porter d'aplat — un filet suffit (§9 du design system). La
+// régression visée (défaut O) est un simple `fill:"var(--creux)"` qui
+// masquerait le lien passant sous le cadre ; elle ne se détecte que sur
+// l'ATTRIBUT réellement posé par `app.js` (`svgAttrs`), jamais sur une classe
+// CSS (`.dg-cadre-simultane` ne porte pas de `fill` en CSS, voir app.css).
+async function sondeCadreSimultaneSansAplat() {
+  const passages = [
+    segment("sousagent", "backend-developer", {
+      debut: "2026-09-14T09:00:00.000Z", fin: "2026-09-14T09:00:03.000Z", duree_ms: 3000, outils: 1,
+    }),
+    segment("sousagent", "frontend-developer", {
+      debut: "2026-09-14T09:00:00.000Z", fin: "2026-09-14T09:00:03.000Z", duree_ms: 3000, outils: 1,
+    }),
+  ];
+  const wf = workflow({ workflow_id: "sessCadre#0", segments: passages, passages });
+  const bac = await chargerAvecEtat({ workflows: [wf] });
+  const { detail } = enteteEtDetail(cyclesLi(bac)[0]);
+  const noeuds = tousLesNoeuds(detail);
+  const cadre = noeuds.find((n) => n.tagName === "RECT" && aClasseSvg(n, "dg-cadre-simultane"));
+  check("cadre_simultane_present_dans_le_rendu", !!cadre, "aucun rect .dg-cadre-simultane trouvé");
+  check("cadre_simultane_sans_aplat_fill_none",
+    !!cadre && cadre.fill === "none",
+    "obtenu fill=" + JSON.stringify(cadre && cadre.fill));
+}
+
+// feature-020 (E6a, mutants de contrôle M10/M19) : épaisseur du LISERÉ des
+// fichiers et de la BARRE GRISE du zéro — descendues de `diagramme.js` vers
+// `app.css` (constantes de pur trait, C2) pendant ce cycle. La garde lit la
+// déclaration RÉELLE de la règle CSS (jamais une sous-chaîne dans tout le
+// fichier, PIEGES.md §25/§26/§27) et vérifie qu'AUCUNE autre règle du même
+// sélecteur n'existe dans app.css (sinon la spécificité déciderait, pas
+// cette déclaration — PIEGES.md §25) : chaque sélecteur n'apparaît qu'UNE
+// fois dans app.css au moment de l'écriture de ce test, vérifié ci-dessous
+// avant de lire la valeur.
+function sondeEpaisseursDeTraitLiseretEtBarreGriseDepuisCss() {
+  const css = fs.readFileSync(path.join(__dirname, "app.css"), "utf8");
+  const sansCommentaires = css.replace(/\/\*[\s\S]*?\*\//g, " ");
+
+  function occurrences(selecteur) {
+    const regex = new RegExp(selecteur.replace(/[.]/g, "\\.") + "\\s*\\{", "g");
+    return (sansCommentaires.match(regex) || []).length;
+  }
+
+  check("sonde_dg_liseret_declare_une_seule_fois", occurrences(".dg-liseret") === 1,
+    "obtenu " + occurrences(".dg-liseret") + " occurrence(s) — la spécificité déciderait sinon (PIEGES §25)");
+  const regleLiseret = extraireRegleCss(sansCommentaires, ".dg-liseret {");
+  check("sonde_dg_liseret_regle_presente", !!regleLiseret);
+  check("sonde_dg_liseret_epaisseur_1px",
+    !!regleLiseret && /stroke-width:\s*1px/.test(regleLiseret),
+    "règle=" + regleLiseret);
+
+  check("sonde_dg_barre_zero_grise_declare_une_seule_fois", occurrences(".dg-barre-zero-grise") === 1,
+    "obtenu " + occurrences(".dg-barre-zero-grise") + " occurrence(s)");
+  const regleBarreGrise = extraireRegleCss(sansCommentaires, ".dg-barre-zero-grise {");
+  check("sonde_dg_barre_zero_grise_regle_presente", !!regleBarreGrise);
+  check("sonde_dg_barre_zero_grise_epaisseur_1px",
+    !!regleBarreGrise && /stroke-width:\s*1px/.test(regleBarreGrise),
+    "règle=" + regleBarreGrise);
+}
+
+// feature-020 (D8, E6b, mutant de contrôle M21) : format des durées dans la
+// TABLE DES PASSAGES — secondes sur deux chiffres, sans suffixe au-delà de la
+// minute (« 1 min 07 », jamais « 1 min 7 s »). ⚠️ PIEGES.md §30 : la valeur
+// ATTENDUE est recopiée À LA MAIN ici, jamais obtenue via `disposer.texteDuree`
+// ni `duree()` elle-même — sinon une mutation du format muterait les deux
+// productions à la fois et cette garde resterait verte quel que soit le texte
+// réellement peint dans la table.
+async function testDureeTablePassagesFormatMaquette() {
+  const passages = [
+    segment("sousagent", "test-engineer", {
+      debut: "2026-09-14T09:00:00.000Z", fin: "2026-09-14T09:01:07.000Z", duree_ms: 67000,
+    }),
+  ];
+  const wf = workflow({ workflow_id: "sessDuree#0", segments: passages, passages });
+  const bac = await chargerAvecEtat({ workflows: [wf] });
+  const { detail } = enteteEtDetail(cyclesLi(bac)[0]);
+  const lignes = lignesTable(detail);
+  check("duree_table_une_ligne", lignes.length === 1, "obtenu " + lignes.length);
+  if (!lignes.length) return;
+  const texteDureeCellule = lignes[0].children[2].textContent;
+  check("duree_table_67000ms_vaut_1_min_07",
+    texteDureeCellule === "1 min 07",
+    "obtenu " + JSON.stringify(texteDureeCellule) + " attendu \"1 min 07\"");
+}
+
+// feature-020 (E6c) : parité « posé ⇔ déclaré » entre les classes `dg-*`
+// réellement POSÉES par `app.js` (toute chaîne littérale du fichier — le seul
+// mécanisme par lequel une classe entre dans le DOM ici, aucune construction
+// dynamique de nom de classe n'existe dans ce module) et celles réellement
+// DÉCLARÉES dans `app.css` (sélecteurs `.dg-*`). Les DEUX listes sont LUES
+// DEPUIS LES ARTEFACTS livrés (PIEGES.md §21 : une énumération à la main
+// serait périmée au premier ajout), les commentaires sont retirés en amont
+// (§26/§27 : une citation en commentaire ne doit compter ni comme pose ni
+// comme déclaration). Échoue dans les DEUX sens.
+function classesDgPoseesDepuisAppJs(source) {
+  const sansCommentaires = source
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/\/\/[^\n]*/g, " ");
+  const classes = new Set();
+  const regexLitteral = /"([^"\\]*)"/g;
+  let m;
+  while ((m = regexLitteral.exec(sansCommentaires)) !== null) {
+    m[1].split(/\s+/).forEach((tok) => { if (tok.indexOf("dg-") === 0) classes.add(tok); });
+  }
+  return classes;
+}
+function classesDgDeclareesDepuisCss(css) {
+  const sansCommentaires = css.replace(/\/\*[\s\S]*?\*\//g, " ");
+  const classes = new Set();
+  const regex = /\.(dg-[a-zA-Z0-9-]+)/g;
+  let m;
+  while ((m = regex.exec(sansCommentaires)) !== null) classes.add(m[1]);
+  return classes;
+}
+function sondePariteClassesDgPoseesEtDeclarees() {
+  const sourceAppJs = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+  const sourceAppCss = fs.readFileSync(path.join(__dirname, "app.css"), "utf8");
+  const posees = classesDgPoseesDepuisAppJs(sourceAppJs);
+  const declarees = classesDgDeclareesDepuisCss(sourceAppCss);
+  check("parite_dg_au_moins_une_classe_lue_de_chaque_cote",
+    posees.size > 0 && declarees.size > 0,
+    "posées=" + posees.size + " déclarées=" + declarees.size);
+  const poseesSansDeclaration = [...posees].filter((c) => !declarees.has(c)).sort();
+  const declareesSansPose = [...declarees].filter((c) => !posees.has(c)).sort();
+  check("parite_dg_aucune_classe_posee_sans_etre_declaree",
+    poseesSansDeclaration.length === 0,
+    "posées sans déclaration CSS : " + JSON.stringify(poseesSansDeclaration));
+  check("parite_dg_aucune_classe_declaree_sans_etre_posee",
+    declareesSansPose.length === 0,
+    "déclarées sans être posées dans app.js : " + JSON.stringify(declareesSansPose));
+}
+
+// feature-020 (revue code-reviewer, G1/G3) : la taille de police des socles
+// et du sigle est posée en `style.fontSize`, JAMAIS en attribut de
+// présentation (G1 — une classe CSS regagnerait la priorité sur un attribut,
+// c'est le défaut réel trouvé : `.dg-socle-nom { font-size: 10.5px }`
+// écrasait l'attribut posé depuis `taillePx`, y compris pour le nom EMPILÉ
+// qui doit valoir 11px), et TOUJOURS avec une unité EXPLICITE (G3 —
+// `style.fontSize = 11`, nombre nu, est coercé en `11px` par CE Chromium
+// mais resterait une déclaration CSS INVALIDE ailleurs ; les 547 cas front
+// existants n'avaient rien vu passer de l'attribut à l'unité manquante).
+//
+// Le bac à sable `FakeNode` de ce harnais ne coerce RIEN (`.style` est un
+// objet nu, jamais un `CSSStyleDeclaration` réel) : assigner un NOMBRE au
+// lieu d'une CHAÎNE `"11px"` reste un nombre ici, là où un vrai navigateur
+// l'aurait masqué en silence — exactement le mécanisme qui a rendu G3
+// invisible sur les 547 cas déjà verts. C'est ce qui rend ce test capable de
+// voir la régression qu'aucune mesure `getComputedStyle` (Chromium) ne peut
+// voir par elle-même.
+function verifierPoliceEnStyleAvecUnitePx(noeud, nom, tailleAttendue) {
+  check(nom + "_trouve", !!noeud);
+  if (!noeud) return;
+  check(nom + "_posee_en_style_jamais_en_attribut",
+    typeof noeud.style.fontSize === "string" && noeud.getAttribute("font-size") == null,
+    "style.fontSize=" + JSON.stringify(noeud.style.fontSize) + " attribut font-size="
+    + JSON.stringify(noeud.getAttribute("font-size")));
+  check(nom + "_unite_px_explicite_valeur_exacte",
+    noeud.style.fontSize === tailleAttendue + "px",
+    "obtenu " + JSON.stringify(noeud.style.fontSize) + " attendu " + JSON.stringify(tailleAttendue + "px"));
+}
+
+async function sondePoliceSocleEtSigleEnStyleAvecUnitePx() {
+  const passages = [
+    segment("sousagent", "backend-developer", {
+      debut: "2026-09-14T09:00:00.000Z", fin: "2026-09-14T09:00:05.000Z", duree_ms: 5000, outils: 1,
+    }),
+    segment("sousagent", "frontend-developer", {
+      debut: "2026-09-14T09:00:00.000Z", fin: "2026-09-14T09:00:05.000Z", duree_ms: 5000, outils: 1,
+    }),
+    segment("sousagent", "test-engineer", {
+      debut: "2026-09-14T09:10:00.000Z", fin: "2026-09-14T09:10:05.000Z", duree_ms: 5000, outils: 1,
+    }),
+  ];
+  const wf = workflow({ workflow_id: "sessPolice#0", segments: passages, passages });
+  const bac = await chargerAvecEtat({ workflows: [wf] });
+  const { detail } = enteteEtDetail(cyclesLi(bac)[0]);
+  const noeuds = tousLesNoeuds(detail);
+
+  // Le MÊME rôle (nom) porte deux tailles distinctes, épinglées un par un
+  // (PIEGES.md, « une assertion globale ne prouve pas l'appariement ») —
+  // jamais seulement « les tailles diffèrent ». Créneau empilé peint en
+  // premier (deux agents), créneau simple en second (un agent).
+  const noeudsNom = noeuds.filter((n) => n.tagName === "TEXT" && aClasseSvg(n, "dg-socle-nom"));
+  check("police_trois_lignes_nom_trouvees", noeudsNom.length === 3, "obtenu " + noeudsNom.length);
+  verifierPoliceEnStyleAvecUnitePx(noeudsNom[0], "police_nom_empile_agent0", 11);
+  verifierPoliceEnStyleAvecUnitePx(noeudsNom[1], "police_nom_empile_agent1", 11);
+  verifierPoliceEnStyleAvecUnitePx(noeudsNom[2], "police_nom_simple", 10.5);
+
+  const heureSimple = noeuds.find((n) => n.tagName === "TEXT" && aClasseSvg(n, "dg-socle-heure"));
+  verifierPoliceEnStyleAvecUnitePx(heureSimple, "police_heure_simple", 10.5);
+  const dureeSimple = noeuds.find((n) => n.tagName === "TEXT" && aClasseSvg(n, "dg-socle-duree"));
+  verifierPoliceEnStyleAvecUnitePx(dureeSimple, "police_duree_simple", 12.5);
+  const heureDureeEmpile = noeuds.find((n) => n.tagName === "TEXT" && aClasseSvg(n, "dg-socle-heure-duree"));
+  verifierPoliceEnStyleAvecUnitePx(heureDureeEmpile, "police_heure_duree_empile", 11.5);
+
+  const sigle = noeuds.find((n) => n.tagName === "TEXT" && aClasseSvg(n, "dg-sigle"));
+  verifierPoliceEnStyleAvecUnitePx(sigle, "police_sigle", 9.5);
+}
+
+// Libellé de cadre (« N agents en parallèle ») et libellé de repli (« +N »)
+// — les deux DERNIERS points cités par la revue, non couverts ci-dessus
+// (fixtures dédiées : cadre déjà présent dans la fixture précédente à 2
+// agents ; repli exige > `repliMaxVisibles` (4) agents simultanés).
+async function sondePoliceLibelleCadreEtRepliEnStyleAvecUnitePx() {
+  const passagesCadre = [
+    segment("sousagent", "backend-developer", {
+      debut: "2026-09-14T09:00:00.000Z", fin: "2026-09-14T09:00:05.000Z", duree_ms: 5000, outils: 1,
+    }),
+    segment("sousagent", "frontend-developer", {
+      debut: "2026-09-14T09:00:00.000Z", fin: "2026-09-14T09:00:05.000Z", duree_ms: 5000, outils: 1,
+    }),
+  ];
+  const wfCadre = workflow({ workflow_id: "sessPoliceCadre#0", segments: passagesCadre, passages: passagesCadre });
+  const bacCadre = await chargerAvecEtat({ workflows: [wfCadre] });
+  const { detail: detailCadre } = enteteEtDetail(cyclesLi(bacCadre)[0]);
+  const libelleCadre = tousLesNoeuds(detailCadre)
+    .find((n) => n.tagName === "TEXT" && aClasseSvg(n, "dg-libelle-cadre"));
+  verifierPoliceEnStyleAvecUnitePx(libelleCadre, "police_libelle_cadre", 10.5);
+
+  const passagesRepli = [];
+  for (let i = 0; i < 5; i++) {
+    passagesRepli.push(segment("sousagent", "agent-repli-" + i, {
+      debut: "2026-09-14T09:00:00.000Z", fin: "2026-09-14T09:00:05.000Z", duree_ms: 5000, outils: 1,
+    }));
+  }
+  const wfRepli = workflow({ workflow_id: "sessPoliceRepli#0", segments: passagesRepli, passages: passagesRepli });
+  const bacRepli = await chargerAvecEtat({ workflows: [wfRepli] });
+  const { detail: detailRepli } = enteteEtDetail(cyclesLi(bacRepli)[0]);
+  const libelleRepli = tousLesNoeuds(detailRepli)
+    .find((n) => n.tagName === "TEXT" && aClasseSvg(n, "dg-repli"));
+  verifierPoliceEnStyleAvecUnitePx(libelleRepli, "police_libelle_repli", 10.5);
+}
+
+// feature-020 (G1, statique) : AUCUNE des règles CSS du socle ne déclare
+// `font-size` — l'invariant explicitement écrit en commentaire d'`app.css`
+// (« AUCUN font-size ici, jamais »). Garde COMPLÉMENTAIRE aux deux sondes
+// ci-dessus : tant qu'`app.js` pose la taille en `style` (gagnant toujours
+// contre une classe), réintroduire cette règle CSS seule ne changerait rien
+// au RENDU réel — mais laisser l'invariant se dégrader sans témoin, c'est
+// laisser la moitié de la protection reposer uniquement sur l'autre moitié
+// (`app.js`) sans qu'aucun test ne le nomme. Lu depuis L'ARTEFACT (jamais
+// une liste de sélecteurs recopiée par ailleurs) : les BLOCS eux-mêmes
+// viennent d'`extraireRegleCss`, déjà utilisé plus haut dans ce fichier.
+function sondeCssSocleNeDeclarePlusFontSize() {
+  const css = fs.readFileSync(path.join(__dirname, "app.css"), "utf8");
+  const sansCommentaires = css.replace(/\/\*[\s\S]*?\*\//g, " ");
+  const SELECTEURS = [
+    ".dg-socle-heure, .dg-socle-nom {",
+    ".dg-socle-duree, .dg-socle-heure-duree {",
+    ".dg-repli, .dg-libelle-cadre {",
+  ];
+  SELECTEURS.forEach((selecteur) => {
+    const regle = extraireRegleCss(sansCommentaires, selecteur);
+    check("sonde_" + selecteur.replace(/[^a-z-]/gi, "") + "_regle_presente", !!regle);
+    check("sonde_" + selecteur.replace(/[^a-z-]/gi, "") + "_sans_font_size",
+      !!regle && !/font-size/.test(regle), "règle=" + regle);
+  });
+}
+
+// Garde « zéro arithmétique dans app.js » (architect) : les six fonctions
+// qui peignent le diagramme ne doivent plus jamais appeler `duree(`,
+// `heure(`, ni `Math.*` — c'est l'invariant qui empêche la classe de
+// défauts bug-020/bug-021 (une position recalculée localement, divergente
+// de `disposer()`) de revenir. Lu depuis L'ARTEFACT LIVRÉ (`app.js`),
+// jamais une affirmation sur l'intention du code (PIEGES.md §21).
+function sondeZeroArithmetiqueDansLesFonctionsDeDiagramme() {
+  const source = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+  const FONCTIONS = [
+    "construireCercleAgent", "construireSoclesCreneau", "construireLiensDiagramme",
+    "construireArcsDiagramme", "construireLegendeDiagramme", "construireDiagramme",
+  ];
+  FONCTIONS.forEach((nom) => {
+    const debut = source.indexOf("function " + nom + "(");
+    check(nom + "_trouvee_dans_app_js", debut !== -1);
+    if (debut === -1) return;
+    const debutAccolade = source.indexOf("{", debut);
+    let profondeur = 0;
+    let fin = debutAccolade;
+    for (let i = debutAccolade; i < source.length; i++) {
+      if (source[i] === "{") profondeur++;
+      else if (source[i] === "}") {
+        profondeur--;
+        if (profondeur === 0) { fin = i; break; }
+      }
+    }
+    const corps = source.slice(debut, fin + 1);
+    check(nom + "_aucun_appel_duree", corps.indexOf("duree(") === -1, "trouvé dans " + nom);
+    check(nom + "_aucun_appel_heure", corps.indexOf("heure(") === -1, "trouvé dans " + nom);
+    check(nom + "_aucun_appel_Math", !/\bMath\./.test(corps), "trouvé dans " + nom);
+  });
 }
 
 async function main() {
@@ -1217,8 +1942,26 @@ async function main() {
   await testAucunCheminAbsoluDansLInfobulle();
   await testDiagrammeCableAvantLaTable();
   await testGuardeAbsenceDiagrammeJs();
+  await sondeLienPorteClasseDgLien();
   await sondePastilleCxVientDeDisposer();
-  await sondeArcHauteurVientDeDisposer();
+  await sondeArcSommetVientDeDisposer();
+  sondeJetonsCssDesLiensEtPastilles();
+  await sondeGuideEtGraduationEteinteJetonsCorrects();
+  await sondeContourCerclePourChaqueEtat();
+  await sondeArcRebouclageNAPlusDePointe();
+  sondeCssNeDeclarePlusDgArcPointe();
+  await sondeSigleEnCouleurIdentitePourTousLesAgents();
+  await sondeLiseretPeintApresLeDisque();
+  await sondeSigleAgentPrincipalEstAP();
+  await sondeAgentReelPrefixeApGardeSigleCalcule();
+  await sondeCadreSimultaneSansAplat();
+  sondeEpaisseursDeTraitLiseretEtBarreGriseDepuisCss();
+  await testDureeTablePassagesFormatMaquette();
+  sondePariteClassesDgPoseesEtDeclarees();
+  await sondePoliceSocleEtSigleEnStyleAvecUnitePx();
+  await sondePoliceLibelleCadreEtRepliEnStyleAvecUnitePx();
+  sondeCssSocleNeDeclarePlusFontSize();
+  sondeZeroArithmetiqueDansLesFonctionsDeDiagramme();
 
   console.log("\n" + _tests + " cas, " + _echecs.length + " echec(s)");
   for (const e of _echecs) console.log("  - " + e);

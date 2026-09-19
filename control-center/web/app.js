@@ -28,12 +28,29 @@ function heure(iso) {
   return t.length >= 19 ? t.slice(11, 19) : t;
 }
 
+/* Délègue à `texteDuree()` (diagramme.js) — SEUL formateur de durée du
+ * module (feature-020, complément « format des durées »). Les deux fichiers
+ * partagent la portée globale d'un script classique (pas d'`import`,
+ * ADR-0006, cf. `index.html`) : appeler `texteDuree` ici n'est pas une
+ * duplication de règle, c'est le même code. `ms` numérique est toujours
+ * accepté par `texteDuree` quel que soit `termine` — seul le cas non
+ * numérique en dépend, et cette fonction ne l'atteint jamais grâce à la garde
+ * ci-dessous. Le contrat `null` (« pas mesurable ≠ zéro ») reste local à
+ * `app.js`, car `texteDuree` ne le connaît pas (elle renvoie un texte pour
+ * tout ce qui n'est pas un nombre). */
 function duree(ms) {
   if (ms === null || ms === undefined) return null;   /* pas mesurable ≠ zéro */
-  if (ms < 1000) return ms + " ms";
-  if (ms < 60000) return (ms / 1000).toFixed(1) + " s";
-  const minutes = Math.floor(ms / 60000);
-  return minutes + " min " + Math.round((ms % 60000) / 1000) + " s";
+  /* Repli bug-020 : sans `diagramme.js` (404, cache, oubli de relancer le
+   * serveur après un fichier neuf — PIEGES.md §8), `texteDuree` n'existe
+   * pas et l'exception remonterait jusqu'au `catch` global de
+   * `rafraichir()`, qui l'afficherait à tort comme « serveur injoignable »
+   * — alors que c'est la TABLE DES PASSAGES, pas le diagramme, qui appelle
+   * `duree()`. Ce chemin n'est atteint qu'en mode dégradé, où le diagramme
+   * n'existe déjà plus à l'écran (`construireDiagramme` retourne `null` au
+   * même défaut) : les deux écritures ne peuvent donc jamais coexister,
+   * et ne peuvent pas diverger en fonctionnement normal. */
+  if (typeof texteDuree !== "function") return Math.round(ms / 1000) + " s";
+  return texteDuree(ms, true);
 }
 
 /* Temps écoulé depuis `derniere_activite`, pour le SEUL registre « sans
@@ -96,8 +113,22 @@ function empreinteFnv1a(texte) {
   return h >>> 0;
 }
 
+/* Sentinelle du segment « agent principal » (backend/events.py:57,
+ * `AGENT_PRINCIPAL`) — recopiée ici en littéral : ce fichier n'importe rien
+ * du backend (CSP `default-src 'self'`, ADR-0006). Table appliquée
+ * UNIQUEMENT à cette sentinelle EXACTE (feature-020, défaut G) : un agent
+ * réel nommé `ap-*` garde son sigle calculé, seul « (agent principal) »
+ * emprunte « AP » (vérifié : ne collisionne avec aucun des sigles des onze
+ * rôles déclarés — AR BA CO DE DO FR OR SE SP TE UX). Sans cette table, la
+ * règle générale calculerait « (A », un sigle faux. */
+const SIGLES_SPECIAUX = { "(agent principal)": "AP" };
+
 function sigleAgent(nomRole, siglesDejaPris) {
   const pris = siglesDejaPris || new Set();
+  if (Object.prototype.hasOwnProperty.call(SIGLES_SPECIAUX, nomRole)) {
+    const special = SIGLES_SPECIAUX[nomRole];
+    if (!pris.has(special)) return special;
+  }
   const segment = String(nomRole).split("-")[0].toUpperCase();
   const premiere = segment[0] || "?";
   let candidat = premiere + (segment[1] || "");
@@ -727,13 +758,20 @@ function construireChaineEtNotes(wf) {
  * ADR-0006). Ce bloc ne fait que TRADUIRE cette géométrie en SVG et y poser
  * les jetons de couleur — il n'invente aucun nombre, aucune position.
  *
- * Précédence identité/état (§8, déjà appliquée par feature-016 aux
- * maillons de la chaîne) : l'IDENTITÉ (couleur d'agent) reste réservée au
- * remplissage du cercle et à son texte (même registre que le fond du sigle,
- * `remplissageIdentite`, déjà utilisé ainsi par `construireIdentiteAgent`) ;
- * le CONTOUR et la FORME portent l'ÉTAT — jamais l'inverse. L'agent
- * `principal` n'a PAS de teinte d'identité (comme dans la chaîne existante,
- * `.maillon.principal .mnom`) : fond `--creux`, texte `--texte-faible`.
+ * Vocabulaire du cercle, RENDU RÉEL (feature-020 D1/D4 — ce commentaire a
+ * déjà égaré une revue une fois en affirmant l'inverse, ne pas y revenir) :
+ * le contour est PLEIN, sauf l'état « sans clôture » qui prend le seul
+ * motif restant, le pointillé. L'échec ajoute une croix et un contour
+ * `--alerte`, en plus du reste. L'IDENTITÉ (couleur d'agent) va sur le
+ * remplissage du disque et sur le sigle, TOUJOURS — y compris pour l'agent
+ * `principal`, qui n'a pas de teinte de remplissage (fond `--creux`) mais
+ * garde un sigle « AP » en couleur d'identité et un contour plein, sans
+ * tirets (il n'est plus une exception visuelle, trop fréquent pour l'être).
+ * SEULE exception au principe « l'identité ne va jamais sur le contour »
+ * (§8) : l'état « en cours », dont le contour prend la couleur d'identité —
+ * ce n'est pas un signal ajouté par ce cycle mais un comportement de la
+ * maquette de référence elle-même (défaut K, arbitrage D4), nommé ici pour
+ * qu'une future revue ne le prenne pas pour une régression.
  */
 const NS_SVG = "http://www.w3.org/2000/svg";
 
@@ -748,135 +786,129 @@ function svgAttrs(noeud, attrs) {
   return noeud;
 }
 
-/* Point sur un cercle, angle en degrés MESURÉ DEPUIS LE HAUT, sens horaire
- * (0° = 12 h). Utilisé pour les graduations comme pour les ticks. */
-function pointCercle(cx, cy, rayon, angleDeg) {
-  const rad = (angleDeg * Math.PI) / 180;
-  return { x: cx + rayon * Math.sin(rad), y: cy - rayon * Math.cos(rad) };
+/* Contour : rôle CALCULÉ PAR `disposer()` (contourRole/contourLargeur,
+ * priorité échec > sans clôture > en cours > nominal, feature-020 D1/D4).
+ * Seule la COULEUR reste décidée ici (ce module ignore tout jeton de
+ * couleur) — l'identité ne va JAMAIS sur le contour, SAUF l'état « en
+ * cours » : la maquette elle-même colore le contour de l'agent actif avec
+ * sa couleur d'identité (défaut K, arbitrage D4 : la maquette prime, ce
+ * n'est pas un signal ajouté par ce cycle mais un comportement du modèle de
+ * référence, hors du périmètre de D1 qui ne porte que sur l'agent terminé
+ * sans échec). */
+const COULEUR_CONTOUR_ROLE = {
+  echec: "var(--alerte)",
+  sansCloture: "var(--contour-etat)",
+  nominal: "var(--trait)",
+};
+function couleurContourRole(agentGeo) {
+  if (agentGeo.contourRole === "enCours") return couleurIdentite(agentGeo.agent);
+  return COULEUR_CONTOUR_ROLE[agentGeo.contourRole] || "var(--trait)";
 }
 
-/* Les traits sont MUTUELLEMENT EXCLUSIFS sur le CONTOUR (design system §8,
- * vocabulaire des trois motifs) : pointillé = sans clôture, tirets pleins =
- * agent principal — jamais cumulés. La couleur du contour porte l'ÉTAT
- * (alerte en cas d'échec), jamais l'identité. */
-function traitsCercle(agent) {
-  const style = agent.sansCloture ? "dg-contour-pointille"
-    : agent.principal ? "dg-contour-tirets"
-    : "dg-contour-plein";
-  const couleurContour = agent.sansCloture ? "var(--contour-etat)"
-    : agent.echec ? "var(--alerte)"
-    : "var(--trait)";
-  const remplissage = agent.principal ? "var(--creux)" : remplissageIdentite(agent.agent);
-  const couleurTexte = agent.principal ? "var(--texte-faible)" : couleurIdentite(agent.agent);
-  return { style, couleurContour, remplissage, couleurTexte };
-}
-
+/* Ordre de peinture (feature-020, défaut H) : guide → graduations → barres
+ * du zéro → DISQUE → LISERÉ → anneau en cours → croix → sigle. Le liseré
+ * DOIT venir après le disque opaque, sinon il est invisible dessous — c'est
+ * le défaut mesuré (l'ancien code le peignait avant). Toute la GÉOMÉTRIE
+ * (positions, rayons, angles, points de graduation) vient de `agentGeo` —
+ * cette fonction ne fait plus aucun `Math.*`. */
 function construireCercleAgent(agentGeo, sigles) {
   const g = svgEl("g", "dg-agent");
   const c = couleurIdentite(agentGeo.agent);
-  const r0 = agentGeo.rayon + 4;
 
-  // Anneau gris extérieur (guide)
+  // Anneau guide (§E, correction de l'inversion : le plus clair)
   const guide = svgEl("circle", "dg-guide");
-  svgAttrs(guide, { cx: agentGeo.cx, cy: agentGeo.cy, r: r0 + 3.5, fill: "none" });
-  guide.style.stroke = "var(--trait)";
-  guide.style.strokeWidth = 1;
+  svgAttrs(guide, { cx: agentGeo.cx, cy: agentGeo.cy, r: agentGeo.rayonGuide, fill: "none" });
+  guide.style.stroke = "var(--trait-fin)";
   g.appendChild(guide);
 
-  // Graduations : arc de 340°
-  const total = agentGeo.graduationsTotal;
-  for (let i = 0; i < total; i++) {
-    const angle = total > 1 ? 10 + (340 * i) / (total - 1) : 10;
-    const allumee = i < agentGeo.graduationsAllumees;
-    const estBorne = i === 0 || i === total - 1;
-    const interieur = pointCercle(agentGeo.cx, agentGeo.cy, r0, angle);
-    const exterieur = pointCercle(agentGeo.cx, agentGeo.cy,
-      r0 + (estBorne ? 7 : 3.2), angle);
-    const trait = svgEl("line");
-    svgAttrs(trait, { x1: interieur.x, y1: interieur.y, x2: exterieur.x, y2: exterieur.y });
-    trait.style.stroke = allumee ? c : "var(--trait-fin)";
-    trait.style.strokeWidth = allumee ? 1.8 : 1;
+  // Graduations — coordonnées ENTIÈREMENT calculées par disposer()
+  agentGeo.graduations.forEach((grad) => {
+    const trait = svgEl("line", "dg-graduation");
+    svgAttrs(trait, { x1: grad.x1, y1: grad.y1, x2: grad.x2, y2: grad.y2 });
+    // §E : les graduations ÉTEINTES prennent --trait (le plus sombre),
+    // corrigeant l'inversion avec l'anneau guide ci-dessus.
+    trait.style.stroke = grad.allumee ? c : "var(--trait)";
+    trait.style.strokeWidth = grad.epaisseur;
     g.appendChild(trait);
-  }
-
-  // Barre blanche (filigrane)
-  const barreBlanche = svgEl("line");
-  svgAttrs(barreBlanche, {
-    x1: agentGeo.cx, y1: agentGeo.cy - r0 + 0.5,
-    x2: agentGeo.cx, y2: agentGeo.cy - r0 - 8.5,
   });
+
+  // Barres du zéro (marqueur de départ des graduations) — épaisseur posée
+  // en CSS (feature-020 C2 : ne sert qu'au trait, ne réserve rien), d'où les
+  // deux classes distinctes (aucune épaisseur commune à factoriser).
+  const bzb = agentGeo.barreZeroBlanche;
+  const barreBlanche = svgEl("line", "dg-barre-zero-blanche");
+  svgAttrs(barreBlanche, { x1: bzb.x1, y1: bzb.y1, x2: bzb.x2, y2: bzb.y2 });
   barreBlanche.style.stroke = "var(--creux)";
-  barreBlanche.style.strokeWidth = 2.6;
   g.appendChild(barreBlanche);
 
-  // Barre grise (liseré)
-  const barreGrise = svgEl("line");
-  svgAttrs(barreGrise, {
-    x1: agentGeo.cx - 0.6, y1: agentGeo.cy - r0 + 0.5,
-    x2: agentGeo.cx - 0.6, y2: agentGeo.cy - r0 - 9.5,
-  });
-  barreGrise.style.stroke = "var(--texte-doux)";
-  barreGrise.style.strokeWidth = 1;
+  const bzg = agentGeo.barreZeroGrise;
+  const barreGrise = svgEl("line", "dg-barre-zero-grise");
+  svgAttrs(barreGrise, { x1: bzg.x1, y1: bzg.y1, x2: bzg.x2, y2: bzg.y2 });
+  // §E : la barre grise porte --texte-faible (t3), pas --texte-doux.
+  barreGrise.style.stroke = "var(--texte-faible)";
   g.appendChild(barreGrise);
 
-  // Liseré intérieur pour fichiers
+  // Disque — contour plein sauf « sans clôture » (pointillé, seul motif
+  // restant : l'agent principal a quitté les tirets, D1).
+  const classeContour = agentGeo.contourRole === "sansCloture" ? "dg-contour-pointille" : "dg-contour-plein";
+  const cercle = svgEl("circle", "dg-cercle " + classeContour);
+  svgAttrs(cercle, { cx: agentGeo.cx, cy: agentGeo.cy, r: agentGeo.rayon });
+  cercle.style.fill = agentGeo.principal ? "var(--creux)" : remplissageIdentite(agentGeo.agent);
+  cercle.style.stroke = couleurContourRole(agentGeo);
+  cercle.style.strokeWidth = agentGeo.contourLargeur;
+  g.appendChild(cercle);
+
+  // Liseré des fichiers — APRÈS le disque (défaut H), encodé par OPACITÉ
+  // seule (D2), épaisseur constante posée en CSS (feature-020 C2 : ne sert
+  // qu'au trait, ne réserve rien — voir `.dg-liseret`).
   if (agentGeo.fichiers > 0) {
-    const liseret = svgEl("circle");
-    svgAttrs(liseret, {
-      cx: agentGeo.cx, cy: agentGeo.cy, r: Math.max(2, agentGeo.rayon - 4),
-      fill: "none",
-    });
+    const liseret = svgEl("circle", "dg-liseret");
+    svgAttrs(liseret, { cx: agentGeo.cx, cy: agentGeo.cy, r: agentGeo.liseretRayon, fill: "none" });
     liseret.style.stroke = c;
-    liseret.style.strokeWidth = agentGeo.liseretEpaisseur;
+    liseret.style.opacity = agentGeo.liseretOpacite;
     g.appendChild(liseret);
   }
 
-  // Cercle principal : remplissage = couleur d'agent, contour = trait fin
-  const cercle = svgEl("circle");
-  svgAttrs(cercle, { cx: agentGeo.cx, cy: agentGeo.cy, r: agentGeo.rayon });
-  cercle.style.fill = remplissageIdentite(agentGeo.agent);
-  cercle.style.stroke = agentGeo.enCours ? c : "var(--trait-fin)";
-  cercle.style.strokeWidth = agentGeo.enCours ? 1.8 : 1;
-  g.appendChild(cercle);
-
-  // Anneau supplémentaire si en cours
   if (agentGeo.enCours) {
-    const anneau = svgEl("circle");
-    svgAttrs(anneau, { cx: agentGeo.cx, cy: agentGeo.cy, r: agentGeo.rayon + 3.5, fill: "none" });
+    const anneau = svgEl("circle", "dg-anneau-en-cours");
+    svgAttrs(anneau, { cx: agentGeo.cx, cy: agentGeo.cy, r: agentGeo.anneauEnCoursRayon, fill: "none" });
     anneau.style.stroke = c;
-    anneau.style.strokeWidth = 1;
-    anneau.style.opacity = 0.45;
+    anneau.style.opacity = agentGeo.anneauEnCoursOpacite;
     g.appendChild(anneau);
   }
 
-  // Croix en cas d'échec
   if (agentGeo.echec) {
-    const bras = agentGeo.rayon * 0.42;
-    const couleurEchec = "var(--alerte)";
+    const bras = agentGeo.croixBras;
+    const croix = svgEl("g", "dg-croix-echec");
     [[-1, -1, 1, 1], [-1, 1, 1, -1]].forEach(([dx1, dy1, dx2, dy2]) => {
       const trait = svgEl("line");
       svgAttrs(trait, {
         x1: agentGeo.cx + dx1 * bras, y1: agentGeo.cy + dy1 * bras,
         x2: agentGeo.cx + dx2 * bras, y2: agentGeo.cy + dy2 * bras,
       });
-      trait.style.stroke = couleurEchec;
-      trait.style.strokeWidth = 1.5;
-      g.appendChild(trait);
+      croix.appendChild(trait);
     });
+    g.appendChild(croix);
   }
 
-  // Sigle au centre
-  const sigle = svgEl("text");
-  svgAttrs(sigle, { x: agentGeo.cx, y: agentGeo.cy, "text-anchor": "middle", "dominant-baseline": "central" });
+  // Sigle — couleur d'identité TOUJOURS (D1/B2), y compris l'agent principal.
+  const sigle = svgEl("text", "dg-sigle");
+  svgAttrs(sigle, { x: agentGeo.cx, y: agentGeo.sigleBaselineY, "text-anchor": "middle" });
   sigle.style.fill = c;
-  sigle.style.fontSize = agentGeo.rayon > 26 ? 11 : 9.5;
-  sigle.style.fontWeight = 600;
+  // L'unité est explicite : `font-size: 11` sans unité est invalide en CSS.
+  // Chromium le coerce en `11px` (mesuré), un autre moteur a le droit de
+  // l'ignorer — et le texte retomberait alors sur la taille héritée.
+  sigle.style.fontSize = agentGeo.sigleTaillePx + "px";
   sigle.textContent = (sigles && sigles.get(agentGeo.agent)) || "??";
   g.appendChild(sigle);
 
   const titre = svgEl("title");
   titre.textContent = agentGeo.agent
     + " — " + agentGeo.outils + " appel(s) d'outil, " + agentGeo.fichiers + " fichier(s) écrit(s)"
+    // `plafondAtteint` (§L1) : n'a plus de rendu visuel propre depuis le
+    // retrait du cran de plafond (défaut J) — exposé ici pour ne pas rester
+    // un champ mort.
+    + (agentGeo.plafondAtteint ? ", plafond d'appels d'outils atteint" : "")
     + (agentGeo.echec ? ", en échec" : "")
     + (agentGeo.sansCloture ? ", sans clôture" : "")
     + (agentGeo.enCours ? ", en cours" : "");
@@ -885,65 +917,78 @@ function construireCercleAgent(agentGeo, sigles) {
   return g;
 }
 
-/* Socle : heure de départ, puis durée, puis nom (§5 — dans cet ordre, sous
- * le cercle pour un créneau simple ; à droite pour un créneau empilé, faute
- * de quoi trois agents empilés dépasseraient six cents pixels de haut). */
-function construireSoclesCreneau(creneauGeo, passagesOrigine) {
-  const g = svgEl("g", "dg-socle");
-  const empile = creneauGeo.agents.length > 1;
+/* Classe posée par RÔLE (jamais par position, feature-020 §L) — trois rôles
+ * pour un créneau simple (heure/durée/nom), deux pour un créneau empilé
+ * (heureDuree/nom). C'est `.dg-socle-duree`/`.dg-socle-heure-duree` qui
+ * portent la vedette (§8 : la DURÉE, pas le nom). */
+function classeSocleRole(role) {
+  if (role === "heure") return "dg-socle-heure";
+  if (role === "duree") return "dg-socle-duree";
+  if (role === "heureDuree") return "dg-socle-heure-duree";
+  return "dg-socle-nom";
+}
 
-  // Le cadre est ajouté EN PREMIER (donc peint SOUS le reste) — jamais via
-  // `insertBefore` : c'est le seul appelant de ce module qui en aurait eu
-  // besoin, autant garder `app.js` sur le même sous-ensemble DOM que le
-  // reste du fichier (`appendChild` uniquement).
-  if (empile) {
-    const rayonMax = Math.max(...creneauGeo.agents.map((a) => a.rayon));
-    const premier = creneauGeo.agents[0];
-    const dernierAgent = creneauGeo.agents[creneauGeo.agents.length - 1];
+/* Socle : cadre + libellé de groupe + lignes de texte — TOUTE la géométrie
+ * (position du cadre, boîte du libellé, x/baselineY de chaque ligne) vient
+ * de `disposer()` (feature-020 A5/A7) ; cette fonction ne calcule plus rien,
+ * elle peint ce qu'on lui donne. */
+function construireSoclesCreneau(creneauGeo) {
+  const g = svgEl("g", "dg-socle");
+
+  // Le cadre est ajouté EN PREMIER (donc peint SOUS le reste). Rect PLEINE
+  // LARGEUR de créneau, `fill:none` (défaut O) — un filet suffit, ADR
+  // §9 : pas d'aplat là où un filet suffit.
+  if (creneauGeo.cadre) {
     const cadre = svgEl("rect", "dg-cadre-simultane");
     svgAttrs(cadre, {
-      x: creneauGeo.x - rayonMax - 6,
-      y: premier.cy - premier.rayon - 6,
-      width: 2 * rayonMax + 12,
-      height: (dernierAgent.cy + dernierAgent.rayon) - (premier.cy - premier.rayon) + 12,
+      x: creneauGeo.cadre.x, y: creneauGeo.cadre.y,
+      width: creneauGeo.cadre.largeur, height: creneauGeo.cadre.hauteur,
+      rx: creneauGeo.cadre.rx, fill: "none",
     });
-    // `.style.fill`, jamais l'attribut `fill="var(--creux)"` : une propriété
-    // posée par attribut de présentation ne résout pas toujours un jeton CSS
-    // selon le moteur — même convention que le cercle et les graduations
-    // plus haut dans ce fichier.
-    cadre.style.fill = "var(--creux)";
     g.appendChild(cadre);
+  }
+  if (creneauGeo.libelleCadre) {
+    const lc = creneauGeo.libelleCadre;
+    const masque = svgEl("rect", "dg-libelle-cadre-masque");
+    svgAttrs(masque, { x: lc.masque.x, y: lc.masque.y, width: lc.masque.largeur, height: lc.masque.hauteur });
+    masque.style.fill = "var(--creux)";
+    g.appendChild(masque);
+    const libelle = svgEl("text", "dg-libelle-cadre");
+    svgAttrs(libelle, { x: lc.texteX, y: lc.baselineY });
+    // `taillePx` participe à la réservation (`largeurTexte()`) : posé en
+    // `style`, jamais en attribut de présentation qu'une classe CSS pourrait
+    // écraser (feature-020, revue point 1).
+    libelle.style.fontSize = lc.taillePx + "px";
+    libelle.textContent = lc.texte;
+    g.appendChild(libelle);
   }
 
   creneauGeo.agents.forEach((agentGeo) => {
-    const origine = passagesOrigine[agentGeo.passageIndex] || {};
-    const d = duree(origine.duree_ms);
-    const texteDuree = d !== null ? d : (origine.termine === false ? "en cours" : "durée invalide");
-    const lignes = [heure(origine.debut), texteDuree, agentGeo.agent];
-    const texte = svgEl("text", "dg-libelle" + (agentGeo.enCours ? " dg-libelle-en-cours" : ""));
-    if (empile) {
-      svgAttrs(texte, { x: agentGeo.cx + agentGeo.rayon + 10, y: agentGeo.cy, "text-anchor": "start" });
-    } else {
-      svgAttrs(texte, {
-        x: agentGeo.cx, y: agentGeo.cy + agentGeo.rayon + 16, "text-anchor": "middle",
-      });
-    }
-    lignes.forEach((ligne, i) => {
-      const tspan = svgEl("tspan");
-      tspan.setAttribute("x", texte.getAttribute("x"));
-      tspan.setAttribute("dy", i === 0 ? "0" : "1.2em");
-      tspan.textContent = ligne;
-      texte.appendChild(tspan);
+    agentGeo.socle.lignes.forEach((ligne) => {
+      // Vedette (§8, item L) : la ligne DURÉE (simple) ou HEURE·DURÉE
+      // (empilé) grossit et se colore quand l'agent est en cours — jamais
+      // le nom.
+      const vedetteActive = agentGeo.enCours && (ligne.role === "duree" || ligne.role === "heureDuree");
+      const texte = svgEl("text", classeSocleRole(ligne.role) + (vedetteActive ? " actif" : ""));
+      svgAttrs(texte, { x: ligne.x, y: ligne.baselineY, "text-anchor": ligne.ancrage });
+      // `taillePx` participe à la réservation (`largeurTexte()`) et diffère
+      // selon créneau simple/empilé pour un MÊME rôle (le nom : 10,5 vs 11) :
+      // posé en `style`, jamais en attribut, jamais redéclaré en CSS
+      // (feature-020, revue point 1 — PIEGES §25).
+      texte.style.fontSize = ligne.taillePx + "px";
+      if (vedetteActive) texte.style.fill = couleurIdentite(agentGeo.agent);
+      texte.textContent = ligne.texte;
+      g.appendChild(texte);
     });
-    g.appendChild(texte);
   });
-  if (creneauGeo.repli) {
-    const dernier = creneauGeo.agents[creneauGeo.agents.length - 1];
+
+  if (creneauGeo.repliLibelle) {
+    const rl = creneauGeo.repliLibelle;
     const plus = svgEl("text", "dg-repli");
-    svgAttrs(plus, {
-      x: dernier.cx + dernier.rayon + 10, y: dernier.cy + dernier.rayon + 4, "text-anchor": "start",
-    });
-    plus.textContent = "+" + creneauGeo.repli.masques;
+    svgAttrs(plus, { x: rl.x, y: rl.baselineY, "text-anchor": rl.ancrage });
+    // Même règle : `taillePx` participe à la réservation, posé en `style`.
+    plus.style.fontSize = rl.taillePx + "px";
+    plus.textContent = rl.texte;
     const titre = svgEl("title");
     titre.textContent = creneauGeo.repli.masques + " agent(s) supplémentaire(s), repliés";
     plus.appendChild(titre);
@@ -952,58 +997,39 @@ function construireSoclesCreneau(creneauGeo, passagesOrigine) {
   return g;
 }
 
+/* Liens entre créneaux : extrémités RÉELLES (bords de créneau, défaut P) et
+ * gabarit de pastille FIXE (correction de mesure, jamais mesuré au rendu) —
+ * tout vient de `lien` (feature-020 A4/A8), aucune moyenne ni aucun rayon
+ * recalculé ici. */
 function construireLiensDiagramme(geo) {
   const g = svgEl("g", "dg-liens");
   geo.liens.forEach((lien) => {
-    const creneauA = geo.creneaux[lien.deCreneau];
-    const creneauB = geo.creneaux[lien.aCreneau];
-    const yA = (creneauA.agents[0].cy + creneauA.agents[creneauA.agents.length - 1].cy) / 2;
-    const yB = (creneauB.agents[0].cy + creneauB.agents[creneauB.agents.length - 1].cy) / 2;
-    const rA = Math.max(...creneauA.agents.map((a) => a.rayon));
-    const rB = Math.max(...creneauB.agents.map((a) => a.rayon));
-    const x1 = creneauA.x + rA + 4;
-    const x2 = creneauB.x - rB - 4;
-
-    // Lien principal
-    const trait = svgEl("line");
-    svgAttrs(trait, { x1, y1: yA, x2, y2: yB });
-    trait.style.stroke = "var(--bd2)";
-    trait.style.strokeWidth = 1.2;
+    const trait = svgEl("line", "dg-lien");
+    svgAttrs(trait, { x1: lien.x1, y1: lien.y1, x2: lien.x2, y2: lien.y2 });
     g.appendChild(trait);
 
-    // Pointe de direction
-    const pointe = svgEl("path");
+    const pts = lien.pointe.points;
+    const pointe = svgEl("path", "dg-lien-pointe");
     svgAttrs(pointe, {
-      d: `M ${x2-5} ${yB-2.6} L ${x2} ${yB} L ${x2-5} ${yB+2.6}`,
+      d: "M " + pts[0][0] + " " + pts[0][1]
+        + " L " + pts[1][0] + " " + pts[1][1]
+        + " L " + pts[2][0] + " " + pts[2][1],
       fill: "none",
-      "stroke-linejoin": "round",
     });
-    pointe.style.stroke = "var(--texte-doux)";
-    pointe.style.strokeWidth = 1;
     g.appendChild(pointe);
 
-    // Pastille d'attente si > 120s
     if (lien.pastille) {
-      const cx = lien.pastille.cx;
-      const cy = (yA + yB) / 2;
+      const p = lien.pastille;
       const pastille = svgEl("g", "dg-pastille-attente");
-
       const fond = svgEl("rect");
       svgAttrs(fond, {
-        x: cx - lien.pastille.largeur / 2, y: cy - lien.pastille.hauteur / 2,
-        width: lien.pastille.largeur, height: lien.pastille.hauteur,
-        rx: lien.pastille.hauteur / 2,
+        x: p.x - p.largeur / 2, y: p.y - p.hauteur / 2,
+        width: p.largeur, height: p.hauteur, rx: p.rx,
       });
-      fond.style.fill = "var(--creux)";
-      fond.style.stroke = "var(--bd)";
-      fond.style.strokeWidth = 1;
       pastille.appendChild(fond);
-
       const texte = svgEl("text");
-      svgAttrs(texte, { x: cx, y: cy, "text-anchor": "middle", "dominant-baseline": "central" });
-      texte.style.fontSize = "10.5";
-      texte.style.fill = "var(--texte-doux)";
-      texte.textContent = lien.pastille.texte;
+      svgAttrs(texte, { x: p.texteX, y: p.baselineY, "text-anchor": "middle" });
+      texte.textContent = p.texte;
       pastille.appendChild(texte);
       g.appendChild(pastille);
     }
@@ -1011,77 +1037,53 @@ function construireLiensDiagramme(geo) {
   return g;
 }
 
-/* Rebouclage : arc pointillé reliant une reprise à l'OCCURRENCE PRÉCÉDENTE
- * du MÊME agent (§5) — jamais un agent arbitraire. Une pointe de direction
- * (petit triangle) marque le sens de la reprise. */
+/* Rebouclage : arc reliant une reprise à l'OCCURRENCE PRÉCÉDENTE du MÊME
+ * agent (§5). Sommet ABSOLU (`arc.sommetY`, défaut R/bug-020) — plus de
+ * recalcul de hauteur ici ; couleur FIXE (jeton `--rebouclage`, décision R —
+ * plus de couleur d'identité) ; AUCUNE pointe (décision R). */
 function construireArcsDiagramme(geo) {
   const g = svgEl("g", "dg-arcs");
   geo.arcs.forEach((arc) => {
-    const source = trouverAgentParPassageIndex(geo, arc.dePassage);
-    const cible = trouverAgentParPassageIndex(geo, arc.aPassage);
-    if (!source || !cible || cible.cx <= source.cx) return; // garde : jamais en arrière
-    const x1 = source.cx;
-    const y1 = source.cy - source.rayon - 16;
-    const x2 = cible.cx;
-    const y2 = cible.cy - cible.rayon - 16;
-    // Hauteur VENUE DE `disposer()` (bug-020), jamais recalculée ici : c'est
-    // cette même valeur qui a dimensionné la marge haute du tracé — la
-    // recalculer séparément pouvait la faire dépasser du cadre.
-    const hauteurArc = arc.hauteurArc;
-    const yControle = Math.min(y1, y2) - hauteurArc;
-    const xControle = (x1 + x2) / 2;
-
-    // Arc pointillé
-    const chemin = svgEl("path");
+    const chemin = svgEl("path", "dg-arc-rebouclage");
     svgAttrs(chemin, {
-      d: `M ${x1} ${y1} C ${x1} ${yControle}, ${x2} ${yControle}, ${x2} ${y2}`,
+      d: "M " + arc.depart.x + " " + arc.depart.y
+        + " C " + arc.controle1.x + " " + arc.controle1.y
+        + ", " + arc.controle2.x + " " + arc.controle2.y
+        + ", " + arc.arrivee.x + " " + arc.arrivee.y,
       fill: "none",
     });
-    chemin.style.stroke = couleurIdentite(arc.agent);
-    chemin.style.strokeWidth = 1.3;
-    chemin.style.strokeDasharray = "3 3";
-    chemin.style.opacity = 0.75;
-
     const titre = svgEl("title");
     titre.textContent = "Rebouclage — reprise de " + arc.agent;
     chemin.appendChild(titre);
     g.appendChild(chemin);
 
-    // Texte "↻ reboucle" au sommet de l'arc
-    const texte = svgEl("text");
-    svgAttrs(texte, {
-      x: (x1 + x2) / 2, y: yControle - 4,
-      "text-anchor": "middle",
-    });
-    texte.style.fontSize = "10.5";
-    texte.style.fill = couleurIdentite(arc.agent);
-    texte.textContent = "↻ reboucle";
+    const texte = svgEl("text", "dg-arc-libelle");
+    svgAttrs(texte, { x: arc.libelle.x, y: arc.libelle.baselineY, "text-anchor": "middle" });
+    // Même règle que le socle : `taillePx` vient du contrat et participe à la
+    // réservation, donc en `style` avec unité — la dernière taille encore
+    // posée en attribut, relevée en revue (feature-020).
+    texte.style.fontSize = arc.libelle.taillePx + "px";
+    texte.textContent = arc.libelle.texte;
     g.appendChild(texte);
   });
   return g;
 }
 
-function trouverAgentParPassageIndex(geo, passageIndex) {
-  for (const creneau of geo.creneaux) {
-    for (const agent of creneau.agents) {
-      if (agent.passageIndex === passageIndex) return agent;
-    }
-  }
-  return null; // reboucle vers un agent replié (§5, cas limite) : pas d'arc tracé
-}
-
-/* Légende (§8, item D2) : texte simple, pas un second registre visuel — ce
- * que chaque forme encode, littéralement (docs/DESIGN-SYSTEM.md §5). */
+/* Légende (§8, item T) : DIX entrées, rien de plus, rien de moins que ce que
+ * le code peut réellement produire — alignée sur `pose()`/`graphe()` et sur
+ * les décisions D1/D2/D4/R de feature-020. */
 function construireLegendeDiagramme() {
   const dl = el("dl", "diagramme-legende");
   const ajouter = (forme, sens) => { dl.appendChild(el("dt", "", forme)); dl.appendChild(el("dd", "", sens)); };
   ajouter("Diamètre du cercle", "durée de l'agent");
   ajouter("Graduations", "appels d'outils (échelle de 70)");
   ajouter("Liseré intérieur", "fichiers écrits");
-  ajouter("Cercle pointillé", "sans clôture");
-  ajouter("Cercle en tirets", "agent principal");
+  ajouter("Pastille", "attente entre deux agents");
+  ajouter("Cadre", "agents simultanés");
+  ajouter("Contour pointillé", "sans clôture");
   ajouter("Croix + contour d'alerte", "échec");
-  ajouter("Anneau supplémentaire", "en cours");
+  ajouter("Identité sur le contour et l'anneau", "en cours");
+  ajouter("Fond neutre + sigle dédié", "agent principal");
   ajouter("Arc pointillé", "rebouclage vers l'occurrence précédente du même agent");
   return dl;
 }
@@ -1123,12 +1125,24 @@ function construireDiagramme(wf, sigles) {
   const geo = disposer(segments);
   const enveloppe = document.createDocumentFragment();
 
+  // Titre de zone + phrase d'avertissement (item S/B15) : construits ici,
+  // PAS dans index.html — le bandeau vit dans le détail de cycle dynamique,
+  // pas dans un gabarit statique.
+  const entete = el("div", "dg-entete");
+  entete.appendChild(el("span", "dg-entete-titre", "Déroulé"));
+  entete.appendChild(el("span", "dg-entete-phrase",
+    "l'écart horizontal sert la lisibilité, il ne mesure pas le temps"));
+  enveloppe.appendChild(entete);
+
   const conteneur = el("div", "diagramme-scroll");
   brancherDefilementClavier(conteneur);
 
   const svg = svgEl("svg", "dg-svg");
   svgAttrs(svg, {
-    viewBox: "0 0 " + Math.max(1, geo.largeur) + " " + Math.max(1, geo.hauteur),
+    // `segments.length` est déjà garanti ≥ 1 ci-dessus : `disposer()` ne
+    // renvoie `largeur`/`hauteur` à 0 que pour une liste VIDE, jamais
+    // atteinte ici — pas de clamp défensif qui dupliquerait sa décision.
+    viewBox: "0 0 " + geo.largeur + " " + geo.hauteur,
     width: geo.largeur, height: geo.hauteur, role: "img",
     "aria-label": "Diagramme du déroulé — " + segments.length + " agent(s)",
   });
@@ -1142,7 +1156,7 @@ function construireDiagramme(wf, sigles) {
   svg.appendChild(construireLiensDiagramme(geo));
   svg.appendChild(construireArcsDiagramme(geo));
   geo.creneaux.forEach((creneau) => {
-    svg.appendChild(construireSoclesCreneau(creneau, segments));
+    svg.appendChild(construireSoclesCreneau(creneau));
   });
   geo.creneaux.forEach((creneau) => {
     creneau.agents.forEach((agentGeo) => {
@@ -1151,7 +1165,11 @@ function construireDiagramme(wf, sigles) {
   });
 
   conteneur.appendChild(svg);
-  enveloppe.appendChild(conteneur);
+  const piste = el("div", "dg-piste");
+  piste.appendChild(conteneur);
+  piste.appendChild(el("div", "dg-voile g"));
+  piste.appendChild(el("div", "dg-voile d"));
+  enveloppe.appendChild(piste);
   enveloppe.appendChild(construireLegendeDiagramme());
   return enveloppe;
 }
@@ -1169,10 +1187,17 @@ function construireDetailCycle(wf, sigles) {
 /* Rôles apparaissant dans les cycles AFFICHÉS (passages + agents ouvrants
  * cités en désignation) : `siglesAgents` calcule tous les sigles d'un coup,
  * dans l'ordre alphabétique, pour rester indépendant de l'ordre d'arrivée. */
+/* Défaut G (feature-020) : la collecte doit parcourir `wf.segments` — qui
+ * inclut le segment de l'agent principal (`AGENT_PRINCIPAL_SENTINELLE`,
+ * `backend/events.py`) — et pas seulement `wf.passages`/`wf.borne_par`, sinon
+ * `sigleAgent("(agent principal)")` calculerait « (A », un sigle faux. Le
+ * repli sur `wf.passages` reste nécessaire pour un backend plus ancien qui
+ * n'écrit pas encore `segments`. */
 function collecterRoles(workflows) {
   const roles = new Set();
   workflows.forEach((wf) => {
-    (wf.passages || []).forEach((p) => roles.add(p.agent));
+    const segments = wf.segments || wf.passages || [];
+    segments.forEach((s) => roles.add(s.agent));
     if (wf.borne_par) roles.add(wf.borne_par);
   });
   return roles;

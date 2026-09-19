@@ -1,7 +1,7 @@
 # Bug — `--texte-faible` est sous le seuil de contraste, dans le thème sombre
 
 - **Type** : bug
-- **Statut** : todo
+- **Statut** : done
 - **Priorité** : normale
 - **Version cible** : [à fixer par l'agent qui reprend cette spec]
 - **Créée** : 2026-09-15 (relevé par l'architecte pendant `feature-015`, confirmé
@@ -43,9 +43,11 @@ de contraste écrite. Le design system, qui pose le seuil, est postérieur.
 
 ## Correctif attendu
 
-Relever `--texte-faible` jusqu'à **au moins 4,5:1** contre `--fond`, `--surface`
-et `--creux` — les trois surfaces, pas seulement celle sur laquelle on l'a
-regardé.
+Relever `--texte-faible` jusqu'à **au moins 4,5:1** contre `--fond`,
+`--surface`, `--surface-2` et `--creux` — les **quatre** surfaces, pas
+seulement celle sur laquelle on l'a regardé. (`--surface-2` n'apparaissait pas
+encore dans ce relevé initial ; c'est contre elle que le pire cas a été
+mesuré — 3,55:1 — voir `feature-019`, qui absorbe et traite ce défaut.)
 
 ⚠️ **Dans les deux thèmes.** `feature-015` livre un thème clair ; le jeton clair
 doit être mesuré au même titre, et rien ne garantit qu'il passe.
@@ -56,17 +58,17 @@ qu'elle corrige.
 
 ## Critères d'acceptation
 
-- [ ] `--texte-faible` ≥ 4,5:1 contre `--fond`, `--surface` et `--creux`, dans
+- [x] `--texte-faible` ≥ 4,5:1 contre `--fond`, `--surface`, `--surface-2` et `--creux`, dans
       les **deux** thèmes, vérifié par un test qui **calcule** le contraste
       depuis les jetons
-- [ ] `--texte-doux` mesuré et, s'il est sous le seuil, corrigé dans le même lot
-- [ ] La hiérarchie visuelle des trois niveaux de texte reste lisible — un
+- [x] `--texte-doux` mesuré et, s'il est sous le seuil, corrigé dans le même lot
+- [x] La hiérarchie visuelle des trois niveaux de texte reste lisible — un
       `--texte-faible` relevé jusqu'à se confondre avec `--texte-doux` ne
       corrigerait rien
-- [ ] Le test couvre **tous** les jetons de texte, pas seulement celui-ci :
+- [x] Le test couvre **tous** les jetons de texte, pas seulement celui-ci :
       sinon le prochain jeton ajouté échappera à la mesure
-- [ ] Suite verte, compte de cas strictement supérieur à l'entrée
-- [ ] Validation par mutation : décaler un jeton d'un cran sous le seuil doit
+- [x] Suite verte, compte de cas strictement supérieur à l'entrée
+- [x] Validation par mutation : décaler un jeton d'un cran sous le seuil doit
       faire mourir le test
 
 ## Hors périmètre
@@ -74,3 +76,45 @@ qu'elle corrige.
 - Les couleurs d'identité d'agent et les jetons sémantiques : `feature-015` les
   mesure déjà.
 - Toute refonte de la hiérarchie typographique.
+
+---
+
+# Clôture — 2026-09-15 — absorbée par `feature-019`
+
+## Pourquoi dans ce cycle et pas un autre
+
+`feature-019` applique la typographie du §4, donc elle **bâtit sur** les jetons
+de texte. Livrer une hiérarchie typographique appuyée sur un jeton qu'on sait
+sous le seuil, c'est livrer une règle dont on sait déjà qu'elle ne tient pas son
+propre critère. Critère d'absorption d'ADR-0017 — décision écrite dans
+**ADR-0024**, pas subie.
+
+## Le défaut était plus large que ma spec ne le disait
+
+Elle énumérait **trois** surfaces. La quatrième — omise — portait le **pire**
+cas : **3,55:1**. Une correction suivant la lettre de la spec aurait visé le
+seuil sur trois surfaces et **laissé le pire cas rouge**.
+
+Amendée avant implémentation, après que l'orchestrateur l'a relevé.
+
+## Correctif et mesure
+
+Un seul littéral changé : `--sombre-texte-faible`, de **4,24:1** à **4,77:1**.
+
+⚠️ La première valeur proposée donnait **4,5039 en nominal** — et **4,4454 après
+arrondi d'un bit**. Elle échouait. Un bit vaut **0,0585 de ratio** sur cette
+plage ; la marge retenue est de 2,5 bits. C'est le défaut « 0,10 ressorti à
+0,0995 » de `feature-015`, cette fois **attrapé en amont**.
+
+Vérifié après coup, par moi : **six jetons × quatre surfaces × deux thèmes**,
+minimum **4,77:1**. `--texte` et `--texte-doux` n'ont pas bougé — ils passaient
+déjà partout, et les toucher aurait écrasé la hiérarchie.
+
+## Ce qui reste, et qui n'est pas de ce cycle
+
+En thème clair, l'écart entre les deux niveaux de texte secondaires est d'environ
+**1,2:1** — une hiérarchie à trois niveaux à peine distinguable. Relevé par la
+revue, **antérieur** à ce cycle, non corrigé ici.
+
+## Statut final
+✅ Done — 2026-09-15 — commit à renseigner à la validation

@@ -199,19 +199,38 @@ fixée ; ne pas la changer sans ADR.
 
 ### Ce que chaque forme encode
 
+Grammaire alignée sur la maquette de référence par `feature-020`
+(`control-center/maquettes/2026-09-15-diagramme-reference.html` — voir
+avertissement plus bas) ; les échelles du rayon, des graduations, du liseré
+et le rendu du zéro / du plafond sont fixés par
+[ADR-0026](adr/0026-trois-echelles-du-diagramme-alignees-sur-la-maquette.md),
+qui remplace `ADR-0025 §1` sur ces quatre points.
+
 | Forme | Donnée |
 |---|---|
-| Diamètre du cercle | durée de l'agent |
-| Graduations autour du cercle | nombre d'appels d'outils, sur une échelle de 70 |
-| Liseré intérieur | nombre de fichiers écrits |
-| Anneau fantôme en creux | la pleine échelle, pour lire un remplissage en absolu |
-| Encoche en haut, cran épais | zéro et plafond de l'échelle |
-| Cercle en pointillé + croix | échec — redondant avec la couleur, exprès |
+| Diamètre du cercle | durée de l'agent — `11 + 0,80·√(durée_s)`, plafonné à 56 px |
+| Graduations autour du cercle | nombre d'appels d'outils — 24, 36 ou 52 graduations selon le rayon (seuils à 22 et 32 px), pas une formule continue |
+| Longueur de graduation | **allumée** (7 px) contre **éteinte** (3,2 px) — la longueur distingue l'état de la graduation, plus ses bornes (zéro, plafond) |
+| Liseré intérieur | nombre de fichiers écrits, encodé par **opacité** (`0,22 + min(f,8)/8 × 0,45`), à épaisseur constante 1 px |
+| Zéro appel d'outil | deux barres superposées en haut du cercle (blanche, puis grise par-dessus) |
+| Croix + contour `--alerte` | échec |
+| Pointillé sur le contour du cercle | **seul** motif restant sur ce contour — état « sans clôture » ; l'échec ne le porte plus (voir §8, vocabulaire des traits) |
+
+Le plafond de l'échelle et le remplissage à pleine échelle (anciennement
+« anneau fantôme », « cran épais ») n'ont **plus de rendu visuel** depuis
+`feature-020` : l'information (`plafondAtteint`) reste disponible dans
+l'infobulle du cercle (`<title>`), pas dans son tracé — la maquette de
+référence ne les dessine pas non plus.
 
 **Les jetons ne sont pas mesurés.** Le journal d'événements ne les contient pas ;
 il porte l'horodatage, l'outil, le fichier et l'échec. Toute maquette qui affiche
 un nombre de jetons invente une donnée. Les récupérer supposerait de lire les
 transcriptions de session — décision à part entière, non prise.
+
+⚠️ La maquette de référence citée ci-dessus (`control-center/maquettes/`)
+**n'est pas suivie par git** : le chemin résout en local mais casse sur tout
+autre poste ou après un clone. Ce n'est pas un lien de doc vérifiable par
+`tools/check_doc_links.sh`.
 
 ### Placement
 
@@ -244,8 +263,11 @@ le bloc grandir.
 
 ### Rebouclage
 
-Un arc pointillé relie une reprise à **l'occurrence précédente du même agent**,
-avec une pointe de direction. Pas à un agent arbitraire.
+Un arc pointillé, de **couleur fixe** (`--rebouclage`, alias de
+`--a-debugger` quel que soit le thème), relie une reprise à **l'occurrence
+précédente du même agent** — pas à un agent arbitraire. Il ne porte **aucune
+pointe de direction** (aligné sur la maquette de référence, `feature-020` ;
+auparavant l'arc portait une pointe et une couleur d'identité, corrigés ici).
 
 ---
 
@@ -313,8 +335,9 @@ encore moins lisible.
   `--surface-2`, `--creux`), dans les deux thèmes ; le pire cas retenu
   (thème sombre, `--texte-faible` contre `--surface-2`) tient 4,77:1.
 - **Aucune information portée par la seule couleur.** Un échec se signale par la
-  couleur *et* une croix *et* un cercle en pointillé. Un agent en cours par la
-  couleur *et* un anneau supplémentaire *et* une graisse de texte.
+  couleur *et* une croix *et* un contour `--alerte`. Un agent en cours par la
+  couleur (contour, exception nommée ci-dessous) *et* un anneau supplémentaire
+  *et* la graisse de la durée sur son socle.
 - Focus visible sur tout élément atteignable au clavier, y compris la zone qui
   défile.
 - `prefers-reduced-motion` respecté : aucune transition supérieure à 150 ms, et
@@ -330,8 +353,24 @@ encore moins lisible.
   sémantique par-dessus une couleur d'identité. **Appliquée par
   `feature-016`** dans la liste des cycles en accordéon et sa table des
   passages d'agent.
-- **Vocabulaire des traits, désormais sans ambiguïté** (ambiguïté trouvée
-  puis levée pendant `feature-016`) :
+
+  **Exception nommée, posée par `feature-020` (2026-09-19)** : sur le
+  **cercle du diagramme de déroulé**, l'état « en cours » va à l'encontre de
+  cette règle — le contour prend la couleur d'**identité** de l'agent (pas
+  une couleur sémantique), assumé parce que la maquette de référence le fait
+  ainsi. La règle de précédence continue de valoir **partout ailleurs**
+  (accordéon, table des passages, tout élément hors du cercle du diagramme) ;
+  seul le contour du cercle en cours y déroge.
+
+- **Vocabulaire des traits sur le cercle du diagramme**, réduit à un seul
+  motif ambigu résolu par `feature-020` : **pointillé** = état « sans
+  clôture » (`sans_cloture`, bug-013), et c'est désormais le **seul** motif
+  restant sur ce contour — l'agent principal ne porte plus de tirets (il se
+  distingue par son fond et son sigle « AP », voir `docs/features/page-centre-de-controle.md`)
+  et l'échec ne porte plus de pointillé (il se signale par la croix et le
+  contour `--alerte` seuls, voir §5).
+- **Vocabulaire des traits ailleurs sur l'écran** (accordéon, table des
+  passages — inchangé depuis `feature-016`) :
   - **bordure pleine en pointillé** = état « sans clôture » (`sans_cloture`,
     bug-013) ;
   - **bordure pleine en tirets** = rôle « agent principal » (`AGENT_PRINCIPAL`) ;
@@ -384,6 +423,7 @@ encore moins lisible.
 | 2026-09-15 | Règle de précédence identité/état **appliquée** par feature-016 (liste des cycles en accordéon) ; vocabulaire des traits fixé pour lever une ambiguïté trouvée en cours de cycle (pointillé = sans clôture, tirets pleins = agent principal, tirets en liseré gauche = rebouclage) |
 | 2026-09-15 | §3 et §4 **appliqués** par feature-019 : colonne de navigation, contenu borné, une section à la fois ; typographie du §4 ramenée de 31 usages de chasse fixe contre 2 de sans-serif à 16 contre 18 ; §3 amendé (`--surface-2` devient une teinte d'interaction, plus un niveau de repos) ; `--texte-faible` et `--texte-doux` relevés au-dessus du seuil du §8, dans les deux thèmes, contre les quatre surfaces (absorption de bug-016) ; règle de marge de conception généralisée aux seuils de contraste ([ADR-0024](adr/0024-une-section-a-la-fois-dans-un-contenu-borne.md)) |
 | 2026-09-15 | §5 **appliqué et verrouillé** par feature-017 (`control-center/web/diagramme.js` + `app.js`) : grammaire figée par [ADR-0025](adr/0025-grammaire-du-diagramme-de-deroule.md) — trois formes du cercle pour les trois grandeurs mesurées, géométrie et rendu séparés dans deux modules distincts |
+| 2026-09-19 | §5 et §8 **mis en conformité avec la maquette de référence** par feature-020 : rayon, graduations et liseré des fichiers réalignés ([ADR-0026](adr/0026-trois-echelles-du-diagramme-alignees-sur-la-maquette.md), qui remplace `ADR-0025 §1` sur ces trois points) ; le pointillé du contour du cercle redevient le seul motif de l'état « sans clôture » (l'échec ne le porte plus) ; l'agent principal quitte les tirets et porte le sigle « AP » ; l'identité sur le contour de l'agent en cours est actée comme exception nommée à la règle de précédence identité/état |
 
 ## Voir aussi
 
@@ -391,6 +431,7 @@ encore moins lisible.
 - [ADR-0022 — deux familles de jetons de couleur, séparées par un plancher perceptuel](adr/0022-deux-familles-de-jetons-couleur-plancher-perceptuel.md)
 - [ADR-0024 — une section à la fois, dans un contenu borné](adr/0024-une-section-a-la-fois-dans-un-contenu-borne.md)
 - [ADR-0025 — la grammaire du diagramme de déroulé](adr/0025-grammaire-du-diagramme-de-deroule.md)
+- [ADR-0026 — trois échelles du diagramme alignées sur la maquette de référence](adr/0026-trois-echelles-du-diagramme-alignees-sur-la-maquette.md)
 - [ARCHITECTURE.md](ARCHITECTURE.md)
 - [features/page-centre-de-controle.md](features/page-centre-de-controle.md) — la commande de thème côté écran
 - `control-center/web/app.css` — les valeurs, source unique

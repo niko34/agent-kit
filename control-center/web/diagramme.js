@@ -1,99 +1,177 @@
 "use strict";
-/* Module PUR — feature-017, docs/DESIGN-SYSTEM.md §5.
+/* Module PUR — feature-017, feature-020 (conformité à la maquette de
+ * référence), docs/DESIGN-SYSTEM.md §5.
  *
- * Calcule la GÉOMÉTRIE du diagramme de déroulé d'un cycle : un cercle par
- * agent (principal compris quand il est fourni), les agents simultanés
- * empilés dans un créneau unique, les liens entre créneaux, les pastilles
- * d'attente et les arcs de rebouclage.
+ * Calcule la GÉOMÉTRIE COMPLÈTE du diagramme de déroulé d'un cycle : un
+ * cercle par agent (principal compris), les agents simultanés empilés dans
+ * un créneau unique, les liens entre créneaux, les pastilles d'attente et
+ * les arcs de rebouclage — reproduisant `pose()` et `graphe()` de
+ * `control-center/maquettes/2026-09-15-diagramme-reference.html`.
  *
- * AUCUN DOM ici — ni `document`, ni élément SVG : uniquement de
- * l'arithmétique sur les champs déjà présents dans `passages[]` du journal
- * (`agent`, `debut`, `duree_ms`, `outils`, `fichiers`, `echecs`, `termine`,
- * `etat`, `type`). C'est ce qui permet de le tester SEUL, sans bac à sable
- * DOM (voir `test_app_diagramme.js`), et de le charger tel quel dans un
- * `<script>` classique (pas de `module.exports`, pas d'`import` — CSP
- * `default-src 'self'`, ADR-0006) : les fonctions top-niveau deviennent des
- * globales de la page, exactement comme dans `app.js` et `theme.js`.
+ * AUCUN DOM ici — ni `document`, ni élément SVG, ni couleur, ni style :
+ * uniquement de l'arithmétique sur les champs déjà présents dans
+ * `passages[]` du journal (`agent`, `debut`, `duree_ms`, `outils`,
+ * `fichiers`, `echecs`, `termine`, `etat`, `type`). C'est ce qui permet de
+ * le tester SEUL, sans bac à sable DOM (voir `test_app_diagramme.js`), et de
+ * le charger tel quel dans un `<script>` classique (pas de `module.exports`,
+ * pas d'`import` — CSP `default-src 'self'`, ADR-0006).
  *
- * `app.js` (`construireDiagramme`) est le SEUL appelant en production ; il
- * transforme la géométrie retournée ici en éléments SVG, et lit les jetons de
- * couleur (`var(--a-<rôle>)`, `var(--f-<rôle>)`) — ce module n'écrit AUCUNE
- * couleur, aucun style, aucune valeur qui ne vienne pas de `passages[]`.
+ * feature-020 (ADR neuf remplaçant ADR-0025 §1) élargit ce contrat pour que
+ * `app.js` devienne un PEINTRE SANS ARITHMÉTIQUE : toute position, tout
+ * angle, tout point de tracé (y compris la trigonométrie des graduations)
+ * est calculé ICI. `app.js` ne doit plus appeler `duree()`, `heure()` ni
+ * `Math.*` dans les fonctions qui peignent le diagramme — c'est vérifiable
+ * par `grep` en revue.
  *
  * ============================ Contrat de sortie ==========================
  *
  * disposer(passages, mesures) → {
- *   largeur, hauteur,                 // dimensions totales du tracé (px)
+ *   largeur, hauteur,        // dimensions totales du tracé (px)
+ *   axeY,                    // axe horizontal UNIQUE des liens = centre vertical
+ *   margeHaut,                // 38 si des arcs existent, sinon 24 (bug-020)
  *   creneaux: [{
- *     index,                          // position du créneau dans la séquence
- *     x,                              // abscisse du centre du créneau
- *     demiLargeur,                    // demi-largeur réservée (lisibilité)
+ *     index, x,               // position du créneau dans la séquence, abscisse du centre
+ *     demiGauche, demiDroite, // extension réelle de chaque côté (asymétrique
+ *                             // pour un créneau empilé — le libellé ne passe
+ *                             // qu'à droite du cercle)
+ *     demiLargeur,            // = max(demiGauche, demiDroite) — alias conservateur,
+ *                             // conservé pour compatibilité (ne PAS l'utiliser
+ *                             // pour positionner un lien : voir bordGauche/bordDroit)
+ *     bordGauche, bordDroit,  // x ∓ demiGauche/demiDroite — bords RÉELS du
+ *                             // créneau, ce que les liens (ci-dessous)
+ *                             // rejoignent (bug défaut P)
+ *     empile,                 // plus d'un agent dans ce créneau
+ *     cadre: null | { x, y, largeur, hauteur, rx },
+ *     libelleCadre: null | { texte, masque:{x,y,largeur,hauteur}, texteX, baselineY, taillePx },
  *     repli: null | { visibles, masques },
- *     agents: [{                      // au plus REPLI_MAX_VISIBLES, dans
- *                                      // l'ordre chronologique du créneau
- *       passageIndex,                 // index dans `passages` d'origine
- *       agent, cx, cy, rayon,
- *       outils, graduationsTotal, graduationsAllumees, plafondAtteint,
- *       fichiers, liseretEpaisseur,
+ *     repliLibelle: null | { texte, x, baselineY, taillePx, ancrage },
+ *     agents: [{
+ *       passageIndex, agent, cx, cy, rayon,
+ *       outils, graduationsTotal, graduationsAllumees, plafondAtteint, fichiers,
+ *       graduations: [{x1,y1,x2,y2,allumee,epaisseur}],   // trigonométrie FAITE ICI
+ *       graduationDepartDeg, graduationPasDeg,             // méta, pour les tests
+ *       rayonGuide, rayonGraduationInterieur, rayonExterieurTotal,
+ *       barreZeroBlanche: {x1,y1,x2,y2}, barreZeroGrise: {x1,y1,x2,y2},
+ *       // épaisseur des barres du zéro et du liseré : RETIRÉE du contrat
+ *       // (feature-020 C2) — ne sert qu'au trait, ne réserve aucun espace,
+ *       // vit désormais dans `.dg-barre-zero-blanche`/`-grise`/`.dg-liseret`.
+ *       liseretRayon, liseretOpacite,
+ *       anneauEnCoursRayon, anneauEnCoursOpacite,
+ *       contourRole,           // "echec" | "sansCloture" | "enCours" | "nominal"
+ *       contourLargeur,
+ *       croixBras,
+ *       sigleTaillePx, sigleBaselineY,
+ *       socle: { type: "simple" | "empile", lignes: [{role, texte, x, baselineY, taillePx, ancrage}] },
  *       etat, echec, sansCloture, principal, enCours,
  *     }],
  *   }],
  *   liens: [{
  *     deCreneau, aCreneau, attenteMs,
- *     pastille: null | { largeur, hauteur, texte, cx },  // null = pas de pastille
- *     // `cx` (bug-021) : abscisse du CENTRE de la pastille, calculée ICI à
- *     // partir des bords réels des créneaux voisins (creneau.x ± demiLargeur,
- *     // asymétrique quand un créneau empile plusieurs agents) — jamais un
- *     // milieu entre bords de CERCLE recalculé par l'appelant, qui ne
- *     // coïncide pas avec l'espace réellement réservé ici.
+ *     x1, y1, x2, y2,                 // bords de CRÉNEAU (bug défaut P), y = axeY
+ *     pointe: { points: [[x,y],[x,y],[x,y]] },
+ *     pastille: null | { x, y, largeur, hauteur, rx, texte, texteX, baselineY },
+ *     // gabarit FIXE (86×18, rx 9) — jamais mesuré au rendu (correction de
+ *     // mesure : le 54 de la maquette déborde son propre texte).
  *   }],
- *   arcs:  [{ dePassage, aPassage, agent, hauteurArc }],
+ *   arcs: [{
+ *     dePassage, aPassage, agent,
+ *     sommetY,                         // 16, ABSOLU, commun à tous les arcs
+ *     depart: {x,y}, arrivee: {x,y},
+ *     controle1: {x,y}, controle2: {x,y},  // tous deux à sommetY
+ *     libelle: { texte: "↻ reboucle", x, baselineY, taillePx },
+ *     // AUCUNE pointe (décision R) ; `hauteurArc` est RETIRÉ — remplacé par
+ *     // `sommetY` absolu (deux sources pour la même hauteur, c'est le défaut
+ *     // bug-020/défaut R).
+ *   }],
  * }
  *
- * Aucun champ n'est inventé : un champ absent de `passages[]` (ex. `outils`
- * manquant sur un journal antérieur) donne 0 ou `false`, jamais une valeur
- * qui laisserait croire à une mesure.
- *
- * `pastille` et `hauteurArc` sont calculés ICI, jamais recalculés par
- * l'appelant : un bug mesuré (bug-020) faisait diverger la largeur RÉSERVÉE
- * pour la pastille (un forfait fixe, ici) de la largeur RENDUE par `app.js`
- * (dépendante du texte, calculée séparément) — la seconde débordait de la
- * première et recouvrait le libellé voisin. Même défaut de principe pour
- * `hauteurArc` : recalculée dans `app.js` sans jamais compter dans
- * l'extension verticale du tracé, elle pouvait dépasser du cadre. La
- * géométrie et sa réservation d'espace doivent venir de LA MÊME
- * fonction — sinon rien ne garantit qu'elles s'accordent.
+ * Aucun champ n'est inventé : un champ absent de `passages[]` donne 0 ou
+ * `false`, jamais une valeur qui laisserait croire à une mesure.
  */
 
 const MESURES_DEFAUT = Object.freeze({
-  echelleOutils: 70,             // §5 design-system : graduations sur une échelle de 70
+  echelleOutils: 70,             // graduations sur une échelle de 70 appels d'outils
   seuilAttenteMs: 120000,        // pastille au-delà de deux minutes, STRICT (>)
-  rayonMin: 20,
+
+  // Rayon : ADR neuf remplaçant ADR-0025 §1 — 11 + 0,80·√(durée_s), plafonné
+  // à 56px. Mesuré : le plafond ne mord qu'à 3164s ; le plus long sous-agent
+  // du journal réel (2560s) n'est jamais écrêté.
+  rayonBase: 11,
+  rayonCoefficient: 0.80,
   rayonMax: 56,
-  dureeReferenceMs: 20 * 60 * 1000, // durée à partir de laquelle le rayon plafonne
-  graduationEspacementPx: 7,     // les graduations ne se touchent jamais
-  graduationsMin: 8,
-  graduationsMax: 40,
-  graduationExtensionPx: 8,      // longueur d'une graduation au-delà du rayon
-  espaceLabelPx: 6,              // écart entre le cercle et son libellé (créneau empilé)
-  largeurCaracterePx: 6.5,       // estimation de chasse, pile --mono/--sans
-  liseretMinPx: 1.5,
-  liseretMaxPx: 6,
-  liseretFichiersReference: 10,  // nombre de fichiers à partir duquel le liseré plafonne
-  espaceMinHorizontalPx: 28,
-  espacePastilleMargePx: 12,     // dégagement de part et d'autre de la pastille, EN PLUS de sa largeur mesurée (bug-020 : un forfait fixe ne suit pas la longueur du texte)
+
+  // Anneau et graduations (maquette pose(), l.164-181)
+  guideDecalagePx: 4,              // r0 = rayon + 4
+  guideSupplementPx: 3.5,          // anneau guide = r0 + 3.5
+  graduationDepartDeg: 2.4,
+  graduationEcartFermetureDeg: 4.8, // pas = (360 - écart) / TK
+  graduationExtensionAllumeePx: 7,
+  graduationExtensionEteintePx: 3.2,
+  graduationEpaisseurAllumeePx: 1.8,
+  graduationEpaisseurEteintePx: 1,
+
+  // Barres du zéro (marqueur de départ des graduations) — la LONGUEUR fixe
+  // la position du second point (géométrie, reste ici) ; l'ÉPAISSEUR ne sert
+  // qu'au trait et ne réserve rien : posée en CSS (feature-020 C2,
+  // `.dg-barre-zero-blanche`/`.dg-barre-zero-grise`).
+  barreBlancheLongueurPx: 8.5,     // r0+0.5 → r0-8.5 (maquette l.172)
+  barreGriseDecalageXPx: 0.6,
+  barreGriseLongueurPx: 9.5,       // r0+0.5 → r0-9.5 (maquette l.173)
+
+  // Liseré des fichiers (D2 : opacité, épaisseur CONSTANTE — plus de largeur
+  // variable 1.5→6px). L'épaisseur ne réserve rien (le liseré est intérieur
+  // au disque) : posée en CSS (feature-020 C2, `.dg-liseret`), pas ici.
+  liseretDecalagePx: 4,            // liseretRayon = rayon - 4
+  liseretOpaciteBase: 0.22,
+  liseretOpaciteAmplitude: 0.45,
+  liseretFichiersReference: 8,     // min(f,8)/8
+
+  anneauEnCoursSupplementPx: 3.5,
+  anneauEnCoursOpacite: 0.45,
+
+  croixRatio: 0.42,
+
+  contourLargeurEchec: 2,
+  contourLargeurSansCloture: 1.2,
+  contourLargeurEnCours: 1.8,
+  contourLargeurNominal: 1.2,
+
+  sigleBaselineDecalagePx: 3.6,
+
+  // Correction de mesure : la largeur d'un texte dépend de la taille de
+  // police. Mesuré : à 12,5px, "7 min 47 s" fait 65,86px contre 65,0px
+  // réservés par l'ancien coefficient constant 6.5px/caractère (rejeté).
+  largeurTexteCoefficient: 0.70,
+  largeurTexteMargePx: 4,
+
+  // Pastille d'attente : gabarit FIXE, jamais mesuré au rendu (correction de
+  // mesure : le 54×18 de la maquette déborde son propre texte — mesuré,
+  // "attente 4m" fait 58,61px).
+  pastilleLargeurPx: 86,
   pastilleHauteurPx: 18,
-  margeHorizontalePx: 32,
-  espaceVerticalEmpilementPx: 10,
-  cadrePaddingPx: 8,
-  margeHautPx: 24,
-  margeBasPx: 24,
-  espaceSoclePx: 54,             // heure / durée / nom, sous un créneau simple
-  repliMaxVisibles: 4,           // au-delà, repli « 4 + N »
-  arcHauteurMinPx: 24,
-  arcHauteurMaxPx: 70,
-  arcHauteurRatioLargeur: 0.18,  // hauteur de l'arc = ratio × distance horizontale, bornée min/max
-  arcDegagementSommetPx: 8,      // marge au-dessus du sommet de l'arc le plus haut (bug-020)
+  pastilleRxPx: 9,
+  pastilleReservePx: 62,           // espace horizontal réservé en plus de ECART
+
+  // Placement horizontal (maquette l.130 : ECART, PAD, INTER)
+  ecartHorizontalPx: 30,
+  margeHorizontalePx: 16,
+  cadrePaddingPx: 12,
+  espaceVerticalEmpilementPx: 11,
+  creneauLigneMinPx: 42,
+  labelDecalageXPx: 40,            // 26 + 14 (maquette l.196)
+
+  // Marge haute et sommet des arcs (maquette : AXE = 38 + HAUTEUR_HAUT, h = 16)
+  margeHautAvecArcsPx: 38,
+  margeHautSansArcsPx: 24,
+  arcSommetYPx: 16,
+  arcDepartDecalagePx: 16,         // point de départ = bord du cercle - 16px
+  arcLibelleDecalagePx: 4,         // baseline du libellé = sommetY - 4
+
+  simpleSlotHautSupplementPx: 2,   // haut = rayonExterieurTotal + 2 (= rayon+13)
+  simpleSlotBasSupplementPx: 46,   // bas = haut + 46 (socle : heure/durée/nom)
+  margeBasFinalePx: 16,
+
+  repliMaxVisibles: 4,
 });
 
 function fusionnerMesures(mesures) {
@@ -117,18 +195,13 @@ function estEnCours(p) {
 
 function estSansCloture(p) { return p.etat === "sans_cloture"; }
 
-/* Un échec ne s'affiche jamais par-dessus « sans clôture » (même garde que
- * `construireChaineEtNotes` dans app.js) : une fin sans annonce n'est ni un
- * succès ni un échec du travail. */
+/* Un échec ne s'affiche jamais par-dessus « sans clôture » : une fin sans
+ * annonce n'est ni un succès ni un échec du travail. */
 function estEchec(p) { return !!p.echecs && !estSansCloture(p); }
 
 function estPrincipal(p) { return p.type === "principal"; }
 
-/* ------------------------------------------------------- fenêtre temporelle
- * Une fenêtre [debutMs, finMs] par passage, pour détecter la simultanéité.
- * `finMs` retombe sur `debutMs` (fenêtre de largeur nulle) quand la durée
- * n'est pas mesurable — un passage sans durée ne doit jamais être traité
- * comme infiniment long, ni faire échouer le calcul. */
+/* ------------------------------------------------------- fenêtre temporelle */
 function fenetre(p) {
   const debutMs = versMs(p.debut);
   if (debutMs === null) return { debutMs: null, finMs: null };
@@ -138,9 +211,7 @@ function fenetre(p) {
 
 /* ------------------------------------------------------------- créneaux --
  * Agents simultanés = créneau unique (§5) : regroupement par FUSION
- * D'INTERVALLES, dans l'ordre d'arrivée de `passages` (jamais retrié par
- * horodatage — un passage sans date connue ouvre toujours son propre
- * créneau, il ne peut fusionner avec rien). */
+ * D'INTERVALLES, dans l'ordre d'arrivée de `passages`. */
 function construireCreneaux(passages) {
   const creneaux = [];
   let courant = null;
@@ -161,8 +232,6 @@ function construireCreneaux(passages) {
   });
   if (courant !== null) creneaux.push(courant);
 
-  // Ordre chronologique DANS le créneau (empilement vertical, socle) — un
-  // `debutMs` absent reste à sa position d'arrivée (tri stable).
   creneaux.forEach((c) => {
     c.sort((a, b) => {
       if (a.debutMs === null || b.debutMs === null) return 0;
@@ -172,11 +241,7 @@ function construireCreneaux(passages) {
   return creneaux;
 }
 
-/* ------------------------------------------------------------- rebouclage
- * Même sémantique que `indicesRepris` (app.js) : une réapparition du MÊME
- * agent après qu'au moins un AUTRE agent se soit intercalé. L'agent
- * `principal` est ignoré du calcul de position — il s'intercale par
- * construction entre chaque sous-agent, sa présence seule ne signale rien. */
+/* ------------------------------------------------------------- rebouclage */
 function detecterRebouclages(passages) {
   const arcs = [];
   const sousAgents = [];
@@ -193,60 +258,85 @@ function detecterRebouclages(passages) {
 }
 
 /* ----------------------------------------------------------- métriques --
- * Diamètre = durée (échelle bornée, racine carrée pour une PROGRESSION
- * perceptuelle — un agent deux fois plus long n'occupe pas un disque deux
- * fois plus grand en RAYON, ce qui écraserait tout le reste du tracé). */
+ * Rayon : 11 + 0,80·√(durée_s), plafonné à 56px (ADR neuf, D5/§ mesuré). */
 function calculerRayon(dureeMs, m) {
-  if (typeof dureeMs !== "number" || dureeMs <= 0) return m.rayonMin;
-  const ratio = Math.min(1, dureeMs / m.dureeReferenceMs);
-  return m.rayonMin + (m.rayonMax - m.rayonMin) * Math.sqrt(ratio);
+  if (typeof dureeMs !== "number" || dureeMs <= 0) return m.rayonBase;
+  const dureeS = dureeMs / 1000;
+  return Math.min(m.rayonMax, m.rayonBase + m.rayonCoefficient * Math.sqrt(dureeS));
 }
 
-/* Graduations : la DENSITÉ s'adapte au rayon (§5, « elles ne se touchent
- * jamais ») — le nombre total de graduations est borné par la circonférence
- * disponible, jamais fixe. Le nombre ALLUMÉ est l'arrondi du ratio
- * outils/échelle sur ce total — c'est la seule notion de « à l'arrondi de
- * l'échelle près » du critère d'acceptation. */
+/* Graduations : TK discret selon le rayon (D3/§ maquette), plus aucune
+ * notion de borne pour la longueur (défaut J). */
 function calculerGraduations(outils, rayon, m) {
-  const circonference = 2 * Math.PI * rayon;
-  const total = Math.max(m.graduationsMin,
-    Math.min(m.graduationsMax, Math.floor(circonference / m.graduationEspacementPx)));
+  const total = rayon < 22 ? 24 : rayon < 32 ? 36 : 52;
   const bornes = Math.max(0, outils || 0);
   const ratio = Math.min(1, bornes / m.echelleOutils);
   const allumees = Math.min(total, Math.round(ratio * total));
   return { total, allumees, plafondAtteint: bornes >= m.echelleOutils };
 }
 
-function calculerLiseret(nbFichiers, m) {
+function calculerLiseretOpacite(nbFichiers, m) {
   const n = Math.max(0, nbFichiers || 0);
   const ratio = Math.min(1, n / m.liseretFichiersReference);
-  return m.liseretMinPx + (m.liseretMaxPx - m.liseretMinPx) * ratio;
+  return +(m.liseretOpaciteBase + m.liseretOpaciteAmplitude * ratio).toFixed(2);
 }
 
-/* Estimation de largeur de texte SANS DOM : chasse fixe approximative — ce
- * module n'a accès à aucune métrique de police réelle (aucun `canvas`,
- * aucun `getComputedStyle`). Le rendu réel (app.js) peut rester plus large
- * qu'estimé ici sans jamais être plus ÉTROIT : la marge est délibérément
- * généreuse. */
-function largeurTexte(texte, m) { return String(texte || "").length * m.largeurCaracterePx; }
+/* Point sur un cercle, angle en degrés MESURÉ DEPUIS LE HAUT, sens horaire
+ * (0° = 12h) — SEUL endroit de ce module qui fait de la trigonométrie ;
+ * `app.js` ne calcule plus jamais un `Math.cos`/`Math.sin` lui-même. */
+function pointSurCercle(cx, cy, rayon, angleDeg) {
+  const rad = (angleDeg * Math.PI) / 180;
+  return { x: cx + rayon * Math.sin(rad), y: cy - rayon * Math.cos(rad) };
+}
+
+/* Estimation de largeur de texte SANS DOM — correction de mesure : dépend de
+ * la taille de police (D6/W). `largeurCaracterePx` constant est rejeté par
+ * mesure (65,86px réels contre 65,0px estimés à 12,5px). */
+function largeurTexte(texte, taillePx, m) {
+  const mm = m || MESURES_DEFAUT;
+  const t = String(texte || "");
+  return mm.largeurTexteCoefficient * taillePx * t.length + mm.largeurTexteMargePx;
+}
 
 function texteHeure(iso) {
   if (!iso) return "";
   const t = String(iso);
-  return t.length >= 19 ? t.slice(11, 19) : t;
+  return t.length >= 16 ? t.slice(11, 16) : t;
 }
 
+/* Formats alignés sur la maquette de référence (bug complément feature-020,
+ * `control-center/maquettes/2026-09-15-diagramme-reference.html` l. 117 :
+ * `s>=60 ? floor(s/60)+' min '+String(s%60).padStart(2,'0') : s+' s'`).
+ * SEUL FORMATEUR de durée du module — `app.js` n'en réimplémente aucun :
+ * `duree()` y délègue ici (voir commentaire sur `duree()` dans `app.js`).
+ *
+ * Écart assumé au-delà d'1 h : la maquette n'a aucune branche « heures » (sa
+ * plus longue vignette fait 3 960 s = 66 min), or le journal réel porte des
+ * segments mesurés à 33 186 s, qu'un format "min MM" écrirait "553 min 06" —
+ * illisible. Forme en heures cohérente avec le style de la maquette. */
 function texteDuree(dureeMs, termine) {
   if (typeof dureeMs === "number") {
     if (dureeMs < 1000) return dureeMs + " ms";
-    if (dureeMs < 60000) return (dureeMs / 1000).toFixed(1) + " s";
-    const minutes = Math.floor(dureeMs / 60000);
-    return minutes + " min " + Math.round((dureeMs % 60000) / 1000) + " s";
+    const s = Math.round(dureeMs / 1000);
+    if (s < 60) return s + " s";
+    if (s < 3600) return Math.floor(s / 60) + " min " + String(s % 60).padStart(2, "0");
+    const h = Math.floor(s / 3600);
+    const m = Math.round((s % 3600) / 60);
+    return h + " h " + String(m).padStart(2, "0");
   }
-  // Copie fidèle de app.js:901 : `termine` n'est « en cours » que quand il
-  // vaut EXPLICITEMENT `false` — `true` ou absent (agent principal jamais
-  // clôturé) tombent dans « durée invalide », jamais l'inverse.
   return termine === false ? "en cours" : "durée invalide";
+}
+
+/* Libellé de pastille borné À 12 CARACTÈRES par construction (D6/Q) :
+ * "attente Nm" tant que N < 100 minutes, sinon "attente Nh" tant que N < 100
+ * heures, sinon "attente >99h" — jamais un texte plus long que le gabarit
+ * fixe de la pastille (86×18) ne pourrait accueillir. */
+function texteAttente(attenteMs) {
+  const minutes = Math.round(attenteMs / 60000);
+  if (minutes < 100) return "attente " + minutes + "m";
+  const heures = Math.round(attenteMs / 3600000);
+  if (heures < 100) return "attente " + heures + "h";
+  return "attente >99h";
 }
 
 function finMaxDuGroupe(groupe) {
@@ -266,13 +356,91 @@ function debutMinDuGroupe(groupe) {
   return min;
 }
 
+/* --------------------------------------------------- géométrie par agent --
+ * Tout ce qui NE DÉPEND PAS de la position finale (cx, cy) — calculé dans un
+ * premier temps, avant le placement. */
+function construireAgentBase(passage, index, m) {
+  const rayon = calculerRayon(typeof passage.duree_ms === "number" ? passage.duree_ms : null, m);
+  const grad = calculerGraduations(passage.outils, rayon, m);
+  const fichiers = (passage.fichiers || []).length;
+  const echec = estEchec(passage);
+  const sansCloture = estSansCloture(passage);
+  const enCours = estEnCours(passage);
+  const principal = estPrincipal(passage);
+  const contourRole = echec ? "echec" : sansCloture ? "sansCloture" : enCours ? "enCours" : "nominal";
+  const contourLargeur = {
+    echec: m.contourLargeurEchec,
+    sansCloture: m.contourLargeurSansCloture,
+    enCours: m.contourLargeurEnCours,
+    nominal: m.contourLargeurNominal,
+  }[contourRole];
+  return {
+    passageIndex: index,
+    agent: passage.agent,
+    cx: 0, cy: 0,
+    rayon,
+    rayonGuide: rayon + m.guideDecalagePx + m.guideSupplementPx,
+    rayonGraduationInterieur: rayon + m.guideDecalagePx,
+    rayonExterieurTotal: rayon + m.guideDecalagePx + m.graduationExtensionAllumeePx,
+    outils: passage.outils || 0,
+    graduationsTotal: grad.total,
+    graduationsAllumees: grad.allumees,
+    plafondAtteint: grad.plafondAtteint,
+    graduationDepartDeg: m.graduationDepartDeg,
+    graduationPasDeg: (360 - m.graduationEcartFermetureDeg) / grad.total,
+    fichiers,
+    liseretRayon: rayon - m.liseretDecalagePx,
+    liseretOpacite: calculerLiseretOpacite(fichiers, m),
+    anneauEnCoursRayon: rayon + m.anneauEnCoursSupplementPx,
+    anneauEnCoursOpacite: m.anneauEnCoursOpacite,
+    contourRole, contourLargeur,
+    croixBras: rayon * m.croixRatio,
+    sigleTaillePx: rayon > 26 ? 11 : 9.5,
+    sigleBaselineY: 0, // rempli après positionnement
+    socle: null,        // rempli après positionnement
+    etat: passage.etat,
+    echec, sansCloture, principal, enCours,
+    _texteHeure: texteHeure(passage.debut),
+    _texteDuree: texteDuree(passage.duree_ms, passage.termine),
+  };
+}
+
+/* Complète les champs qui dépendent de la position finale (cx, cy) : barres
+ * du zéro, graduations tracées (trigonométrie faite ICI), sigle. */
+function finaliserPositionAgent(a, m) {
+  const r0 = a.rayonGraduationInterieur;
+  a.sigleBaselineY = a.cy + m.sigleBaselineDecalagePx;
+  a.barreZeroBlanche = {
+    x1: a.cx, y1: a.cy - r0 + 0.5,
+    x2: a.cx, y2: a.cy - r0 - m.barreBlancheLongueurPx,
+  };
+  a.barreZeroGrise = {
+    x1: a.cx - m.barreGriseDecalageXPx, y1: a.cy - r0 + 0.5,
+    x2: a.cx - m.barreGriseDecalageXPx, y2: a.cy - r0 - m.barreGriseLongueurPx,
+  };
+  const graduations = [];
+  for (let i = 0; i < a.graduationsTotal; i++) {
+    const angle = a.graduationDepartDeg + i * a.graduationPasDeg;
+    const allumee = i < a.graduationsAllumees;
+    const longueur = allumee ? m.graduationExtensionAllumeePx : m.graduationExtensionEteintePx;
+    const interieur = pointSurCercle(a.cx, a.cy, r0, angle);
+    const exterieur = pointSurCercle(a.cx, a.cy, r0 + longueur, angle);
+    graduations.push({
+      x1: interieur.x, y1: interieur.y, x2: exterieur.x, y2: exterieur.y,
+      allumee,
+      epaisseur: allumee ? m.graduationEpaisseurAllumeePx : m.graduationEpaisseurEteintePx,
+    });
+  }
+  a.graduations = graduations;
+}
+
 /* --------------------------------------------------------------- disposer */
 function disposer(passages, mesures) {
   const m = fusionnerMesures(mesures);
   const liste = Array.isArray(passages) ? passages : [];
 
   if (!liste.length) {
-    return { largeur: 0, hauteur: 0, creneaux: [], liens: [], arcs: [] };
+    return { largeur: 0, hauteur: 0, axeY: 0, margeHaut: m.margeHautSansArcsPx, creneaux: [], liens: [], arcs: [] };
   }
 
   const groupes = construireCreneaux(liste);
@@ -280,88 +448,63 @@ function disposer(passages, mesures) {
 
   const creneaux = groupes.map((groupe, indexCreneau) => {
     const total = groupe.length;
+    const empile = total > 1;
     const visibles = groupe.slice(0, m.repliMaxVisibles);
     const masques = Math.max(0, total - m.repliMaxVisibles);
 
-    const agents = visibles.map(({ passage, index }) => {
-      const rayon = calculerRayon(
-        typeof passage.duree_ms === "number" ? passage.duree_ms : null, m);
-      const grad = calculerGraduations(passage.outils, rayon, m);
-      const liseretEpaisseur = calculerLiseret((passage.fichiers || []).length, m);
-      return {
-        passageIndex: index,
-        agent: passage.agent,
-        cx: 0, cy: 0, rayon,
-        outils: passage.outils || 0,
-        graduationsTotal: grad.total,
-        graduationsAllumees: grad.allumees,
-        plafondAtteint: grad.plafondAtteint,
-        fichiers: (passage.fichiers || []).length,
-        liseretEpaisseur,
-        etat: passage.etat,
-        echec: estEchec(passage),
-        sansCloture: estSansCloture(passage),
-        principal: estPrincipal(passage),
-        enCours: estEnCours(passage),
-        _texteHeure: texteHeure(passage.debut),
-        _texteDuree: texteDuree(passage.duree_ms, passage.termine),
-      };
-    });
+    const agents = visibles.map(({ passage, index }) => construireAgentBase(passage, index, m));
 
-    // Demi-largeur : le plus exigeant entre cercle+graduations et le plus
-    // long des libellés — jamais l'inverse (§5 : « un petit cercle au nom
-    // long s'écarte aussi »). Volontairement SYMÉTRIQUE des deux côtés,
-    // même pour un créneau empilé où les libellés passent à droite du
-    // cercle : ça coûte un peu de blanc du côté gauche d'un tel créneau,
-    // mais ça garantit qu'aucun calcul de recouvrement n'a besoin de
-    // connaître le voisin — propriété qu'un test peut vérifier localement,
-    // créneau par créneau.
-    let demiLargeur = 0;
-    agents.forEach((a) => {
-      const rayonEtendu = a.rayon + m.graduationExtensionPx;
-      const libelleMax = Math.max(
-        largeurTexte(a._texteHeure, m), largeurTexte(a._texteDuree, m), largeurTexte(a.agent, m));
-      const demiLibelle = libelleMax / 2;
-      const exigence = total > 1
-        // Créneau empilé : le libellé passe À CÔTÉ du cercle, jamais dessous
-        // (§5) — l'extension à droite n'est donc PAS divisée par deux comme
-        // dans le cas simple (le libellé n'est pas centré, il est APPENDU).
-        // Traiter cette exigence comme une « demi-largeur » symétrique
-        // surdimensionne le côté gauche du créneau, mais c'est ce qui permet
-        // de garantir qu'aucun créneau voisin ne recouvre jamais son
-        // libellé, sans connaître la largeur du voisin.
-        ? rayonEtendu + libelleMax
-        : Math.max(rayonEtendu, demiLibelle);
-      demiLargeur = Math.max(demiLargeur, exigence);
-    });
-    if (masques > 0) {
-      demiLargeur = Math.max(demiLargeur, largeurTexte("+" + masques, m) / 2);
+    let demiGauche, demiDroite, haut, bas, cadreLargeur = 0, cadreHauteur = 0;
+    let rayonMax = 0, R = 0, tw = 0;
+
+    if (!empile) {
+      const a = agents[0];
+      const labelMax = Math.max(
+        largeurTexte(a.agent, 10.5, m),
+        largeurTexte(a._texteDuree, 12.5, m));
+      const demi = Math.max(a.rayonExterieurTotal + m.simpleSlotHautSupplementPx, labelMax / 2 + 4, 26);
+      demiGauche = demi; demiDroite = demi;
+      haut = a.rayonExterieurTotal + m.simpleSlotHautSupplementPx;
+      bas = haut + m.simpleSlotBasSupplementPx;
+    } else {
+      R = Math.max(...agents.map((a) => a.rayon));
+      rayonMax = Math.max(...agents.map((a) => a.rayonExterieurTotal));
+      tw = Math.max(...agents.map((a) => Math.max(
+        largeurTexte(a.agent, 11, m),
+        largeurTexte(a._texteHeure + " · " + a._texteDuree, 11.5, m))));
+      const lignes = agents.map((a) => Math.max(2 * a.rayonExterieurTotal, m.creneauLigneMinPx));
+      cadreHauteur = lignes.reduce((s, v) => s + v, 0)
+        + m.espaceVerticalEmpilementPx * (agents.length - 1) + 2 * m.cadrePaddingPx + 18;
+      cadreLargeur = m.cadrePaddingPx + 2 * R + m.labelDecalageXPx + tw + m.cadrePaddingPx;
+      demiGauche = cadreLargeur / 2; demiDroite = cadreLargeur / 2;
+      haut = cadreHauteur / 2; bas = cadreHauteur / 2;
     }
-
-    // Hauteur nécessaire à CE créneau (empilement vertical, §5) — un cadre
-    // au filet ajoute un peu de marge quand il y a plus d'un agent.
-    let hauteurCreneau = 0;
-    agents.forEach((a, i) => {
-      if (i > 0) hauteurCreneau += m.espaceVerticalEmpilementPx;
-      hauteurCreneau += 2 * a.rayon;
-    });
-    if (total > 1) hauteurCreneau += 2 * m.cadrePaddingPx;
+    if (masques > 0) {
+      const demiRepli = largeurTexte("+" + masques, 10.5, m) / 2;
+      demiDroite = Math.max(demiDroite, demiRepli);
+      demiGauche = Math.max(demiGauche, demiRepli);
+    }
 
     return {
       index: indexCreneau,
-      x: 0, // posé après coup, une fois toutes les demi-largeurs connues
-      demiLargeur,
-      hauteurCreneau,
+      x: 0,
+      demiGauche, demiDroite,
+      demiLargeur: Math.max(demiGauche, demiDroite),
+      bordGauche: 0, bordDroit: 0,
+      empile,
+      _haut: haut, _bas: bas,
+      _cadreLargeur: cadreLargeur, _cadreHauteur: cadreHauteur, _R: R, _tw: tw,
+      cadre: null, libelleCadre: null,
       repli: masques > 0 ? { visibles: agents.length, masques } : null,
+      repliLibelle: null,
       agents,
+      _total: total,
     };
   });
 
-  // Placement horizontal séquentiel — l'écart NE mesure PAS le temps (§5) :
-  // chaque créneau réclame sa propre demi-largeur, plus celle de son voisin,
-  // plus une pastille d'attente quand l'écart réel dépasse le seuil.
+  // Placement horizontal séquentiel — l'écart NE mesure PAS le temps (§5).
   const liens = [];
-  let x = m.margeHorizontalePx + creneaux[0].demiLargeur;
+  let x = m.margeHorizontalePx + creneaux[0].demiGauche;
   creneaux[0].x = x;
   for (let i = 1; i < creneaux.length; i++) {
     const finPrecedente = finMaxDuGroupe(groupes[i - 1]);
@@ -369,104 +512,157 @@ function disposer(passages, mesures) {
     const attenteMs = (finPrecedente !== null && debutSuivante !== null)
       ? Math.max(0, debutSuivante - finPrecedente) : null;
     const attenteDepassee = attenteMs !== null && attenteMs > m.seuilAttenteMs;
-    // Pastille calculée ICI, jamais recalculée par l'appelant (bug-020) : la
-    // largeur RÉSERVÉE (gapSupplementaire, ci-dessous) et la largeur RENDUE
-    // (app.js) viennent du même nombre — plus de forfait fixe qui déborde.
-    const texteAttente = attenteDepassee ? "⏳ " + texteDuree(attenteMs) : null;
-    const pastille = attenteDepassee
-      ? { largeur: Math.max(30, largeurTexte(texteAttente, m)), hauteur: m.pastilleHauteurPx, texte: texteAttente }
-      : null;
 
-    const gapSupplementaire = pastille ? pastille.largeur + m.espacePastilleMargePx : 0;
-    x += creneaux[i - 1].demiLargeur + m.espaceMinHorizontalPx + gapSupplementaire + creneaux[i].demiLargeur;
+    const gapReserve = attenteDepassee ? m.pastilleReservePx : 0;
+    x += creneaux[i - 1].demiDroite + m.ecartHorizontalPx + gapReserve + creneaux[i].demiGauche;
     creneaux[i].x = x;
 
-    // `cx` (bug-021) : centre de l'espace RÉELLEMENT réservé entre les deux
-    // créneaux — bord droit du créneau précédent (x + demiLargeur, pas le
-    // rayon d'un cercle) et bord gauche du suivant (x - demiLargeur,
-    // asymétrique si ce créneau empile plusieurs agents). C'est cette même
-    // valeur que `app.js` doit peindre, jamais un milieu recalculé depuis
-    // d'autres bords (bug-021).
-    if (pastille) {
-      const bordDroitPrecedent = creneaux[i - 1].x + creneaux[i - 1].demiLargeur;
-      const bordGaucheCourant = creneaux[i].x - creneaux[i].demiLargeur;
-      pastille.cx = (bordDroitPrecedent + bordGaucheCourant) / 2;
+    let pastille = null;
+    if (attenteDepassee) {
+      const bordDroitPrecedent = creneaux[i - 1].x + creneaux[i - 1].demiDroite;
+      const bordGaucheCourant = creneaux[i].x - creneaux[i].demiGauche;
+      const cx = (bordDroitPrecedent + bordGaucheCourant) / 2;
+      const texte = texteAttente(attenteMs);
+      pastille = {
+        x: cx, y: 0, // y (axeY) rempli après le placement vertical
+        largeur: m.pastilleLargeurPx, hauteur: m.pastilleHauteurPx, rx: m.pastilleRxPx,
+        texte, texteX: cx, baselineY: 0,
+      };
     }
-
     liens.push({ deCreneau: i - 1, aCreneau: i, attenteMs, pastille });
   }
+  creneaux.forEach((c) => { c.bordGauche = c.x - c.demiGauche; c.bordDroit = c.x + c.demiDroite; });
 
-  const largeur = x + creneaux[creneaux.length - 1].demiLargeur + m.margeHorizontalePx;
+  const largeur = creneaux[creneaux.length - 1].bordDroit + m.margeHorizontalePx;
 
-  // Rebouclages : la hauteur de l'arc le plus haut (§ci-dessus, même formule
-  // que l'ancien calcul dans app.js) doit être comptée dans l'extension
-  // VERTICALE (bug-020) — sinon l'apex sort du cadre. Se base sur les
-  // abscisses de créneau, déjà connues (placement horizontal ci-dessus) ;
-  // un agent replié (repli, §5) n'a pas d'abscisse propre trouvable et son
-  // arc ne sera de toute façon jamais tracé par `app.js` — il n'entre donc
-  // pas dans ce calcul, exactement comme dans le rendu.
-  function xDuPassage(passageIndex) {
+  // Rebouclages : hauteur toujours comptée via un sommet ABSOLU (bug-020,
+  // défaut R) — plus de recalcul par paire d'agents.
+  function agentDuPassage(passageIndex) {
     for (const c of creneaux) {
       for (const a of c.agents) {
-        if (a.passageIndex === passageIndex) return c.x;
+        if (a.passageIndex === passageIndex) return a;
       }
     }
     return null;
   }
-  const arcs = arcsBruts.map((arc) => {
-    const x1 = xDuPassage(arc.dePassage);
-    const x2 = xDuPassage(arc.aPassage);
-    const hauteurArc = (x1 === null || x2 === null || x2 <= x1) ? 0
-      : Math.max(m.arcHauteurMinPx, Math.min(m.arcHauteurMaxPx, (x2 - x1) * m.arcHauteurRatioLargeur));
-    return Object.assign({}, arc, { hauteurArc });
-  });
-  const maxHauteurArc = arcs.reduce((max, a) => Math.max(max, a.hauteurArc), 0);
 
-  // Placement vertical : chaque créneau est centré sur un même axe médian —
-  // seule la hauteur totale (déterminée par le PLUS grand créneau) varie.
-  // `margeHautPx` grandit pour loger le plus haut des arcs de rebouclage
-  // (bug-020) : le point le plus haut de N'IMPORTE QUEL cercle du tracé est
-  // TOUJOURS à `margeHautPx` du bord (propriété du placement vertical
-  // ci-dessous, atteinte par le plus grand cercle simple), donc réserver
-  // `maxHauteurArc + arcDegagementSommetPx` au-dessus garantit qu'aucun arc
-  // ne dépasse, quels que soient les deux agents qu'il relie.
-  const margeHautPx = maxHauteurArc > 0
-    ? Math.max(m.margeHautPx, maxHauteurArc + m.arcDegagementSommetPx) : m.margeHautPx;
-  const hauteurMaxCreneau = Math.max(...creneaux.map((c) => c.hauteurCreneau));
-  const centreVertical = margeHautPx + hauteurMaxCreneau / 2;
-  const hauteur = margeHautPx + hauteurMaxCreneau + m.espaceSoclePx + m.margeBasPx;
+  // Placement vertical : chaque créneau centré sur le même axe médian.
+  const margeHaut = arcsBruts.length > 0 ? m.margeHautAvecArcsPx : m.margeHautSansArcsPx;
+  const hautMax = Math.max(...creneaux.map((c) => c._haut));
+  const basMax = Math.max(...creneaux.map((c) => c._bas));
+  const axeY = margeHaut + hautMax;
+  const hauteur = axeY + basMax + m.margeBasFinalePx;
 
   creneaux.forEach((c) => {
-    let y = centreVertical - c.hauteurCreneau / 2 + (c.agents.length > 1 ? c.agents[0].rayon + m.cadrePaddingPx
-      : c.agents[0].rayon);
-    c.agents.forEach((a, i) => {
-      a.cx = c.x;
-      a.cy = y;
-      if (i < c.agents.length - 1) y += a.rayon + m.espaceVerticalEmpilementPx + c.agents[i + 1].rayon;
-    });
+    if (!c.empile) {
+      const a = c.agents[0];
+      a.cx = c.x; a.cy = axeY;
+      finaliserPositionAgent(a, m);
+      a.socle = {
+        type: "simple",
+        lignes: [
+          { role: "heure", texte: a._texteHeure, x: a.cx, baselineY: a.cy + a.rayon + 17, taillePx: 10.5, ancrage: "middle" },
+          { role: "duree", texte: a._texteDuree, x: a.cx, baselineY: a.cy + a.rayon + 33, taillePx: 12.5, ancrage: "middle" },
+          { role: "nom", texte: a.agent, x: a.cx, baselineY: a.cy + a.rayon + 47, taillePx: 10.5, ancrage: "middle" },
+        ],
+      };
+    } else {
+      const x0 = c.x - c.demiGauche;
+      const y0 = axeY - c._cadreHauteur / 2;
+      const cx = x0 + m.cadrePaddingPx + c._R + 13;
+      const tx = x0 + m.cadrePaddingPx + 2 * c._R + m.labelDecalageXPx;
+      let y = y0 + m.cadrePaddingPx;
+      const lignes = c.agents.map((a) => Math.max(2 * a.rayonExterieurTotal, m.creneauLigneMinPx));
+      c.agents.forEach((a, i) => {
+        const h = lignes[i];
+        a.cx = cx; a.cy = y + h / 2;
+        finaliserPositionAgent(a, m);
+        a.socle = {
+          type: "empile",
+          lignes: [
+            { role: "heureDuree", texte: a._texteHeure + " · " + a._texteDuree, x: tx, baselineY: a.cy - 3, taillePx: 11.5, ancrage: "start" },
+            { role: "nom", texte: a.agent, x: tx, baselineY: a.cy + 12, taillePx: 11, ancrage: "start" },
+          ],
+        };
+        y += h + m.espaceVerticalEmpilementPx;
+      });
+      c.cadre = { x: x0, y: y0, largeur: c._cadreLargeur, hauteur: c._cadreHauteur, rx: 9 };
+      const y1 = y0 + c._cadreHauteur;
+      const libelleTexte = c._total + " agents en parallèle";
+      const lw = largeurTexte(libelleTexte, 10.5, m) + 14;
+      c.libelleCadre = {
+        texte: libelleTexte,
+        masque: { x: x0 + m.cadrePaddingPx - 7, y: y1 - 21, largeur: lw, hauteur: 19 },
+        texteX: x0 + m.cadrePaddingPx, baselineY: y1 - 7, taillePx: 10.5,
+      };
+    }
+    if (c.repli) {
+      const dernier = c.agents[c.agents.length - 1];
+      c.repliLibelle = {
+        texte: "+" + c.repli.masques,
+        x: dernier.cx + dernier.rayon + 10,
+        baselineY: dernier.cy + dernier.rayon + 4,
+        taillePx: 10.5, ancrage: "start",
+      };
+    }
     // champs de travail internes, pas dans le contrat de sortie documenté
-    delete c.hauteurCreneau;
+    delete c._haut; delete c._bas; delete c._cadreLargeur; delete c._cadreHauteur;
+    delete c._R; delete c._tw; delete c._total;
     c.agents.forEach((a) => { delete a._texteHeure; delete a._texteDuree; });
   });
 
-  return { largeur, hauteur, creneaux, liens, arcs };
+  liens.forEach((lien) => {
+    const a = creneaux[lien.deCreneau];
+    const b = creneaux[lien.aCreneau];
+    lien.x1 = a.bordDroit; lien.y1 = axeY;
+    lien.x2 = b.bordGauche; lien.y2 = axeY;
+    lien.pointe = {
+      points: [
+        [lien.x2 - 5, axeY - 2.6],
+        [lien.x2, axeY],
+        [lien.x2 - 5, axeY + 2.6],
+      ],
+    };
+    if (lien.pastille) {
+      lien.pastille.y = axeY;
+      lien.pastille.baselineY = axeY + 4;
+    }
+  });
+
+  const arcs = arcsBruts.map((arc) => {
+    const source = agentDuPassage(arc.dePassage);
+    const cible = agentDuPassage(arc.aPassage);
+    if (!source || !cible || cible.cx <= source.cx) return null;
+    const sommetY = m.arcSommetYPx;
+    const depart = { x: source.cx, y: source.cy - source.rayon - m.arcDepartDecalagePx };
+    const arrivee = { x: cible.cx, y: cible.cy - cible.rayon - m.arcDepartDecalagePx };
+    return {
+      dePassage: arc.dePassage, aPassage: arc.aPassage, agent: arc.agent,
+      sommetY,
+      depart, arrivee,
+      controle1: { x: depart.x, y: sommetY },
+      controle2: { x: arrivee.x, y: sommetY },
+      libelle: {
+        texte: "↻ reboucle",
+        x: (depart.x + arrivee.x) / 2,
+        baselineY: sommetY - m.arcLibelleDecalagePx,
+        taillePx: 10.5,
+      },
+    };
+  }).filter(Boolean);
+
+  return { largeur, hauteur, axeY, margeHaut, creneaux, liens, arcs };
 }
 
-/* Exposé pour être testé isolément (test_app_diagramme.js) sans reconstruire
- * tout `disposer` — mêmes fonctions que celles réellement appelées.
- *
- * `texteHeure`, `texteDuree` et `largeurTexte` sont exposées en plus (feature-017,
- * correctif suite au verdict code-reviewer) pour que le harnais reconstitue la
- * boîte de libellé RÉELLEMENT peinte par `app.js` — avec la MÊME estimation de
- * largeur que celle qui a servi à réserver l'espace ici — sans jamais relire
- * `creneau.demiLargeur` : une garde qui compare `disposer()` à lui-même via ce
- * champ ne prouve rien de la place réellement peinte (garde tautologique
- * identifiée en revue). */
+/* Exposé pour être testé isolément (test_app_diagramme.js). */
 disposer.MESURES_DEFAUT = MESURES_DEFAUT;
 disposer.calculerRayon = calculerRayon;
 disposer.calculerGraduations = calculerGraduations;
+disposer.calculerLiseretOpacite = calculerLiseretOpacite;
 disposer.detecterRebouclages = detecterRebouclages;
 disposer.construireCreneaux = construireCreneaux;
+disposer.pointSurCercle = pointSurCercle;
 disposer.texteHeure = texteHeure;
 disposer.texteDuree = texteDuree;
+disposer.texteAttente = texteAttente;
 disposer.largeurTexte = largeurTexte;

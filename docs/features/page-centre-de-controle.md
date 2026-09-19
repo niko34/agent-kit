@@ -209,40 +209,59 @@ dit plutôt que de disparaître en silence.
 
 Dans le détail d'un cycle déplié (voir plus haut), un diagramme SVG remplace
 les maillons textuels : un cercle par agent, relié en séquence, sous un socle
-de trois lignes (heure de départ, durée, nom).
+de trois lignes (heure de départ au format `HH:MM`, durée, nom). La **durée
+est la vedette du socle** — elle seule est graissée et en couleur de texte
+pleine (`--texte`), l'heure et le nom restent en `--texte-faible`. Un agent
+en cours grossit sa durée et la colore de son identité (voir
+`docs/DESIGN-SYSTEM.md` §8, exception nommée à la règle de précédence
+identité/état). Le sigle de l'agent principal est **AP**, jamais « ?? » —
+même les cycles qui ne contiennent que lui.
 
 ### Ce que chaque forme du cercle encode
 
-- le **diamètre** : la durée de l'agent ;
-- les **graduations** autour du cercle : le nombre d'appels d'outils, sur une
-  échelle adaptative qui s'ajuste au rayon pour ne jamais se toucher, avec une
-  encoche de zéro, un cran de plafond et un anneau fantôme donnant la pleine
-  échelle ;
-- le **liseré intérieur** : le nombre de fichiers écrits.
+- le **diamètre** : la durée de l'agent (`11 + 0,80·√(durée_s)`, plafonné à
+  56 px) ;
+- les **graduations** autour du cercle : le nombre d'appels d'outils, en 24,
+  36 ou 52 graduations selon le rayon — une graduation allumée est plus
+  longue qu'une éteinte, et le zéro appel se marque par deux barres
+  superposées ;
+- le **liseré intérieur** : le nombre de fichiers écrits, à épaisseur fixe
+  (1 px) et **opacité croissante** avec leur nombre — désormais **visible**
+  (il était peint sous le disque opaque, un défaut corrigé par `feature-020`).
 
-Aucun nombre de jetons n'est affiché : le journal ne les mesure pas. Voir
-[ADR-0025](../adr/0025-grammaire-du-diagramme-de-deroule.md) pour la grammaire
-complète et les alternatives écartées, et `docs/DESIGN-SYSTEM.md` §5 pour le
-détail visuel.
+Aucun nombre de jetons n'est affiché : le journal ne les mesure pas. La
+saturation de l'échelle des appels d'outils (agent qui dépasse le nominal)
+n'a plus de signe visible dans le tracé — elle reste lisible dans l'infobulle
+du cercle. Voir
+[ADR-0026](../adr/0026-trois-echelles-du-diagramme-alignees-sur-la-maquette.md)
+(qui remplace [ADR-0025](../adr/0025-grammaire-du-diagramme-de-deroule.md) §1
+sur le rayon, les graduations, le liseré et le rendu du zéro/plafond) pour la
+grammaire complète et les alternatives écartées, et `docs/DESIGN-SYSTEM.md`
+§5 pour le détail visuel.
 
 ### Lecture du déroulé
 
-**L'écart horizontal ne mesure pas le temps** — chaque agent réclame la
-demi-largeur du plus exigeant entre son cercle avec ses graduations et le
-plus long de ses trois libellés. Le temps se lit sous chaque cercle, il ne se
-mesure pas en distance. Une attente de plus de deux minutes entre deux agents
-s'affiche dans une pastille posée sur le lien.
+La zone porte le titre « **Déroulé** » et une phrase d'avertissement :
+« l'écart horizontal sert la lisibilité, il ne mesure pas le temps ». **L'écart
+horizontal ne mesure pas le temps** — chaque agent réclame la demi-largeur du
+plus exigeant entre son cercle avec ses graduations et le plus long de ses
+trois libellés. Le temps se lit sous chaque cercle, il ne se mesure pas en
+distance. Une attente de plus de deux minutes entre deux agents s'affiche
+dans une pastille posée sur le lien. La piste du diagramme porte des
+**voiles latéraux** (dégradé sur fond `--creux`) qui signalent le contenu
+caché par le défilement horizontal.
 
 **Les agents simultanés** (par exemple `code-reviewer` et `security-reviewer`
 qui tournent ensemble) occupent un seul créneau et s'empilent verticalement,
-dans un cadre au filet discret ; le cycle avance d'un seul cran quel que soit
-leur nombre. Au-delà de quatre agents empilés, la pile se replie
-(« 4 + N »).
+dans un cadre **sans aplat** (filet seul, coins arrondis) portant le libellé
+« N agents en parallèle » ; le cycle avance d'un seul cran quel que soit leur
+nombre. Au-delà de quatre agents empilés, la pile se replie (« 4 + N »).
 
 **Un rebouclage** (une reprise du même agent) est relié à sa précédente
-occurrence par un arc pointillé avec pointe de direction. **Un échec** se
-signale par trois moyens redondants : couleur, croix, contour `--alerte` — le
-pointillé du contour reste réservé à l'état « sans clôture ».
+occurrence par un arc pointillé de couleur fixe (`--rebouclage`), **sans
+pointe de direction**. **Un échec** se signale par deux moyens redondants :
+couleur et croix, sur un contour `--alerte` — le pointillé du contour est
+désormais **réservé** à l'état « sans clôture », seul motif qu'il porte.
 
 Une légende, sous le diagramme, rappelle ce que chaque forme et chaque trait
 encodent.
@@ -261,7 +280,8 @@ pur, sans DOM ni couleur) ; `control-center/web/app.js`
 (`construireDiagramme`) la transforme en SVG et lit les jetons de couleur par
 agent (`var(--a-<rôle>)`). Aucune dimension n'est recalculée séparément dans
 les deux modules — un même calcul fait autorité sur la géométrie et sur la
-place qu'elle réserve. Voir [ADR-0025](../adr/0025-grammaire-du-diagramme-de-deroule.md).
+place qu'elle réserve. Voir [ADR-0025](../adr/0025-grammaire-du-diagramme-de-deroule.md)
+et [ADR-0026](../adr/0026-trois-echelles-du-diagramme-alignees-sur-la-maquette.md).
 
 ## Voir aussi
 
@@ -279,4 +299,8 @@ place qu'elle réserve. Voir [ADR-0025](../adr/0025-grammaire-du-diagramme-de-de
   bornage des cycles, et ce que `[workflows] affiches` tronque
 - [ADR-0025](../adr/0025-grammaire-du-diagramme-de-deroule.md) — la grammaire
   du diagramme de déroulé, et la séparation entre géométrie et rendu
+- [ADR-0026](../adr/0026-trois-echelles-du-diagramme-alignees-sur-la-maquette.md)
+  — le rayon, les graduations, le liseré des fichiers et le rendu du zéro /
+  du plafond alignés sur la maquette de référence, remplaçant `ADR-0025 §1`
+  sur ces quatre points
 - `control-center/README.md` — modèle de déploiement, jeton d'accès

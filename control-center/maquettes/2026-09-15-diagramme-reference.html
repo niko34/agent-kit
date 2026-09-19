@@ -1,0 +1,264 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><style>
+:root{
+ --pg:#f7f7f5;--bloc:#ffffff;--creux:#f7f7f5;--bd:rgba(0,0,0,.10);
+ --bd2:rgba(0,0,0,.19);--cadre:rgba(0,0,0,.20);--hv:rgba(0,0,0,.026);--sel:rgba(0,0,0,.045);
+ --tx:#2f2e2b;--t2:#6b6b68;--t3:#93938f;--neutre:#5f5f5c;--f-neutre:#e6e6e3;
+ --a-spec:#1f439d;--a-dbg:#753c00;--a-test:#5a3090;--a-front:#2d5a00;
+ --a-revue:#8c180b;--a-secu:#006349;
+ --f-spec:#bed9ff;--f-dbg:#f6d49b;--f-test:#e1ceff;--f-front:#c7e5ac;
+ --f-revue:#ffc6b9;--f-secu:#9debd8;
+ --ombre:0 1px 3px rgba(15,15,15,.09); color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="clair"]){
+ --pg:#191919;--bloc:#1c1c1c;--creux:#191919;--bd:rgba(255,255,255,.085);
+ --bd2:rgba(255,255,255,.16);--cadre:rgba(255,255,255,.20);--hv:rgba(255,255,255,.045);
+ --sel:rgba(255,255,255,.08);
+ --tx:#e4e2de;--t2:#9b9b9b;--t3:#6f6f6f;--neutre:#8a8a8a;--f-neutre:#2f2f2f;
+ --a-spec:#7aa2f7;--a-dbg:#d9a441;--a-test:#bb9af7;--a-front:#9ece6a;
+ --a-revue:#e08272;--a-secu:#5ec4ad;
+ --f-spec:#2e374a;--f-dbg:#433822;--f-test:#3d354a;--f-front:#36412b;
+ --f-revue:#45302d;--f-secu:#283f3a;
+ --ombre:none; color-scheme:dark}}
+:root[data-theme="sombre"]{
+ --pg:#191919;--bloc:#1c1c1c;--creux:#191919;--bd:rgba(255,255,255,.085);
+ --bd2:rgba(255,255,255,.16);--cadre:rgba(255,255,255,.20);--hv:rgba(255,255,255,.045);
+ --sel:rgba(255,255,255,.08);
+ --tx:#e4e2de;--t2:#9b9b9b;--t3:#6f6f6f;--neutre:#8a8a8a;--f-neutre:#2f2f2f;
+ --a-spec:#7aa2f7;--a-dbg:#d9a441;--a-test:#bb9af7;--a-front:#9ece6a;
+ --a-revue:#e08272;--a-secu:#5ec4ad;
+ --f-spec:#2e374a;--f-dbg:#433822;--f-test:#3d354a;--f-front:#36412b;
+ --f-revue:#45302d;--f-secu:#283f3a;
+ --ombre:none; color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--pg);filter:none;padding:22px;color:var(--tx);
+ font:15px/1.55 ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+ -webkit-font-smoothing:antialiased}
+.page{color:var(--tx);background:var(--bloc);border-radius:8px;box-shadow:var(--ombre);padding:28px 44px 34px;
+ max-width:1060px;margin:0 auto}
+.haut{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px}
+.fil{font-size:13px;color:var(--t3)}
+.theme{display:flex;border:1px solid var(--bd);border-radius:7px;overflow:hidden}
+.theme button{all:unset;cursor:pointer;width:30px;height:26px;display:grid;place-items:center;
+ font-size:13px;color:var(--t3);line-height:1}
+.theme button+button{border-left:1px solid var(--bd)}
+.theme button[aria-pressed="true"]{background:var(--sel);color:var(--tx)}
+.theme button:focus-visible{outline:2px solid var(--a-spec);outline-offset:-2px}
+.fil b{font-weight:400;color:var(--t2)}
+h1{font-size:27px;line-height:1.2;font-weight:700;margin:0 0 16px;letter-spacing:-.012em}
+.liste{border:1px solid var(--bd);border-radius:7px;overflow:hidden}
+.lg{display:flex;align-items:center;gap:12px;padding:9px 13px;font-size:13.5px;border-bottom:1px solid var(--bd)}
+.lg:last-child{border-bottom:none}
+.lg.on{background:var(--sel)}
+.lg .ch{width:12px;color:var(--t3);font-size:11px}
+.lg.on .ch{color:var(--tx)}
+.lg .nm{flex:1;color:var(--t2)}
+.lg.on .nm{color:var(--tx);font-weight:500}
+.lg .mt{color:var(--t3);font-size:12.5px;font-variant-numeric:tabular-nums}
+.lg .st{width:7px;height:7px;border-radius:50%}
+.detail{padding:16px 16px 14px;background:var(--bloc);border-bottom:1px solid var(--bd)}
+.prop{display:flex;align-items:center;min-height:27px;font-size:13.5px}
+.prop .lab{width:150px;flex:0 0 150px;color:var(--t2)}
+.prop .lab i{font-style:normal;opacity:.55;margin-right:8px}
+.prop .v{font-variant-numeric:tabular-nums}
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:3px;padding:1px 8px;font-size:12.5px}
+.pt{width:6px;height:6px;border-radius:50%;background:currentColor}
+.bt{display:flex;align-items:baseline;gap:10px;margin:16px 2px 6px}
+.bt b{font-size:13px;font-weight:600}
+.bt span{font-size:12px;color:var(--t3)}
+.piste{position:relative;border:1px solid var(--bd);border-radius:6px;background:var(--creux)}
+.defile{overflow-x:auto;overflow-y:hidden;padding:8px 0 2px}
+.defile::-webkit-scrollbar{height:9px}
+.defile::-webkit-scrollbar-track{background:transparent}
+.defile::-webkit-scrollbar-thumb{background:#cfcfcb;border-radius:5px}
+.voile{position:absolute;top:1px;bottom:11px;width:34px;pointer-events:none}
+.voile.g{left:1px;background:linear-gradient(90deg,var(--creux),transparent)}
+.voile.d{right:1px;background:linear-gradient(270deg,var(--creux),transparent)}
+.ech{display:flex;flex-wrap:wrap;gap:5px 18px;margin:8px 2px 0;font-size:11px;color:var(--t3)}
+.ech u{text-decoration:none;color:var(--t2)}
+table{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:14px}
+th{text-align:left;font-weight:400;color:var(--t2);font-size:12.5px;padding:5px 8px;border-bottom:1px solid var(--bd)}
+td{padding:6px 8px;border-bottom:1px solid var(--bd)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--hv)}
+td.n{font-variant-numeric:tabular-nums;color:var(--t2)}
+.dot{width:8px;height:8px;border-radius:2px;display:inline-block;margin-right:8px}
+.mini{color:var(--t3);font-size:12px}
+</style></head><script>
+/* avant tout rendu : sinon la page clignote dans le mauvais thème */
+try{var t=localStorage.getItem('theme');if(t==='clair'||t==='sombre')
+ document.documentElement.setAttribute('data-theme',t);}catch(e){}
+</script><body><div class="page" id="p"></div>
+<script>
+const CYCLES=[
+ {n:'bug-013 — un agent tué reste « en cours »',q:'il y a 3 min',ag:9,d:2807,et:'en cours',ouvert:1},
+ {n:'feature-010 — scénario de bout en bout avec échec',q:'hier 18:12',ag:7,d:3960,et:'terminé'},
+ {n:'bug-005 — caractère invisible non montré',q:'hier 16:40',ag:6,d:2145,et:'terminé'},
+ {n:'feature-012 — .kit-paths gouverne seul',q:'2 jours',ag:8,d:4820,et:'terminé'},
+];
+const AG=[
+ {t:'spec-reader',      h:'19:54:00',d:155,o:24,f:0,k:'spec'},
+ {t:'debugger',         h:'19:57:11',d:467,o:46,f:2,k:'dbg'},
+ {t:'test-engineer',    h:'20:06:13',d:172,o:27,f:0,k:'test'},
+ {t:'debugger',         h:'20:09:43',d:67, o:13,f:1,k:'dbg',rep:1},
+ {t:'frontend-developer',h:'20:19:31',d:246,o:37,f:4,k:'front'},
+ {t:'code-reviewer',    h:'20:24:50',d:679,o:63,f:0,k:'revue'},
+ {t:'security-reviewer',h:'20:25:11',d:423,o:19,f:0,k:'secu'},
+ {t:'debugger',         h:'20:33:11',d:195,o:29,f:7,k:'dbg',rep:1},
+ {t:'test-engineer',    h:'20:37:37',d:190,o:24,f:1,k:'test',act:1},
+];
+const SIGLE={'spec-reader':'SP','debugger':'DB','test-engineer':'TE','frontend-developer':'FE',
+ 'code-reviewer':'CR','security-reviewer':'SE'};
+const C={spec:'var(--a-spec)',dbg:'var(--a-dbg)',test:'var(--a-test)',front:'var(--a-front)',revue:'var(--a-revue)',secu:'var(--a-secu)'};
+const F={spec:'var(--f-spec)',dbg:'var(--f-dbg)',test:'var(--f-test)',front:'var(--f-front)',revue:'var(--f-revue)',secu:'var(--f-secu)'};
+const T={bloc:'var(--creux)',bd:'var(--bd)',bd2:'var(--bd2)',cadre:'var(--cadre)',
+ tx:'var(--tx)',t2:'var(--t2)',t3:'var(--t3)',ye:'var(--a-dbg)'};
+const NS='http://www.w3.org/2000/svg',OMAX=70;
+const sec=h=>{const[a,b,c]=h.split(':').map(Number);return a*3600+b*60+c};
+const hm=h=>h.slice(0,5);
+const dur=s=>s>=60?Math.floor(s/60)+' min '+String(s%60).padStart(2,'0'):s+' s';
+const E=(n,a,t)=>{const e=document.createElementNS(NS,n);for(const k in a)if(a[k]!=null)e.setAttribute(k,a[k]);
+ if(t!==undefined)e.textContent=t;return e};
+const larg=(t,px)=>t.length*px*0.56;
+AG.forEach(a=>{a.s=sec(a.h);a.x2=a.s+a.d;a.r=11+Math.sqrt(a.d)*0.80});
+
+/* ── découpage en créneaux : soit un agent seul, soit un groupe simultané ── */
+const SLOTS=[];
+for(let i=0;i<AG.length;){
+ let j=i,f=AG[i].x2;
+ while(j+1<AG.length&&AG[j+1].s<f-2){f=Math.max(f,AG[j+1].x2);j++;}
+ SLOTS.push(j>i?{par:AG.slice(i,j+1)}:{un:AG[i]}); i=j+1;
+}
+const ECART=30, PAD=12, INTER=11;
+SLOTS.forEach(S=>{
+ if(S.un){const a=S.un;
+  S.demi=Math.max(a.r+13,larg(a.t,10.5)/2+4,larg(dur(a.d),12.5)/2+4,26);
+  S.haut=a.r+13; S.bas=a.r+13+46;
+ }else{
+  const m=S.par, R=Math.max(...m.map(a=>a.r));
+  const tw=Math.max(...m.map(a=>Math.max(larg(a.t,11),larg(hm(a.h)+' · '+dur(a.d),11.5))));
+  S.R=R; S.tw=tw;
+  S.lignes=m.map(a=>Math.max(2*(a.r+11),42));
+  const bh=S.lignes.reduce((x,v)=>x+v,0)+INTER*(m.length-1)+2*PAD+18;
+  S.bh=bh; S.bw=PAD+2*R+26+14+tw+PAD;
+  S.demi=S.bw/2; S.haut=bh/2; S.bas=bh/2;
+ }});
+let cur=16;
+SLOTS.forEach((S,i)=>{ if(i){const p=SLOTS[i-1], pf=p.un?p.un.x2:Math.max(...p.par.map(a=>a.x2)),
+  nd=S.un?S.un.s:Math.min(...S.par.map(a=>a.s)); S.att=nd-pf; cur+=ECART+(S.att>120?62:0);}
+ cur+=S.demi; S.x=cur; cur+=S.demi;});
+const LARGE=Math.ceil(cur+16);
+const HAUTEUR_HAUT=Math.max(...SLOTS.map(S=>S.haut)), HAUTEUR_BAS=Math.max(...SLOTS.map(S=>S.bas));
+const AXE=38+HAUTEUR_HAUT, HAUT=AXE+HAUTEUR_BAS+16;
+
+function graphe(sv){
+ /* liens entre créneaux, sur l'axe */
+ for(let i=0;i<SLOTS.length-1;i++){const a=SLOTS[i],b=SLOTS[i+1],
+  x1=a.x+a.demi,x2=b.x-b.demi;
+  sv.appendChild(E('line',{x1,y1:AXE,x2,y2:AXE,stroke:T.bd2,'stroke-width':1.2}));
+  sv.appendChild(E('path',{d:`M ${x2-5} ${AXE-2.6} L ${x2} ${AXE} L ${x2-5} ${AXE+2.6}`,
+   fill:'none',stroke:T.t3,'stroke-width':1,'stroke-linejoin':'round'}));
+  if(b.att>120){const mx=(x1+x2)/2;
+   sv.appendChild(E('rect',{x:mx-27,y:AXE-9,width:54,height:18,rx:9,fill:T.bloc,stroke:T.bd,'stroke-width':1}));
+   sv.appendChild(E('text',{x:mx,y:AXE+4,'text-anchor':'middle','font-size':10.5,fill:T.t3},
+    'attente '+Math.round(b.att/60)+'m'));}}
+
+ const pose=(a,cx,cy)=>{
+  const c=C[a.k],TK=a.r<22?24:a.r<32?36:52,n=Math.round(TK*Math.min(a.o/OMAX,1)),r0=a.r+4;
+  a.cx=cx;a.cy=cy;
+  sv.appendChild(E('circle',{cx,cy,r:r0+3.5,fill:'none',stroke:T.bd,'stroke-width':1}));
+  for(let i=0;i<TK;i++){const g=(-90+2.4+i*(360-4.8)/TK)*Math.PI/180,on=i<n;
+   sv.appendChild(E('line',{x1:cx+Math.cos(g)*r0,y1:cy+Math.sin(g)*r0,
+    x2:cx+Math.cos(g)*(r0+(on?7:3.2)),y2:cy+Math.sin(g)*(r0+(on?7:3.2)),
+    stroke:on?c:T.bd2,'stroke-width':on?1.8:1}));}
+  sv.appendChild(E('line',{x1:cx,y1:cy-r0+.5,x2:cx,y2:cy-r0-8.5,stroke:T.bloc,'stroke-width':2.6}));
+  sv.appendChild(E('line',{x1:cx-.6,y1:cy-r0+.5,x2:cx-.6,y2:cy-r0-9.5,stroke:T.t3,'stroke-width':1}));
+  sv.appendChild(E('circle',{cx,cy,r:a.r,fill:F[a.k],stroke:a.act?c:T.bd2,
+   'stroke-width':a.act?1.8:1}));
+  if(a.f)sv.appendChild(E('circle',{cx,cy,r:a.r-4,fill:'none',stroke:c,'stroke-width':1,
+   opacity:(0.22+Math.min(a.f,8)/8*0.45).toFixed(2)}));
+  if(a.act)sv.appendChild(E('circle',{cx,cy,r:a.r+3.5,fill:'none',stroke:c,'stroke-width':1,opacity:.45}));
+  sv.appendChild(E('text',{x:cx,y:cy+3.6,'text-anchor':'middle','font-size':a.r>26?11:9.5,
+   'font-weight':600,fill:c},SIGLE[a.t]));};
+
+ SLOTS.forEach(S=>{
+  if(S.un){const a=S.un,cx=S.x,cy=AXE; pose(a,cx,cy);
+   const yb=cy+a.r+17;
+   sv.appendChild(E('text',{x:cx,y:yb,'text-anchor':'middle','font-size':10.5,fill:T.t3},hm(a.h)));
+   sv.appendChild(E('text',{x:cx,y:yb+16,'text-anchor':'middle','font-size':12.5,
+    'font-weight':a.act?600:400,fill:a.act?C[a.k]:T.tx},dur(a.d)));
+   sv.appendChild(E('text',{x:cx,y:yb+30,'text-anchor':'middle','font-size':10.5,fill:T.t3},a.t));
+  }else{
+   const m=S.par,x0=S.x-S.demi,x1=S.x+S.demi,y0=AXE-S.bh/2,y1=AXE+S.bh/2;
+   sv.appendChild(E('rect',{x:x0,y:y0,width:S.bw,height:S.bh,rx:9,fill:'none',
+    stroke:T.cadre,'stroke-width':1}));
+   const lbl=m.length+' agents en parallèle', lw=larg(lbl,10.5)+14;
+   sv.appendChild(E('rect',{x:x0+PAD-7,y:y1-21,width:lw,height:19,fill:T.bloc}));
+   sv.appendChild(E('text',{x:x0+PAD,y:y1-7,'font-size':10.5,fill:T.t3},lbl));
+   const cx=x0+PAD+S.R+13, tx=x0+PAD+2*S.R+26+14;
+   let y=y0+PAD;
+   /* accolade : elle relie les trois lignes d'un même moment */
+
+   m.forEach((a,i)=>{const h=S.lignes[i],cy=y+h/2; pose(a,cx,cy);
+    sv.appendChild(E('text',{x:tx,y:cy-3,'font-size':11.5,'font-weight':a.act?600:400,
+     fill:T.tx},hm(a.h)+' · '+dur(a.d)));
+    sv.appendChild(E('text',{x:tx,y:cy+12,'font-size':11,fill:T.t3},a.t));
+    y+=h+INTER;});
+  }});
+ /* rebouclages, tracés une fois que chaque agent connaît sa place */
+ [[3,1],[7,3]].forEach(([di,vi])=>{const de=AG[di],ve=AG[vi],h=16;
+  sv.appendChild(E('path',{d:`M ${de.cx} ${de.cy-de.r-16} C ${de.cx} ${h}, ${ve.cx} ${h}, ${ve.cx} ${ve.cy-ve.r-16}`,
+   fill:'none',stroke:T.ye,'stroke-width':1.3,'stroke-dasharray':'3 3',opacity:.75}));
+  sv.appendChild(E('text',{x:(de.cx+ve.cx)/2,y:h-4,'text-anchor':'middle','font-size':10.5,
+   fill:T.ye},'↻ reboucle'));});
+}
+const T0=AG[0].s,T1=Math.max(...AG.map(a=>a.x2));
+const tot=T1-T0,ou=AG.reduce((x,a)=>x+a.o,0),fi=AG.reduce((x,a)=>x+a.f,0);
+const etat={'en cours':'var(--a-test)','terminé':'var(--neutre)'};
+document.getElementById('p').innerHTML=`
+<div class="haut">
+  <div><div class="fil">Centre de contrôle / <b>Cycles</b></div><h1 style="margin:6px 0 0">Cycles</h1></div>
+  <div class="theme" role="group" aria-label="Thème de l'interface">
+   <button aria-pressed="false" title="Thème clair" aria-label="Thème clair">☀</button>
+   <button aria-pressed="true"  title="Suivre le système" aria-label="Suivre le système">◐</button>
+   <button aria-pressed="false" title="Thème sombre" aria-label="Thème sombre">☾</button>
+  </div></div>
+<div class="liste">
+${CYCLES.map(c=>`<div class="lg ${c.ouvert?'on':''}">
+ <span class="ch">${c.ouvert?'▾':'▸'}</span><span class="st" style="background:${etat[c.et]}"></span>
+ <span class="nm">${c.n}</span><span class="mt">${c.ag} agents · ${dur(c.d)}</span>
+ <span class="mt" style="width:74px;text-align:right">${c.q}</span></div>${c.ouvert?`
+<div class="detail">
+ <div class="prop"><div class="lab"><i>◍</i>Statut</div>
+  <span class="pill" style="background:var(--f-test);color:var(--a-test)"><span class="pt"></span>En cours</span></div>
+ <div class="prop"><div class="lab"><i>◷</i>Durée</div><span class="v">${dur(tot)}</span></div>
+ <div class="prop"><div class="lab"><i>⚙</i>Appels d'outils</div><span class="v">${ou}</span></div>
+ <div class="prop"><div class="lab"><i>▤</i>Fichiers écrits</div><span class="v">${fi}</span></div>
+ <div class="prop"><div class="lab"><i>↻</i>Rebouclages</div>
+  <span class="pill" style="background:var(--f-dbg);color:var(--a-dbg)">2</span></div>
+ <div class="bt"><b>Déroulé</b><span>l'écart horizontal sert la lisibilité, il ne mesure pas le temps</span></div>
+ <div class="piste"><div class="defile"><svg width="${LARGE}" height="${HAUT}"
+   viewBox="0 0 ${LARGE} ${HAUT}" style="width:${LARGE}px;min-width:${LARGE}px"></svg></div>
+  <div class="voile g"></div><div class="voile d"></div></div>
+ <div class="ech"><span><u>diamètre</u> durée</span><span><u>graduations</u> appels d'outils / 70</span>
+  <span><u>liseré</u> fichiers écrits</span><span><u>pastille</u> attente entre deux agents</span>
+  <span><u>pile</u> agents simultanés</span></div>
+ <table><thead><tr><th>Agent</th><th>Début</th><th>Durée</th><th>Outils</th><th>Fichiers</th><th>État</th></tr></thead>
+ <tbody>${AG.map(a=>`<tr>
+  <td><span class="dot" style="background:${C[a.k]}"></span>${a.t}${a.rep?' <span class="mini">↻ reprise</span>':''}</td>
+  <td class="n">${a.h}</td><td class="n">${dur(a.d)}</td><td class="n">${a.o}</td><td class="n">${a.f||'—'}</td>
+  <td><span class="pill" style="background:${a.act?'var(--f-test)':'var(--f-neutre)'};color:${a.act?'var(--a-test)':'var(--neutre)'}">
+   <span class="pt"></span>${a.act?'En cours':'Terminé'}</span></td></tr>`).join('')}</tbody></table>
+</div>`:''}`).join('')}</div>`;
+graphe(document.querySelector('svg'));
+(function(){
+ const b=[...document.querySelectorAll('.theme button')], val=['clair','systeme','sombre'];
+ let cur='systeme'; try{cur=localStorage.getItem('theme')||'systeme'}catch(e){}
+ const applique=v=>{
+  if(v==='systeme')document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme',v);
+  b.forEach((x,i)=>x.setAttribute('aria-pressed',String(val[i]===v)));
+  try{v==='systeme'?localStorage.removeItem('theme'):localStorage.setItem('theme',v)}catch(e){}
+ };
+ b.forEach((x,i)=>x.addEventListener('click',()=>applique(val[i])));
+ applique(cur);
+})();
+</script></body></html>

@@ -364,6 +364,11 @@ def reconstruire(evenements, commandes_suivies=(), agents_ouvrants=(),
                 "commandes": [],
                 "termine": False,
                 "derniere_activite": evenement["ts"],
+                # Additif (feature-016, item J) : jusqu'ici SEUL le segment
+                # principal comptait ses appels d'outils (ligne ~343). Sans ce
+                # compteur sur les sous-agents, la colonne « outils » de la
+                # table des passages n'a aucune donnée à afficher.
+                "outils": 0,
             }
             passage["type"] = "sousagent"
             workflow["passages"].append(passage)
@@ -445,6 +450,12 @@ def reconstruire(evenements, commandes_suivies=(), agents_ouvrants=(),
         # déclarait `sans_cloture` un agent qui travaillait toujours.
         if passage is not None:
             passage["derniere_activite"] = evenement["ts"]
+            # Additif (feature-016, item J) : même test que celui qui compte
+            # les outils du segment principal (ligne ~343) — `evenement.get
+            # ("tool")`, jamais déduit de `nom` (un `PostToolUseFailure` porte
+            # aussi `tool` et doit compter, un échec reste un appel d'outil).
+            if evenement.get("tool"):
+                passage["outils"] += 1
 
         if nom == ECHEC_OUTIL:
             workflow["echecs"] += 1

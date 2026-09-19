@@ -117,55 +117,57 @@ function simultanes(n, debutIso, dureeMs) {
 // RÉELLEMENT (formule indépendante, ligne 900-901 de `app.js`). La branche
 // « pas de durée mesurable » est donc recopiée ICI À LA MAIN, à l'identique
 // de `app.js` ; seul le formatage numérique (jamais en cause) reste délégué.
-function texteDureeAppJs(origine) {
-  if (typeof origine.duree_ms === "number") return disposer.texteDuree(origine.duree_ms);
-  return origine.termine === false ? "en cours" : "durée invalide";
-}
-
-function calculerBoitePeinteCreneau(creneauGeo, passages, m) {
-  const empile = creneauGeo.agents.length > 1;
+// feature-020 : contrat élargi — `app.js` ne recalcule plus AUCUN texte de
+// socle (heure/durée/nom), il peint VERBATIM `agentGeo.socle.lignes[]`
+// (texte, x, baselineY, taillePx, ancrage), tous produits par `disposer()`
+// (A7). La boîte reconstruite ici lit donc CES CHAMPS directement — plus
+// aucune reconstruction indépendante de `texteDuree`/`texteHeure` (l'ancien
+// piège PIEGES.md §30 disparaît avec la duplication qui le permettait : il
+// n'y a plus qu'UNE SEULE production de ces textes, et cette garde la relit
+// telle quelle, jamais recalculée). Seule `disposer.largeurTexte` (estimateur
+// de largeur PARTAGÉ par la réservation d'espace ET par cette vérification)
+// reste un heuristique commun — c'est la même prudence que l'ancien fichier :
+// ni `demiGauche`, ni `demiDroite`, ni `demiLargeur` n'entrent dans ce calcul,
+// pour ne jamais rendre la garde tautologique vis-à-vis du placement.
+function calculerBoitePeinteCreneau(creneauGeo, mesures) {
+  const m = mesures || disposer.MESURES_DEFAUT;
   let xGauche = Infinity;
   let xDroite = -Infinity;
+  const etendreAvecLigne = (ligne) => {
+    const largeur = disposer.largeurTexte(ligne.texte, ligne.taillePx, m);
+    let gauche;
+    let droite;
+    if (ligne.ancrage === "start") { gauche = ligne.x; droite = ligne.x + largeur; }
+    else if (ligne.ancrage === "end") { gauche = ligne.x - largeur; droite = ligne.x; }
+    else { gauche = ligne.x - largeur / 2; droite = ligne.x + largeur / 2; }
+    xGauche = Math.min(xGauche, gauche);
+    xDroite = Math.max(xDroite, droite);
+  };
   creneauGeo.agents.forEach((a) => {
-    const origine = passages[a.passageIndex] || {};
-    const lignes = [
-      disposer.texteHeure(origine.debut),
-      texteDureeAppJs(origine),
-      a.agent,
-    ];
-    const largeurLibelle = Math.max(...lignes.map((l) => disposer.largeurTexte(l, m)));
-    const rayonEtendu = a.rayon + m.graduationExtensionPx; // cercle + graduations peintes
-    const cercleGauche = a.cx - rayonEtendu;
-    const cercleDroite = a.cx + rayonEtendu;
-    let libelleGauche;
-    let libelleDroite;
-    if (empile) {
-      // app.js : `x: agentGeo.cx + agentGeo.rayon + 10, text-anchor: "start"`
-      libelleGauche = a.cx + a.rayon + 10;
-      libelleDroite = libelleGauche + largeurLibelle;
-    } else {
-      // app.js : `x: agentGeo.cx, text-anchor: "middle"` — le libellé est
-      // CENTRÉ sur `cx`, il déborde symétriquement de part et d'autre.
-      libelleGauche = a.cx - largeurLibelle / 2;
-      libelleDroite = a.cx + largeurLibelle / 2;
-    }
-    xGauche = Math.min(xGauche, cercleGauche, libelleGauche);
-    xDroite = Math.max(xDroite, cercleDroite, libelleDroite);
+    // Cercle + graduations peintes : `rayonExterieurTotal` (rayon + guide +
+    // extension de graduation ALLUMÉE, le plus long trait) EST le champ que
+    // `disposer()` réserve pour cet effet (A3) — pas une reconstruction
+    // séparée depuis `rayon` + une constante recopiée ici.
+    xGauche = Math.min(xGauche, a.cx - a.rayonExterieurTotal);
+    xDroite = Math.max(xDroite, a.cx + a.rayonExterieurTotal);
+    a.socle.lignes.forEach(etendreAvecLigne);
   });
-  if (creneauGeo.repli) {
-    // app.js : le « +N » part de `dernier.cx + dernier.rayon + 10` — inclus
-    // pour rester fidèle au peint, même s'il ne domine jamais un libellé
-    // complet.
-    const dernier = creneauGeo.agents[creneauGeo.agents.length - 1];
-    const largeurRepli = disposer.largeurTexte("+" + creneauGeo.repli.masques, m);
-    xDroite = Math.max(xDroite, dernier.cx + dernier.rayon + 10 + largeurRepli);
+  if (creneauGeo.repliLibelle) etendreAvecLigne(creneauGeo.repliLibelle);
+  if (creneauGeo.libelleCadre) {
+    const lc = creneauGeo.libelleCadre;
+    xGauche = Math.min(xGauche, lc.masque.x);
+    xDroite = Math.max(xDroite, lc.masque.x + lc.masque.largeur);
+  }
+  if (creneauGeo.cadre) {
+    xGauche = Math.min(xGauche, creneauGeo.cadre.x);
+    xDroite = Math.max(xDroite, creneauGeo.cadre.x + creneauGeo.cadre.largeur);
   }
   return { xGauche, xDroite };
 }
 
-function verifierAucunChevauchement(creneaux, passages, mesures) {
+function verifierAucunChevauchement(creneaux, mesures) {
   const m = mesures || disposer.MESURES_DEFAUT;
-  const boites = creneaux.map((c) => calculerBoitePeinteCreneau(c, passages, m));
+  const boites = creneaux.map((c) => calculerBoitePeinteCreneau(c, m));
   for (let i = 1; i < boites.length; i++) {
     if (boites[i - 1].xDroite > boites[i].xGauche + 1e-9) return false;
   }
@@ -272,6 +274,29 @@ function testSeuilAttenteStrict() {
   });
 }
 
+// -- Gabarit de pastille FIXE (86×18, rx 9) — épinglé en LITTÉRAL, jamais
+// lu depuis `disposer.MESURES_DEFAUT` : les tests de non-recouvrement
+// (ci-dessous) restent verts même si le gabarit rétrécit, tant que la marge
+// réservée (`pastilleReservePx`, une constante SÉPARÉE) reste large — le
+// gabarit lui-même n'a donc pas d'autre garde. Correction de mesure
+// documentée dans `diagramme.js` : le 54×18 de la maquette déborde son
+// propre texte (« attente 4m » fait 58,61 px) — le kit fixe donc 86×18,
+// jamais mesuré au rendu.
+function testPastilleGabaritFixe() {
+  const debut1 = Date.parse("2026-09-15T10:00:00.000Z");
+  const passages = [
+    passage("spec-reader", new Date(debut1).toISOString(), 10000, {}),
+    passage("architect", new Date(debut1 + 10000 + 15 * 60 * 1000).toISOString(), 10000, {}),
+  ];
+  const g = disposer(passages);
+  const pastille = g.liens[0].pastille;
+  check("pastille_gabarit_presente", pastille !== null, JSON.stringify(g.liens[0]));
+  if (!pastille) return;
+  check("pastille_gabarit_largeur_86", pastille.largeur === 86, "obtenu " + pastille.largeur);
+  check("pastille_gabarit_hauteur_18", pastille.hauteur === 18, "obtenu " + pastille.hauteur);
+  check("pastille_gabarit_rx_9", pastille.rx === 9, "obtenu " + pastille.rx);
+}
+
 // -- bug-020 : la pastille ne recouvre jamais le créneau voisin ------------
 // L'espace RÉSERVÉ entre deux créneaux (par le placement horizontal) doit
 // toujours pouvoir loger la largeur RENDUE de la pastille — sinon elle
@@ -303,13 +328,15 @@ function testPastilleNeRecouvrePasLeVoisin() {
     // se DÉRIVE de cette même largeur (`gapSupplementaire`, dans
     // `disposer()`) est une garde MORTE — l'inégalité tient par construction,
     // quelle que soit la position réellement peinte. La garde qui vaut
-    // teste le RECTANGLE PEINT (celui qu'`app.js` dessine : `cx ±
-    // largeur/2`, exactement sa formule) contre les bords RÉELLEMENT
-    // réservés par le placement horizontal (`creneau.x ± demiLargeur`) —
-    // jamais un milieu entre bords de CERCLE (l'ancien défaut, bug-021).
-    const bordDroitA = creneauA.x + creneauA.demiLargeur;
-    const bordGaucheB = creneauB.x - creneauB.demiLargeur;
-    const cx = lien.pastille.cx;
+    // teste le RECTANGLE PEINT (celui qu'`app.js` dessine : `x ±
+    // largeur/2`, exactement sa formule) contre les bords RÉELS du créneau
+    // (`creneau.bordGauche`/`bordDroit`, feature-020 défaut P) — jamais
+    // `demiLargeur` (alias symétrique conservé pour compatibilité, mais
+    // explicitement écarté du positionnement par le contrat), et jamais un
+    // milieu entre bords de CERCLE (l'ancien défaut, bug-021).
+    const bordDroitA = creneauA.bordDroit;
+    const bordGaucheB = creneauB.bordGauche;
+    const cx = lien.pastille.x;
     check("pastille_cx_defini", typeof cx === "number" && Number.isFinite(cx), "obtenu " + cx);
     const gaucheRect = cx - lien.pastille.largeur / 2;
     const droiteRect = cx + lien.pastille.largeur / 2;
@@ -353,9 +380,9 @@ function testPastilleAdjacenteACreneauEmpileNeDeborde() {
   check("empile_pastille_presente", lien.pastille !== null, JSON.stringify(lien));
   if (!lien.pastille) return;
 
-  const bordDroitA = creneauA.x + creneauA.demiLargeur;
-  const bordGaucheB = creneauB.x - creneauB.demiLargeur;
-  const cx = lien.pastille.cx;
+  const bordDroitA = creneauA.bordDroit;
+  const bordGaucheB = creneauB.bordGauche;
+  const cx = lien.pastille.x;
   check("empile_pastille_cx_defini", typeof cx === "number" && Number.isFinite(cx), "obtenu " + cx);
   const gaucheRect = cx - lien.pastille.largeur / 2;
   const droiteRect = cx + lien.pastille.largeur / 2;
@@ -396,8 +423,8 @@ function testLibellesEmpilesNomsLongsPasDeChevauchement() {
   check("empile_noms_longs_premier_creneau_bien_empile", g.creneaux[0].agents.length === 2,
     "obtenu " + g.creneaux[0].agents.length);
   check("empile_noms_longs_aucun_chevauchement",
-    verifierAucunChevauchement(g.creneaux, passages),
-    "boîtes : " + JSON.stringify(g.creneaux.map((c) => calculerBoitePeinteCreneau(c, passages, disposer.MESURES_DEFAUT))));
+    verifierAucunChevauchement(g.creneaux),
+    "boîtes : " + JSON.stringify(g.creneaux.map((c) => calculerBoitePeinteCreneau(c, disposer.MESURES_DEFAUT))));
 }
 
 // -- Nom très long sur créneau SIMPLE — discriminant pour la branche
@@ -415,8 +442,8 @@ function testLibelleSimpleNomTresLongPasDeChevauchement() {
   const g = disposer(passages);
   check("simple_nom_long_deux_creneaux", g.creneaux.length === 2, "obtenu " + g.creneaux.length);
   check("simple_nom_long_aucun_chevauchement",
-    verifierAucunChevauchement(g.creneaux, passages),
-    "boîtes : " + JSON.stringify(g.creneaux.map((c) => calculerBoitePeinteCreneau(c, passages, disposer.MESURES_DEFAUT))));
+    verifierAucunChevauchement(g.creneaux),
+    "boîtes : " + JSON.stringify(g.creneaux.map((c) => calculerBoitePeinteCreneau(c, disposer.MESURES_DEFAUT))));
 }
 
 // -- Fixture 7 : 186 passages (pire cas mesuré, PIEGES.md/spec) — aucun
@@ -451,7 +478,7 @@ function testCentQuatreVingtSixPassages() {
   check("186_passages_generes", passages.length === 186, "obtenu " + passages.length);
 
   const g = disposer(passages);
-  check("186_aucun_chevauchement", verifierAucunChevauchement(g.creneaux, passages));
+  check("186_aucun_chevauchement", verifierAucunChevauchement(g.creneaux));
   check("186_aucun_agent_perdu", compterAgentsTotal(g.creneaux) === 186,
     "obtenu " + compterAgentsTotal(g.creneaux));
   check("186_repli_jamais_au_dela_de_quatre_visibles",
@@ -540,18 +567,42 @@ function testEchecJamaisCumuleAvecSansCloture() {
   check("echec_seul_pas_sans_cloture", a2.sansCloture === false, "obtenu " + a2.sansCloture);
 }
 
+// -- Priorité de `contourRole` : ÉCHEC avant EN COURS -----------------------
+// `estEchec`/`estEnCours` ne s'excluent PAS mutuellement (contrairement à
+// échec/sans-clôture, ou sans-clôture/en-cours, qui le sont par construction
+// du champ `etat`) : un agent peut porter `echecs > 0` ET `etat: "en_cours"`
+// en même temps (un appel d'outil a déjà échoué pendant que l'agent tourne
+// toujours). C'est le SEUL couple de rôles où l'ordre du ternaire
+// (`echec ? ... : sansCloture ? ... : enCours ? ...`) a un effet observable
+// — une inversion ÉCHEC/EN COURS spécifiquement (contrairement à
+// ÉCHEC/SANS-CLÔTURE ou SANS-CLÔTURE/EN-COURS, des mutants ÉQUIVALENTS ici,
+// jamais atteignables avec les champs actuels) change réellement le rendu.
+function testPrioriteContourRoleEchecAvantEnCours() {
+  const g = disposer([
+    passage("test-engineer", "2026-09-15T10:00:00.000Z", 5000,
+      { echecs: 2, etat: "en_cours", termine: false }),
+  ]);
+  const a = g.creneaux[0].agents[0];
+  check("priorite_echec_et_en_cours_tous_deux_vrais",
+    a.echec === true && a.enCours === true,
+    "echec=" + a.echec + " enCours=" + a.enCours);
+  check("priorite_contourRole_est_echec", a.contourRole === "echec", "obtenu " + a.contourRole);
+  check("priorite_contourLargeur_est_celle_de_l_echec", a.contourLargeur === 2, "obtenu " + a.contourLargeur);
+}
+
 // -- bug-020 : l'arc de rebouclage tient dans le cadre --------------------
-// Un rebouclage sur une longue distance horizontale produit un arc haut
-// (jusqu'à `arcHauteurMaxPx`, 70 px) : `margeHautPx` doit grandir en
-// conséquence, sinon son sommet sort du cadre par le haut (`y < 0`).
+// feature-020 (défaut R) a retiré `arcHauteurMaxPx` du contrat : le sommet
+// de l'arc est désormais un ABSOLU (`sommetY`, 16px), commun à tout arc quelle
+// que soit la distance horizontale — c'est `margeHaut` (38px avec arcs) qui
+// garantit que ce sommet fixe reste dans le cadre (`y >= 0`).
 function testArcDeRebouclageTientDansLeCadre() {
   const debut = Date.parse("2026-09-15T10:00:00.000Z");
   let t = debut;
   const passages = [passage("test-engineer", new Date(t).toISOString(), 5000)];
   t += 5000;
   // Neuf agents intercalés, assez espacés pour que l'écart horizontal entre
-  // les deux occurrences de `test-engineer` dépasse le point où l'arc
-  // plafonne à `arcHauteurMaxPx` (70 px, soit (x2-x1) >= 70/0.18 ≈ 389 px).
+  // les deux occurrences de `test-engineer` soit largement suffisant pour
+  // révéler une régression si `sommetY` recommençait à dépendre de cet écart.
   for (let i = 0; i < 9; i++) {
     t += 400000;   // grand écart : chaque créneau est loin du précédent
     passages.push(passage("agent-" + i, new Date(t).toISOString(), 5000));
@@ -560,27 +611,59 @@ function testArcDeRebouclageTientDansLeCadre() {
   passages.push(passage("test-engineer", new Date(t).toISOString(), 5000));
 
   const g = disposer(passages);
+  // ⚠️ Littéraux (16, 38, 4), jamais relus depuis `disposer.MESURES_DEFAUT` :
+  // comparer `arc.sommetY` à `m.arcSommetYPx` serait tautologique sous une
+  // mutation de CETTE constante précise (les deux côtés se déplaceraient
+  // ensemble). Ces trois nombres sont documentés en commentaire du contrat
+  // (`diagramme.js` : « sommetY, 16, ABSOLU » ; « margeHaut, 38 si des arcs
+  // existent, sinon 24 »).
+  const SOMMET_Y_ATTENDU = 16;
+  const MARGE_HAUT_AVEC_ARCS_ATTENDUE = 38;
+  const ARC_LIBELLE_DECALAGE_ATTENDU = 4;
   check("arc_long_un_seul_arc", g.arcs.length === 1, "obtenu " + g.arcs.length);
+  // feature-020 (défaut R/bug-020) : `sommetY` est désormais un ABSOLU commun
+  // à tout arc — plus de recalcul de hauteur par paire d'agents (`hauteurArc`
+  // a disparu du contrat). C'est `margeHaut` qui garantit que ce sommet fixe
+  // reste dans le cadre, quelle que soit la distance horizontale entre les
+  // deux occurrences.
+  check("arc_long_marge_haut_avec_arcs", g.margeHaut === MARGE_HAUT_AVEC_ARCS_ATTENDUE,
+    "obtenu " + g.margeHaut);
   if (g.arcs.length === 1) {
     const arc = g.arcs[0];
-    check("arc_long_plafonne_a_la_hauteur_max",
-      arc.hauteurArc === disposer.MESURES_DEFAUT.arcHauteurMaxPx,
-      "obtenu " + arc.hauteurArc);
-    const source = trouverAgentGeo(g, arc.dePassage);
-    const cible = trouverAgentGeo(g, arc.aPassage);
-    check("arc_long_source_et_cible_trouves", !!source && !!cible);
-    if (source && cible) {
-      const y1 = source.cy - source.rayon - 4;
-      const y2 = cible.cy - cible.rayon - 4;
-      const yControle = Math.min(y1, y2) - arc.hauteurArc;
-      // Le point de contrôle d'une quadratique n'est pas l'apex exact, mais
-      // il en est la borne la plus haute possible (l'apex réel reste
-      // toujours SOUS lui) — une garde sur `yControle >= 0` couvre donc
-      // l'apex a fortiori.
-      check("arc_long_sommet_dans_le_cadre", yControle >= 0,
-        "yControle=" + yControle + " (sortirait du cadre si négatif)");
-    }
+    check("arc_long_sommet_constant", arc.sommetY === SOMMET_Y_ATTENDU,
+      "obtenu " + arc.sommetY);
+    check("arc_long_controles_au_sommet",
+      arc.controle1.y === arc.sommetY && arc.controle2.y === arc.sommetY,
+      "obtenu " + JSON.stringify([arc.controle1.y, arc.controle2.y]));
+    // La vraie encre la plus haute est le libellé "↻ reboucle", posé à
+    // `sommetY - arcLibelleDecalagePx` avec un ascendant mesuré au
+    // navigateur (~10px) — le garde-fou teste que ce sommet ET son libellé
+    // restent tous deux dans le cadre (y >= 0), quelle que soit la distance
+    // horizontale entre les deux occurrences (ici : neuf agents intercalés,
+    // largement plus loin que ce qu'un ancien calcul par paire plafonnait).
+    const ASCENDANT_LIBELLE = 10;
+    check("arc_long_libelle_baseline_attendue",
+      arc.libelle.baselineY === SOMMET_Y_ATTENDU - ARC_LIBELLE_DECALAGE_ATTENDU,
+      "obtenu " + arc.libelle.baselineY);
+    const yMinLibelle = arc.libelle.baselineY - ASCENDANT_LIBELLE;
+    check("arc_long_sommet_et_libelle_dans_le_cadre", yMinLibelle >= 0,
+      "yLibelle=" + yMinLibelle + " (sortirait du cadre si < 0)");
   }
+}
+
+// -- Sans rebouclage, la marge haute retombe sur la valeur SANS arc
+// (bug-020) : un cadre plus haut que nécessaire persisterait sinon même
+// quand aucun arc n'est tracé. Littéral (24), même prudence que ci-dessus.
+function testArcAbsentMargeHautReduite() {
+  const MARGE_HAUT_SANS_ARCS_ATTENDUE = 24;
+  const passages = [
+    passage("debugger", "2026-09-15T11:00:00.000Z", 5000),
+    passage("test-engineer", "2026-09-15T11:05:00.000Z", 5000),
+  ];
+  const g = disposer(passages);
+  check("arc_absent_marge_haut_sans_arcs",
+    g.margeHaut === MARGE_HAUT_SANS_ARCS_ATTENDUE, "obtenu " + g.margeHaut);
+  check("arc_absent_aucun_arc", g.arcs.length === 0, "obtenu " + g.arcs.length);
 }
 
 function trouverAgentGeo(g, passageIndex) {
@@ -625,8 +708,8 @@ function testTermineTrueAvecDureeMissing() {
   const g = disposer(passages);
   check("termine_true_duree_missing_deux_creneaux", g.creneaux.length === 2, "obtenu " + g.creneaux.length);
   check("termine_true_duree_missing_aucun_chevauchement",
-    verifierAucunChevauchement(g.creneaux, passages),
-    "boîtes : " + JSON.stringify(g.creneaux.map((c) => calculerBoitePeinteCreneau(c, passages, disposer.MESURES_DEFAUT))));
+    verifierAucunChevauchement(g.creneaux),
+    "boîtes : " + JSON.stringify(g.creneaux.map((c) => calculerBoitePeinteCreneau(c, disposer.MESURES_DEFAUT))));
 }
 
 // -- Bornes épinglées (renforcement test-engineer, feature-017) -----------
@@ -656,32 +739,58 @@ function testPlafondAtteintBornePileEtJusteEnDessous() {
     "obtenu " + gPile.creneaux[0].agents[0].plafondAtteint + " pour outils=" + echelle);
 }
 
-// M9 — `calculerRayon` (feature-017, item 1 : « le diamètre porte la
-// durée ») : le contrat documenté dit que le rayon PLAFONNE à `rayonMax` au-
-// delà de `dureeReferenceMs` (Math.min(1, ratio) dans diagramme.js). Aucune
-// fixture existante ne dépassait cette référence (186 passages, max ~400 000
-// ms, `dureeReferenceMs` = 1 200 000 ms) : le plafonnement n'était jamais
-// sollicité.
-function testRayonPlafonneAuDelaDeLaDureeReference() {
+// M9 — `calculerRayon` (feature-020, ADR neuf remplaçant ADR-0025 §1) :
+// rayon = rayonBase + rayonCoefficient·√(durée_s), plafonné à `rayonMax`. Le
+// seuil où le plafond mord se DÉRIVE algébriquement des trois constantes
+// LUES DEPUIS L'ARTEFACT (`disposer.MESURES_DEFAUT`, PIEGES.md §21) — jamais
+// recopié en dur — : durée_s = ((rayonMax - rayonBase) / rayonCoefficient)².
+// Mesuré (commentaire de `diagramme.js`) : ce seuil vaut 3164,0625 s ; le plus
+// long sous-agent d'un journal réel (2560 s) ne l'atteint jamais, d'où
+// l'absence de toute fixture existante qui l'aurait sollicité.
+// ⚠️ `RAYON_MAX_ATTENDU` est un LITTÉRAL (56, valeur documentée en
+// commentaire de `diagramme.js` : « le plafond ne mord qu'à 3164s ») —
+// jamais relu depuis `m.rayonMax` : un seuil dérivé de `m.rayonMax` ET
+// comparé à `m.rayonMax` serait tautologique sous une mutation de CETTE
+// constante précise (les deux côtés de l'égalité se déplaceraient
+// ensemble). `rayonBase`/`rayonCoefficient`, eux, sont déjà épinglés en
+// littéral ailleurs (`test_app_diagramme_conformite.js`, table E1) — seul
+// le plafond manquait d'un pin indépendant.
+function testRayonPlafonneAuDelaDuSeuilDerive() {
   const m = disposer.MESURES_DEFAUT;
-  const rayonPile = disposer.calculerRayon(m.dureeReferenceMs, m);
-  check("rayon_pile_sur_la_reference_egale_rayon_max",
-    Math.abs(rayonPile - m.rayonMax) < 1e-9, "obtenu " + rayonPile);
+  const RAYON_MAX_ATTENDU = 56;
+  check("rayon_max_vaut_56", m.rayonMax === RAYON_MAX_ATTENDU, "obtenu " + m.rayonMax);
+  const seuilS = Math.pow((RAYON_MAX_ATTENDU - m.rayonBase) / m.rayonCoefficient, 2);
+  const seuilMs = seuilS * 1000;
 
-  const rayonAuDela = disposer.calculerRayon(m.dureeReferenceMs * 3, m);
-  check("rayon_trois_fois_la_reference_reste_plafonne_a_rayon_max",
-    Math.abs(rayonAuDela - m.rayonMax) < 1e-9,
-    "obtenu " + rayonAuDela + " (rayonMax=" + m.rayonMax + ") — un ratio non borné dépasserait rayonMax");
+  const rayonJusteEnDessous = disposer.calculerRayon(seuilMs - 1000, m);
+  check("rayon_juste_en_dessous_du_seuil_pas_encore_plafonne",
+    rayonJusteEnDessous < RAYON_MAX_ATTENDU - 1e-6,
+    "obtenu " + rayonJusteEnDessous + " (rayonMax attendu=" + RAYON_MAX_ATTENDU + ")");
+
+  const rayonPile = disposer.calculerRayon(seuilMs, m);
+  check("rayon_pile_sur_le_seuil_egale_rayon_max",
+    Math.abs(rayonPile - RAYON_MAX_ATTENDU) < 1e-6, "obtenu " + rayonPile);
+
+  const rayonAuDela = disposer.calculerRayon(seuilMs * 3, m);
+  check("rayon_trois_fois_le_seuil_reste_plafonne_a_rayon_max",
+    Math.abs(rayonAuDela - RAYON_MAX_ATTENDU) < 1e-9,
+    "obtenu " + rayonAuDela + " (rayonMax attendu=" + RAYON_MAX_ATTENDU + ") — un plafond neutralisé dépasserait rayonMax");
 }
 
 // M10 — `texteDuree` (contrat exposé, formatage lu par le socle heure / durée
-// / nom) : la bascule "N,N s" -> "M min S s" se fait STRICTEMENT à 60000 ms.
-// Les fixtures existantes ne portaient aucune durée valant exactement 60000.
+// / nom) : format ALIGNÉ SUR LA MAQUETTE (feature-020, D8) depuis le
+// 2026-09-16 — la bascule "N s" -> "M min SS" se fait sur LA SECONDE ARRONDIE
+// (`Math.round(dureeMs/1000)`), pas sur le ms brut. 59999 ms ET 60000 ms
+// arrondissent TOUS LES DEUX à s=60 et donnent donc désormais le MÊME
+// résultat — ce qui distingue encore les deux cas d'un `Math.floor` (qui
+// laisserait 59999 ms à s=59, donc "59 s") : ce test tue une mutation
+// round -> floor à cette frontière précise, que les deux valeurs isolément
+// ne suffiraient pas à couvrir.
 function testTexteDureeBasculeMinutesPileAuSeuil() {
-  check("texte_duree_59999ms_reste_en_secondes",
-    disposer.texteDuree(59999) === "60.0 s", "obtenu " + disposer.texteDuree(59999));
+  check("texte_duree_59999ms_arrondit_a_60s_et_bascule",
+    disposer.texteDuree(59999) === "1 min 00", "obtenu " + disposer.texteDuree(59999));
   check("texte_duree_60000ms_bascule_en_minutes",
-    disposer.texteDuree(60000) === "1 min 0 s", "obtenu " + disposer.texteDuree(60000));
+    disposer.texteDuree(60000) === "1 min 00", "obtenu " + disposer.texteDuree(60000));
 }
 
 // M11 — fusion des créneaux (`construireCreneaux`, §5 « agents simultanés »)
@@ -704,6 +813,277 @@ function testDeuxPassagesAdossesPileNeFusionnentPas() {
     "obtenu " + g.creneaux.length);
 }
 
+// -- E2 (A1-A3) : angles, longueurs et épaisseurs de graduation, sur les
+// TROIS bandes de rayon — hand-calc depuis les constantes de l'artefact,
+// jamais dérivé de `calculerGraduations`/`finaliserPositionAgent` eux-mêmes.
+// ⚠️ Les nombres comparés ci-dessous sont des LITTÉRAUX (2.4, 4.8, 4, 7,
+// 3.2, 1.8, 1) — jamais relus depuis `disposer.MESURES_DEFAUT` : comparer
+// une valeur CALCULÉE à partir d'une constante à cette MÊME constante
+// relue dans l'artefact serait tautologique (toujours vrai, y compris sous
+// une mutation de la constante elle-même). Seuls `rayonBase`/
+// `rayonCoefficient`/`echelleOutils` sont lus depuis `m` — UNIQUEMENT pour
+// construire la fixture (choisir une durée qui vise un rayon, un nombre
+// d'outils qui sature l'échelle), jamais comme valeur ATTENDUE ; le test de
+// conformité E1 (`test_app_diagramme_conformite.js`) reprend ces mêmes
+// nombres, également en dur, depuis `pose()` de la maquette.
+function testGraduationsAnglesLongueursEpaisseurs() {
+  const m = disposer.MESURES_DEFAUT;
+  const DEPART_DEG = 2.4;
+  const ECART_FERMETURE_DEG = 4.8;
+  const GUIDE_DECALAGE_PX = 4;
+  function pointAttendu(cx, cy, rayon, angleDeg) {
+    const rad = (angleDeg * Math.PI) / 180;
+    return { x: cx + rayon * Math.sin(rad), y: cy - rayon * Math.cos(rad) };
+  }
+  function verifierBande(nomBande, dureeMs, outils, tkAttendu) {
+    const g = disposer([passage("agent-" + nomBande, "2026-09-15T10:00:00.000Z", dureeMs, { outils })]);
+    const a = g.creneaux[0].agents[0];
+    check(nomBande + "_TK_attendu", a.graduationsTotal === tkAttendu,
+      "rayon=" + a.rayon + " obtenu TK=" + a.graduationsTotal + " attendu " + tkAttendu);
+    const pasAttendu = (360 - ECART_FERMETURE_DEG) / tkAttendu;
+    check(nomBande + "_depart_2_4_degres", a.graduationDepartDeg === DEPART_DEG,
+      "obtenu " + a.graduationDepartDeg);
+    check(nomBande + "_pas_attendu", Math.abs(a.graduationPasDeg - pasAttendu) < 1e-9,
+      "obtenu " + a.graduationPasDeg);
+
+    const angleDernier = DEPART_DEG + (tkAttendu - 1) * pasAttendu;
+    const r0 = a.rayon + GUIDE_DECALAGE_PX;
+    const premiereAttendu = pointAttendu(a.cx, a.cy, r0, DEPART_DEG);
+    const derniereAttendu = pointAttendu(a.cx, a.cy, r0, angleDernier);
+    const premiere = a.graduations[0];
+    const derniere = a.graduations[a.graduations.length - 1];
+    check(nomBande + "_premiere_graduation_position",
+      Math.abs(premiere.x1 - premiereAttendu.x) < 1e-6 && Math.abs(premiere.y1 - premiereAttendu.y) < 1e-6,
+      "obtenu (" + premiere.x1 + "," + premiere.y1 + ") attendu (" + premiereAttendu.x + "," + premiereAttendu.y + ")");
+    check(nomBande + "_derniere_graduation_position",
+      Math.abs(derniere.x1 - derniereAttendu.x) < 1e-6 && Math.abs(derniere.y1 - derniereAttendu.y) < 1e-6,
+      "obtenu (" + derniere.x1 + "," + derniere.y1 + ") attendu (" + derniereAttendu.x + "," + derniereAttendu.y + ")");
+    return a;
+  }
+
+  verifierBande("bande_r_inf_22", 100, 0, 24);
+  function dureeMsPourRayon(rayonVise) {
+    const s = Math.pow((rayonVise - m.rayonBase) / m.rayonCoefficient, 2);
+    return s * 1000;
+  }
+  const aMoyen = verifierBande("bande_r_22_a_32", dureeMsPourRayon(25), m.echelleOutils, 36);
+  check("bande_r_22_a_32_rayon_dans_la_bande", aMoyen.rayon >= 22 && aMoyen.rayon < 32, "obtenu " + aMoyen.rayon);
+  const aHaut = verifierBande("bande_r_32_et_plus", dureeMsPourRayon(40), 0, 52);
+  check("bande_r_32_et_plus_rayon_dans_la_bande", aHaut.rayon >= 32, "obtenu " + aHaut.rayon);
+
+  // Longueur / épaisseur : ALLUMÉE vs ÉTEINTE (défaut J — ce n'est plus la
+  // première/dernière graduation qui est longue, c'est celle qui est
+  // ALLUMÉE). `aMoyen` (outils = echelleOutils, plafond atteint) a TOUTES
+  // ses graduations allumées ; `aHaut` (outils = 0) les a TOUTES éteintes.
+  const allumee = aMoyen.graduations[0];
+  const longueurAllumee = Math.hypot(allumee.x2 - allumee.x1, allumee.y2 - allumee.y1);
+  check("graduation_allumee_longueur_7", Math.abs(longueurAllumee - 7) < 1e-6, "obtenu " + longueurAllumee);
+  check("graduation_allumee_epaisseur_1_8", allumee.epaisseur === 1.8, "obtenu " + allumee.epaisseur);
+  check("graduation_allumee_flag_vrai", allumee.allumee === true);
+
+  const eteinte = aHaut.graduations[0];
+  const longueurEteinte = Math.hypot(eteinte.x2 - eteinte.x1, eteinte.y2 - eteinte.y1);
+  check("graduation_eteinte_longueur_3_2", Math.abs(longueurEteinte - 3.2) < 1e-6, "obtenu " + longueurEteinte);
+  check("graduation_eteinte_epaisseur_1", eteinte.epaisseur === 1, "obtenu " + eteinte.epaisseur);
+  check("graduation_eteinte_flag_faux", eteinte.allumee === false);
+}
+
+// -- Bornes de TK épinglées PILE et JUSTE AUTOUR (PIEGES.md §20 : une
+// bande large — ici un rayon de 15 pour <22, 40 pour ≥32 — ne meurt jamais
+// sous une mutation du SEUIL lui-même : `rayon < 22` -> `rayon < 21` ne
+// change rien pour un rayon de 15, loin de la frontière). Rayon visé au
+// dixième de millième près de chaque borne (22 et 32), dans les deux sens.
+function testBornesTKPileEtJusteAutour() {
+  const m = disposer.MESURES_DEFAUT;
+  function tkPourRayon(rayonVise) {
+    const s = Math.pow((rayonVise - m.rayonBase) / m.rayonCoefficient, 2);
+    const g = disposer([passage("agent-borne-tk", "2026-09-15T10:00:00.000Z", s * 1000, { outils: 0 })]);
+    return g.creneaux[0].agents[0];
+  }
+  const sousVingtDeux = tkPourRayon(21.9999);
+  check("TK_juste_sous_22_vaut_24", sousVingtDeux.graduationsTotal === 24,
+    "rayon=" + sousVingtDeux.rayon + " obtenu " + sousVingtDeux.graduationsTotal);
+  const surVingtDeux = tkPourRayon(22.0001);
+  check("TK_juste_sur_22_vaut_36", surVingtDeux.graduationsTotal === 36,
+    "rayon=" + surVingtDeux.rayon + " obtenu " + surVingtDeux.graduationsTotal);
+
+  const sousTrenteDeux = tkPourRayon(31.9999);
+  check("TK_juste_sous_32_vaut_36", sousTrenteDeux.graduationsTotal === 36,
+    "rayon=" + sousTrenteDeux.rayon + " obtenu " + sousTrenteDeux.graduationsTotal);
+  const surTrenteDeux = tkPourRayon(32.0001);
+  check("TK_juste_sur_32_vaut_52", surTrenteDeux.graduationsTotal === 52,
+    "rayon=" + surTrenteDeux.rayon + " obtenu " + surTrenteDeux.graduationsTotal);
+}
+
+// -- E2 (A7/A8) : positions de socle — simple et empilé — épinglées valeur
+// par valeur (jamais une propriété d'ensemble).
+function testSocleSimpleChampsAttendus() {
+  const g = disposer([passage("backend-developer", "2026-09-15T10:00:00.000Z", 5000, { outils: 3 })]);
+  const a = g.creneaux[0].agents[0];
+  check("socle_simple_type", a.socle.type === "simple", "obtenu " + a.socle.type);
+  const [heure, duree, nom] = a.socle.lignes;
+  check("socle_simple_role_heure",
+    heure.role === "heure" && heure.taillePx === 10.5 && heure.ancrage === "middle",
+    JSON.stringify(heure));
+  check("socle_simple_role_duree",
+    duree.role === "duree" && duree.taillePx === 12.5 && duree.ancrage === "middle",
+    JSON.stringify(duree));
+  check("socle_simple_role_nom",
+    nom.role === "nom" && nom.taillePx === 10.5 && nom.ancrage === "middle",
+    JSON.stringify(nom));
+  check("socle_simple_heure_baseline", heure.baselineY === a.cy + a.rayon + 17, "obtenu " + heure.baselineY);
+  check("socle_simple_duree_baseline", duree.baselineY === a.cy + a.rayon + 33, "obtenu " + duree.baselineY);
+  check("socle_simple_nom_baseline", nom.baselineY === a.cy + a.rayon + 47, "obtenu " + nom.baselineY);
+}
+
+function testSocleEmpileChampsAttendus() {
+  const g = disposer(simultanes(2, "2026-09-15T10:00:00.000Z", 60000));
+  const c = g.creneaux[0];
+  check("socle_empile_type", c.agents.every((a) => a.socle.type === "empile"));
+  c.agents.forEach((a, i) => {
+    const [heureDuree, nom] = a.socle.lignes;
+    check("socle_empile_" + i + "_role_heure_duree",
+      heureDuree.role === "heureDuree" && heureDuree.taillePx === 11.5 && heureDuree.ancrage === "start",
+      JSON.stringify(heureDuree));
+    check("socle_empile_" + i + "_role_nom",
+      nom.role === "nom" && nom.taillePx === 11 && nom.ancrage === "start",
+      JSON.stringify(nom));
+    check("socle_empile_" + i + "_heureDuree_baseline", heureDuree.baselineY === a.cy - 3,
+      "obtenu " + heureDuree.baselineY);
+    check("socle_empile_" + i + "_nom_baseline", nom.baselineY === a.cy + 12,
+      "obtenu " + nom.baselineY);
+  });
+}
+
+// -- E2 (A4, reste) : extrémités RÉELLES d'un lien — bords de CRÉNEAU
+// (`bordDroit`/`bordGauche`), sur l'axe commun `axeY`, jamais un bord de
+// CERCLE ni une moyenne locale (défaut P, mutant de contrôle M12 : recalculer
+// `lien.x1` depuis `a.x + a.demiLargeur + 7` romprait le partage de repère
+// entre le trait et sa pastille, sans qu'aucune garde d'ensemble — style
+// « la pastille ne déborde pas » — ne le remarque, puisque ce cas n'a pas de
+// pastille). Un seul agent par créneau ici, donc `bordDroit`/`bordGauche`
+// coïncident avec les bords de cercle + marge : la valeur pinée vient de
+// `creneau.bordDroit`/`bordGauche` eux-mêmes (champs du contrat), jamais
+// recalculée indépendamment — ce test vérifie l'ÉGALITÉ de deux champs du
+// contrat, pas une propriété dérivable par construction d'un seul côté.
+function testLienExtremitesBordsDeCreneauEtPointe() {
+  const debut1 = Date.parse("2026-09-15T10:00:00.000Z");
+  const g = disposer([
+    passage("spec-reader", new Date(debut1).toISOString(), 5000, {}),
+    passage("architect", new Date(debut1 + 5000).toISOString(), 5000, {}),
+  ]);
+  check("lien_deux_creneaux_presents", g.creneaux.length === 2, "obtenu " + g.creneaux.length);
+  const lien = g.liens[0];
+  const a = g.creneaux[0];
+  const b = g.creneaux[1];
+  check("lien_x1_egale_bordDroit_du_creneau_de_depart",
+    lien.x1 === a.bordDroit, "obtenu x1=" + lien.x1 + " bordDroit=" + a.bordDroit);
+  check("lien_y1_egale_axeY", lien.y1 === g.axeY, "obtenu y1=" + lien.y1 + " axeY=" + g.axeY);
+  check("lien_x2_egale_bordGauche_du_creneau_d_arrivee",
+    lien.x2 === b.bordGauche, "obtenu x2=" + lien.x2 + " bordGauche=" + b.bordGauche);
+  check("lien_y2_egale_axeY", lien.y2 === g.axeY, "obtenu y2=" + lien.y2 + " axeY=" + g.axeY);
+
+  // Pointe : trois points, littéralement recopiés depuis `diagramme.js`
+  // (décalage 5 px en x, ±2.6 px en y autour de l'arrivée) — jamais dérivés
+  // d'un calcul générique qui suivrait n'importe quelle mutation de ces deux
+  // constantes.
+  check("lien_pointe_presente", !!lien.pointe && Array.isArray(lien.pointe.points),
+    JSON.stringify(lien.pointe));
+  const pts = lien.pointe.points;
+  check("lien_pointe_trois_points", pts.length === 3, "obtenu " + pts.length);
+  check("lien_pointe_point_1", pts[0][0] === lien.x2 - 5 && pts[0][1] === g.axeY - 2.6,
+    "obtenu " + JSON.stringify(pts[0]));
+  check("lien_pointe_point_2_sur_x2_axeY", pts[1][0] === lien.x2 && pts[1][1] === g.axeY,
+    "obtenu " + JSON.stringify(pts[1]));
+  check("lien_pointe_point_3", pts[2][0] === lien.x2 - 5 && pts[2][1] === g.axeY + 2.6,
+    "obtenu " + JSON.stringify(pts[2]));
+}
+
+// -- E2 (A5, reste) : le cadre de créneau empilé porte un rayon de coin
+// `rx` non nul (9 px, littéral dans `diagramme.js`, jamais lu depuis `m` —
+// mutant de contrôle M15 : `rx: 9` -> `rx: 0`, aucune garde existante ne le
+// remarquait, un rectangle à coins vifs passait pour conforme).
+function testCadreSimultaneRxVaut9() {
+  const g = disposer(simultanes(2, "2026-09-15T10:00:00.000Z", 60000));
+  const c = g.creneaux[0];
+  check("cadre_simultane_present", !!c.cadre, JSON.stringify(c.cadre));
+  check("cadre_simultane_rx_vaut_9", !!c.cadre && c.cadre.rx === 9,
+    "obtenu " + (c.cadre && c.cadre.rx));
+}
+
+// -- E6a (M18) : seuil du corps du sigle — `rayon > 26` bascule 9.5 -> 11 px.
+// Bornes PILE et JUSTE AUTOUR (PIEGES.md §20 : une mutation du seuil lui-même,
+// ex. `> 26` -> `> 99`, ne mordrait jamais sur une bande large ; ici la
+// fixture VISE le rayon au dix-millième près de la frontière des deux côtés).
+function testSigleTailleSeuilRayon26() {
+  const m = disposer.MESURES_DEFAUT;
+  // `rayonBase`/`rayonCoefficient` lus UNIQUEMENT pour CONSTRUIRE la fixture
+  // (viser un rayon), jamais comme valeur ATTENDUE — la même exception que
+  // `testGraduationsAnglesLongueursEpaisseurs` plus haut.
+  function dureeMsPourRayon(rayonVise) {
+    const s = Math.pow((rayonVise - m.rayonBase) / m.rayonCoefficient, 2);
+    return s * 1000;
+  }
+  function agentPourRayon(rayonVise) {
+    const g = disposer([passage("agent-sigle", "2026-09-15T10:00:00.000Z", dureeMsPourRayon(rayonVise), { outils: 0 })]);
+    return g.creneaux[0].agents[0];
+  }
+  const juste_sous = agentPourRayon(25.9999);
+  check("sigle_taille_juste_sous_26_vaut_9_5",
+    juste_sous.rayon < 26 && juste_sous.sigleTaillePx === 9.5,
+    "rayon=" + juste_sous.rayon + " obtenu " + juste_sous.sigleTaillePx);
+  const juste_sur = agentPourRayon(26.0001);
+  check("sigle_taille_juste_sur_26_vaut_11",
+    juste_sur.rayon > 26 && juste_sur.sigleTaillePx === 11,
+    "rayon=" + juste_sur.rayon + " obtenu " + juste_sur.sigleTaillePx);
+}
+
+// -- E6a (M20) : opacité de l'anneau « en cours », constante 0.45 — valeur
+// LITTÉRALE recopiée depuis `diagramme.js`, jamais relue via
+// `disposer.MESURES_DEFAUT.anneauEnCoursOpacite` (ce serait tautologique :
+// une mutation de la constante muterait aussi la valeur attendue).
+function testAnneauEnCoursOpaciteValeurAttendue() {
+  const g = disposer([passage("test-engineer", "2026-09-15T10:00:00.000Z", 5000, { termine: false })]);
+  const a = g.creneaux[0].agents[0];
+  check("anneau_en_cours_present", a.enCours === true, "obtenu enCours=" + a.enCours);
+  check("anneau_en_cours_opacite_0_45", a.anneauEnCoursOpacite === 0.45,
+    "obtenu " + a.anneauEnCoursOpacite);
+}
+
+// -- E2 (A6) : décalage constant du sigle par rapport au centre du cercle.
+function testSigleBaselineYDecalageConstant() {
+  const g = disposer([passage("debugger", "2026-09-15T10:00:00.000Z", 5000, { outils: 1 })]);
+  const a = g.creneaux[0].agents[0];
+  const m = disposer.MESURES_DEFAUT;
+  check("sigle_baseline_y_decalage", a.sigleBaselineY === a.cy + m.sigleBaselineDecalagePx,
+    "obtenu " + a.sigleBaselineY + " cy=" + a.cy);
+}
+
+// -- Garde Q (architect, feature-020) : `texteAttente()` sur une table
+// manuelle {1 min, 99 min, 100 min, 23 h, 240 h} — jamais dérivée du code
+// sous test. Boîte de pastille FIXE (86 px, budget mesuré 78,1 px) : le
+// texte doit toujours tenir dans un gabarit court (≤ 12 caractères) et
+// respecter le motif `attente <N><m|h>` (ou `attente >99h` au plafond).
+function testGardeQTexteAttenteTableManuelle() {
+  const REGEX_ATTENTE = /^attente (>?\d{1,2})[mh]$/;
+  const table = [
+    [60000, "attente 1m"],           // 1 min
+    [99 * 60000, "attente 99m"],     // 99 min — borne haute de la branche minutes
+    [100 * 60000, "attente 2h"],     // 100 min = 1 h 40 → arrondi à 2 h
+    [23 * 3600000, "attente 23h"],   // 23 h
+    [240 * 3600000, "attente >99h"], // 240 h — plafond
+  ];
+  table.forEach(([ms, attendu]) => {
+    const obtenu = disposer.texteAttente(ms);
+    check("texteAttente_" + ms + "ms_valeur_attendue", obtenu === attendu,
+      "obtenu " + JSON.stringify(obtenu) + " attendu " + JSON.stringify(attendu));
+    check("texteAttente_" + ms + "ms_longueur_max_12", obtenu.length <= 12,
+      "obtenu " + obtenu.length + " caractères : " + JSON.stringify(obtenu));
+    check("texteAttente_" + ms + "ms_motif", REGEX_ATTENTE.test(obtenu),
+      "obtenu " + JSON.stringify(obtenu));
+  });
+}
+
 function main() {
   testUnSeulAgent();
   testQuatreSimultanes();
@@ -712,21 +1092,34 @@ function main() {
   testZeroAppelOutil();
   testPlafondOutilsMesure();
   testSeuilAttenteStrict();
+  testPastilleGabaritFixe();
   testPastilleNeRecouvrePasLeVoisin();
   testPastilleAdjacenteACreneauEmpileNeDeborde();
   testLibellesEmpilesNomsLongsPasDeChevauchement();
   testLibelleSimpleNomTresLongPasDeChevauchement();
   testSeuilAttenteEpingleSurLaConstante();
   testEchecJamaisCumuleAvecSansCloture();
+  testPrioriteContourRoleEchecAvantEnCours();
   testCentQuatreVingtSixPassages();
   testRebouclageEntreOccurrencesDuMemeAgent();
   testArcDeRebouclageTientDansLeCadre();
+  testArcAbsentMargeHautReduite();
   testPasDeRebouclageSansIntercalation();
   testTermineTrueAvecDureeMissing();
   testPlafondAtteintBornePileEtJusteEnDessous();
-  testRayonPlafonneAuDelaDeLaDureeReference();
+  testRayonPlafonneAuDelaDuSeuilDerive();
   testTexteDureeBasculeMinutesPileAuSeuil();
   testDeuxPassagesAdossesPileNeFusionnentPas();
+  testGraduationsAnglesLongueursEpaisseurs();
+  testBornesTKPileEtJusteAutour();
+  testLienExtremitesBordsDeCreneauEtPointe();
+  testCadreSimultaneRxVaut9();
+  testSigleTailleSeuilRayon26();
+  testAnneauEnCoursOpaciteValeurAttendue();
+  testSocleSimpleChampsAttendus();
+  testSocleEmpileChampsAttendus();
+  testSigleBaselineYDecalageConstant();
+  testGardeQTexteAttenteTableManuelle();
 
   console.log("\n" + _tests + " cas, " + _echecs.length + " echec(s)");
   for (const e of _echecs) console.log("  - " + e);

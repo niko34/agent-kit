@@ -84,6 +84,10 @@ class FakeNode {
     this.children = [];
     this._text = "";
     this.className = "";
+    // feature-016 : app.js pose désormais `.style.color`/`.style.background`
+    // (identité de couleur d'agent, §8 du design system) — un objet nu
+    // suffit, `.style` n'a besoin d'aucun comportement CSSOM réel ici.
+    this.style = {};
     this.hidden = false;
     this.disabled = false;
     this.checked = false;
@@ -131,22 +135,55 @@ class FakeNode {
 // Identifiants réellement présents dans `control-center/web/index.html` —
 // tenus à jour à la main, PAS lus depuis le HTML (le harnais reste un
 // script isolé, sans parseur HTML : ADR-0006).
+//
+// ⚠️ Piège mesuré (PIEGES.md §7) : cette liste tenue à la main a laissé
+// passer, sans échec, l'arrivée de la navigation à sections (feature-019) —
+// `nav-sections`, les six onglets, les six sections et leurs six titres,
+// PLUS `barre` (ajouté en revue pour `--hauteur-barre`) manquaient encore ici
+// pendant tout le cycle : chaque `if (section) …`/`if (onglet) …` de
+// `appliquerSection` (app.js) avalait silencieusement un `getElementById`
+// retombé à `null`, et la suite restait verte sur une navigation totalement
+// inerte. Complété le 2026-09-15 (revue) — comparé par exécution à
+// `grep -oE 'id="[a-zA-Z0-9-]+"' index.html`, pas recopié à l'œil.
 const IDS = [
   "agents", "bandeau-hote", "bandeau-hote-bouton", "bandeau-hote-texte",
-  "bascule-theme", "compteur-specs", "compteur-workflows", "fichiers",
+  "barre", "bascule-theme", "compteur-specs", "fichiers",
   "filtre", "filtre-divergences", "horodatage", "icone-systeme-clair",
   "icone-systeme-sombre", "jauge-flux", "jauge-git", "jauge-pilotage",
-  "kanban", "note-agents", "pilotage-corps", "porte-aide", "porte-bouton",
-  "porte-champ", "porte-corps", "porte-erreur", "porte-jeton", "porte-titre",
-  "projet", "prompt", "systeme", "theme-clair", "theme-sombre",
-  "theme-systeme", "timeline", "tiroir", "tiroir-contenu", "tiroir-fermer",
-  "tiroir-titre", "titre-demande", "titre-pilotage", "workflows",
-];
+  "kanban", "legende-cycles", "nav-sections", "note-agents", "pied-cycles",
+  "pilotage-corps", "porte-aide", "porte-bouton", "porte-champ",
+  "porte-corps", "porte-erreur", "porte-jeton", "porte-titre", "projet",
+  "prompt", "systeme", "theme-clair", "theme-sombre", "theme-systeme",
+  "timeline", "tiroir", "tiroir-contenu", "tiroir-fermer", "tiroir-titre",
+  "titre-cycles", "titre-demande", "titre-pilotage", "workflows",
+].concat(["agents", "systeme", "developper", "cycles", "fichiers", "evenements"]
+  .flatMap((s) => ["onglet-" + s, "section-" + s, "titre-section-" + s]));
 // Cachés par défaut dans le HTML (attribut `hidden` présent sur le balisage
 // d'origine) — voir index.html.
 const CACHES_PAR_DEFAUT = new Set([
   "bandeau-hote", "tiroir", "porte-jeton", "porte-erreur", "icone-systeme-sombre",
+  "section-systeme", "section-developper", "section-cycles", "section-fichiers",
+  "section-evenements",
 ]);
+
+// Garde structurelle contre la RÉCURRENCE du piège ci-dessus (§7) : `IDS`
+// reste tenue à la main (le bac à sable n'a pas de parseur HTML complet),
+// mais on la COMPARE ici, par exécution, à ce que `index.html` porte
+// RÉELLEMENT — dans les deux sens. Un identifiant ajouté au HTML et oublié
+// ici, ou retiré du HTML et laissé ici, fait échouer CE test, pas la suite
+// entière en silence.
+(function testListeIdsAJourAvecLeHtmlReel() {
+  const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
+  const idsHtml = new Set((html.match(/\bid="[a-zA-Z0-9-]+"/g) || [])
+    .map((m) => m.slice(4, -1)));
+  const idsListe = new Set(IDS);
+  const manquants = [...idsHtml].filter((id) => !idsListe.has(id));
+  const perimes = [...idsListe].filter((id) => !idsHtml.has(id));
+  check("prealable_IDS_couvre_tous_les_id_du_html", manquants.length === 0,
+    manquants.length + " manquant(s) : " + manquants.join(", "));
+  check("prealable_IDS_ne_contient_aucun_id_perime", perimes.length === 0,
+    perimes.length + " périmé(s) : " + perimes.join(", "));
+})();
 
 function creerBac() {
   const elements = new Map();
@@ -160,6 +197,11 @@ function creerBac() {
   const document_ = {
     getElementById: (id) => elements.get(id) || null,
     createElement: (tag) => new FakeNode(tag),
+    // feature-017 : `construireDiagramme` (app.js) construit du SVG réel via
+    // `createElementNS` — un simple `FakeNode` suffit ici, ce module n'a
+    // besoin d'aucun comportement SVG spécifique pour ces suites (qui ne
+    // testent pas le diagramme lui-même, voir `test_app_diagramme.js`).
+    createElementNS: (_ns, tag) => new FakeNode(tag),
     createTextNode: (texte) => { const n = new FakeNode("#text"); n.textContent = texte; return n; },
     createDocumentFragment: () => new FakeNode("#fragment"),
     addEventListener: () => {},
@@ -239,8 +281,17 @@ function creerBac() {
   };
 }
 
+let _sourceDiagrammeJs = null;
 let _sourceAppJs = null;
 function chargerAppJS(bac) {
+  // feature-017 : `app.js` appelle `disposer()`, définie dans `diagramme.js`
+  // — chargé ICI, dans le MÊME contexte `vm`, avant `app.js`, exactement
+  // comme `index.html` charge les deux `<script>` dans cet ordre.
+  if (_sourceDiagrammeJs === null) {
+    _sourceDiagrammeJs = fs.readFileSync(path.join(__dirname, "diagramme.js"), "utf8");
+  }
+  new vm.Script(_sourceDiagrammeJs, { filename: "diagramme.js" }).runInContext(bac.sandbox);
+
   if (_sourceAppJs === null) {
     const chemin = path.join(__dirname, "app.js");
     _sourceAppJs = fs.readFileSync(chemin, "utf8");
@@ -522,8 +573,9 @@ async function testRebouclageAncreDansLaChaine() {
   };
 
   const bac = await chargerAvecEtat({ workflows: [workflowNegatif, workflowPositif] });
-  // `rendreWorkflows` affiche `etat.workflows.slice().reverse()` : le premier
-  // bloc DOM rendu est donc `workflowPositif` (le dernier de la liste fournie).
+  // `rendreCycles` (feature-016 ; anciennement `rendreWorkflows`) affiche
+  // `etat.workflows.slice().reverse()` : le premier bloc DOM rendu est donc
+  // `workflowPositif` (le dernier de la liste fournie).
   const tousMaillons = maillonsWorkflows(bac);
   // Le bandeau `.wf-notes.reboucle` ne doit se déclencher QUE si
   // `indicesRepris` a réellement marqué un maillon (`.repris`) — jamais sur

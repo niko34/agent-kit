@@ -325,6 +325,13 @@ class Etat:
         workflows = E.reconstruire(
             evenements, self.config.tetes_de_commande(), self.config.agents_ouvrants(),
             maintenant=maintenant, seuil_abandon_minutes=self.config.seuil_abandon_minutes())
+        # Lus AVANT le découpage `workflows[-N:]` ci-dessous (feature-016,
+        # item K) : `evenements_hors_session` est un ATTRIBUT de la liste
+        # `_Workflows` (voir events.py), perdu dès qu'on la tranche — une
+        # slice rend une liste ordinaire. Calculé aujourd'hui, jamais exposé :
+        # la liste des cycles en accordéon l'affiche en pied de liste.
+        evenements_hors_session = workflows.evenements_hors_session
+        cycles_total = len(workflows)
         specs = self.specs()
         colonnes = [{"repertoire": r, "classe": c, "libelle": l}
                     for r, c, l in self.config.colonnes()]
@@ -369,6 +376,11 @@ class Etat:
             "divergences": sum(1 for s in specs if s["divergence"]),
             "agents": [dict(a, actif_sur=actifs.get(a["nom"])) for a in agents],
             "workflows": workflows[-self.config.workflows_affiches():],
+            # Additifs (feature-016, item K) : le frontend en tolère
+            # l'absence (backend plus ancien) — la légende de la liste de
+            # cycles retombe alors sur le seul compte affiché.
+            "cycles_total": cycles_total,
+            "evenements_hors_session": evenements_hors_session,
             "evenements": [_evenement_public(e) for e in evenements[-60:]],
             "git": {
                 "depot": V.est_un_depot(self.racine),
