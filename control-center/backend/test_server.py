@@ -127,14 +127,19 @@ def main():
         #    plus que GET et POST : ajouter un `do_PUT` un jour ferait échouer
         #    ce test, même si son comportement HTTP était par ailleurs masqué ;
         # 2. l'ensemble des routes d'écriture réellement routées par `do_POST`
-        #    est EXACTEMENT `{"/api/lancer", "/api/interrompre"}` : y ajouter
-        #    une route sans la déclarer ici (ou l'inverse) fait échouer ce test.
+        #    est EXACTEMENT l'ensemble ci-dessous (feature-008 : ADR-0027 y
+        #    ajoute `/api/spec/brouillon` et `/api/spec/ecrire` — la première
+        #    n'écrit rien mais doit rester dans cette liste pour être
+        #    ATTEIGNABLE, `do_POST` n'en routant aucun chemin absent d'ici) :
+        #    y ajouter une route sans la déclarer ici (ou l'inverse) fait
+        #    échouer ce test.
         methodes_do = {n for n in dir(SRV.Handler) if n.startswith("do_")}
         check("test_do_methodes_limitees_a_get_et_post",
               methodes_do == {"do_GET", "do_POST"},
               "trouvées : %r" % sorted(methodes_do))
         check("test_routes_ecriture_fermees",
-              set(SRV._ROUTES_ECRITURE) == {"/api/lancer", "/api/interrompre"},
+              set(SRV._ROUTES_ECRITURE) == {"/api/lancer", "/api/interrompre",
+                                             "/api/spec/brouillon", "/api/spec/ecrire"},
               "trouvées : %r" % sorted(SRV._ROUTES_ECRITURE))
 
         # --- routes de lecture ----------------------------------------------

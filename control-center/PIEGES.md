@@ -22,9 +22,15 @@ coûté. Aucune n'est une précaution théorique.
 présent, et `git clone` ne le copie pas — on mesure alors un état qui n'existe
 nulle part.
 
-Le clone doit contenir **`control-center/` ET `.claude/agents/`**. La racine des
-données dérive de l'emplacement de `server.py` : **un clone partiel écrit dans le
-vrai journal.**
+Le clone doit contenir **`control-center/` ET `.claude/agents/` ET
+`specs/features/_template.md` ET `specs/modele.md`** — ces deux derniers sont
+hors de `control-center/`, mais `redaction_spec.py` (`preparer_brouillon`) les
+lit directement depuis le projet (`feature-008`). Un clone qui n'en copie que
+`control-center/` rend `500 template introuvable` sur ce module : un symptôme
+qui ressemble à un défaut du code, alors que c'est le clone qui est incomplet.
+
+La racine des données dérive de l'emplacement de `server.py` : **un clone
+partiel écrit dans le vrai journal.**
 
 > Coûté une fois : un test a échoué pour une mauvaise raison, et le diagnostic a
 > porté sur le mauvais défaut.
@@ -359,6 +365,89 @@ dans l'autre.
 **Un invariant énoncé en commentaire n'est une garde que si un test l'évalue
 — sinon c'est de la documentation qui peut mentir sans qu'aucune suite ne le
 remarque.**
+
+## 34. `_ROUTES_ECRITURE` est la table de routage de `do_POST`, pas une liste sémantique
+
+Un chemin absent de `_ROUTES_ECRITURE` reçoit `404` **avant toute autre
+garde** (`server.py`, `do_POST`). Dans ce module, « route d'écriture » ne
+veut donc pas dire « route qui écrit sur disque » mais « chemin que
+`do_POST` accepte de router ». `POST /api/spec/brouillon` (`feature-008`)
+n'écrit rien et figure pourtant dans cette liste : l'en retirer l'aurait
+rendu **inatteignable**, pas seulement moins gardé.
+
+Coûté une fois : un rapport d'agent, en appliquant la lecture sémantique, a
+conclu à 3 routes d'écriture au lieu de 4 — sans correction, une route
+entière aurait été livrée mais jamais atteignable.
+
+## 35. Une campagne de mutation enchaînée en boucle shell rend des verdicts faux
+
+Poser plusieurs mutants à la suite dans une même boucle shell (muter,
+mesurer, passer au suivant) fait attribuer l'échec d'un mutant au suivant
+si la restauration du précédent n'est pas prise en compte avant la mesure
+suivante. Observé **deux fois, par deux agents différents** pendant
+`feature-008`.
+
+**Règle** : un mutant se pose, se vérifie par `grep` du marqueur introduit,
+se mesure, se retire — **une invocation par mutant**, jamais une boucle qui
+enchaîne sans vérification intermédiaire.
+
+## 36. `__pycache__` non invalidé fait servir un `.pyc` muté après restauration du source
+
+Une mutation posée puis retirée rapidement (`cp`/édition/restauration) sur
+un même fichier peut laisser Python servir le `.pyc` compilé pendant la
+fenêtre mutée, y compris après que le fichier source a été restauré sain —
+le verdict de la mesure suivante porte alors sur du code qui n'existe plus
+sur disque.
+
+**Parade** : `PYTHONDONTWRITEBYTECODE=1` et purge de `__pycache__` avant
+toute mesure qui suit une mutation.
+
+## 37. Muter une garde n'est pas muter ce qu'elle appelle
+
+Deux façons de casser une garde donnent des verdicts de mutation
+incomparables :
+
+- **inverser une condition qu'elle appelle** (ex. `chemin_sur()`) casse
+  aussi bien le cas hostile que le cas nominal, et meurt souvent pour une
+  **mauvaise raison** — le test nominal échoue, pas le test de sécurité ;
+- **neutraliser la garde elle-même** (`if False:` sur la fonction qui
+  l'applique) n'ouvre **que** le cas hostile, sans toucher au nominal — c'est
+  la mutation qui prouve réellement que la garde est tenue.
+
+Sur `feature-008`, trois gardes avaient été déclarées « tuées » par la
+première méthode alors qu'aucun test ne les tenait réellement par la
+seconde — dont le **confinement** (`vcs.chemin_sur()` sur le chemin final
+d'écriture), la garde centrale du module contre une écriture hors de
+`todo/`.
+
+## 38. Le bac à sable JS ne connaît que les ids du HTML statique
+
+Une sonde qui cherche un élément par `getElementById` dans le harnais `vm`
+(`test_app_*.js`) ne voit que ce qui existe dans le HTML **statique** chargé
+au départ. Un élément créé **dynamiquement** par `app.js` (ex.
+`#brouillon-contenu` inséré après un changement d'état) rend `null` à
+`getElementById`, et une sonde qui ne vérifie pas ce `null` **passe en
+silence** au lieu d'échouer — elle ne teste alors rien.
+
+A fait conclure une fois à tort qu'un correctif (flush du débounce avant un
+clic) ne fonctionnait pas, alors que le défaut réel était l'absence de
+l'élément dans le bac à sable, pas dans le correctif. Distinct de §7 (liste
+`IDS` tenue à la main) : ici l'id existe bel et bien dans le code, mais
+l'élément qui le porte n'existe pas encore au moment où le bac à sable est
+construit.
+
+## 39. Deux limites du bac à sable `vm`/`FakeNode`, mesurées sur `feature-008`
+
+- `appendChild(fragment)` du `FakeNode` de test **ne vide pas** le
+  `DocumentFragment` dans le parent, contrairement au DOM réel (où ajouter
+  un fragment déplace ses enfants et le laisse vide) : une assertion qui
+  compte les enfants du parent après un tel appel compte à tort le
+  fragment lui-même comme un seul nœud.
+- Un `let`/`const` déclaré au **niveau supérieur** d'un script exécuté par
+  `vm.Script.runInContext()` ne devient **jamais** une propriété du contexte
+  sandbox — seuls `var` et `function` le deviennent. Un test qui s'attend à
+  lire une constante du module sous test comme propriété du sandbox ne la
+  trouve pas, silencieusement.
 
 ## Voir aussi
 

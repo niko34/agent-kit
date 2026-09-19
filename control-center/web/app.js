@@ -2197,6 +2197,486 @@ function actualiserPilotage(etat) {
   rendreBadgePilotage(etat);
 }
 
+/* --------------------------------------------------------------- redaction -
+ * feature-008 : décrire un besoin en texte libre, obtenir un brouillon de
+ * spec conforme au template DU PROJET, le relire, l'éditer, puis l'écrire
+ * explicitement dans `specs/features/todo/`.
+ *
+ * AUCUN appel de modèle : le texte saisi ne quitte JAMAIS ce poste — les
+ * substitutions sont déterministes, côté serveur (architect, feature-008).
+ *
+ * Machine à états calquée sur `pilotage` ci-dessus :
+ *   saisie -> brouillon -> confirmation-ecriture -> ecrit
+ * plus une erreur qui NE QUITTE JAMAIS la phase où elle survient — jamais de
+ * reset du texte du besoin, du brouillon ou du contenu édité.
+ *
+ * Design arrêté (ux-ui-designer, feature-008) : panneau en FLUX normal dans
+ * `.demande`, aucune surface `role="dialog"`/`.porte` pour ce flux tant que
+ * bug-017 (la porte d'authentification ne rend pas le reste du document
+ * inerte au clavier) n'est pas corrigé — rebâtir une modale ici exposerait
+ * le même défaut sur une action plus grave (écriture de fichier sur disque).
+ *
+ * `ecriture_active` / `ecriture_raison` sont lus depuis le MÊME `dernierEtat`
+ * que le bloc Pilotage (aucun nouvel appel réseau) : le bouton « Écrire… »
+ * n'est qu'une commodité d'affichage, jamais une garde — le backend revalide
+ * tout (401/422/409/503/500 gérés explicitement plus bas).
+ */
+let redaction = {
+  phase: "saisie",          // saisie | brouillon | confirmation-ecriture | ecrit
+  enCoursBrouillon: false,
+  enCoursEcriture: false,
+  erreurBrouillon: null,    // affichée près du bouton Générer/Régénérer
+  erreurEcriture: null,     // affichée près du bouton Confirmer l'écriture
+  /* { genre, titre, texte, minimal, slug, nomFichierPrevu, substitutions } —
+   * l'EXACTE requête qui a produit ce brouillon. `genre`/`titre` sont
+   * renvoyés à `/api/spec/ecrire` (jamais une relecture tardive de
+   * `#titre-besoin`, qui a pu changer depuis sans régénération) ; `texte`/
+   * `minimal` ne servent qu'à `/api/spec/brouillon` (pas repris à
+   * l'écriture, qui envoie `contenu` à la place — voir `surClicConfirmerEcriture`). */
+  brouillon: null,
+  contenu: "",              // texte du <textarea class="brouillon"> — ÉCRIT VERBATIM sur disque
+  compteRemplir: 0,
+  derogationIgnoree: false, // dérogation cochée mais template complet imposé
+  ecrit: null,              // { chemin, numero }
+};
+
+let minuteurCompteRemplir = null;
+
+/* Seul le COMPTE est affiché (aria-live) — jamais une coloration de
+ * sous-chaîne dans un `<textarea>` (impossible sans en changer la nature,
+ * ux-ui-designer). Recalculé côté client uniquement, jamais renvoyé par le
+ * serveur : c'est une aide à la relecture, pas une validation. */
+function compterRemplir(texte) {
+  const trouves = String(texte || "").match(/\[remplir\]/g);
+  return trouves ? trouves.length : 0;
+}
+
+/* La réponse de `POST /api/spec/brouillon` (`{genre, slug, nom_fichier_prevu,
+ * contenu, substitutions}`) ne porte AUCUN champ qui distingue le gabarit
+ * complet du gabarit minimal — `genre` n'est qu'un écho de `type`, jamais un
+ * signal d'escalade (le choix fail-closed entre gabarit complet/minimal,
+ * `choisir_richesse`, est invisible ailleurs que dans le contenu lui-même).
+ * C'est donc le CONTENU renvoyé par LE BROUILLON qu'il faut lire pour
+ * détecter une escalade : `## Symptôme observé` n'existe que dans
+ * `specs/modele.md` (gabarit minimal), jamais dans `_template.md` (gabarit
+ * complet). Sert UNIQUEMENT à afficher la note « Dérogation ignorée » à la
+ * génération du brouillon — sans effet sur `/api/spec/ecrire`, qui écrit
+ * désormais le Markdown relu VERBATIM (voir `surClicConfirmerEcriture`). */
+function contenuEstGabaritMinimal(contenu) {
+  return String(contenu || "").indexOf("## Symptôme observé") !== -1;
+}
+
+function texteCompteRemplir(n) {
+  return n + (n === 1 ? " bloc [remplir] restant" : " blocs [remplir] restants");
+}
+
+function actualiserCompteurPrompt() {
+  const champ = $("prompt");
+  const compteur = $("compteur-prompt");
+  if (!champ || !compteur) return;
+  const n = champ.value.length;
+  compteur.textContent = n + (n === 1 ? " caractère" : " caractères");
+}
+
+function afficherErreurGenerationStatique(message) {
+  const p = $("erreur-generer-brouillon");
+  if (!p) return;
+  p.textContent = message;
+  p.hidden = false;
+}
+
+function masquerErreurGenerationStatique() {
+  const p = $("erreur-generer-brouillon");
+  if (!p) return;
+  p.hidden = true;
+  p.textContent = "";
+}
+
+function messageErreurGenerique(statut) {
+  return "Erreur du serveur (" + statut + ").";
+}
+
+function rendreBrouillonRedaction() {
+  const conteneur = document.createDocumentFragment();
+  const b = redaction.brouillon;
+
+  const titre = el("h3", "", "Brouillon — " + b.nomFichierPrevu);
+  titre.tabIndex = -1;
+  conteneur.appendChild(titre);
+
+  const subs = b.substitutions || [];
+  conteneur.appendChild(el("p", "note",
+    subs.length ? "Substitutions automatiques : " + subs.join(", ")
+      : "Aucune substitution automatique — tout reste à relire."));
+
+  if (redaction.derogationIgnoree) {
+    conteneur.appendChild(el("p", "note avert",
+      "Dérogation ignorée : le texte mentionne un sujet sensible — "
+      + "template complet appliqué."));
+  }
+
+  const compteurRemplir = el("span", "compteur", texteCompteRemplir(redaction.compteRemplir));
+  compteurRemplir.setAttribute("aria-live", "polite");
+  conteneur.appendChild(compteurRemplir);
+
+  const textarea = document.createElement("textarea");
+  textarea.id = "brouillon-contenu";
+  textarea.className = "brouillon";
+  textarea.rows = 20;
+  textarea.value = redaction.contenu;
+  textarea.setAttribute("aria-label",
+    "Contenu du brouillon, modifiable avant écriture — c'est EXACTEMENT ce "
+    + "texte qui sera écrit sur disque, les blocs [remplir] restent visibles "
+    + "tels quels");
+  /* Recalcul débounced (~300 ms) : jamais recompté côté serveur, et la
+   * garde-fou anti-perte de focus du module (aucun `vider`/redessin complet
+   * pendant la frappe) — seuls le compteur et l'état sont mis à jour. */
+  textarea.addEventListener("input", () => {
+    clearTimeout(minuteurCompteRemplir);
+    minuteurCompteRemplir = setTimeout(() => {
+      redaction.contenu = textarea.value;
+      redaction.compteRemplir = compterRemplir(textarea.value);
+      compteurRemplir.textContent = texteCompteRemplir(redaction.compteRemplir);
+    }, 300);
+  });
+  conteneur.appendChild(textarea);
+
+  const boutons = el("div", "pilotage-boutons");
+  const regenerer = el("button", "pilotage-secondaire", "Régénérer");
+  regenerer.type = "button";
+  regenerer.disabled = redaction.enCoursBrouillon;
+  regenerer.addEventListener("click", surClicGenererBrouillon);
+  boutons.appendChild(regenerer);
+
+  const ecritureActive = Boolean(dernierEtat && dernierEtat.ecriture_active);
+  const ecrire = el("button", "action-ecriture", "Écrire dans todo/…");
+  ecrire.type = "button";
+  ecrire.id = "bouton-ecrire-spec";
+  /* Commodité d'affichage seulement : le backend revalide `ecriture_active`
+   * indépendamment, à l'écriture réelle. */
+  ecrire.disabled = !ecritureActive || redaction.enCoursEcriture;
+  ecrire.addEventListener("click", surClicDemanderEcriture);
+  boutons.appendChild(ecrire);
+
+  if (redaction.erreurBrouillon) {
+    const erreur = el("p", "note erreur", redaction.erreurBrouillon);
+    erreur.setAttribute("role", "alert");
+    conteneur.appendChild(erreur);
+  }
+
+  conteneur.appendChild(boutons);
+
+  if (!ecritureActive) {
+    const note = el("p", "note avert");
+    note.appendChild(document.createTextNode("Écriture non activée : "));
+    note.appendChild(el("strong", "", (dernierEtat && dernierEtat.ecriture_raison) || "raison inconnue"));
+    conteneur.appendChild(note);
+  }
+
+  requestAnimationFrame(() => { titre.focus(); });
+  return conteneur;
+}
+
+function rendreConfirmationEcritureRedaction() {
+  const conteneur = document.createDocumentFragment();
+  const titre = el("h3", "", "Confirmer l'écriture");
+  titre.tabIndex = -1;
+  conteneur.appendChild(titre);
+
+  const question = el("p", "");
+  question.appendChild(document.createTextNode("Écrire "));
+  question.appendChild(el("code", "", redaction.brouillon.nomFichierPrevu));
+  question.appendChild(document.createTextNode(" dans specs/features/todo/ ?"));
+  conteneur.appendChild(question);
+
+  conteneur.appendChild(el("p", "note",
+    "Fichier créé sur disque, non commité. Irréversible côté outil."));
+
+  if (redaction.erreurEcriture) {
+    const erreur = el("p", "note erreur", redaction.erreurEcriture);
+    erreur.setAttribute("role", "alert");
+    conteneur.appendChild(erreur);
+  }
+
+  const boutons = el("div", "pilotage-boutons");
+  const annuler = el("button", "pilotage-secondaire", "Annuler");
+  annuler.type = "button";
+  annuler.disabled = redaction.enCoursEcriture;
+  annuler.addEventListener("click", surClicAnnulerEcriture);
+  const confirmer = el("button", "action-ecriture", "Confirmer l'écriture");
+  confirmer.type = "button";
+  confirmer.disabled = redaction.enCoursEcriture;
+  confirmer.addEventListener("click", surClicConfirmerEcriture);
+  boutons.appendChild(annuler);
+  boutons.appendChild(confirmer);
+  conteneur.appendChild(boutons);
+
+  requestAnimationFrame(() => { titre.focus(); });
+  return conteneur;
+}
+
+function rendreEcritRedaction() {
+  const conteneur = document.createDocumentFragment();
+  const titre = el("h3", "", "Spec écrite");
+  titre.tabIndex = -1;
+  conteneur.appendChild(titre);
+
+  const p = el("p", "");
+  p.appendChild(document.createTextNode("Fichier créé : "));
+  p.appendChild(el("code", "", redaction.ecrit.chemin));
+  conteneur.appendChild(p);
+
+  conteneur.appendChild(el("p", "note",
+    "Numéro attribué : " + redaction.ecrit.numero + ". Non committé — la "
+    + "promotion vers doing/ reste la main de spec-reader."));
+
+  const nouveau = el("button", "pilotage-secondaire", "Nouveau brouillon");
+  nouveau.type = "button";
+  nouveau.addEventListener("click", surClicNouveauBrouillon);
+  conteneur.appendChild(nouveau);
+
+  requestAnimationFrame(() => { titre.focus(); });
+  return conteneur;
+}
+
+function rendreRedaction() {
+  clearTimeout(minuteurCompteRemplir);
+  const corps = $("redaction-corps");
+  if (!corps) return;
+  vider(corps);
+  if (redaction.phase === "brouillon") {
+    corps.appendChild(rendreBrouillonRedaction());
+  } else if (redaction.phase === "confirmation-ecriture") {
+    corps.appendChild(rendreConfirmationEcritureRedaction());
+  } else if (redaction.phase === "ecrit") {
+    corps.appendChild(rendreEcritRedaction());
+  }
+  /* phase === "saisie" : rien à afficher, le formulaire suffit. */
+}
+
+/* -- actions ------------------------------------------------------------- */
+
+/* Sert à la fois « Générer le brouillon » (phase saisie) et « Régénérer »
+ * (phase brouillon) : les deux relisent les MÊMES champs (`#titre-besoin`,
+ * `#prompt`, `#derogation-minimale`) — Régénérer n'agit jamais sur le texte
+ * édité du brouillon, seulement sur le besoin d'origine (voir message du
+ * 409). La case « bug simple / refactor ponctuel » pilote À LA FOIS le
+ * PRÉFIXE de fichier demandé (`type` : "bug" plutôt que "feature") et
+ * la RICHESSE de template demandée (`minimal`) — le serveur peut honorer
+ * l'un sans l'autre (fail-closed sur la richesse seulement, voir
+ * `contenuEstGabaritMinimal`), jamais l'inverse : le frontend ne décide
+ * rien, il relit ce que le contenu renvoyé révèle. */
+async function surClicGenererBrouillon() {
+  const champTitre = $("titre-besoin");
+  const champPrompt = $("prompt");
+  const champDerogation = $("derogation-minimale");
+  if (!champTitre || !champPrompt || !champDerogation) return;
+  const titre = champTitre.value;
+  const texte = champPrompt.value;
+  const derogationDemandee = champDerogation.checked;
+  const type = derogationDemandee ? "bug" : "feature";
+  const enRegeneration = redaction.phase === "brouillon";
+
+  redaction.enCoursBrouillon = true;
+  redaction.erreurBrouillon = null;
+  masquerErreurGenerationStatique();
+  const boutonInitial = $("bouton-generer-brouillon");
+  if (boutonInitial) boutonInitial.disabled = true;
+  if (enRegeneration) rendreRedaction();
+
+  try {
+    const reponse = await fetch("/api/spec/brouillon", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, enTeteAuthPilotage()),
+      body: JSON.stringify({ type: type, titre: titre, texte: texte, minimal: derogationDemandee }),
+    });
+
+    if (reponse.status === 401) {
+      /* Reboucle (revue) : la porte peut s'ouvrir à tout moment — jamais au
+       * prix du Markdown relu. Le drapeau retombe et le panneau se redessine
+       * AVANT `sur401Lecture()`, pour que « Régénérer »/« Écrire… » soient
+       * de nouveau cliquables dès la reconnexion, sans rechargement qui
+       * détruirait `redaction.contenu`. */
+      redaction.enCoursBrouillon = false;
+      if (enRegeneration) rendreRedaction();
+      sur401Lecture();
+      return;
+    }
+
+    const donnees = await reponse.json().catch(() => ({}));
+
+    if (reponse.status === 200) {
+      redaction.brouillon = {
+        genre: donnees.genre,
+        titre: titre,
+        texte: texte,
+        minimal: derogationDemandee,
+        slug: donnees.slug,
+        nomFichierPrevu: donnees.nom_fichier_prevu,
+        substitutions: donnees.substitutions || [],
+      };
+      redaction.contenu = donnees.contenu || "";
+      redaction.compteRemplir = compterRemplir(redaction.contenu);
+      /* Escalade rendue visible, jamais silencieuse : une dérogation demandée
+       * mais non honorée par le serveur (mot-clé sensible détecté côté
+       * serveur, fail-closed) se voit — `genre` n'est qu'un écho de `type`,
+       * la seule preuve fiable est dans le CONTENU renvoyé. */
+      redaction.derogationIgnoree = derogationDemandee && !contenuEstGabaritMinimal(redaction.contenu);
+      redaction.enCoursBrouillon = false;
+      redaction.phase = "brouillon";
+      rendreRedaction();
+      return;
+    }
+
+    redaction.enCoursBrouillon = false;
+    let message;
+    if (reponse.status === 422) {
+      message = donnees.erreur
+        || "Titre ou texte vide ou invalide après normalisation : reformulez.";
+    } else if (reponse.status === 500) {
+      message = "Erreur serveur : le template ou le répertoire cible est introuvable.";
+    } else {
+      message = messageErreurGenerique(reponse.status);
+    }
+    redaction.erreurBrouillon = message;
+    if (enRegeneration) rendreRedaction();
+    else afficherErreurGenerationStatique(message);
+  } catch (erreur) {
+    redaction.enCoursBrouillon = false;
+    redaction.erreurBrouillon = "Erreur réseau : " + erreur.message;
+    if (enRegeneration) rendreRedaction();
+    else afficherErreurGenerationStatique(redaction.erreurBrouillon);
+  } finally {
+    if (boutonInitial) boutonInitial.disabled = false;
+  }
+}
+
+/* Aucun appel réseau ici : `ecriture_active` est déjà connu par le MÊME
+ * `dernierEtat` que le bloc Pilotage (voir en-tête de section). Le bouton
+ * est déjà désactivé si l'écriture n'est pas active — cette vérification est
+ * une commodité, pas une garde, le clic ne peut de toute façon pas survenir
+ * sur un bouton `disabled`. */
+function surClicDemanderEcriture() {
+  if (!dernierEtat || !dernierEtat.ecriture_active) {
+    /* Rare : l'état a changé depuis le dernier rendu du panneau (le bouton
+     * était encore affiché actif). On redessine pour que le bouton et la
+     * note « Écriture non activée » reflètent l'état réel — sans nouvel
+     * appel réseau, toujours le même `dernierEtat`. */
+    rendreRedaction();
+    return;
+  }
+  /* Flush du débounce : le panneau de confirmation ne porte plus de
+   * <textarea> (rendreConfirmationEcritureRedaction), donc plus aucune
+   * frappe ne pourra mettre à jour `redaction.contenu` une fois qu'on aura
+   * quitté cette phase. `/api/spec/ecrire` écrit désormais CE texte
+   * verbatim (voir `surClicConfirmerEcriture`) : une frappe survenue dans
+   * les 300 ms précédant le clic ne doit jamais se perdre. */
+  const champBrouillon = $("brouillon-contenu");
+  if (champBrouillon) {
+    clearTimeout(minuteurCompteRemplir);
+    redaction.contenu = champBrouillon.value;
+    redaction.compteRemplir = compterRemplir(champBrouillon.value);
+  }
+  redaction.erreurEcriture = null;
+  redaction.phase = "confirmation-ecriture";
+  rendreRedaction();
+}
+
+function surClicAnnulerEcriture() {
+  redaction.erreurEcriture = null;
+  redaction.phase = "brouillon";
+  rendreRedaction();
+  const bouton = $("bouton-ecrire-spec");
+  if (bouton) bouton.focus();
+}
+
+async function surClicConfirmerEcriture() {
+  if (redaction.enCoursEcriture) return;
+  redaction.enCoursEcriture = true;
+  redaction.erreurEcriture = null;
+  rendreRedaction();
+
+  try {
+    /* `contenu` est le Markdown EXACTEMENT tel qu'affiché et édité dans le
+     * <textarea> (flush du débounce fait par `surClicDemanderEcriture` avant
+     * d'entrer dans cette phase) — c'est ce que l'humain a relu, écrit
+     * VERBATIM par le serveur. `type`/`titre` restent des champs dédiés :
+     * le slug, donc le chemin, en est re-dérivé et re-validé côté serveur,
+     * jamais lu dans `contenu` (GATE P1 condition 1 — porte sur le CHEMIN,
+     * jamais sur le contenu). `texte`/`minimal` ne sont plus envoyés sur
+     * cette route (ils ne servent qu'à `/api/spec/brouillon`). */
+    const reponse = await fetch("/api/spec/ecrire", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, enTeteAuthPilotage()),
+      body: JSON.stringify({
+        type: redaction.brouillon.genre,
+        titre: redaction.brouillon.titre,
+        contenu: redaction.contenu,
+      }),
+    });
+
+    if (reponse.status === 401) {
+      /* Même correctif que `surClicGenererBrouillon` : le drapeau retombe et
+       * le panneau de confirmation se redessine (Annuler/Confirmer de
+       * nouveau actifs) AVANT d'ouvrir la porte — le Markdown relu
+       * (`redaction.contenu`) n'est jamais perdu, aucun rechargement requis. */
+      redaction.enCoursEcriture = false;
+      rendreRedaction();
+      sur401Lecture();
+      return;
+    }
+
+    const donnees = await reponse.json().catch(() => ({}));
+
+    if (reponse.status === 201) {
+      redaction.ecrit = { chemin: donnees.chemin, numero: donnees.numero };
+      redaction.enCoursEcriture = false;
+      redaction.phase = "ecrit";
+      rendreRedaction();
+      return;
+    }
+
+    redaction.enCoursEcriture = false;
+    if (reponse.status === 409) {
+      redaction.erreurEcriture = "Un fichier nommé " + redaction.brouillon.nomFichierPrevu
+        + " existe déjà. Modifiez le texte du besoin, puis Régénérer.";
+    } else if (reponse.status === 422) {
+      redaction.erreurEcriture = donnees.erreur
+        || "Contenu manquant, vide ou trop long, ou nom de fichier invalide "
+          + "après normalisation.";
+    } else if (reponse.status === 503) {
+      redaction.erreurEcriture = "Verrou de numérotation momentanément indisponible. Réessayez.";
+    } else if (reponse.status === 500) {
+      redaction.erreurEcriture = "Erreur serveur : le template ou le répertoire cible est introuvable.";
+    } else {
+      redaction.erreurEcriture = messageErreurGenerique(reponse.status);
+    }
+    rendreRedaction();
+  } catch (erreur) {
+    redaction.enCoursEcriture = false;
+    redaction.erreurEcriture = "Erreur réseau : " + erreur.message;
+    rendreRedaction();
+  }
+}
+
+function surClicNouveauBrouillon() {
+  redaction = {
+    phase: "saisie", enCoursBrouillon: false, enCoursEcriture: false,
+    erreurBrouillon: null, erreurEcriture: null, brouillon: null,
+    contenu: "", compteRemplir: 0, derogationIgnoree: false, ecrit: null,
+  };
+  masquerErreurGenerationStatique();
+  const champTitre = $("titre-besoin");
+  const champPrompt = $("prompt");
+  const champDerogation = $("derogation-minimale");
+  if (champTitre) champTitre.value = "";
+  if (champPrompt) champPrompt.value = "";
+  if (champDerogation) champDerogation.checked = false;
+  actualiserCompteurPrompt();
+  rendreRedaction();
+  if (champTitre) champTitre.focus();
+}
+
 /* ------------------------------------------------------------------ flux -- */
 let enCours = false;
 
@@ -2531,6 +3011,10 @@ appliquerSection(sectionActuelle(), false);
 function refiltrer() { if (dernierEtat) rendreKanban(dernierEtat); }
 $("filtre").addEventListener("input", refiltrer);
 $("filtre-divergences").addEventListener("change", refiltrer);
+
+/* feature-008 : compteur de caractères, purement local (aucune requête). */
+$("prompt").addEventListener("input", actualiserCompteurPrompt);
+$("bouton-generer-brouillon").addEventListener("click", surClicGenererBrouillon);
 
 document.addEventListener("keydown", (evenement) => {
   if (evenement.key === "Escape") fermerTiroir();

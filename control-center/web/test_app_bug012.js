@@ -147,15 +147,17 @@ class FakeNode {
 // `grep -oE 'id="[a-zA-Z0-9-]+"' index.html`, pas recopié à l'œil.
 const IDS = [
   "agents", "bandeau-hote", "bandeau-hote-bouton", "bandeau-hote-texte",
-  "barre", "bascule-theme", "compteur-specs", "fichiers",
-  "filtre", "filtre-divergences", "horodatage", "icone-systeme-clair",
-  "icone-systeme-sombre", "jauge-flux", "jauge-git", "jauge-pilotage",
-  "kanban", "legende-cycles", "nav-sections", "note-agents", "pied-cycles",
-  "pilotage-corps", "porte-aide", "porte-bouton", "porte-champ",
-  "porte-corps", "porte-erreur", "porte-jeton", "porte-titre", "projet",
-  "prompt", "systeme", "theme-clair", "theme-sombre", "theme-systeme",
-  "timeline", "tiroir", "tiroir-contenu", "tiroir-fermer", "tiroir-titre",
-  "titre-cycles", "titre-demande", "titre-pilotage", "workflows",
+  "barre", "bascule-theme", "bouton-generer-brouillon", "compteur-prompt",
+  "compteur-specs", "derogation-minimale", "erreur-generer-brouillon",
+  "fichiers", "filtre", "filtre-divergences", "horodatage",
+  "icone-systeme-clair", "icone-systeme-sombre", "jauge-flux", "jauge-git",
+  "jauge-pilotage", "kanban", "legende-cycles", "nav-sections", "note-agents",
+  "pied-cycles", "pilotage-corps", "porte-aide", "porte-bouton",
+  "porte-champ", "porte-corps", "porte-erreur", "porte-jeton", "porte-titre",
+  "projet", "prompt", "redaction-corps", "systeme", "theme-clair",
+  "theme-sombre", "theme-systeme", "timeline", "tiroir", "tiroir-contenu",
+  "tiroir-fermer", "tiroir-titre", "titre-besoin", "titre-cycles", "titre-demande",
+  "titre-pilotage", "workflows",
 ].concat(["agents", "systeme", "developper", "cycles", "fichiers", "evenements"]
   .flatMap((s) => ["onglet-" + s, "section-" + s, "titre-section-" + s]));
 // Cachés par défaut dans le HTML (attribut `hidden` présent sur le balisage
@@ -163,7 +165,7 @@ const IDS = [
 const CACHES_PAR_DEFAUT = new Set([
   "bandeau-hote", "tiroir", "porte-jeton", "porte-erreur", "icone-systeme-sombre",
   "section-systeme", "section-developper", "section-cycles", "section-fichiers",
-  "section-evenements",
+  "section-evenements", "erreur-generer-brouillon",
 ]);
 
 // Garde structurelle contre la RÉCURRENCE du piège ci-dessus (§7) : `IDS`

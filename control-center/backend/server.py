@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Serveur du centre de contrôle — étape D : la première route d'écriture.
+"""Serveur du centre de contrôle — étape E : quatre routes d'écriture.
 
     python3 control-center/backend/server.py
 
 ## Ce qui a changé depuis l'étape C
 
 L'étape C tirait sa garantie de l'ABSENCE de `do_POST` : la méthode n'existait
-pas, `http.server` répondait 501 de lui-même. Cette étape ajoute `do_POST`,
-donc cette garantie-là tombe — c'est le sujet de l'ADR qui accompagne ce lot.
-Ce qui la remplace :
+pas, `http.server` répondait 501 de lui-même. L'étape D a ajouté `do_POST`,
+donc cette garantie-là est tombée — c'est le sujet de l'ADR qui accompagne ce
+lot. Ce qui la remplace :
 
 - une liste FERMÉE de routes d'écriture, `_ROUTES_ECRITURE` — tout chemin
   absent de cette liste reçoit 404 sans qu'aucune autre garde ne s'exécute ;
@@ -19,6 +19,19 @@ Ce qui la remplace :
 - le jeton partagé (`jeton.py`) comme UNIQUE barrière d'authentification :
   sans lui, `do_POST` répond 403 à toute route d'écriture, quoi qu'on
   présente.
+
+## Ce qui a changé depuis l'étape D (feature-008)
+
+`_ROUTES_ECRITURE` est passée de deux à QUATRE chemins :
+`/api/spec/brouillon` (fabrique un brouillon de spec, N'ÉCRIT RIEN) et
+`/api/spec/ecrire` (écrit le brouillon relu dans `specs/features/todo/`) —
+voir `redaction_spec.py`. `/api/spec/brouillon` figure dans cette liste bien
+qu'il n'écrive rien : c'est ELLE, et non un attribut par route, qui gouverne
+le ROUTAGE entier de `do_POST` — un chemin absent reçoit 404 avant toute
+autre garde, donc l'exclure l'aurait rendu inatteignable. Il traverse en
+conséquence les mêmes gardes d'authentification que les routes qui écrivent
+réellement (voir `_TAILLES_MAX_CORPS` ci-dessous pour ses bornes de corps,
+distinctes de celles de `/api/lancer`/`/api/interrompre`).
 
 ## Ce qui peut sortir du serveur, et ce qui ne peut pas
 
@@ -105,6 +118,7 @@ import config as C  # noqa: E402
 import events as E  # noqa: E402
 import jeton as J  # noqa: E402
 import lanceur as L  # noqa: E402
+import redaction_spec as RS  # noqa: E402
 import specs as S  # noqa: E402
 import vcs as V  # noqa: E402
 import verrou as VR  # noqa: E402
@@ -143,11 +157,34 @@ _BATTEMENT = 20.0              # secondes sans changement avant un signe de vie
 # Liste FERMÉE des routes d'écriture. C'est elle, et non plus l'absence de
 # `do_POST`, qui porte la garantie structurelle depuis ce lot : un chemin
 # absent d'ici reçoit 404 avant qu'aucune autre garde ne s'exécute.
-_ROUTES_ECRITURE = ("/api/lancer", "/api/interrompre")
+#
+# `/api/spec/brouillon` y figure ALORS QU'IL N'ÉCRIT RIEN sur disque
+# (feature-008) : c'est cette même liste qui gouverne le ROUTAGE de
+# `do_POST` dans son ensemble — un chemin absent reçoit 404 avant toute autre
+# garde — donc `/api/spec/brouillon` y serait sinon INATTEIGNABLE. Il traverse
+# en conséquence exactement les mêmes gardes d'authentification que les
+# routes qui écrivent réellement (jeton/origine, Host, Content-Length) :
+# c'est un choix délibéré, pas un effet de bord — aucune prévisualisation de
+# spec ne doit être possible sans la même autorisation qu'une écriture.
+_ROUTES_ECRITURE = ("/api/lancer", "/api/interrompre",
+                     "/api/spec/brouillon", "/api/spec/ecrire")
 
 # Un corps de POST tient largement sous cette borne : {"cle": "..."} ne
 # dépasse jamais quelques dizaines d'octets. Au-delà, 413 sans lire le reste.
+# Reste le DÉFAUT inchangé pour toute route absente de `_TAILLES_MAX_CORPS`
+# ci-dessous — en particulier `/api/lancer` et `/api/interrompre`, qui ne
+# transportent jamais plus qu'une clé de commande.
 _TAILLE_MAX_CORPS = 4096
+
+# Bornes PAR ROUTE (feature-008) : un besoin en texte libre ne tient pas dans
+# 4096 octets. `/api/spec/ecrire` (65536) reste 1,93× la plus grande spec
+# mesurée dans ce dépôt (33 212 octets) — large marge pour un besoin en texte
+# libre, jamais un chèque en blanc. `/api/spec/brouillon` (8192) n'a besoin
+# que du titre et du texte, jamais du contenu déjà fabriqué.
+_TAILLES_MAX_CORPS = {
+    "/api/spec/brouillon": 8192,
+    "/api/spec/ecrire": 65536,
+}
 
 # Freinage des échecs d'authentification (GATE P1, condition 6) : au-delà de
 # ce nombre d'échecs sur la fenêtre, 429 SANS comparer le jeton présenté — un
@@ -638,7 +675,7 @@ class Ecriture:
 
 
 class Handler(BaseHTTPRequestHandler):
-    """`do_GET` et `do_POST` — RIEN d'autre. `do_POST` ne route que les deux
+    """`do_GET` et `do_POST` — RIEN d'autre. `do_POST` ne route que les
     chemins de `_ROUTES_ECRITURE`, gardés par le jeton partagé."""
 
     protocol_version = "HTTP/1.1"
@@ -962,10 +999,11 @@ class Handler(BaseHTTPRequestHandler):
             if taille < 0:
                 self.close_connection = True
                 return self._erreur(400, "Content-Length invalide")
-            if taille > _TAILLE_MAX_CORPS:
+            borne_corps = _TAILLES_MAX_CORPS.get(chemin, _TAILLE_MAX_CORPS)
+            if taille > borne_corps:
                 self.close_connection = True
                 return self._erreur(413, "corps trop volumineux (max %d octets)"
-                                          % _TAILLE_MAX_CORPS)
+                                          % borne_corps)
 
             # 5) lecture BORNÉE du corps, exactement `taille` octets.
             corps = self.rfile.read(taille) if taille else b""
@@ -975,6 +1013,12 @@ class Handler(BaseHTTPRequestHandler):
 
             if chemin == "/api/interrompre":
                 return self._interrompre()
+
+            if chemin == "/api/spec/brouillon":
+                return self._spec_brouillon(corps)
+
+            if chemin == "/api/spec/ecrire":
+                return self._spec_ecrire(corps)
 
             # -- /api/lancer : 6) clé -------------------------------------------
             try:
@@ -1142,6 +1186,67 @@ class Handler(BaseHTTPRequestHandler):
             return self._erreur(404, "aucun lancement en cours")
         ecriture.interrompre_courant()
         return self._json({"interrompu": True}, 202)
+
+    def _corps_spec(self, corps):
+        """JSON attendu : `{type, titre, texte, minimal?}` pour
+        `/api/spec/brouillon`, `{type, titre, contenu}` pour
+        `/api/spec/ecrire` (reboucle étape 5a — `contenu` remplace
+        `{texte, minimal}` à l'écriture, voir `_spec_ecrire`). Rend
+        `(donnees, None)` ou `(None, (code, message))` — `400` pour un corps
+        illisible, jamais `422` (réservé aux erreurs de SAISIE une fois le
+        JSON compris)."""
+        try:
+            donnees = json.loads(corps.decode("utf-8")) if corps else {}
+        except (ValueError, UnicodeDecodeError):
+            return None, (400, "corps illisible")
+        if not isinstance(donnees, dict):
+            return None, (400, "corps illisible")
+        return donnees, None
+
+    def _spec_brouillon(self, corps):
+        """`POST /api/spec/brouillon` : produit un brouillon, n'écrit rien
+        (feature-008). Champs attendus : `type`, `titre`, `texte`,
+        `minimal` (booléen, dérogation vers le template minimal)."""
+        donnees, erreur = self._corps_spec(corps)
+        if erreur is not None:
+            code, message = erreur
+            return self._erreur(code, message)
+        resultat, erreur = RS.preparer_brouillon(
+            self.server.etat.config,
+            donnees.get("type"), donnees.get("titre"), donnees.get("texte"),
+            bool(donnees.get("minimal")))
+        if erreur is not None:
+            code, message = erreur
+            return self._erreur(code, message)
+        return self._json({
+            "genre": resultat["genre"],
+            "slug": resultat["slug"],
+            "nom_fichier_prevu": resultat["nom_fichier_prevu"],
+            "contenu": resultat["contenu"],
+            "substitutions": resultat["substitutions"],
+        }, 200)
+
+    def _spec_ecrire(self, corps):
+        """`POST /api/spec/ecrire` : écrit `contenu` — le Markdown TEL QUE
+        RELU par l'humain, corrections comprises — VERBATIM dans `todo/`
+        (feature-008, reboucle étape 5a : une version antérieure régénérait
+        depuis `{titre, texte}` et jetait silencieusement toute correction
+        humaine). Champs attendus : `type`, `titre`, `contenu`. `type` et
+        `titre` sont des champs JSON DÉDIÉS, RE-VALIDÉS et RE-DÉRIVÉS (le
+        slug — donc le chemin — vient de `titre`, jamais de `contenu`) :
+        GATE P1 condition 1 porte sur le CHEMIN, pas sur le contenu, et reste
+        tenue à la lettre quel que soit ce que `contenu` renferme."""
+        donnees, erreur = self._corps_spec(corps)
+        if erreur is not None:
+            code, message = erreur
+            return self._erreur(code, message)
+        resultat, erreur = RS.ecrire_spec(
+            self.server.etat.config,
+            donnees.get("type"), donnees.get("titre"), donnees.get("contenu"))
+        if erreur is not None:
+            code, message = erreur
+            return self._erreur(code, message)
+        return self._json(resultat, 201)
 
     def log_message(self, format, *args):
         # Le journal par défaut écrit une ligne par requête, flux SSE compris.

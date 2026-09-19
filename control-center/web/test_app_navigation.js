@@ -97,21 +97,24 @@ const SECTIONS = ["agents", "systeme", "developper", "cycles", "fichiers", "even
 
 const IDS_APP = [
   "agents", "bandeau-hote", "bandeau-hote-bouton", "bandeau-hote-texte",
-  "bascule-theme", "compteur-specs", "fichiers",
-  "filtre", "filtre-divergences", "horodatage", "icone-systeme-clair",
-  "icone-systeme-sombre", "jauge-flux", "jauge-git", "jauge-pilotage",
-  "kanban", "legende-cycles", "note-agents", "pied-cycles", "pilotage-corps",
-  "porte-aide", "porte-bouton", "porte-champ", "porte-corps", "porte-erreur",
-  "porte-jeton", "porte-titre", "projet", "prompt", "systeme", "theme-clair",
-  "theme-sombre", "theme-systeme", "timeline", "tiroir", "tiroir-contenu",
-  "tiroir-fermer", "tiroir-titre", "titre-cycles", "titre-demande",
-  "titre-pilotage", "workflows", "nav-sections",
+  "bascule-theme", "bouton-generer-brouillon", "compteur-prompt",
+  "compteur-specs", "derogation-minimale", "erreur-generer-brouillon",
+  "fichiers", "filtre", "filtre-divergences", "horodatage",
+  "icone-systeme-clair", "icone-systeme-sombre", "jauge-flux", "jauge-git",
+  "jauge-pilotage", "kanban", "legende-cycles", "note-agents", "pied-cycles",
+  "pilotage-corps", "porte-aide", "porte-bouton", "porte-champ",
+  "porte-corps", "porte-erreur", "porte-jeton", "porte-titre", "projet",
+  "prompt", "redaction-corps", "systeme", "theme-clair", "theme-sombre",
+  "theme-systeme", "timeline", "tiroir", "tiroir-contenu", "tiroir-fermer",
+  "tiroir-titre", "titre-besoin", "titre-cycles", "titre-demande", "titre-pilotage",
+  "workflows", "nav-sections",
 ].concat(SECTIONS.map((s) => "onglet-" + s))
   .concat(SECTIONS.map((s) => "section-" + s))
   .concat(SECTIONS.map((s) => "titre-section-" + s));
 
 const CACHES_PAR_DEFAUT = new Set([
   "bandeau-hote", "tiroir", "porte-jeton", "porte-erreur", "icone-systeme-sombre",
+  "erreur-generer-brouillon",
   // Reflète le HTML servi : seule « agents » est visible par défaut.
   "section-systeme", "section-developper", "section-cycles",
   "section-fichiers", "section-evenements",
@@ -443,8 +446,13 @@ const CSS_SANS_COMMENTAIRES = sansCommentairesCSS(CSS);
   // plus (`.dg-arc-libelle`, « reboucle » — une phrase, pas un
   // identifiant). Mesuré par PARCOURS DES RÈGLES (voir E3 plus bas), pas
   // recompté à l'oeil (PIEGES.md paragraphe 21).
-  check("C_compte_mono_final_dix_huit", compteMono === 18, "obtenu " + compteMono);
-  check("C_compte_sans_final_vingt_trois", compteSans === 23, "obtenu " + compteSans);
+  // feature-008 : `.demande textarea.brouillon` rejoint la chasse fixe — le
+  // brouillon de spec est du Markdown technique, comme `#tiroir-contenu`.
+  check("C_compte_mono_final_dix_neuf", compteMono === 19, "obtenu " + compteMono);
+  // feature-008 : `.demande input[type="text"]` (titre du besoin, une
+  // phrase lue par un humain — sert à nommer le fichier, n'est pas
+  // lui-même un identifiant technique) rejoint le sans-serif.
+  check("C_compte_sans_final_vingt_quatre", compteSans === 24, "obtenu " + compteSans);
 
   // Sélecteurs qui DOIVENT rester en chasse fixe (identifiants techniques :
   // slugs, sigles, codes, chemins, sorties brutes, jeton).
@@ -573,6 +581,9 @@ function analyserReglesCSS(css) {
     ".pilotage-jeton input", ".pilotage-select select", "#sortie-lancement",
     ".fichier .fcode", ".fichier .fchemin", ".timeline .quoi",
     ".tiroir-barre", "#tiroir-contenu", "#porte-champ",
+    // feature-008 : le brouillon de spec relu avant écriture — texte
+    // Markdown technique, même nature que `#tiroir-contenu`.
+    ".demande textarea.brouillon",
   ];
 
   const blancheSet = new Set(LISTE_BLANCHE_MONO);

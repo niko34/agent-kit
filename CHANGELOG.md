@@ -7,6 +7,64 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 <!-- Les entrées ci-dessous documentent le KIT lui-même. Au démarrage d'un projet,
      les remplacer par le journal du projet. -->
 
+## [0.12.0] - 2026-09-19
+
+> Note : la spec `feature-008` portait en métadonnées « Version cible :
+> 0.7.0 », écrite le 2026-09-12, avant que les cycles 0.8.0 à 0.11.1 ne
+> soient livrés entretemps. Cette entrée est placée à la date réelle de
+> livraison, jamais dans une version déjà publiée : ré-écrire `0.7.0`
+> falsifierait l'historique déjà tagué.
+
+### Centre de contrôle
+
+- **Le tableau de bord peut désormais créer une spec depuis un besoin décrit
+  en texte libre**, sans quitter l'écran. Deux étapes distinctes : un
+  brouillon est d'abord produit et affiché intégralement dans un champ
+  modifiable (aucune écriture sur disque à ce stade), puis une action
+  séparée l'écrit dans `specs/features/todo/` — jamais d'enregistrement
+  implicite.
+- **Le brouillon suit le template du projet**, jamais un gabarit interne au
+  centre de contrôle : `specs/features/_template.md` pour un besoin normal
+  ou sensible, `specs/modele.md` pour une dérogation explicite vers le
+  format minimal. Un besoin mentionnant l'authentification, les
+  permissions, les données personnelles, un paiement ou une migration
+  **bascule toujours sur le template complet**, y compris quand une
+  dérogation vers le minimal a été demandée. Tout bloc que le texte saisi
+  ne permet pas de remplir reste visible sous la forme `[remplir]` — rien
+  n'est inventé.
+- **Le contenu relu et corrigé par l'utilisateur est celui qui est écrit**,
+  à l'octet près : une correction faite dans le champ de relecture n'est
+  jamais perdue.
+- **Le nom de fichier est calculé automatiquement** (`feature-NNN-<slug>.md`
+  ou `bug-NNN-<slug>.md`), numéroté à partir des trois répertoires du cycle
+  (`todo`, `doing`, `done`), jamais réutilisé même après suppression ; un
+  titre contenant des caractères hostiles (`../`, séparateurs, non-ASCII)
+  ne peut produire de fichier hors du répertoire `todo/`. Un nom déjà pris
+  est refusé explicitement, sans jamais écraser le fichier existant.
+- Une mise en garde sur les données personnelles est affichée au moment de
+  la saisie : le texte est libre et finit dans un fichier versionné,
+  potentiellement poussé vers un dépôt distant.
+
+### Documentation
+
+- `docs/adr/0027-le-centre-de-controle-ecrit-des-specs-il-n-en-valide-aucune.md`
+  [nouveau] : la frontière entre ce que l'outil écrit et ce qui reste la
+  main de l'humain, l'absence d'appel de modèle, le choix d'un verrou court
+  dédié plutôt que le verrou d'écrivain de `feature-007`, la table des
+  bornes de corps par route, et l'arbitrage central du cycle — pourquoi le
+  contenu relu est désormais écrit verbatim plutôt que régénéré.
+- `docs/API.md` : note d'arbitrage — les routes du centre de contrôle
+  restent documentées dans `control-center/README.md`, ce fichier reste le
+  contrat de l'application qui adopte le kit.
+- `control-center/README.md` : section « Étape E », état d'avancement et
+  section Tests mis à jour (1817 cas, 0 échec, 23 fichiers `test_*.py`).
+- `control-center/PIEGES.md` : entrées ajoutées sur `_ROUTES_ECRITURE`, le
+  clone jetable incomplet pour ce module, les campagnes de mutation
+  enchaînées en boucle shell, `__pycache__` non invalidé, et une garde
+  mutée à tort par neutralisation totale.
+
+---
+
 ## [0.11.1] - 2026-09-19
 
 ### Centre de contrôle

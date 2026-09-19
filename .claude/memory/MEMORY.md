@@ -23,27 +23,8 @@
 
 - [`update_kit.sh` : 71 tests](dette-update-kit-sans-tests.md) — 11 défauts corrigés ; `feature-013` et `014` restants
 - ⭐ [Ce que l'audit a laissé ouvert](chantiers-ouverts-apres-bug-001.md) — 3 constats graves, 1 corrigé, 2 en specs (`bug-003`, `feature-011`)
-- [Étape D : garde-fous déclarés, appliqués par personne](etape-d-garde-fous-declares-non-appliques.md) — la première étape qui écrit ; spec `feature-007` écrite, non lancée
+- [Étapes D et E livrées ; `_ROUTES_ECRITURE` porte 4 chemins](etape-d-garde-fous-declares-non-appliques.md) — « route d'écriture » y veut dire « chemin que `do_POST` route », jamais « route qui écrit »
+- ⭐ [Cycle feature-008 : muter la garde, pas ce qu'elle appelle](cycle-feature-008-ce-qu-il-a-appris.md) — 10 mutants « tués » et 3 gardes sans filet, dont le confinement
 - [Une garde se livre atteignable](une-garde-se-livre-atteignable.md) — un défaut qui la rend inatteignable entre dans le cycle qui la livre (ADR-0017).
 - [Un dépôt jetable n'est pas un petit dépôt réel](un-depot-jetable-n-est-pas-un-petit-depot-reel.md) — tout ce qui dépend d'un volume y est invisible par construction
 - [Une mesure en aveugle exige de retirer l'information](une-mesure-en-aveugle-exige-de-retirer-l-information.md) — l'omettre du brief ne suffit pas si elle est dans le dépôt
-
----
-
-## Note du 2026-09-15 — pourquoi ces fichiers sont ici
-
-Ces mémoires vivaient **hors du dépôt**, dans l'emplacement que Claude Code
-utilise par défaut. C'est précisément ce que le [README](README.md) de ce dossier
-décrit comme le problème à éviter : *« hors du dépôt, donc sur une seule machine
-et sans sauvegarde »*.
-
-Le kit décrivait une discipline qu'il ne s'appliquait pas à lui-même. Quinze
-mémoires — dont plusieurs écrites le jour même — auraient disparu au premier
-changement de poste.
-
-Copiées après vérification : **aucun secret, aucun jeton, aucun chemin de poste**
-dans les quinze fichiers.
-
-⚠️ **La copie n'est pas automatique.** Toute mémoire écrite pendant une session
-doit être recopiée ici pour survivre — c'est ce que dit le README, et c'est ce
-qui n'avait pas été fait pendant trois jours.

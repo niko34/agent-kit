@@ -4,6 +4,18 @@
      vraies ressources, puis supprimer ce commentaire. Ce fichier est la source de
      vérité du contrat REST : doc-writer le met à jour à CHAQUE changement d'endpoint. -->
 
+> **Ce fichier documente l'API REST du projet qui adopte le kit** — versionnée
+> `/api/v1/…`, avec l'enveloppe d'erreur ci-dessous. Les routes du
+> **centre de contrôle** (`/api/etat`, `/api/lancer`, `/api/interrompre`,
+> `/api/spec/brouillon`, `/api/spec/ecrire`, …) n'entrent pas ici : ce module
+> fait partie du kit lui-même, pas de l'application qu'il aide à construire,
+> il n'est pas versionné en `/api/v1`, et son contrat — y compris les codes
+> d'erreur et les cas limites, mutation-testés — est tenu dans
+> [`control-center/README.md`](../control-center/README.md), au fil de ses
+> étapes (A à E à ce jour). Aucune route de ce module n'a jamais figuré ici ;
+> ce fichier garde son exemple fictif tant que le projet n'a pas sa propre
+> ressource à documenter.
+
 ## Conventions
 
 - **Base URL** : `/api/v1` — versionnement dans le chemin ; un changement cassant ⇒ `/api/v2`, jamais de modification silencieuse d'un contrat publié.

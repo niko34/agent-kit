@@ -190,6 +190,49 @@ def lister_specs(racine, colonnes, vocabulaire=None, lignes_entete=60,
     return specs
 
 
+# Un nom conforme à `<type>-NNN-<slug>.md` ; tout le reste est IGNORÉ, jamais
+# une exception — un `_template.md` ou un `README.md` égaré dans un
+# répertoire de specs ne doit pas faire planter la numérotation (feature-008).
+_RE_NUMERO = re.compile(r"^(feature|bug)-(\d+)-.+\.md$")
+
+
+def numeros_pris(racine, colonnes):
+    """Numéros déjà utilisés, par SÉRIE indépendante (feature-008).
+
+    `feature-` et `bug-` sont deux séries indépendantes — mesuré :
+    `bug-014-redaction-des-secrets-laisse-passer-les-minuscules.md` et
+    `feature-014-apercu-effets-de-bord-echecs.md` coexistent dans ce dépôt.
+    Balaie les TROIS colonnes de `colonnes` (`config.colonnes()`, jamais des
+    littéraux `todo`/`doing`/`done` codés ici) : un numéro pris dans
+    N'IMPORTE LAQUELLE ne doit jamais être réattribué, même après suppression
+    d'une spec — `check_specs.sh` le signalerait comme ambiguïté.
+    """
+    pris = {"feature": set(), "bug": set()}
+    for repertoire, *_reste in colonnes:
+        dossier = os.path.join(racine, repertoire)
+        if not os.path.isdir(dossier):
+            continue
+        for nom in os.listdir(dossier):
+            correspondance = _RE_NUMERO.match(nom)
+            if not correspondance:
+                continue
+            genre = correspondance.group(1)
+            try:
+                numero = int(correspondance.group(2))
+            except ValueError:
+                continue
+            pris.setdefault(genre, set()).add(numero)
+    return pris
+
+
+def prochain_numero(pris, genre):
+    """Max + 1 sur la série `genre` — JAMAIS le premier trou libre : un
+    numéro supprimé du disque ne doit pas être réattribué (une référence à ce
+    numéro dans un commit ou un ADR resterait autrement ambiguë)."""
+    existants = pris.get(genre) or set()
+    return (max(existants) if existants else 0) + 1
+
+
 def lister_depuis_config(config):
     """Raccourci : lit les specs d'après une configuration chargée."""
     reglages = config.section("specs")

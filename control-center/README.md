@@ -99,7 +99,7 @@ ne le reçoit jamais.
 | **B** | Specs, événements, configuration, git | ✅ livré, validé par mutation |
 | **C** | Tableau de bord en lecture seule | ✅ livré · apparence non vérifiée |
 | **D** | Lancement d'un workflow | ✅ livré, validé par mutation |
-| E | Création d'une spec depuis un prompt | à faire |
+| **E** | Création d'une spec depuis un prompt | ✅ livré, validé par mutation |
 | F | Discussion par spec | à faire |
 | G | Scénario complet avec échec réel | à faire |
 
@@ -540,27 +540,115 @@ du processus fils) est dans
 le modèle de déploiement et le jeton comme barrière de rattachement sont dans
 [ADR-0020](../docs/adr/0020-un-centre-de-controle-appartient-a-un-developpeur.md).
 
+## Étape E — la création de spec
+
+Deux routes ([`backend/redaction_spec.py`](backend/redaction_spec.py)),
+ajoutées à `_ROUTES_ECRITURE` (désormais quatre chemins) :
+
+- `POST /api/spec/brouillon` — reçoit `{type, titre, texte, minimal}`,
+  **n'écrit rien**, rend un brouillon fabriqué depuis le **template du
+  projet** (`specs/features/_template.md` ou `specs/modele.md`, jamais une
+  copie interne au centre de contrôle).
+- `POST /api/spec/ecrire` — reçoit `{type, titre, contenu}` et écrit
+  `contenu` **verbatim** dans `specs/features/todo/`, jamais ailleurs.
+
+### Aucun appel de modèle
+
+Le brouillon est le template du projet recopié **octet pour octet**, à
+l'exception d'un nombre borné de substitutions déterministes (slug, type,
+statut, date, titre H1, texte saisi). Tout ce que le texte ne permet pas de
+déduire reste `[remplir]` : un blanc visible vaut mieux qu'une invention
+plausible. Le texte saisi ne quitte donc jamais le poste, et le plafond de
+dépense de `feature-007` est sans objet ici. Détail et alternative écartée
+(un appel de modèle) dans
+[ADR-0027](../docs/adr/0027-le-centre-de-controle-ecrit-des-specs-il-n-en-valide-aucune.md).
+
+### Le contenu relu est écrit verbatim, jamais régénéré
+
+`/api/spec/ecrire` écrit exactement le Markdown transmis par le client — la
+relecture humaine, corrections comprises. `type` et `titre` restent des
+champs JSON dédiés, re-validés et re-dérivés (le slug, donc le chemin, vient
+toujours de `titre`, jamais de `contenu`) : le contenu, lui, n'est jamais
+interprété pour construire un chemin. Une première version de ce module
+régénérait le contenu depuis `{titre, texte}` et jetait silencieusement
+toute correction humaine — corrigé en cours de cycle (voir le journal de
+`specs/features/done/feature-008-creation-de-spec-depuis-un-prompt.md` et
+[ADR-0027](../docs/adr/0027-le-centre-de-controle-ecrit-des-specs-il-n-en-valide-aucune.md)).
+
+### Numérotation et confinement
+
+Le numéro (`NNN`) n'est attribué **qu'à l'écriture**, jamais dans le
+brouillon : deux brouillons consécutifs sans rechargement ne se disputent
+jamais un numéro qui n'existe pas encore. Il est calculé sous un `flock`
+court dédié (`var/numerotation.lock`), tenu seulement le temps de scanner
+les trois répertoires du cycle (`todo`, `doing`, `done`) et d'écrire le
+fichier — jamais le temps d'une requête réseau — puis attribué par
+`os.O_CREAT | os.O_EXCL` **dans** ce même verrou. Ce module n'utilise **pas**
+le verrou d'écrivain de `feature-007` (`verrou.py`) : voir
+[ADR-0027](../docs/adr/0027-le-centre-de-controle-ecrit-des-specs-il-n-en-valide-aucune.md)
+pour le motif.
+
+La cible d'écriture est calculée depuis la configuration seule —
+`join(racine_projet, [specs].racine, colonnes()[0][0])`, la **première
+colonne configurée** (pas littéralement `todo`) — puis revérifiée par
+`vcs.chemin_sur()` avant toute écriture. Le nom de fichier est normalisé par
+liste blanche de caractères (`normaliser_slug`) : un titre `../../etc/passwd`
+devient `etc-passwd`, sans jamais produire de fichier hors du répertoire
+cible.
+
+### Bornes de corps par route
+
+`_TAILLES_MAX_CORPS` fixe une borne par route, distincte du défaut
+(4096 octets, inchangé pour `/api/lancer` et `/api/interrompre`) :
+
+| Route | Borne |
+|---|---|
+| `/api/spec/brouillon` | 8192 octets |
+| `/api/spec/ecrire` | 65536 octets — 1,93× la plus grande spec mesurée dans ce dépôt (33 212 octets) |
+
+### Ce que le serveur ne valide jamais sur `/api/spec/ecrire`
+
+L'escalade fail-closed vers le template complet (un mot-clé sensible annule
+toujours une dérogation vers le minimal, jamais ne l'accorde) n'agit que sur
+le **brouillon**. `/api/spec/ecrire` accepte un `contenu` arbitraire, non
+validé contre un gabarit ou les cases GATE : la garde réelle reste la
+relecture, par `spec-reader` et par l'humain, jamais le serveur. Voir
+[ADR-0027](../docs/adr/0027-le-centre-de-controle-ecrit-des-specs-il-n-en-valide-aucune.md).
+
 ## Tests
 
 ```bash
-python3 control-center/hooks/test_record_event.py   # 19 cas
-python3 control-center/backend/test_specs.py        # 16 cas
-python3 control-center/backend/test_agents.py       # 24 cas
-python3 control-center/backend/test_events.py       # 54 cas
-python3 control-center/backend/test_config.py       # 44 cas
-python3 control-center/backend/test_vcs.py          # 26 cas
-python3 control-center/backend/test_server.py       # 37 cas
-python3 control-center/backend/test_jeton.py        # 48 cas
-python3 control-center/backend/test_verrou.py       # 23 cas
-python3 control-center/backend/test_lanceur.py      # 33 cas
-python3 control-center/backend/test_server_ecriture.py  # 72 cas
-python3 control-center/backend/test_server_bug012.py    # 39 cas
-python3 control-center/web/test_app_bug012.py           # 16 cas (pont vers le harnais JS)
+python3 control-center/hooks/test_record_event.py         # 19 cas
+python3 control-center/backend/test_specs.py               # 16 cas
+python3 control-center/backend/test_agents.py               # 24 cas
+python3 control-center/backend/test_events.py               # 71 cas
+python3 control-center/backend/test_config.py               # 59 cas
+python3 control-center/backend/test_vcs.py                  # 26 cas
+python3 control-center/backend/test_server.py                # 47 cas
+python3 control-center/backend/test_jeton.py                 # 48 cas
+python3 control-center/backend/test_verrou.py                # 23 cas
+python3 control-center/backend/test_lanceur.py               # 33 cas
+python3 control-center/backend/test_server_ecriture.py       # 109 cas
+python3 control-center/backend/test_server_bug012.py         # 53 cas
+python3 control-center/backend/test_redaction_spec.py        # 93 cas — étape E
+python3 control-center/web/test_app_bug012.py            # 53 cas (pont vers le harnais JS)
+python3 control-center/web/test_app_accordeon.py         # 237 cas (pont vers le harnais JS)
+python3 control-center/web/test_app_navigation.py        # 197 cas (pont vers le harnais JS)
+python3 control-center/web/test_app_navigation_http.py   # 25 cas
+python3 control-center/web/test_app_theme.py             # 317 cas (pont vers le harnais JS)
+python3 control-center/web/test_app_theme_navigateur.py  # 56 cas
+python3 control-center/web/test_app_diagramme.py         # 165 cas (pont vers le harnais JS)
+python3 control-center/web/test_app_diagramme_conformite.py   # 51 cas
+python3 control-center/web/test_app_diagramme_navigateur.py   # 37 cas
+python3 control-center/web/test_app_feature008.py        # 58 cas (pont vers le harnais JS) — étape E
 python3 control-center/backend/specs.py             # inventaire réel
 python3 control-center/backend/events.py            # workflows reconstruits
 ```
 
-471 cas verts au total sur ces treize suites (195 avant l'étape D).
+**1817 cas verts au total sur ces vingt-trois suites** (mesure directe,
+2026-09-19 ; 1627 cas / 21 fichiers avant `feature-008`, 471 cas / 13 suites
+avant `feature-020` — les deux chiffres précédents étaient restés inscrits
+ici sans être remesurés, PIEGES §21).
 
 **Le harnais frontend** (`web/test_app_bug012.js`) teste `web/app.js` en
 conditions réelles — 39 assertions, zéro dépendance installée (`vm`/`fs`/`path`
@@ -639,6 +727,38 @@ cours de cycle, pas par relecture :
    flux temps réel peut-il s'authentifier » — ce qui figeait le tableau de
    bord à chaque rechargement en déploiement distant. Séparé en deux champs
    (`ecriture_active`, `jeton_requis`), voir la section « Étape D+ » ci-dessus.
+
+**`feature-008`** (création de spec depuis un prompt, `redaction_spec.py` +
+deux routes de `server.py` — la suite passe de 1627 à 1817 cas sur le dépôt,
+21 à 23 fichiers `test_*.py`) : dix mutations posées une par une en fin de
+cycle, dix tuées. Deux défauts trouvés par exécution, pas par relecture :
+
+1. **Le contenu relu était régénéré, jamais écrit tel quel** — une première
+   version de `ecrire_spec` reconstruisait le Markdown depuis `{titre,
+   texte}` au lieu d'écrire le `contenu` transmis par le client, ce qui
+   jetait silencieusement toute correction humaine faite dans le textarea
+   de relecture. Le défaut a d'abord **survécu** à deux tests qui
+   cherchaient une simple sous-chaîne (la correction réapparaissait dans la
+   section régénérée, donc la sous-chaîne restait présente) ; il n'a été
+   tué qu'après un remplacement par une égalité octet pour octet entre le
+   contenu envoyé et le fichier écrit.
+2. **`os.open(O_EXCL)` précédait l'encodage UTF-8 du contenu** : un
+   substitut isolé (`"\ud800"`, JSON valide) levait `UnicodeEncodeError`
+   **après** la création du fichier, laissant un fichier vide sur disque et
+   un numéro brûlé. Corrigé en encodant avant l'ouverture ; une saisie
+   inencodable rend désormais `422`, sans créer de fichier ni consommer de
+   numéro.
+
+Une garde de confinement — le chemin final doit résoudre exactement à
+`<specs.racine>/<première colonne>/<nom>` — **survivait** à une mutation
+`if False:` sur toute la fonction qui l'applique (1803 cas encore verts) :
+elle fonctionnait, vérifiée à la main, mais aucun test ne la tenait. Elle
+est désormais couverte en symlinkant `todo/` hors du dépôt jetable. Deux
+autres gardes non couvertes ont été trouvées par la même démarche
+systématique (`preparer_brouillon`, `ecrire_spec` sur `slug_valide`) et
+couvertes de même. Un concours de huit threads réels sur une barrière
+(HTTP complet, pas un appel direct à deux threads) confirme huit `201` et
+huit numéros distincts.
 
 ## Format d'un événement
 

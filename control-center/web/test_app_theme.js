@@ -769,18 +769,21 @@ class FakeNode {
 
 const IDS_APP = [
   "agents", "bandeau-hote", "bandeau-hote-bouton", "bandeau-hote-texte",
-  "bascule-theme", "compteur-specs", "fichiers",
-  "filtre", "filtre-divergences", "horodatage", "icone-systeme-clair",
-  "icone-systeme-sombre", "jauge-flux", "jauge-git", "jauge-pilotage",
-  "kanban", "legende-cycles", "note-agents", "pied-cycles", "pilotage-corps",
-  "porte-aide", "porte-bouton", "porte-champ", "porte-corps", "porte-erreur",
-  "porte-jeton", "porte-titre", "projet", "prompt", "systeme", "theme-clair",
-  "theme-sombre", "theme-systeme", "timeline", "tiroir", "tiroir-contenu",
-  "tiroir-fermer", "tiroir-titre", "titre-cycles", "titre-demande",
-  "titre-pilotage", "workflows",
+  "bascule-theme", "bouton-generer-brouillon", "compteur-prompt",
+  "compteur-specs", "derogation-minimale", "erreur-generer-brouillon",
+  "fichiers", "filtre", "filtre-divergences", "horodatage",
+  "icone-systeme-clair", "icone-systeme-sombre", "jauge-flux", "jauge-git",
+  "jauge-pilotage", "kanban", "legende-cycles", "note-agents", "pied-cycles",
+  "pilotage-corps", "porte-aide", "porte-bouton", "porte-champ",
+  "porte-corps", "porte-erreur", "porte-jeton", "porte-titre", "projet",
+  "prompt", "redaction-corps", "systeme", "theme-clair", "theme-sombre",
+  "theme-systeme", "timeline", "tiroir", "tiroir-contenu", "tiroir-fermer",
+  "tiroir-titre", "titre-besoin", "titre-cycles", "titre-demande", "titre-pilotage",
+  "workflows",
 ];
 const CACHES_PAR_DEFAUT = new Set([
   "bandeau-hote", "tiroir", "porte-jeton", "porte-erreur", "icone-systeme-sombre",
+  "erreur-generer-brouillon",
 ]);
 
 /* Fabrique un bac à sable pour `app.js`. `options.localStorage` : `null`

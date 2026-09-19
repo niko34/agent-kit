@@ -135,14 +135,31 @@
 
       <section class="bloc demande" aria-labelledby="titre-demande">
         <h2 id="titre-demande">Que souhaitez-vous développer&nbsp;?</h2>
-        <textarea id="prompt" rows="2" disabled
-          placeholder="Décrire une fonctionnalité en langage naturel…"></textarea>
+        <div class="champ-titre">
+          <label for="titre-besoin">Titre du besoin (résumé en une phrase — nomme le fichier)</label>
+          <input type="text" id="titre-besoin" maxlength="200" autocomplete="off"
+            placeholder="Ex. : Ajouter un export CSV des specs affichées">
+        </div>
+        <textarea id="prompt" rows="4"
+          placeholder="Décrire le besoin en détail…"></textarea>
+        <span class="compteur" id="compteur-prompt" aria-live="polite">0 caractère</span>
         <p class="note avert">
-          Inactif à dessein. La création de spec depuis un prompt arrive à
-          l'étape&nbsp;E ; <code>do_POST</code> existe désormais mais ne route que
-          le lancement d'une commande déclarée (bloc « Pilotage » ci-dessous),
-          pas encore la création de spec.
+          Ce texte finit dans un fichier versionné&nbsp;: n'y collez ni secret
+          ni mot de passe. Il ne quitte pas ce poste — aucun appel de modèle.
         </p>
+        <label class="bascule">
+          <input type="checkbox" id="derogation-minimale">
+          <span>Traiter comme bug simple / refactor ponctuel (template minimal)</span>
+        </label>
+        <p class="note">
+          Un mot-clé sensible (auth, permission, données personnelles,
+          paiement, migration) impose quand même le template complet.
+        </p>
+        <p class="note erreur" id="erreur-generer-brouillon" role="alert" hidden></p>
+        <div class="pilotage-boutons">
+          <button type="button" id="bouton-generer-brouillon" class="pilotage-secondaire">Générer le brouillon</button>
+        </div>
+        <div id="redaction-corps"></div>
       </section>
 
       <section class="bloc">

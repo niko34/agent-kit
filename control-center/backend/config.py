@@ -56,6 +56,14 @@ _DEFAUTS = {
         # specs redéfinissent un second « Statut » dans leurs notes, qui
         # contredit le premier.
         "lignes_entete": 60,
+        # Templates de spec du PROJET (feature-008) — jamais recopiés dans le
+        # code du centre de contrôle : un projet qui personnalise son
+        # template doit voir sa version utilisée. `template_minimal` est HORS
+        # de `specs.racine` (`specs/modele.md`, pas `specs/features/...`) :
+        # AUCUNE arithmétique sur `racine` n'est donc faite ici, les deux
+        # chemins sont résolus depuis `_racine_projet` (cf. `chemin_template`).
+        "template_feature": "specs/features/_template.md",
+        "template_minimal": "specs/modele.md",
         # Vocabulaire de classification, au SEUL usage de la détection de
         # divergence. Tout mot absent d'ici rend « indéterminé », et l'outil se
         # tait alors au lieu d'affirmer une contradiction.
@@ -202,6 +210,27 @@ class Config(dict):
         if brut < 60 or brut > 10080:
             return defaut
         return brut
+
+    def chemin_template(self, genre):
+        """Chemin ABSOLU du template `"complet"` ou `"minimal"`, ou `None` si
+        non déclaré ou de type incorrect (feature-008).
+
+        Aucune arithmétique sur `[specs].racine` : `specs/modele.md` est HORS
+        de `specs/features`, donc les deux chemins se résolvent depuis
+        `_racine_projet`, exactement comme `fichier_jeton()` ci-dessous — pas
+        de dérivation « racine + '/../modele.md' » qui romprait si `racine`
+        changeait un jour.
+        """
+        cles = {"complet": "template_feature", "minimal": "template_minimal"}
+        cle = cles.get(genre)
+        if cle is None:
+            return None
+        brut = self.section("specs").get(cle)
+        if not isinstance(brut, str) or not brut:
+            return None
+        if os.path.isabs(brut):
+            return brut
+        return os.path.join(self["_racine_projet"], brut)
 
     def fichier_jeton(self):
         """Chemin ABSOLU du fichier de jeton, ou None si rien n'est déclaré.

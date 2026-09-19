@@ -105,6 +105,25 @@ def _importer_server_clone():
 _PY = sys.executable
 _VALEUR_JETON = "j" * 32  # 32 octets ASCII imprimables, largement > _TAILLE_MIN
 
+# Vrais templates du projet (feature-008) : `Groupe.racine_projet` est un
+# dossier ORDINAIRE et vide par défaut — sans ces copies, `chemin_template()`
+# résoudrait vers des chemins qui n'existent que dans CE dépôt, pas dans le
+# dossier jetable du test.
+_RACINE_PROJET_REEL = os.path.dirname(_CONTROL_CENTER_REEL)
+_TEMPLATE_FEATURE_REEL = os.path.join(_RACINE_PROJET_REEL, "specs", "features", "_template.md")
+_TEMPLATE_MINIMAL_REEL = os.path.join(_RACINE_PROJET_REEL, "specs", "modele.md")
+
+
+def _preparer_specs(racine_projet):
+    """Reproduit, dans le dossier jetable, la structure `specs/` minimale
+    dont `feature-008` a besoin : les trois colonnes ET les vrais templates
+    du projet (copiés, jamais réinventés)."""
+    for colonne in ("todo", "doing", "done"):
+        os.makedirs(os.path.join(racine_projet, "specs", "features", colonne), exist_ok=True)
+    shutil.copy(_TEMPLATE_FEATURE_REEL,
+                os.path.join(racine_projet, "specs", "features", "_template.md"))
+    shutil.copy(_TEMPLATE_MINIMAL_REEL, os.path.join(racine_projet, "specs", "modele.md"))
+
 
 class Groupe:
     """Un serveur de test complet : clone jetable, jeton, config, socket."""
@@ -994,6 +1013,317 @@ def main():
               % srv_direct.Handler.timeout)
     finally:
         shutil.rmtree(tmp_direct, ignore_errors=True)
+
+    # =======================================================================
+    # T12 (feature-008) — `/api/spec/brouillon` et `/api/spec/ecrire`
+    # =======================================================================
+    g12 = Groupe(commandes={})
+    try:
+        _preparer_specs(g12.racine_projet)
+
+        # -- brouillon nominal : 200, RIEN écrit sur disque -------------------
+        # Contrat RÉEL du formulaire (ux-ui-designer, feature-008) : `titre-
+        # besoin`, `prompt` (texte), `derogation-minimale` -> {type, titre,
+        # texte, minimal} (`app.js:surClicGenererBrouillon` — `type` vaut
+        # "bug" si la case est cochée côté client, "feature" sinon).
+        code, corps = requete(g12.port, "POST", "/api/spec/brouillon",
+                              entetes=_autorisation(g12.jeton_valeur),
+                              corps=json.dumps({
+                                  "type": "feature", "titre": "Un besoin de démo",
+                                  "texte": "Détails ici.", "minimal": False,
+                              }).encode())
+        check("test_T12_brouillon_nominal_200", code == 200, "obtenu %d : %s" % (code, corps))
+        donnees = json.loads(corps) if code == 200 else {}
+        check("test_T12_brouillon_genre_repris_du_client", donnees.get("genre") == "feature")
+        check("test_T12_brouillon_slug_derive_du_titre",
+              donnees.get("slug") == "un-besoin-de-demo", "obtenu %r" % donnees.get("slug"))
+        check("test_T12_brouillon_nom_fichier_prevu_porte_NNN",
+              donnees.get("nom_fichier_prevu") == "feature-NNN-un-besoin-de-demo.md",
+              "obtenu %r" % donnees.get("nom_fichier_prevu"))
+        check("test_T12_brouillon_n_ecrit_rien",
+              os.listdir(os.path.join(g12.racine_projet, "specs", "features", "todo")) == [],
+              "un POST /api/spec/brouillon ne doit produire AUCUN fichier")
+
+        # -- brouillon : dérogation honorée -> template minimal ---------------
+        code, corps = requete(g12.port, "POST", "/api/spec/brouillon",
+                              entetes=_autorisation(g12.jeton_valeur),
+                              corps=json.dumps({
+                                  "type": "bug", "titre": "Un bug simple",
+                                  "texte": "à corriger", "minimal": True,
+                              }).encode())
+        donnees_bug = json.loads(corps) if code == 200 else {}
+        check("test_T12_brouillon_derogation_honoree_template_minimal",
+              code == 200 and "## Symptôme observé" in donnees_bug.get("contenu", ""),
+              "obtenu %d : %s" % (code, corps))
+
+        # -- brouillon : dérogation ANNULÉE par un mot-clé, genre INCHANGÉ ----
+        code, corps = requete(g12.port, "POST", "/api/spec/brouillon",
+                              entetes=_autorisation(g12.jeton_valeur),
+                              corps=json.dumps({
+                                  "type": "bug", "titre": "Revoir les permissions",
+                                  "texte": "d'accès", "minimal": True,
+                              }).encode())
+        donnees_escalade = json.loads(corps) if code == 200 else {}
+        check("test_T12_brouillon_mot_cle_annule_la_richesse_genre_inchange",
+              code == 200 and donnees_escalade.get("genre") == "bug"
+              and "## Symptôme observé" not in donnees_escalade.get("contenu", ""),
+              "obtenu %d : %s — un mot-clé sensible doit annuler la richesse "
+              "minimale, jamais changer le genre" % (code, corps))
+
+        # -- brouillon : sans jeton, 401, même garde que /api/lancer ----------
+        code, _ = requete(g12.port, "POST", "/api/spec/brouillon", entetes={},
+                          corps=json.dumps({"type": "feature", "titre": "x",
+                                            "texte": "y", "minimal": False}).encode())
+        check("test_T12_brouillon_sans_jeton_401", code == 401, "obtenu %d" % code)
+
+        # -- brouillon : type invalide -> 422 ----------------------------------
+        code, corps = requete(g12.port, "POST", "/api/spec/brouillon",
+                              entetes=_autorisation(g12.jeton_valeur),
+                              corps=json.dumps({"type": "refactor", "titre": "x",
+                                                "texte": "y", "minimal": False}).encode())
+        check("test_T12_brouillon_type_invalide_422", code == 422, "obtenu %d : %s" % (code, corps))
+
+        # -- brouillon : titre vide -> 422 -------------------------------------
+        code, corps = requete(g12.port, "POST", "/api/spec/brouillon",
+                              entetes=_autorisation(g12.jeton_valeur),
+                              corps=json.dumps({"type": "feature", "titre": "",
+                                                "texte": "y", "minimal": False}).encode())
+        check("test_T12_brouillon_titre_vide_422", code == 422, "obtenu %d : %s" % (code, corps))
+
+        # -- brouillon : corps illisible -> 400 --------------------------------
+        code, corps = requete(g12.port, "POST", "/api/spec/brouillon",
+                              entetes=_autorisation(g12.jeton_valeur),
+                              corps=b"{ceci n'est pas du JSON")
+        check("test_T12_brouillon_corps_illisible_400", code == 400, "obtenu %d : %s" % (code, corps))
+
+        # -- brouillon : 413 à la borne PROPRE à cette route (8192), pas 4096 -
+        corps_moyen = json.dumps({"type": "feature", "titre": "x",
+                                  "texte": "y" * 5000, "minimal": False}).encode()
+        check("test_T12_brouillon_corps_5000_sous_la_borne_413_pas_leve",
+              len(corps_moyen) > 4096, "préparation du test invalide")
+        code, corps_rep = requete(g12.port, "POST", "/api/spec/brouillon",
+                                  entetes=_autorisation(g12.jeton_valeur), corps=corps_moyen)
+        check("test_T12_brouillon_accepte_corps_superieur_a_4096",
+              code != 413, "obtenu %d : la borne par défaut (4096) semble encore "
+              "appliquée à cette route, au lieu de 8192" % code)
+        corps_trop_gros = json.dumps({"type": "feature", "titre": "x",
+                                      "texte": "y" * 9000, "minimal": False}).encode()
+        code, _ = requete(g12.port, "POST", "/api/spec/brouillon",
+                          entetes=_autorisation(g12.jeton_valeur), corps=corps_trop_gros)
+        check("test_T12_brouillon_413_a_sa_propre_borne", code == 413, "obtenu %d" % code)
+
+        # -- écriture nominale : 201, fichier RÉELLEMENT présent dans todo/ ---
+        # Contrat RÉEL (reboucle étape 5a) : {type, titre, contenu} — le
+        # Markdown relu est écrit VERBATIM, jamais reconstruit depuis un
+        # texte d'origine.
+        contenu_a_ecrire = ("## Métadonnées\n- **ID** : feature-NNN\n\n"
+                            "Un contenu quelconque, déjà relu.")
+        code, corps = requete(g12.port, "POST", "/api/spec/ecrire",
+                              entetes=_autorisation(g12.jeton_valeur),
+                              corps=json.dumps({
+                                  "type": "feature", "titre": "Écriture bout en bout",
+                                  "contenu": contenu_a_ecrire,
+                              }).encode())
+        check("test_T12_ecrire_nominal_201", code == 201, "obtenu %d : %s" % (code, corps))
+        resultat = json.loads(corps) if code == 201 else {}
+        check("test_T12_ecrire_rend_id_chemin_numero_substitutions",
+              set(resultat) >= {"id", "chemin", "numero", "substitutions_finales"},
+              "obtenu %r" % resultat)
+        chemin_attendu = os.path.join(g12.racine_projet, "specs", "features", "todo",
+                                      "feature-001-ecriture-bout-en-bout.md")
+        check("test_T12_ecrire_fichier_reellement_present", os.path.isfile(chemin_attendu),
+              "attendu : %s ; contenu du dossier : %r"
+              % (chemin_attendu,
+                 os.listdir(os.path.join(g12.racine_projet, "specs", "features", "todo"))))
+        if os.path.isfile(chemin_attendu):
+            with open(chemin_attendu, encoding="utf-8") as f:
+                contenu_ecrit = f.read()
+            check("test_T12_ecrire_id_reconciliee", "- **ID** : feature-001" in contenu_ecrit)
+            check("test_T12_ecrire_contenu_recopie_verbatim",
+                  "Un contenu quelconque, déjà relu." in contenu_ecrit)
+
+        # -- LE défaut de la reboucle 5a, bout en bout par HTTP : brouillon,
+        # correction humaine d'un `[remplir]`, écriture — la correction doit
+        # être RÉELLEMENT dans le fichier, pas seulement dans la réponse.
+        code, corps = requete(g12.port, "POST", "/api/spec/brouillon",
+                              entetes=_autorisation(g12.jeton_valeur),
+                              corps=json.dumps({
+                                  "type": "feature", "titre": "Besoin avec relecture",
+                                  "texte": "Un besoin quelconque.", "minimal": False,
+                              }).encode())
+        donnees_brouillon = json.loads(corps) if code == 200 else {}
+        contenu_brouillon = donnees_brouillon.get("contenu", "")
+        check("test_T12_setup_brouillon_relecture_contient_le_placeholder",
+              "[remplir : X.Y.Z] ou `N/A` si référence" in contenu_brouillon)
+        contenu_corrige = contenu_brouillon.replace(
+            "[remplir : X.Y.Z] ou `N/A` si référence", "CORRECTION HUMAINE", 1)
+        code, corps = requete(g12.port, "POST", "/api/spec/ecrire",
+                              entetes=_autorisation(g12.jeton_valeur),
+                              corps=json.dumps({
+                                  "type": "feature", "titre": "Besoin avec relecture",
+                                  "contenu": contenu_corrige,
+                              }).encode())
+        check("test_T12_ecrire_avec_correction_humaine_201", code == 201,
+              "obtenu %d : %s" % (code, corps))
+        resultat_corrige = json.loads(corps) if code == 201 else {}
+        if resultat_corrige.get("chemin"):
+            with open(os.path.join(g12.racine_projet, resultat_corrige["chemin"]),
+                     encoding="utf-8") as f:
+                contenu_fichier_corrige = f.read()
+            check("test_T12_correction_humaine_survit_verbatim_a_l_ecriture",
+                  "CORRECTION HUMAINE" in contenu_fichier_corrige,
+                  "la correction relue par l'humain a été jetée à l'écriture "
+                  "(reboucle étape 5a)")
+            # --- garde ÉPINGLÉE, pas seulement une sous-chaîne (PIEGES.md
+            # §27) : une régénération qui réinjecte `contenu_corrige` comme
+            # `texte` dans un template FRAIS laisserait la sous-chaîne
+            # présente (imbriquée), invisible au test ci-dessus — mesuré sur
+            # ce lot. Seule l'égalité octet pour octet avec le contenu RELU
+            # (ID réconcilié) prouve le verbatim, à travers le VRAI chemin
+            # HTTP.
+            attendu_verbatim_http, _ = g12.srv.RS.appliquer_numero(
+                contenu_corrige, "feature", resultat_corrige["numero"])
+            check("test_T12_correction_humaine_fichier_egal_octet_pour_octet",
+                  contenu_fichier_corrige == attendu_verbatim_http,
+                  "le fichier écrit diverge du contenu relu (ID réconcilié)")
+
+        # -- écriture : `contenu` absent -> 422, jamais un repli silencieux --
+        code, corps = requete(g12.port, "POST", "/api/spec/ecrire",
+                              entetes=_autorisation(g12.jeton_valeur),
+                              corps=json.dumps({
+                                  "type": "feature", "titre": "Sans contenu",
+                              }).encode())
+        check("test_T12_ecrire_contenu_absent_422", code == 422, "obtenu %d : %s" % (code, corps))
+
+        # -- écriture : type invalide -> 422, aucun fichier créé --------------
+        avant = set(os.listdir(os.path.join(g12.racine_projet, "specs", "features", "todo")))
+        code, corps = requete(g12.port, "POST", "/api/spec/ecrire",
+                              entetes=_autorisation(g12.jeton_valeur),
+                              corps=json.dumps({
+                                  "type": "refactor", "titre": "x", "contenu": "y",
+                              }).encode())
+        check("test_T12_ecrire_type_invalide_422", code == 422, "obtenu %d : %s" % (code, corps))
+        apres = set(os.listdir(os.path.join(g12.racine_projet, "specs", "features", "todo")))
+        check("test_T12_ecrire_type_invalide_aucun_fichier_cree", avant == apres)
+
+        # -- écriture : titre HOSTILE -> slug re-normalisé, jamais de remontée
+        code, corps = requete(g12.port, "POST", "/api/spec/ecrire",
+                              entetes=_autorisation(g12.jeton_valeur),
+                              corps=json.dumps({
+                                  "type": "feature", "titre": "../../../etc/passwd",
+                                  "contenu": "peu importe",
+                              }).encode())
+        resultat_hostile = json.loads(corps) if code == 201 else {}
+        check("test_T12_ecrire_titre_hostile_201_renormalise",
+              code == 201, "obtenu %d : %s" % (code, corps))
+        check("test_T12_ecrire_titre_hostile_chemin_confine",
+              resultat_hostile.get("chemin", "").startswith("specs/features/todo/")
+              and ".." not in resultat_hostile.get("chemin", ""),
+              "obtenu %r" % resultat_hostile.get("chemin"))
+
+        # -- écriture : `contenu` HOSTILE (remontée dans le CORPS du texte,
+        # pas dans le titre) -> le chemin ne doit JAMAIS en dépendre ---------
+        code, corps = requete(g12.port, "POST", "/api/spec/ecrire",
+                              entetes=_autorisation(g12.jeton_valeur),
+                              corps=json.dumps({
+                                  "type": "feature", "titre": "Contenu hostile http",
+                                  "contenu": "Corps : ../../../etc/passwd et /etc/shadow",
+                              }).encode())
+        resultat_contenu_hostile = json.loads(corps) if code == 201 else {}
+        check("test_T12_ecrire_contenu_hostile_201", code == 201, "obtenu %d : %s" % (code, corps))
+        check("test_T12_ecrire_contenu_hostile_chemin_confine_a_todo",
+              resultat_contenu_hostile.get("chemin", "").startswith("specs/features/todo/")
+              and ".." not in resultat_contenu_hostile.get("chemin", ""),
+              "obtenu %r" % resultat_contenu_hostile.get("chemin"))
+
+        # -- écriture : numéro déjà pris (TOCTOU simulée) → 409, rien d'écrasé
+        # `numeros_pris` verrait NORMALEMENT ce fichier et avancerait le
+        # numéro pour l'éviter ; on la force ici à l'ignorer (simule une
+        # fenêtre TOCTOU réelle) pour éprouver la VRAIE dernière ligne de
+        # défense : `O_CREAT | O_EXCL` — à travers le VRAI chemin HTTP, pas
+        # seulement `ecrire_sous_verrou()` en direct (déjà couvert par
+        # `test_redaction_spec.py::test_collision_rend_409`).
+        with open(chemin_attendu, encoding="utf-8") as f:
+            contenu_avant = f.read()
+        chemin_pre_pris = os.path.join(g12.racine_projet, "specs", "features", "todo",
+                                       "feature-002-collision-http.md")
+        with open(chemin_pre_pris, "w", encoding="utf-8") as f:
+            f.write("déjà présent, ne doit jamais être écrasé")
+        NumerosPrisOrigine = g12.srv.RS.S.numeros_pris
+        g12.srv.RS.S.numeros_pris = lambda racine, colonnes: {"feature": {1}, "bug": set()}
+        try:
+            code, corps = requete(g12.port, "POST", "/api/spec/ecrire",
+                                  entetes=_autorisation(g12.jeton_valeur),
+                                  corps=json.dumps({
+                                      "type": "feature", "titre": "Collision http",
+                                      "contenu": "peu importe",
+                                  }).encode())
+        finally:
+            g12.srv.RS.S.numeros_pris = NumerosPrisOrigine
+        check("test_T12_ecrire_collision_409", code == 409, "obtenu %d : %s" % (code, corps))
+        with open(chemin_pre_pris, encoding="utf-8") as f:
+            check("test_T12_ecrire_collision_fichier_intact",
+                  f.read() == "déjà présent, ne doit jamais être écrasé")
+        with open(chemin_attendu, encoding="utf-8") as f:
+            check("test_T12_ecrire_premier_fichier_toujours_intact",
+                  f.read() == contenu_avant)
+
+        # -- concurrence RÉELLE au niveau HTTP : N threads sur une Barrier,
+        # tous ciblant `/api/spec/ecrire` en même temps (GATE P2 : mesuré
+        # à 8 threads -> 8 numéros distincts sur cette route précise ; le
+        # test à 2 threads de `test_redaction_spec.py::
+        # test_concurrence_numeros_distincts` appelle `ecrire_sous_verrou`
+        # directement, jamais le chemin HTTP complet, et 2 threads laissent
+        # une chance non négligeable à la course de ne pas se manifester —
+        # ce test-ci est la preuve, à travers le VRAI serveur, que l'article
+        # mesuré par l'auditeur reste dans la suite).
+        N = 8
+        barriere_ecriture = threading.Barrier(N)
+        resultats_ecriture = [None] * N
+
+        def _ecrire_concurrent_http(indice):
+            barriere_ecriture.wait()
+            code, corps = requete(g12.port, "POST", "/api/spec/ecrire",
+                                  entetes=_autorisation(g12.jeton_valeur),
+                                  corps=json.dumps({
+                                      "type": "feature",
+                                      "titre": "Concurrence http %d" % indice,
+                                      "contenu": "contenu %d" % indice,
+                                  }).encode())
+            resultats_ecriture[indice] = (code, corps)
+
+        fils_ecriture = [threading.Thread(target=_ecrire_concurrent_http, args=(i,))
+                         for i in range(N)]
+        for f in fils_ecriture:
+            f.start()
+        for f in fils_ecriture:
+            f.join(timeout=10)
+
+        codes_ecriture = [c for c, _ in resultats_ecriture]
+        check("test_T12_concurrence_8_threads_tous_201",
+              codes_ecriture.count(201) == N,
+              "obtenu %r" % codes_ecriture)
+        numeros_ecriture = []
+        for code, corps in resultats_ecriture:
+            if code == 201:
+                numeros_ecriture.append(json.loads(corps)["numero"])
+        check("test_T12_concurrence_8_threads_numeros_distincts",
+              len(numeros_ecriture) == len(set(numeros_ecriture)) == N,
+              "numéros obtenus : %r" % sorted(numeros_ecriture))
+
+        # -- écriture : répertoire cible absent -> 500, jamais recréé ---------
+        shutil.rmtree(os.path.join(g12.racine_projet, "specs", "features", "todo"))
+        code, corps = requete(g12.port, "POST", "/api/spec/ecrire",
+                              entetes=_autorisation(g12.jeton_valeur),
+                              corps=json.dumps({
+                                  "type": "feature", "titre": "Peu importe",
+                                  "contenu": "peu importe",
+                              }).encode())
+        check("test_T12_ecrire_repertoire_absent_500", code == 500, "obtenu %d : %s" % (code, corps))
+        check("test_T12_ecrire_repertoire_absent_n_est_pas_recree",
+              not os.path.isdir(os.path.join(g12.racine_projet, "specs", "features", "todo")))
+    finally:
+        g12.fermer()
 
     print("\n%d cas, %d echec(s)" % (_tests, len(_echecs)))
     for echec in _echecs:
