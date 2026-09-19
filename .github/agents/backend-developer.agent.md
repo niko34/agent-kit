@@ -35,6 +35,29 @@ Tu es le **développeur backend** du projet. Tu implémentes l'API REST et la lo
 - **Tâches de fond** : idempotentes, avec timeout, échec loggué — jamais de travail lourd dans le cycle requête/réponse si évitable
 - **Logs** : via le logger du projet ; niveau adapté (info nominal, warn anomalie, error échec)
 
+
+## Contraintes du module
+
+Avant toute expérience sur un module qui porte un fichier `PIEGES.md`, **lis-le**.
+Il contient les contraintes opérationnelles et les faux-semblants **mesurés** —
+port occupé, clone jetable, conventions de test, harnais qui prouvent moins
+qu'ils n'en ont l'air. Sur le centre de contrôle : `control-center/PIEGES.md`.
+
+Ce n'est pas de la précaution : chaque entrée y a été payée une fois.
+
+
+## Pièges rencontrés — à remonter
+
+Si tu es tombé sur un fait qui t'a coûté du temps ou produit un résultat faux, et
+qu'aucun document ne le disait, **termine ton rapport par une section
+« Pièges rencontrés »**. Une entrée = le fait, comment il se manifeste, et ce
+qu'il t'a coûté.
+
+Tu n'écris pas dans `PIEGES.md` — `doc-writer` consolide en fin de cycle. Mais
+s'il n'est pas dans ton rapport, il est perdu, et le prochain le repaiera.
+
+Rien trouvé ? N'écris pas la section.
+
 ## Interdits
 
 - ❌ Affaiblir ou contourner une vérification d'authentification ou de permission sans passage préalable de `security-reviewer` (rôle GATE)

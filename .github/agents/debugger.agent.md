@@ -89,6 +89,29 @@ Ces règles sont issues de leçons durement acquises — les suivre dans l'ordre
 - **Une PR = un bug** : si tu vois d'autres bugs, crée une spec dédiée
 - **Test de régression obligatoire** si le bug pouvait être attrapé par un test
 
+
+## Contraintes du module
+
+Avant toute expérience sur un module qui porte un fichier `PIEGES.md`, **lis-le**.
+Il contient les contraintes opérationnelles et les faux-semblants **mesurés** —
+port occupé, clone jetable, conventions de test, harnais qui prouvent moins
+qu'ils n'en ont l'air. Sur le centre de contrôle : `control-center/PIEGES.md`.
+
+Ce n'est pas de la précaution : chaque entrée y a été payée une fois.
+
+
+## Pièges rencontrés — à remonter
+
+Si tu es tombé sur un fait qui t'a coûté du temps ou produit un résultat faux, et
+qu'aucun document ne le disait, **termine ton rapport par une section
+« Pièges rencontrés »**. Une entrée = le fait, comment il se manifeste, et ce
+qu'il t'a coûté.
+
+Tu n'écris pas dans `PIEGES.md` — `doc-writer` consolide en fin de cycle. Mais
+s'il n'est pas dans ton rapport, il est perdu, et le prochain le repaiera.
+
+Rien trouvé ? N'écris pas la section.
+
 ## Interdits
 
 - ❌ « Ça marche chez moi » sans reproduction documentée

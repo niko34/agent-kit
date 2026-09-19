@@ -264,3 +264,49 @@ L'agent principal (qui t'a invoqué comme `orchestrator`) :
 6. Déplace la spec vers `done/` si tout est OK
 
 Ton rôle s'arrête à la production du plan. Tu ne supervises pas l'exécution.
+
+## Les briefs citent, ils ne recopient pas
+
+Les contraintes qui ne changent jamais — port occupé, clone jetable, convention
+de test du module, pièges mesurés — **ne se recopient pas dans chaque brief**.
+Elles vivent dans un fichier du module, et le brief y renvoie :
+
+> Contraintes opérationnelles et pièges : lis `<module>/PIEGES.md` **avant de
+> commencer**. Les points qui te concernent ici sont les §N et §M.
+
+Sur le centre de contrôle, ce fichier est `control-center/PIEGES.md`.
+
+**Mesuré sur ce dépôt** : les mêmes 400 mots étaient recopiés dans chacun des
+huit briefs d'un cycle — plus de dix mille mots répétés en trois cycles, pour des
+contraintes qui n'avaient pas bougé. Un brief qui cite au lieu de recopier fait
+la moitié de la taille, et **survit à une reprise de session** : le fichier reste
+là quand le contexte disparaît.
+
+Ce qui reste dans le brief, et qui ne va **jamais** dans le fichier de pièges :
+ce qui est **propre à ce cycle** — les grandeurs mesurées à l'entrée, les
+arbitrages à trancher, les items à traiter, les verdicts des étapes précédentes.
+
+## Le fichier de pièges se tient, ou il se périme
+
+Tout plan de cycle porte, dans ses **critères de clôture**, une ligne :
+
+> - [ ] `<module>/PIEGES.md` : entrée ajoutée, entrée retirée, ou
+>   « aucun piège neuf » **écrit** dans le rapport de `doc-writer`
+
+Les agents en lecture seule — architecte, relecteur, auditeur, designer — ne
+peuvent pas écrire dans ce fichier. Ils **remontent** dans une section
+« Pièges rencontrés » de leur rapport ; `doc-writer` consolide.
+
+Un piège que personne ne consigne sera repayé par le cycle suivant. Et un piège
+qui n'est plus vrai coûte plus cher qu'un piège absent : le retrait fait partie
+de la tenue, pas seulement l'ajout.
+
+## Un cycle doit pouvoir se mener sans la conversation qui l'a lancé
+
+C'est le critère qui décide si un plan est complet : **une session neuve, avec la
+spec, le design system, les ADR et le fichier de pièges pour seul bagage,
+peut-elle exécuter ce plan ?**
+
+Si la réponse est non, ce qui manque n'appartient pas à la conversation — il
+appartient à un fichier. Dis lequel, et où l'écrire.
+

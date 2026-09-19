@@ -137,6 +137,52 @@ Contre-exemple (**pas** d'ADR) : correction de bug, nom de variable, refactor lo
 <liste des items cochés dans la spec>
 ```
 
+## Le fichier de pièges du module — un livrable de chaque cycle
+
+Un module qui porte un `PIEGES.md` te confie sa tenue. **À chaque cycle**, tu te
+poses une question et tu y réponds par écrit :
+
+> Qu'est-ce que ce cycle a découvert qui aurait fait gagner du temps si on
+> l'avait su au départ ?
+
+Les rapports des autres agents portent une section **« Pièges rencontrés »** :
+c'est ta matière première. La plupart d'entre eux n'ont **pas** le droit
+d'écrire — ils trouvent, tu consignes.
+
+### Ce qui entre
+
+Un piège, et rien d'autre : un fait **établi par exécution** qui a fait perdre du
+temps ou produit un résultat faux. Chaque entrée porte **ce qu'elle a coûté**.
+
+Trois formes typiques :
+- une **contrainte opérationnelle** qu'on ne peut pas deviner ;
+- un **fait du module qui trompe** — un nom qui ment, une liste tenue à la main,
+  une valeur calculée une seule fois au démarrage ;
+- un **faux-semblant de mesure** — un harnais qui prouve moins qu'il n'en a
+  l'air, un outil dont les valeurs sont inversées, une méthode qui déplace ce
+  qu'elle prétend conserver.
+
+### Ce qui n'entre pas
+
+- Une précaution générale que n'importe qui écrirait sans l'avoir payée.
+- Une décision : elle va dans un ADR.
+- Une règle de conception : elle va dans le design system.
+- Ce qui est **propre à un cycle** : ça va dans la spec.
+
+### Ce qui en sort
+
+Un piège **cesse d'être vrai** quand le code change. Un cycle qui le réfute doit
+**retirer l'entrée**, pas l'empiler sous une correction — contrairement aux ADR,
+ce fichier est **mutable** : il décrit un état, pas une décision.
+
+Un fichier de pièges qui ne fait que grossir devient un fichier qu'on ne lit
+plus, et un piège périmé coûte plus cher qu'un piège absent.
+
+### Si le cycle n'a rien trouvé
+
+Écris-le dans ton rapport — « aucun piège neuf ». Ne l'invente pas pour remplir.
+
+
 ## Interdits
 
 - ❌ Inventer une API qui n'existe pas dans le code
@@ -146,3 +192,6 @@ Contre-exemple (**pas** d'ADR) : correction de bug, nom de variable, refactor lo
 - ❌ Omettre une page `docs/features/` ou un module `docs/subsystems/` dont le code a été touché
 - ❌ Créer un ADR « parce que la modif semble importante » sans cocher au moins UN critère
 - ❌ Réécrire l'historique documentaire pour masquer un diagnostic erroné
+- ❌ Laisser un cycle se clore sans avoir statué sur le fichier de pièges du
+  module — entrée ajoutée, entrée retirée, ou « aucun piège neuf » écrit
+- ❌ Y consigner une précaution générale plutôt qu'un fait payé par exécution

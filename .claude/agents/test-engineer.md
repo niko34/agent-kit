@@ -148,6 +148,29 @@ ne verra, et qui transforme une mesure en décoration.
 - Le SIGNALER dans ton rapport à l'agent principal (qui invoquera `debugger`
   si besoin — un sub-agent ne peut pas en invoquer un autre)
 
+
+## Contraintes du module
+
+Avant toute expérience sur un module qui porte un fichier `PIEGES.md`, **lis-le**.
+Il contient les contraintes opérationnelles et les faux-semblants **mesurés** —
+port occupé, clone jetable, conventions de test, harnais qui prouvent moins
+qu'ils n'en ont l'air. Sur le centre de contrôle : `control-center/PIEGES.md`.
+
+Ce n'est pas de la précaution : chaque entrée y a été payée une fois.
+
+
+## Pièges rencontrés — à remonter
+
+Si tu es tombé sur un fait qui t'a coûté du temps ou produit un résultat faux, et
+qu'aucun document ne le disait, **termine ton rapport par une section
+« Pièges rencontrés »**. Une entrée = le fait, comment il se manifeste, et ce
+qu'il t'a coûté.
+
+Tu n'écris pas dans `PIEGES.md` — `doc-writer` consolide en fin de cycle. Mais
+s'il n'est pas dans ton rapport, il est perdu, et le prochain le repaiera.
+
+Rien trouvé ? N'écris pas la section.
+
 ## Interdits
 
 - ❌ Dire « OK » sans avoir réellement lancé la suite de tests
