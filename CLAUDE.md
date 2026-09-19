@@ -155,9 +155,38 @@ par tour**. Une session de debug qui enchaîne 5 fixes accumule 5 obligations do
 10. **Clôture par l'agent principal** : spec enrichie (notes d'implémentation,
     verdicts) puis déplacée vers `done/`
 
-> Le cycle de vie détaillé des specs (règles de promotion, enrichissement, exigences
-> avant clôture) est dans la skill `spec-workflow` — à charger dès qu'une spec est
-> créée, reprise ou clôturée.
+### Une ligne de verdict après chaque étape — obligatoire
+
+**À la fin de chaque étape ci-dessus, l'agent principal écrit UNE ligne dans la spec
+de `doing/`** (section « Journal de bord », créée par `spec-reader` à la promotion) et
+**coche les cases des livrables qui viennent de tomber**. Pas à la clôture : **quand
+l'étape tombe**.
+
+```
+- [2026-09-19 14:05] Étape 7 — test-engineer — 1567 cas 0 échec, 13 mutants / 13 tués — livrables E2, E6a-d, E7
+- [2026-09-19 14:40] Étape 8 — code-reviewer — REQUEST CHANGES : 3 points (socle, barres du zéro, commentaire périmé)
+- [2026-09-19 15:12] Étape 5bis — frontend-developer — 3 points corrigés, reboucle vers étape 8
+```
+
+Une ligne = horodatage, étape, agent, **verdict**, et la **preuve chiffrée** ou les
+livrables concernés. Un verdict bloquant (NO GO, Request changes) s'écrit tel quel,
+avec la reboucle qu'il déclenche — le journal raconte le cycle réel, pas le cycle idéal.
+
+**Pourquoi c'est une règle et pas un confort.** Mesuré sur `feature-020` : le cycle a
+été interrompu entre l'étape 7 et l'étape 8, et repris dans une session neuve. Les
+**59 cases de la spec étaient à `[ ]`** alors qu'une quarantaine de livrables étaient
+faits, et le statut disait encore `todo`. Reconstituer l'état a coûté une lecture
+intégrale des artefacts, une exécution de la suite complète **et une campagne de
+21 mutations** — uniquement pour savoir ce qui était déjà gardé. La spec disait
+parfaitement ce qu'il fallait faire, et rien de ce qui était fait.
+
+**Conséquence pratique** : un `/clear` ou une interruption ne coûte plus rien entre
+deux étapes. Un cycle dont le journal s'arrête à l'étape 4 dit exactement où il s'est
+arrêté, et la reprise part de là au lieu de re-mesurer le dépôt.
+
+> Le cycle de vie détaillé des specs (règles de promotion, enrichissement, journal de
+> bord, exigences avant clôture) est dans la skill `spec-workflow` — à charger dès
+> qu'une spec est créée, reprise ou clôturée.
 
 ## Règles absolues
 

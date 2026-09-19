@@ -26,6 +26,19 @@ Tu es chargé de la **lecture critique et analyse d'impact** des specs du projet
    - **Bug / refactor simple** : `specs/modele.md` suffit — type, comportement attendu, comportement actuel, steps to reproduce (si bug), critères d'acceptation.
 3. **Si la spec est incomplète** : produire une liste de questions pour l'utilisateur et ne PAS la déplacer
 4. **Si la spec est complète** : produire une **analyse d'impact** (en reprenant les cases cochées de « Domaines touchés » et « Agents requis » quand elles existent), puis `mv specs/features/todo/X.md specs/features/doing/X.md`
+5. **Ouvrir le journal de bord** en fin de spec promue, et y écrire la première ligne — la tienne. Sans cette section, le cycle n'a nulle part où consigner son avancement, et une interruption le laisse muet sur ce qui était fait (mesuré sur `feature-020` : 59 cases à `[ ]` pour une quarantaine de livrables réellement faits, et une campagne de 21 mutations pour le rétablir).
+
+   ```markdown
+   ---
+   ## Journal de bord
+
+   <!-- UNE ligne par étape du workflow, écrite QUAND L'ÉTAPE TOMBE, jamais à la
+        clôture. Horodatage · étape · agent · verdict · preuve chiffrée ou livrables. -->
+
+   - [AAAA-MM-JJ HH:MM] Étape 1 — spec-reader — spec promue vers doing/, <N> fichiers impactés
+   ```
+
+   Format et règles complètes : skill `spec-workflow`, section « Journal de bord ».
 
 ## Confronte les nombres de la spec au réel — avant de la promouvoir
 

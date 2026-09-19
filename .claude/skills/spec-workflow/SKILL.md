@@ -78,7 +78,62 @@ Le second contrôle n'est pas décoratif : **le chemin d'un lien vers une spec e
 l'ancien emplacement. Sur le projet d'origine, 29 % des liens vers des specs étaient
 morts pour cette seule raison — des liens justes le jour où ils ont été écrits.
 
+## Journal de bord — une ligne de verdict après chaque étape
+
+**`spec-reader` ouvre la section au moment de la promotion `todo/` → `doing/`**, vide,
+en fin de fichier :
+
+```markdown
+---
+## Journal de bord
+
+<!-- UNE ligne par étape du workflow, écrite QUAND L'ÉTAPE TOMBE, jamais à la
+     clôture. Horodatage · étape · agent · verdict · preuve chiffrée ou livrables.
+     Les verdicts bloquants et les reboucles s'y écrivent tels quels. -->
+```
+
+Puis, **à la fin de chaque étape**, l'agent principal y ajoute une ligne **et coche
+dans la check-list les livrables qui viennent de tomber** :
+
+```markdown
+- [2026-09-19 13:20] Étape 1 — spec-reader — spec promue vers doing/, 5 fichiers impactés
+- [2026-09-19 14:05] Étape 7 — test-engineer — 1567 cas 0 échec, 13 mutants / 13 tués — E2, E6a-d, E7
+- [2026-09-19 14:40] Étape 8 — code-reviewer — REQUEST CHANGES : 3 points (socle, barres du zéro, commentaire périmé)
+- [2026-09-19 15:12] Étape 5bis — frontend-developer — 3 points corrigés, reboucle vers étape 8
+- [2026-09-19 15:30] Étape 8 — code-reviewer — APPROVED
+```
+
+**Ce que la ligne doit porter** : le **verdict**, et une **preuve** — un compte, un
+ratio de mutants, un nom de fichier. « Étape 7 OK » ne vaut rien : à la reprise, il
+faudra tout remesurer, ce que cette règle existe précisément pour éviter.
+
+### Pourquoi — mesuré, pas supposé
+
+`feature-020` a été interrompu entre l'étape 7 et l'étape 8, et repris dans une
+session neuve. Les **59 cases de la spec étaient à `[ ]`** alors qu'une quarantaine de
+livrables étaient faits, et le statut disait encore `todo`. Rétablir l'état a exigé
+une lecture intégrale des artefacts, une exécution de la suite complète **et une
+campagne de 21 mutations** — pour découvrir que 9 mutants survivaient, dont deux qui
+désarmaient des décisions qu'un ADR s'apprêtait à graver.
+
+La spec disait parfaitement ce qu'il fallait faire, et **rien de ce qui était fait**.
+
+### Reprise d'un cycle interrompu
+
+1. Lire le journal de bord : la dernière ligne dit où le cycle s'est arrêté.
+2. **Vérifier la dernière ligne par une mesure** avant de repartir — une suite verte
+   au moment où elle a été écrite peut ne plus l'être. Le journal oriente, il ne
+   dispense pas de mesurer ce sur quoi on va s'appuyer.
+3. **Journal absent, ou en retard sur le dépôt** (cas d'un cycle démarré avant cette
+   règle) : rétablir l'état **par mesure** — lecture des artefacts, suite complète,
+   mutations sur les gardes du cycle — puis **écrire le journal rétroactivement**, en
+   disant qu'il l'est. Ne jamais cocher une case sur la foi d'un compte rendu.
+
 ## Enrichissement pendant doing
+
+Le journal de bord dit **où en est** le cycle. Les notes d'implémentation disent **ce
+qui a été décidé et pourquoi** : elles se rédigent au fil de l'eau, et se consolident
+à la clôture.
 
 Ajouter **en fin de fichier** (pas en remplacement) les sections de `specs/modele_iteration.md` :
 
@@ -106,6 +161,8 @@ Verdict : Approved / Request changes
 ## Promotion doing → done
 
 Exigences avant promotion :
+- [ ] **Journal de bord complet** : une ligne par étape traversée, reboucles comprises,
+      et **aucune case de la check-list restée `[ ]` sans raison écrite**
 - [ ] Suite de tests du projet verte (commandes canoniques : skill `dev-workflow`)
 - [ ] Tests ajoutés / passants, **validés par mutation** (chaque test neuf a été vu
       échouer sur une altération volontaire du code qu'il protège)
