@@ -8,6 +8,7 @@
 ## Préférences utilisateur
 
 - ⭐ [Le push exige un feu vert séparé](push-exige-un-feu-vert-separe.md) — règle enfreinte une fois, signalée
+- [Stager `.claude/settings.json` est refusé](stager-settings-json-est-refuse.md) — le refus porte sur TOUTE la commande, pas sur le seul fichier
 
 ## Pièges récurrents
 
