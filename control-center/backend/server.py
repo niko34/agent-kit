@@ -113,11 +113,16 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# `hooks/` en APPEND, jamais en `insert(0)` : `backend/` doit rester résolu en
+# premier, `redaction_commande` ne doit jamais passer devant un module du
+# backend qui porterait accidentellement le même nom (`bug-014`, D4).
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "hooks"))
 import agents as A  # noqa: E402
 import config as C  # noqa: E402
 import events as E  # noqa: E402
 import jeton as J  # noqa: E402
 import lanceur as L  # noqa: E402
+import redaction_commande as RC  # noqa: E402
 import redaction_spec as RS  # noqa: E402
 import specs as S  # noqa: E402
 import vcs as V  # noqa: E402
@@ -1171,12 +1176,23 @@ class Handler(BaseHTTPRequestHandler):
         if lancement is None:
             return self._erreur(409, raison or "un écrivain occupe déjà la place")
 
-        _ecrire_evenement(self.server.etat.journal, {
+        # D3 (`bug-014`) : `argv` est une liste FERMÉE (`config.commande()`),
+        # mais `control-center.toml` n'est PAS versionné — une entrée locale
+        # du type `["env", "POOL_PASSWORD=x", "./ota.sh"]` produirait sinon
+        # `command_head = "env POOL_PASSWORD=x"`, écrit en 0644 et servi au
+        # navigateur. `_lancer()` passe donc par LA MÊME fonction que
+        # `config.tetes_de_commande()`, sur `" ".join(argv)` — sinon les deux
+        # côtés de `tete in suivies` (`events.py`) divergent. Champ OMIS, pas
+        # `None`, quand rien n'est retenu (voir `_tool_details`, le hook).
+        evenement = {
             "hook_event_name": "LancementDemande",
             "cle": cle,
-            "command_head": " ".join(argv[:2]),
             "pid_fils": lancement.pid,
-        })
+        }
+        tete = RC.command_head(" ".join(argv))
+        if tete:
+            evenement["command_head"] = tete
+        _ecrire_evenement(self.server.etat.journal, evenement)
         return self._json({"lance": True, "cle": cle, "pid": lancement.pid}, 202)
 
     def _interrompre(self):

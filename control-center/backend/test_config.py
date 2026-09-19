@@ -21,6 +21,8 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config as C  # noqa: E402
 import events as E  # noqa: E402
+import server as SRV  # noqa: E402
+import redaction_commande as RC  # noqa: E402
 
 _echecs = []
 _tests = 0
@@ -354,6 +356,25 @@ commandes_avec_budget = ["tests", "deja_borne", "inconnue"]
         c = C.charger(chemin=os.path.join(tmp, "absent5.toml"), racine_projet=tmp)
         check("test_budget_transmissible_sans_configuration_est_faux",
               c.budget_transmissible("nimporte_quoi") is False)
+
+        # --- accord des DEUX écrivains (bug-014, condition 5 du GATE P1) ----
+        # `config.tetes_de_commande()` (via C.RC) et `server._lancer()` (via
+        # SRV.RC) doivent appeler la MÊME fonction sur `" ".join(argv)` — sinon
+        # les deux côtés de `tete in suivies` (events.py) divergent, et une
+        # commande journalisée par l'un ne correspond plus à ce que l'autre
+        # attend en filtre.
+        check("test_config_et_server_partagent_le_meme_module_de_redaction",
+              C.RC is SRV.RC,
+              "deux copies de la même règle ont déjà dérivé trois fois "
+              "(bug-012, bug-014) : il ne doit rester qu'UN module")
+        argv_sensible = ["env", "POOL_PASSWORD=x", "./ota.sh"]
+        tete_config = C.RC.command_head(" ".join(argv_sensible))
+        tete_server = SRV.RC.command_head(" ".join(argv_sensible))
+        check("test_accord_config_server_sur_argv_sensible",
+              tete_config == tete_server == "env",
+              "config a rendu %r, server a rendu %r (attendu 'env' des deux "
+              "côtés)" % (tete_config, tete_server))
+
 
     print("\n%d cas, %d echec(s)" % (_tests, len(_echecs)))
     for echec in _echecs:

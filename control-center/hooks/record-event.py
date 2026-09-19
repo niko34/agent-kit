@@ -18,19 +18,43 @@ seul, et sort. Rien d'autre.
 
 3. **Il ne doit jamais recopier de secret.** Une commande shell peut contenir un
    mot de passe (`curl -u admin:…`, `POOL_PASSWORD=…`). On ne conserve donc que
-   les DEUX PREMIERS jetons d'une commande — assez pour distinguer `pio test` de
-   `git commit`, trop peu pour porter un identifiant. Voir `_command_head()`.
+   les DEUX PREMIERS jetons d'une commande, et encore : le second n'est retenu
+   que s'il a la forme d'une option, ou d'un mot nu derrière un programme
+   connu pour porter des sous-commandes (jamais une donnée). Voir
+   `redaction_commande.command_head()`, qui documente aussi les deux points
+   restés ouverts (`bug-014`) : un résidu ASSUMÉ par écrit (option longue à
+   valeur collée sans séparateur, bornée par la longueur du jeton) et un
+   résidu FERMÉ (le décalage de position causé par un jeton écarté n'admet
+   plus, en première position décalée, qu'une forme d'option ou de chemin).
+   ⚠️ Un chiffre ou une majuscule N'écarte PLUS un mot nu à lui seul — cette
+   ancienne garde (`bug-012`) fermait l'exemple (`hunter2`), jamais la
+   classe : une passphrase entièrement en minuscules passait intégralement
+   (`bug-014`).
 
 4. **Il ne connaît rien du projet.** Aucun nom d'agent, aucun chemin de spec,
    aucune commande de test en dur : ce fichier doit survivre au déménagement vers
-   le template, où les agents porteront d'autres noms.
+   le template, où les agents porteront d'autres noms. `redaction_commande`
+   porte une liste de programmes GÉNÉRIQUES (`git`, `npm`, `docker`…) — ce
+   n'est pas une connaissance « du projet », voir l'arbitrage écrit dans ce
+   module.
 """
 
 import json
 import os
-import re
 import sys
 import time
+
+# ⚠️ Import ENVELOPPÉ, PAS une copie de la règle de rédaction : un module
+# manquant ou cassé ne doit jamais faire échouer ce hook (contrainte n°1), et
+# une deuxième version de la même règle a déjà dérivé trois fois (`bug-012`,
+# ce cycle). Repli FERMÉ : `command_head` renvoie toujours `None`, jamais une
+# règle réécrite ici — un module absent perd le champ, il ne peut jamais le
+# faire fuir davantage.
+try:
+    import redaction_commande as _RC
+    _command_head = _RC.command_head
+except BaseException:
+    _command_head = lambda _c: None  # noqa: E731
 
 # Le journal vit à côté du script, jamais à un chemin absolu codé en dur : le
 # répertoire `control-center/` doit pouvoir être déplacé d'un bloc.
@@ -52,8 +76,6 @@ _PASSTHROUGH = (
     "prompt_id",
 )
 
-_MAX_TOKEN = 24
-
 # Bornes de la ligne journalisée. `_MAX_LIGNE` est très en dessous des 8 192
 # octets du tampon par défaut : c'est ce qui garantit qu'une ligne part en UN
 # seul appel write() et ne peut donc pas s'entrelacer avec celle d'une autre
@@ -67,58 +89,11 @@ _MAX_TOKEN = 24
 _MAX_CHAMP = 256
 _MAX_LIGNE = 4096
 
-# Un SECOND jeton n'est retenu que s'il a la forme d'une sous-commande ou d'une
-# option : mot en minuscules (`test`, `run`, `commit`, `firmware`) ou drapeau
-# (`-e`, `--json`). Tout le reste est écarté.
-#
-# ⚠️ Sans cette règle, `echo hunter2 | sudo -S reboot` journalisait `echo hunter2`.
-# Le secret n'a ni `=`, ni `:`, ni 24 caractères : les deux premières gardes le
-# laissaient passer. Un chiffre ou une majuscule suffit désormais à l'écarter,
-# ce qui coûte quelques seconds jetons anodins (`esp32dev_core3`) et ferme la
-# classe entière.
-_SECOND_JETON = re.compile(r"^(?:[a-z][a-z-]*|-{1,2}[A-Za-z][A-Za-z-]*)$")
-
-
-def _command_head(command):
-    """Les deux premiers jetons SÛRS d'une commande, et rien de plus.
-
-    `pio test -e native` → `pio test` ; `git commit -F …` → `git commit`.
-
-    ⚠️ Tout jeton contenant `=` ou `:` est ÉCARTÉ, jamais tronqué. Deux idiomes
-    du shell portent couramment un secret dans les tout premiers jetons :
-
-        POOL_PASSWORD=secret ./ota_update.sh firmware     ← affectation en tête
-        curl -u admin:secret http://…                     ← identifiant inline
-
-    Le premier est documenté par `ota_update.sh` lui-même comme un usage
-    normal. Une règle « les deux premiers jetons » l'aurait recopié tel quel
-    dans le journal — défaut constaté sur le PREMIER événement réel produit par
-    ce collecteur, avant toute mise en service.
-
-    Écarter plutôt que tronquer : `POOL_PASSWORD=sec` reste un préfixe de
-    secret. Un jeton suspect disparaît, on passe au suivant.
-    """
-    if not isinstance(command, str):
-        return None
-    safe = []
-    for token in command.split():
-        if "=" in token or ":" in token:
-            continue
-        if len(token) > _MAX_TOKEN:
-            # Un jeton anormalement long est un chemin ou une donnée, pas un nom
-            # de programme : il n'apporte rien et peut porter n'importe quoi.
-            continue
-        if safe and not _SECOND_JETON.match(token):
-            # Deuxième position : seule une sous-commande ou une option est
-            # retenue. On S'ARRÊTE plutôt que de chercher plus loin — le jeton
-            # suivant serait encore plus probablement une donnée.
-            break
-        safe.append(token)
-        if len(safe) == 2:
-            break
-    # `None` et non `""` : l'absence n'est pas une valeur du domaine. L'appelant
-    # teste la valeur pour sa vérité, jamais `is None` — garder les deux vrais.
-    return " ".join(safe) if safe else None
+# La règle de rédaction elle-même (`_command_head` / `command_head`) vit dans
+# `redaction_commande.py`, PARTAGÉE avec `backend/config.py` et
+# `backend/server.py` (`bug-014`) : voir l'import enveloppé plus haut, et la
+# docstring de ce module pour ce qu'elle accepte, ce qu'elle écarte, le résidu
+# qu'elle assume par écrit, et celui qu'elle ferme.
 
 
 def _relative_path(path, cwd):

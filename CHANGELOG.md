@@ -7,6 +7,43 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 <!-- Les entrées ci-dessous documentent le KIT lui-même. Au démarrage d'un projet,
      les remplacer par le journal du projet. -->
 
+## [Non publié]
+
+### Centre de contrôle
+
+- **Correction de sécurité** : le collecteur d'événements laissait fuir un
+  mot de passe **entièrement en minuscules** (une passphrase, un mot du
+  dictionnaire) dans le champ public `command_head`, journalisé puis servi
+  au tableau de bord — un chiffre ou une majuscule suffisait auparavant à
+  écarter un secret, ce qui fermait l'exemple connu (`bug-012`) mais jamais
+  la classe. Le second jeton d'une commande n'est plus retenu que sous trois
+  formes bornées (option courte, option longue, mot nu derrière un programme
+  à sous-commande reconnu comme `git`, `npm`, `docker`…). `_lancer()`
+  (lancement d'une commande configurée depuis le tableau de bord) passe
+  désormais par la même règle que le collecteur : une entrée locale de
+  `control-center.toml` (fichier non versionné) portant un secret ne fuit
+  plus non plus.
+- **Effet visible sur l'existant** : les têtes de commande à deux jetons déjà
+  journalisées avant ce correctif (par exemple `./ota_update.sh firmware`,
+  `curl -u admin`) ne correspondent plus systématiquement à la liste des
+  commandes suivies — les compteurs de commandes affichés au survol d'un
+  cycle et la ligne `$ …` du journal d'événements peuvent donc changer
+  d'apparence sur des cycles déjà observés, sans qu'aucune donnée ne soit
+  supprimée du journal réel.
+
+### Documentation
+
+- `control-center/README.md` : section « La rédaction, et ce que le code
+  fait maintenant » réécrite — trois formes admises pour le second jeton,
+  et les deux résidus assumés (option longue à valeur collée, chemin après
+  décalage de position) désormais nommés.
+- `docs/adr/0028-la-tete-de-commande-garde-deux-jetons-et-un-seul-module-decide-du-second.md`
+  [nouveau] : arbitrage entre la variante retenue et les deux options
+  écartées, mise en conformité de `_lancer()`, et la réserve sur ce que
+  prouve — et ne prouve pas — l'oracle de validation du correctif.
+
+---
+
 ## [0.12.0] - 2026-09-19
 
 > Note : la spec `feature-008` portait en métadonnées « Version cible :

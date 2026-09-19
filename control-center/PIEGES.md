@@ -449,6 +449,58 @@ construit.
   lire une constante du module sous test comme propriété du sandbox ne la
   trouve pas, silencieusement.
 
+## 40. Un mutant à la syntaxe cassée, derrière un import enveloppé, se lit comme un mutant massivement efficace
+
+Accoler un marqueur de mutation à la **fin** d'une ligne `if …:` casse la
+syntaxe du module. Si ce module est importé sous enveloppe
+(`try/except BaseException`, `bug-014`), l'appelant bascule silencieusement
+sur son repli (`lambda _c: None`) — et **36 tests échouent sur 57**, tous
+« attendu X, obtenu None », y compris des tests sans aucun rapport avec la
+ligne mutée. Un mutant **correct** posé sur la ligne précédente n'en tue que
+**5**, les bons. Écart faux verdict / vrai verdict : 36 contre 5.
+
+**Après toute mutation d'un module importé sous enveloppe, valider la
+syntaxe (`ast.parse` ou équivalent) avant de mesurer** — et se méfier d'un
+mutant qui tue plus large que sa portée déclarée : c'est le signe qu'il n'a
+pas atteint la ligne visée, mais fait tomber le repli d'erreur.
+
+## 41. Dans un clone `cp -a`, un échec de `backend/test_server.py` peut être indépendant du diff
+
+Deux cas de `test_server.py` échouent dans un clone jetable **quel que soit
+le diff appliqué** — identiques sur la base HEAD reconstruite dans la même
+disposition. Variante de §32 (compte de cas altéré par ce que le clone ne
+copie pas), mais ici ce sont des **échecs**, pas un écart de compte.
+
+**Un échec de `test_server.py` observé dans un clone se compare d'abord à
+la même base rejouée dans le même clone, avant d'être imputé au diff.**
+
+## 42. Un faux secret « sûr » (court, sous le plafond) peut être écarté par la mauvaise garde
+
+Un test de non-régression utilisait `Pw4x` comme faux secret pour cinq
+formes du symptôme de `bug-014`. `Pw4x` est court, donc sous le plafond de
+longueur — mais sa majuscule et son chiffre le font écarter par une garde
+**en amont** de celle que le test prétend éprouver. Conséquence : **quatre
+tests sur cinq n'exerçaient jamais la classe nommée dans le titre du bug**
+(« entièrement en minuscules ») — ils passaient au vert pour une raison
+étrangère à ce qu'ils affirmaient couvrir. Révélé par mutation (un mutant
+qui n'aurait dû tuer aucun test neuf ne tuait effectivement rien), pas par
+relecture.
+
+**Un faux secret de test doit être positivement DANS la classe visée par le
+titre du bug, pas seulement sous les bornes numériques de la garde — vérifié
+en le faisant échouer sur le code d'avant, forme par forme, jamais en bloc.**
+
+## 43. L'épreuve « fichier illisible » (`chmod 000`) est un faux positif quand elle tourne en root
+
+`root` lit un fichier `chmod 000` : une épreuve qui pose ce mode pour
+vérifier qu'un import échoue proprement rend un verdict vert **y compris
+quand le code ne gère rien**, si l'agent qui mesure tourne en root.
+
+**Exécuter cette épreuve via `runuser -u nobody`, et poser `o+x` sur toute
+la chaîne des répertoires parents** (scratchpad compris) — sans quoi
+`nobody` ne peut pas non plus traverser jusqu'au fichier, pour une raison
+différente mais tout aussi fausse.
+
 ## Voir aussi
 
 - `docs/DESIGN-SYSTEM.md` — règles de couleur, de surface et de typographie

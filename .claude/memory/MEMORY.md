@@ -16,6 +16,8 @@
 - ⭐ [Une justification ne vaut que réfutée](une-justification-ne-vaut-que-refutee.md) — 3 fois en une session : raison sur la conclusion, tort sur la cause
 - ⭐ [Un correctif tardif doit rouvrir les tests](un-correctif-tardif-doit-rouvrir-les-tests.md) — suite verte ≠ correctif couvert ; vérifier que le COMPTE augmente
 - ⭐ [Le défaut se trouve en exécutant, pas en relisant](le-defaut-se-trouve-en-executant.md) — bilan d'une journée : la mutation et le lancement ont tout trouvé, la relecture rien
+- ⭐ [Un faux secret « sûr » peut être le mauvais faux secret](un-faux-secret-sur-peut-etre-le-mauvais.md) — écarté par une garde EN AMONT de celle qu'il vise ; 4 tests inertes, trouvés par mutation
+- ⭐ [Un oracle exhaustif prouve la conformité, pas l'absence](un-oracle-exhaustif-prouve-la-conformite.md) — 1 082 400 commandes énumérées, et deux clauses absolvaient les résidus assumés
 
 ## Chantiers ouverts
 

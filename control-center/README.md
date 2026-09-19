@@ -174,33 +174,61 @@ reconstruire un segment est un tri chronologique, pas une résolution d'arbre.
 4. **Il ne connaît rien du projet.** Aucun nom d'agent, aucune commande, aucun
    chemin de spec en dur.
 
-### La redaction, et pourquoi elle a deux gardes
+### La rédaction, et ce que le code fait maintenant (`bug-014`)
 
 Le collecteur reçoit **toute** commande shell exécutée par Claude Code. Ce dépôt
 en exécute qui portent le mot de passe de l'appareil, et `ota_update.sh`
 documente lui-même `POOL_PASSWORD=… ./ota_update.sh` comme un usage normal.
 
-On ne conserve donc que les **deux premiers jetons sûrs** :
+`bug-014` a fermé une classe entière que l'ancienne garde ne fermait pas : un
+mot de passe **entièrement en minuscules** (une passphrase, un mot du
+dictionnaire) est lexicalement indiscernable d'une sous-commande légitime
+(`git status`, `npm run`, `docker ps`) — aucune forme sur le second jeton seul
+ne peut le distinguer. La règle est désormais **unique**, portée par un module
+partagé ([`hooks/redaction_commande.py`](hooks/redaction_commande.py),
+`command_head()`), appelé à la fois par le hook et par
+`backend/config.py`/`backend/server.py` (`_lancer()`) — les deux écrivains ne
+peuvent plus diverger.
 
-| Commande | Journalisé |
-|---|---|
-| `pio test -e native` | `pio test` |
-| `git commit -F /tmp/msg.txt` | `git commit` |
-| `POOL_PASSWORD=secret ./ota_update.sh firmware` | `./ota_update.sh firmware` |
-| `curl -u admin:secret http://…` | `curl -u` |
+Le second jeton n'est retenu que sous **trois formes** :
 
-Deux règles, et il faut les deux :
+| Commande | Journalisé | Forme admise |
+|---|---|---|
+| `pio test -e native` | `pio test` | mot nu, `pio` est un programme à sous-commande connu |
+| `git commit -F /tmp/msg.txt` | `git commit` | idem |
+| `grep -rn motif .` | `grep -rn` | option courte (1-2 lettres) |
+| `node --check f.js` | `node --check` | option longue |
+| `mysql -psecretword -h db` | `mysql` | rejeté : pas une des trois formes |
+| `POOL_PASSWORD=secret ./ota_update.sh firmware` | `./ota_update.sh` | rejeté : `firmware` suit un jeton écarté, aucun passe-droit |
+| `curl -u admin:secret http://…` | `curl -u` | option courte, valeur écartée |
 
-- tout jeton contenant `=` ou `:` est **écarté**, jamais tronqué — `POOL_PASSWORD=sec`
-  reste un préfixe de secret ;
-- tout jeton de plus de 24 caractères est écarté : c'est une donnée ou un chemin,
-  pas un nom de programme.
+La liste fermée des programmes à sous-commande (`git`, `gh`, `pio`, `npm`,
+`docker`, `pip`) est **mesurée contre les journaux réels**, jamais devinée ; un
+programme absent perd simplement son second jeton, il ne fait jamais fuir plus
+(défaut sûr). `sudo`, `env`, `ssh`, `sshpass`, `echo`, `printf`, `cat`, `cd`,
+`python3`, `bash`, `sh` en sont explicitement exclus : leur second jeton porte
+une donnée, pas un verbe du programme.
 
-Le premier défaut a été trouvé sur le **premier événement réel** produit par le
-collecteur, avant toute mise en service. Le second a été trouvé par mutation :
-avec un faux secret trop long, retirer entièrement le filtre `=`/`:` ne tuait
-aucun test — le plafond de longueur sauvait la mise à sa place, et un mot de
-passe **court** aurait fui. Le faux secret des tests est court depuis.
+Deux résidus restent, **assumés par écrit**, pas fermés :
+
+- une **option longue à valeur collée sans séparateur** (`--passwordx`) —
+  forme non standard (`getopt` exige `=`), et la mesure sur les deux journaux
+  réels n'y trouve que des options légitimes (`--version`, `--check`,
+  `--help`, `--write`) ;
+- un **chemin comme premier jeton après un décalage de position**
+  (`A=b /etc/shadow` → `/etc/shadow`) — hors de la classe « mot de passe »
+  visée par ce bug, comportement déjà présent avant `bug-014`.
+
+Trouvé sur le **premier événement réel** produit par le collecteur, avant
+toute mise en service : tout jeton contenant `=` ou `:` est **écarté**, jamais
+tronqué (`POOL_PASSWORD=sec` resterait un préfixe de secret). Trouvé par
+mutation : tout jeton de plus de 24 caractères est écarté, sinon un mot de
+passe **court** collé à une option (`-phunterpass`, un chiffre ou une
+majuscule ne suffisant plus à l'écarter depuis `bug-014`) aurait fui.
+
+Voir la docstring de `redaction_commande.py` pour la trace complète des
+formes fermées et refusées, et [ADR-0028](../docs/adr/0028-la-tete-de-commande-garde-deux-jetons-et-un-seul-module-decide-du-second.md)
+pour l'arbitrage entre les options envisagées.
 
 ## Étape B — la lecture des specs
 

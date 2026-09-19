@@ -30,11 +30,20 @@ c'est un projet qui n'a rien de particulier à déclarer.
 
 import math
 import os
+import sys
 
 try:
     import tomllib
 except ImportError:  # Python < 3.11
     tomllib = None
+
+# Ce module s'exécute aussi SEUL (diagnostic CLI, `__main__` plus bas) : il
+# n'hérite pas du `sys.path` posé par `backend/server.py` et porte donc son
+# PROPRE ajout, en APPEND (jamais `insert(0)`, même raison qu'ailleurs :
+# `bug-014`, D4). `redaction_commande` est la RÈGLE PARTAGÉE de rédaction
+# d'une tête de commande (voir `tetes_de_commande()` plus bas).
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "hooks"))
+import redaction_commande as RC  # noqa: E402
 
 # Valeurs par défaut. Elles ne décrivent AUCUN projet en particulier : ce sont
 # les conventions les plus répandues, pas celles de ce dépôt.
@@ -302,10 +311,10 @@ class Config(dict):
         return cle in autorisees
 
     def tetes_de_commande(self):
-        """Les deux premiers jetons de chaque commande autorisée.
+        """Les têtes RÉDIGÉES de chaque commande autorisée.
 
         Fait le pont entre le format `argv` de la configuration et le format
-        « tête à deux jetons » du journal, qui était jusqu'ici deux notions sans
+        « tête de commande » du journal, qui était jusqu'ici deux notions sans
         traduction l'une vers l'autre.
 
         ⚠️ Passe par `commande()` et non par les valeurs brutes : sans cela, les
@@ -313,12 +322,23 @@ class Config(dict):
         Une entrée malformée (`["ls", 42]`) était refusée par `commande()` et
         pourtant traduite en tête `"ls 42"` ici. Une liste fermée dont deux
         lecteurs divergent n'est plus fermée — défaut trouvé par son test.
+
+        ⚠️ Passe par `redaction_commande.command_head()`, LA MÊME fonction que
+        `backend/server.py` (`_lancer()`) et `hooks/record-event.py`
+        (`bug-014`, D3/condition 5 du GATE) : sans cet accord, les deux côtés
+        de `tete in suivies` (`events.py`) divergeraient — un `command_head`
+        journalisé par `_lancer()` selon la règle rédigée ne correspondrait
+        plus à une tête calculée ici sans elle. Une tête qui se réduit à
+        `None` (voir `command_head`) n'est pas ajoutée : ce n'est pas une
+        tête de commande valide.
         """
         tetes = set()
         for cle in self.section("commandes"):
             argv = self.commande(cle)
             if argv:
-                tetes.add(" ".join(argv[:2]))
+                tete = RC.command_head(" ".join(argv))
+                if tete:
+                    tetes.add(tete)
         return tetes
 
 
