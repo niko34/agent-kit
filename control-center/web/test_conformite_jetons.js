@@ -1,5 +1,5 @@
 "use strict";
-/* feature-021, cycle 2, lot 0 — F1 : TABLE DES JETONS.
+/* feature-021, cycle 2, lot 0→2 — F1 : TABLE DES JETONS.
  *
  *     node control-center/web/test_conformite_jetons.js
  *
@@ -8,19 +8,29 @@
  * `grep -c` compte aussi les commentaires). Assertionne une INCLUSION au
  * bit près — les 24 propriétés du prototype doivent exister, IDENTIQUES,
  * dans `:root` de `app.css` — PLUS une liste déclarée `JETONS_AJOUTES` pour
- * tout nom que l'implémentation ajoute. Ce n'est PAS une égalité
+ * tout nom PERMANENT que l'implémentation ajoute. Ce n'est PAS une égalité
  * d'ensembles : une égalité serait invalidée par le premier ajout légitime
  * (Notes d'implémentation cycle 2, §1).
  *
- * ⚠️ Défaut fermé par ce lot : 10 occurrences (9 valeurs distinctes) d'un
- * littéral hexadécimal vivent HORS du bloc `:root` du prototype lui-même —
- * elles échappaient à toute garde qui ne lisait QUE `:root`. Ce fichier les
- * DÉRIVE (`lib.hexHorsRoot`) et les affiche ; leur PROMOTION en jetons
- * `:root` d'`app.css` est un livrable du LOT 2 (F6), pas de ce lot — inscrit
- * à `ATTENDU_ROUGE` ci-dessous avec son lot de clôture. `#000` (ligne 313,
- * `mask: radial-gradient(...)`) est une valeur de masque, pas une couleur de
- * texte/fond : elle n'entre PAS dans le compte des jetons À PROMOUVOIR (8
- * valeurs, pas 9) — d'où les « 28 jetons » de la matrice F5a (20 + 8).
+ * ⚠️ LOT 2 (F6) — trois choses tombées ici, chacune avec son propre sort au
+ * registre (Notes d'implémentation cycle 2, §1, point 5 — « deux choses
+ * différentes ne partagent pas une entrée de registre ») :
+ *   1. Les 24 jetons du prototype sont désormais bit-identiques dans
+ *      `app.css` → `F1_INCLUSION_ROOT_M3` FERME POUR DE BON, RETIRÉE du
+ *      registre (pas laissée à passer).
+ *   2. Les 8 hexadécimaux qui vivaient hors du bloc `:root` du prototype
+ *      (`#000`, ligne 313, `mask: radial-gradient(...)`, EXCLU — arrêt de
+ *      masque, pas une couleur peinte, pas dans ce compte de 8) sont promus
+ *      en jetons `:root` PERMANENTS, déclarés dans `JETONS_AJOUTES` ci-dessous
+ *      → volet « 8 hex promus » de `F1_JETONS_PROMUS_HORS_ROOT` FERME POUR DE
+ *      BON, RETIRÉE elle aussi.
+ *   3. Ce que l'ancien `--clair-*` servait (jetons sémantiques, identité
+ *      colorée par agent) SURVIT comme couche TRANSITOIRE dans `app.css`,
+ *      le temps que les fichiers qui les consomment soient réécrits. C'est
+ *      une entrée NEUVE et DISTINCTE, scindée en DEUX (deux fichiers, deux
+ *      lots de clôture différents) : `F1_TRANSITOIRE_SEMANTIQUE_CLAIR`
+ *      (lot 3, `index.html`) et `F1_TRANSITOIRE_IDENTITE_AGENT` (lot 4,
+ *      `diagramme.js`/`app.js`, ADR-0032).
  *
  * ATTENDU_ROUGE — une entrée par assertion encore fausse, avec son lot de
  * clôture et sa date. Cette garde ÉCHOUE si une entrée du registre PASSE
@@ -31,25 +41,78 @@
 const lib = require("./test_conformite_lib.js");
 
 const ATTENDU_ROUGE = {
-  F1_INCLUSION_ROOT_M3: {
-    description: "aucun des 24 jetons `:root` du prototype n'existe encore dans app.css : " +
-      "app.css porte l'ancien jeu `--clair-*`/`--sombre-*` (ADR-0022), pas les jetons Material 3.",
-    lotDeCloture: "lot 2",
+  F1_TRANSITOIRE_SEMANTIQUE_CLAIR: {
+    description: "15 anciens jetons sémantiques (--fond, --actif, --texte-doux…) survivent " +
+      "dans app.css :root, aliasés directement sur un jeton M3 (ou un color-mix() qui en " +
+      "dérive) — ils disparaissent quand index.html/les règles qui les consomment sont " +
+      "réécrits au lot 3.",
+    lotDeCloture: "lot 3",
     date: "2026-09-21",
   },
-  F1_JETONS_PROMUS_HORS_ROOT: {
-    description: "les 8 hexadécimaux promouvables (hors #000, valeur de masque) ne sont pas " +
-      "encore déclarés dans JETONS_AJOUTES ni dans le `:root` d'app.css.",
-    lotDeCloture: "lot 2",
+  F1_TRANSITOIRE_IDENTITE_AGENT: {
+    description: "18 jetons d'identité colorée par agent (--a-<rôle>/--f-<rôle>) + " +
+      "--rebouclage (qui en dépend) survivent dans app.css :root, en littéraux directs " +
+      "(l'indirection --clair-a-* a disparu) — ils disparaissent avec diagramme.js/app.js " +
+      "au lot 4 (ADR-0032).",
+    lotDeCloture: "lot 4",
     date: "2026-09-21",
   },
 };
 
-// -- Liste déclarée : TOUT jeton qu'app.css ajoute au-delà des 24 requis --
-// vide à ce lot, à compléter au lot 2 avec, pour chaque entrée, le nom, la
-// valeur ET la raison (sélecteur + ligne du prototype dont elle provient).
+// -- Liste déclarée : TOUT jeton PERMANENT qu'app.css ajoute au-delà des 24
+// requis — les 8 hexadécimaux promus hors du `:root` du prototype (nom
+// dérivé du SÉLECTEUR qui les porte, jamais de la valeur — lot 2) + les
+// constantes hors couleur déjà présentes avant ce cycle (police, hauteur de
+// barre). Ne JAMAIS y mettre une entrée transitoire (couche 3 ci-dessus) :
+// ces listes sont séparées plus bas, `JETONS_TRANSITOIRES_*`.
 const JETONS_AJOUTES = [
-  // { nom: "--todo-chip-bg", valeur: "#fff0c8", origine: ".feature-chip.todo, ligne 552" },
+  { nom: "--agent-state-pending", valeur: "#aaa6b0",
+    origine: ".agent-node{--state-color} l.263 (défaut) et .agent-node.state-pending l.304" },
+  { nom: "--agent-state-done", valeur: "#777385",
+    origine: ".agent-node.state-done{--state-color:#777385} l.303" },
+  { nom: "--question-ink", valeur: "#4e1d12",
+    origine: ".question{color:#4e1d12} l.454, texte sur fond var(--coral-soft)" },
+  { nom: "--column-todo-dot", valeur: "#eea52a",
+    origine: ".column-todo .column-label i{background:#eea52a} l.498" },
+  { nom: "--column-done-dot", valeur: "#3b8f35",
+    origine: ".column-done .column-label i{background:#3b8f35} l.500" },
+  { nom: "--chip-todo-bg", valeur: "#fff0c8",
+    origine: ".feature-chip.todo{background:#fff0c8} l.552" },
+  { nom: "--chip-todo-ink", valeur: "#654b00",
+    origine: ".feature-chip.todo{color:#654b00} l.552" },
+  { nom: "--chip-high-ink", valeur: "#690005",
+    origine: ".feature-chip.high{color:#690005} l.553, texte sur fond var(--danger-soft)" },
+  { nom: "--mono", valeur: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace',
+    origine: "pile monospace du projet, antérieure à ce cycle, hors prototype (identifiants techniques)" },
+  { nom: "--sans", valeur: '"Google Sans", "Roboto", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    origine: "body{font-family} du prototype, l.43 — copiée bit à bit (lot 2, F6)" },
+  { nom: "--hauteur-barre", valeur: "62px",
+    origine: "constante de mise en page, feature-019, hors prototype (aucun équivalent M3)" },
+];
+
+// -- Couche transitoire 3a : alias sémantiques, ferment au LOT 3. Liste
+// DÉRIVÉE à la main (aucun artefact ne la porte, comme ROLES en F5a) mais
+// soumise à la CLAUSE MIROIR plus bas : toute entrée absente d'app.css doit
+// en être retirée, tout extra d'app.css doit y figurer — sinon échec.
+const JETONS_TRANSITOIRES_SEMANTIQUES = [
+  "--fond", "--surface-2", "--creux", "--trait", "--trait-fin", "--contour-etat",
+  "--texte", "--texte-doux", "--texte-faible", "--accent", "--actif", "--alerte",
+  "--echec", "--ombre", "--voile",
+];
+
+// -- Couche transitoire 3b : identité colorée par agent + --rebouclage (en
+// dépend), ferment au LOT 4 (ADR-0032).
+const JETONS_TRANSITOIRES_IDENTITE_AGENT = [
+  "--a-backend-developer", "--f-backend-developer",
+  "--a-security-reviewer", "--f-security-reviewer",
+  "--a-test-engineer", "--f-test-engineer",
+  "--a-spec-reader", "--f-spec-reader",
+  "--a-code-reviewer", "--f-code-reviewer",
+  "--a-debugger", "--f-debugger",
+  "--a-doc-writer", "--f-doc-writer",
+  "--a-frontend-developer", "--f-frontend-developer",
+  "--a-neutre", "--f-neutre",
+  "--rebouclage",
 ];
 
 let _tests = 0;
@@ -120,24 +183,73 @@ if (inclusionOk) {
 }
 
 // ===================================================================== //
-// F1 — toute propriété `--x` d'app.css hors des 24 requis doit être dans
-// JETONS_AJOUTES (clause miroir, symétrique à celle de F0/F5a)
+// F1 — toute propriété `--x` d'app.css hors des 24 requis doit être comptée
+// dans EXACTEMENT un des trois registres : JETONS_AJOUTES (permanent),
+// JETONS_TRANSITOIRES_SEMANTIQUES (lot 3) ou JETONS_TRANSITOIRES_IDENTITE_
+// AGENT (lot 4). Rien ne doit rester hors de tout registre (clause miroir,
+// symétrique à celle de F0/F5a).
 // ===================================================================== //
 const requisNoms = new Set(propsPrototype.map((d) => d.prop));
 const ajouteesNoms = new Set(JETONS_AJOUTES.map((j) => j.nom));
 const appNoms = new Set(declRootApp.filter((d) => d.prop.startsWith("--")).map((d) => d.prop));
-const nonDeclares = [...appNoms].filter((n) => !requisNoms.has(n) && !ajouteesNoms.has(n));
-if (nonDeclares.length === 0) {
-  check("F1_toute_propriete_extra_est_dans_JETONS_AJOUTES", true);
+const semDeclares = new Set(JETONS_TRANSITOIRES_SEMANTIQUES);
+const agentDeclares = new Set(JETONS_TRANSITOIRES_IDENTITE_AGENT);
+
+// -- 3a. JETONS_AJOUTES : présence ET valeur (une addition permanente qui
+// diverge de sa valeur déclarée est aussi une régression silencieuse).
+const ajouteesManquantes = JETONS_AJOUTES.filter((j) => !appNoms.has(j.nom));
+const ajouteesDivergentes = JETONS_AJOUTES.filter((j) => appNoms.has(j.nom) && mapApp.get(j.nom) !== j.valeur);
+check("F1_JETONS_AJOUTES_presents_et_conformes",
+  ajouteesManquantes.length === 0 && ajouteesDivergentes.length === 0,
+  [
+    ...ajouteesManquantes.map((j) => j.nom + " absent d'app.css"),
+    ...ajouteesDivergentes.map((j) => j.nom + " : attendu `" + j.valeur + "`, obtenu `" + mapApp.get(j.nom) + "`"),
+  ].join(" | "));
+
+// -- rien hors des quatre compartiments (24 requis + AJOUTEES + les deux
+// couches transitoires) : une propriété non comptée nulle part est toujours
+// un échec DUR, jamais quarantinable — aucune raison qu'elle échappe à tout.
+const horsTout = [...appNoms].filter((n) =>
+  !requisNoms.has(n) && !ajouteesNoms.has(n) && !semDeclares.has(n) && !agentDeclares.has(n));
+check("F1_aucune_propriete_root_hors_de_tout_registre", horsTout.length === 0,
+  horsTout.length + " propriété(s) non couverte(s) : " + horsTout.slice(0, 8).join(", "));
+
+// -- clause miroir des DEUX listes transitoires : une entrée déclarée qui
+// n'existe plus dans app.css est une liste PÉRIMÉE, pas une liste à jour —
+// même défaut que les jetons de rôle en F5a (rolesPerimes).
+const semPerimes = [...semDeclares].filter((n) => !appNoms.has(n));
+const agentPerimes = [...agentDeclares].filter((n) => !appNoms.has(n));
+check("F1_TRANSITOIRE_SEMANTIQUE_CLAIR_liste_sans_entree_perimee", semPerimes.length === 0, semPerimes.join(", "));
+check("F1_TRANSITOIRE_IDENTITE_AGENT_liste_sans_entree_perimee", agentPerimes.length === 0, agentPerimes.join(", "));
+
+// -- fermeture de chaque couche transitoire : ATTENDU_ROUGE tant qu'elle
+// n'est pas vide, clause (2) dès qu'elle l'est.
+const semVide = semDeclares.size === 0;
+if (semVide) {
+  check("F1_aucun_jeton_semantique_transitoire_restant", true);
 } else {
-  console.log("  ECHEC  F1_toute_propriete_extra_est_dans_JETONS_AJOUTES : " +
-    nonDeclares.length + " propriété(s) non déclarée(s), ex. " + nonDeclares.slice(0, 5).join(", ") + "…");
-  if (ATTENDU_ROUGE.F1_JETONS_PROMUS_HORS_ROOT) {
-    console.log("  (ATTENDU_ROUGE F1_JETONS_PROMUS_HORS_ROOT, clôture " +
-      ATTENDU_ROUGE.F1_JETONS_PROMUS_HORS_ROOT.lotDeCloture + ")");
+  console.log("  ECHEC  F1_aucun_jeton_semantique_transitoire_restant : " +
+    semDeclares.size + " propriété(s) encore transitoire(s) : " + [...semDeclares].join(", "));
+  if (ATTENDU_ROUGE.F1_TRANSITOIRE_SEMANTIQUE_CLAIR) {
+    console.log("  (ATTENDU_ROUGE F1_TRANSITOIRE_SEMANTIQUE_CLAIR, clôture " +
+      ATTENDU_ROUGE.F1_TRANSITOIRE_SEMANTIQUE_CLAIR.lotDeCloture + ")");
   } else {
     _tests += 1;
-    _echecs.push("F1_toute_propriete_extra_est_dans_JETONS_AJOUTES_HORS_REGISTRE");
+    _echecs.push("F1_aucun_jeton_semantique_transitoire_restant_HORS_REGISTRE");
+  }
+}
+const agentVide = agentDeclares.size === 0;
+if (agentVide) {
+  check("F1_aucun_jeton_identite_agent_transitoire_restant", true);
+} else {
+  console.log("  ECHEC  F1_aucun_jeton_identite_agent_transitoire_restant : " +
+    agentDeclares.size + " propriété(s) encore transitoire(s) : " + [...agentDeclares].join(", "));
+  if (ATTENDU_ROUGE.F1_TRANSITOIRE_IDENTITE_AGENT) {
+    console.log("  (ATTENDU_ROUGE F1_TRANSITOIRE_IDENTITE_AGENT, clôture " +
+      ATTENDU_ROUGE.F1_TRANSITOIRE_IDENTITE_AGENT.lotDeCloture + ")");
+  } else {
+    _tests += 1;
+    _echecs.push("F1_aucun_jeton_identite_agent_transitoire_restant_HORS_REGISTRE");
   }
 }
 
@@ -203,18 +315,19 @@ check("F1_aucun_jeton_du_prototype_redeclare_avec_valeur_divergente",
 
 // ===================================================================== //
 // Registre ATTENDU_ROUGE — clause (2) : toute entrée qui repasse au vert
-// SANS avoir été retirée du registre est un ÉCHEC. Ici : dès que F1 est
-// intégralement verte (les deux blocs ci-dessus passent), les DEUX entrées
-// doivent avoir été retirées — sinon la garde le signale elle-même.
+// SANS avoir été retirée du registre est un ÉCHEC. `F1_INCLUSION_ROOT_M3` et
+// le volet « 8 hex promus » de `F1_JETONS_PROMUS_HORS_ROOT` sont DÉJÀ
+// retirés (lot 2, voir en-tête) : s'ils réapparaissaient ici, ce serait un
+// oubli de retrait, donc traités au même régime hors-registre que toute
+// autre clé absente — inutile de les re-tester nommément. Restent les DEUX
+// entrées vivantes de ce lot.
 // ===================================================================== //
-const inclusionEstVerte = manquants.length === 0 && divergents.length === 0;
-const jetonsAjoutesEstVert = nonDeclares.length === 0;
-if (inclusionEstVerte && ATTENDU_ROUGE.F1_INCLUSION_ROOT_M3) {
-  check("F1_INCLUSION_ROOT_M3_purgee_du_registre_si_verte", false,
+if (semVide && ATTENDU_ROUGE.F1_TRANSITOIRE_SEMANTIQUE_CLAIR) {
+  check("F1_TRANSITOIRE_SEMANTIQUE_CLAIR_purgee_du_registre_si_verte", false,
     "l'assertion est VERTE mais l'entrée est encore dans ATTENDU_ROUGE — la retirer (clause 2)");
 }
-if (jetonsAjoutesEstVert && ATTENDU_ROUGE.F1_JETONS_PROMUS_HORS_ROOT) {
-  check("F1_JETONS_PROMUS_HORS_ROOT_purgee_du_registre_si_verte", false,
+if (agentVide && ATTENDU_ROUGE.F1_TRANSITOIRE_IDENTITE_AGENT) {
+  check("F1_TRANSITOIRE_IDENTITE_AGENT_purgee_du_registre_si_verte", false,
     "l'assertion est VERTE mais l'entrée est encore dans ATTENDU_ROUGE — la retirer (clause 2)");
 }
 for (const [cle, entree] of Object.entries(ATTENDU_ROUGE)) {

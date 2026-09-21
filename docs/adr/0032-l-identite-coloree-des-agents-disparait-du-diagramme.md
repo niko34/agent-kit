@@ -134,3 +134,16 @@ abrogé et risquerait de le refaire à neuf, moins bien mesuré que la première
   (règle de précédence et exception nommée révoquées).
 - Spec : `specs/features/doing/feature-021-revenir-a-un-tableau-de-bord-unifie.md`
   — étape A du 2026-09-20 (« ADR-0022 révoqué (l'identité colorée disparaît) »).
+
+> **Note (2026-09-21)** : cette décision est écrite mais pas encore
+> pleinement appliquée au code. Le lot 2 de `feature-021` (adoption du
+> système visuel Material 3, `ADR-0030`) a réécrit `control-center/web/app.css`
+> et y a conservé les 19 jetons d'identité par agent (`--a-<rôle>`,
+> `--f-<rôle>`, plus `--rebouclage` qui en dépend) dans une **couche
+> transitoire explicitement nommée** (voir le commentaire d'en-tête du
+> fichier, section « couche transitoire »), gardée par
+> `F1_TRANSITOIRE_IDENTITE_AGENT` dans `control-center/web/test_conformite_jetons.js`.
+> Ils disparaissent au **lot 4** du même cycle, quand `diagramme.js` et
+> `app.js` — les seuls fichiers qui les consomment — seront réécrits à leur
+> tour. Jusque-là, le diagramme continue d'afficher une couleur par rôle
+> d'agent, sans changement visible sur ce point précis.

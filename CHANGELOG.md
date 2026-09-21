@@ -69,6 +69,17 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
   clair. Le choix de thème mémorisé n'a plus d'effet visible. Voir
   [ADR-0033](docs/adr/0033-le-theme-sombre-est-supprime.md) (lot 1 de
   `feature-021`).
+- **Le centre de contrôle adopte l'habillage Material 3 de la maquette
+  fournie.** La palette, les élévations (ombres portées) et la typographie
+  changent sur toute l'interface — la disposition des sections, elle, ne
+  bouge pas encore. Les cibles tactiles (boutons d'action, pilotage
+  secondaire) passent de 44 px à 48 px, l'interlignage du texte se resserre
+  (1,45 → 1,35), et l'anneau de focus au clavier est désormais un trait
+  plein de 3 px, plus visible qu'avant. Voir
+  [ADR-0030](docs/adr/0030-material-design-3-ecrit-a-la-main-devient-le-systeme-visuel.md)
+  (lot 2 de `feature-021`). L'identité de couleur propre à chaque agent
+  (diagramme du déroulé, liste des agents) n'est pas encore retirée : elle
+  ne change qu'au lot 4 de ce même cycle.
 
 ### Exploitation
 

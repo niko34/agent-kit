@@ -1530,6 +1530,97 @@ par ce dépôt.
   propre, pas ici.
 - [2026-09-21 17:21] **LOT 1 CLOS** — livrables F13 et D3. Suite 1981 → **1586 cas,
   0 échec**. Reste : lots 2 à 6.
+- [2026-09-21 17:38] **COMMIT** — agent principal — branche `cycle/feature-021-cockpit-m3`
+  créée depuis `main` (`53a21de`), deux commits : `cdde4e6` les six gardes du lot 0 **sans
+  une ligne de production** (les trois suppressions du lot 1, déjà indexées par le
+  sous-agent, ont dû être **désindexées** pour que la séparation soit réelle et pas
+  seulement racontée) et `93ae6b6` le lot 1 complet avec sa doc. Arbre propre, suite
+  relancée **depuis l'état commité** : 30 fichiers, 1586 cas, 0 échec. `check_specs.sh` 48
+  specs sans doublon, `check_doc_links.sh` 186 liens résolus. **Rien poussé.** Branché
+  plutôt que commité sur `main` parce que le lot 3 est le point de non-retour annoncé.
+- [2026-09-21 17:44] **DÉCISION DE SÉQUENCEMENT — agent principal** (angle mort du plan).
+  Le plan de l'architecte dit « Lot 2 `app.css` (F6) » puis « Lot 3 `index.html` réécrit »,
+  et ne dit **rien du sort des 72 propriétés héritées** de l'unique `:root` — mesurées :
+  **34** `--clair-*` à valeur brute, **35** sémantiques qui les aliasent, **3** valeurs
+  directes. Or les deux entrées `ATTENDU_ROUGE` de F1 portent « clôture lot 2 », donc la
+  question ne peut pas être reportée sans faire glisser un registre. Tranché, faute de
+  verdict d'architecte, et consigné ici pour être contestable : (1) les **24 jetons du
+  prototype entrent au bit près**, `F1_INCLUSION_ROOT_M3` est **retirée** du registre et
+  non laissée à verdir — la clause (2) l'exige ; (2) les **8 hex promus reçoivent un nom
+  dérivé de leur usage réel** dans le prototype, pas de leur valeur ; (3) la couche
+  `--clair-*` brute **disparaît**, les 35 sémantiques pointant directement sur les jetons
+  M3 — mécanique, aucune règle existante ne casse, et la suppression au lot 3 devient
+  triviale ; (4) les **24 jetons d'identité couleur des agents** (`--a-*`/`--f-*`)
+  survivent en **couche transitoire déclarée, clôture lot 4** : `ADR-0032` acte leur
+  disparition mais le diagramme qui les consomme n'est refait qu'au lot 4, et les retirer
+  ici casserait le diagramme avant son remplaçant ; (5) `F1_JETONS_PROMUS_HORS_ROOT` **se
+  scinde** — le volet « 8 hex promus » se ferme réellement, le volet « propriétés
+  transitoires » devient une entrée **neuve et distincte** avec son propre lot. ⚠️ Règle
+  posée au passage : **repousser le lot de clôture d'une entrée existante pour la faire
+  tenir est interdit** ; un changement de lot est une décision écrite avec sa raison,
+  jamais un glissement. Deux choses différentes ne partagent pas une entrée — c'est ainsi
+  qu'un registre pourrit.
+- [2026-09-21 18:26] Lot 2 — frontend-developer — **F6 livré**. Les **24 jetons du prototype
+  entrent au bit près** dans l'unique `:root` (contre-vérifié par l'agent principal avec un
+  extracteur indépendant : 0 manquant, 0 divergent). **8 hex promus, nommés d'après leur
+  usage réel et non leur valeur** : `--agent-state-pending` (#aaa6b0, `--state-color` par
+  défaut de `.agent-node` et état *pending*), `--agent-state-done` (#777385),
+  `--question-ink` (#4e1d12, encre de `.question` sur `--coral-soft`), `--column-todo-dot`
+  (#eea52a), `--column-done-dot` (#3b8f35), `--chip-todo-bg` (#fff0c8), `--chip-todo-ink`
+  (#654b00), `--chip-high-ink` (#690005, sur `--danger-soft`). La couche `--clair-*`
+  (34 propriétés brutes) **disparaît entièrement** — vérifié, 0 restante ; `:root` passe de
+  **72 à 69** propriétés. Relevés du prototype, tous **lus et non estimés**, recoupés
+  indépendamment par l'agent principal : focus **3 px solid `--primary`** offset 3 px,
+  cibles **48 px** (11 occurrences dans la maquette), typographie à **graisse unique 500**
+  (22 occurrences) avec 12 px dominant (19), deux élévations, `line-height` 1.35 (était
+  1.45). **Registre, entrée par entrée** : `F1_INCLUSION_ROOT_M3` **RETIRÉE** (fermeture
+  réelle, pas verte-mais-présente) ; `F1_JETONS_PROMUS_HORS_ROOT` **RETIRÉE** et scindée ;
+  `JETONS_AJOUTES` 0 → 11 ; deux entrées **neuves** `F1_TRANSITOIRE_SEMANTIQUE_CLAIR`
+  (clôture **lot 3**, 15 propriétés) et `F1_TRANSITOIRE_IDENTITE_AGENT` (clôture **lot 4**,
+  19 propriétés). Aucun lot de clôture existant n'a été repoussé. **Suite : 1586 → 1591,
+  0 échec**, la hausse entièrement dans `test_conformite_jetons.js` (7 → 12 cas).
+- [2026-09-21 18:41] Lot 2 — agent principal — **VÉRIFIÉ, lot 2 CLOS**. Trois mutations sur
+  clone neuf, toutes tuent : (M1) `--teal` altéré d'un bit → `attendu #087e6d, obtenu
+  #087e6e` ; (M2) `--column-done-dot` retiré du `:root` → `F1_JETONS_AJOUTES_presents_et_
+  conformes : absent d'app.css` ; (M3) trois propriétés transitoires retirées **sans** mise
+  à jour du registre → `F1_TRANSITOIRE_IDENTITE_AGENT_liste_sans_entree_perimee :
+  --a-debugger, --f-debugger, --rebouclage` — **la clause miroir tient dans les deux sens**,
+  c'est elle qui empêchera les listes transitoires de pourrir d'ici les lots 3 et 4.
+  ⚠️ **CORRECTION D'UN CHIFFRE QUE J'AVAIS DONNÉ FAUX** : mon brief annonçait « 24 jetons
+  d'identité couleur des agents ». Mesure : **19** (9 paires `--a-*`/`--f-*` = 18, plus
+  `--rebouclage`). Le sous-agent a signalé l'écart au lieu d'adopter mon chiffre — c'est la
+  bonne conduite, et la clôture du lot 4 porte sur 19, pas 24.
+  ⚠️ **Deux réserves à ne pas perdre, aucune bloquante** : (a) `.nav-onglet` **reste à
+  44 px** au lieu de 48 — `test_app_navigation.js` fige `44px` **littéralement**
+  (`E9_nav_onglet_cible_44px_hors_media`, sans comparaison `≥`), et le composant disparaît
+  au lot 3 avec son test. Consigné ICI et pas seulement dans un commentaire CSS, **parce
+  qu'un commentaire n'est pas une garde** — c'est la thèse même de ce cycle. **F6 est donc
+  livré avec une cible sur trois encore à 44 px** ; clôture lot 3. (b) `--trait-fin`,
+  `--ombre` et `--voile` passent en `color-mix()`, dont **aucune garde arithmétique ne sait
+  calculer la couleur peinte** ; le trou se referme **par construction au lot 5**, F5b
+  mesurant `getComputedStyle`, qui résout `color-mix()`. Trouvaille utile du sous-agent au
+  passage : l'invariant « `--trait-fin` STRICTEMENT moins contrasté que `--trait` » n'existe
+  que dans un commentaire d'`app.css` (l. 587) — jamais dans `PIEGES`, la spec ou le plan —
+  et une consolidation qui semblait inoffensive à la lecture cassait `test_app_diagramme_
+  navigateur.py` à l'exécution.
+- [2026-09-21 18:52] Étape 9 — doc-writer — **doc du lot 2, contre-vérifiée**. Deux
+  fichiers seulement, et les abstentions sont justifiées : `CHANGELOG.md` (entrée
+  utilisateur — palette, élévations, typographie changent sur toute l'interface, la
+  disposition ne bouge pas encore) et `docs/adr/0032` (**note additive datée, corps
+  intact**). `ADR-0030` relu et **laissé tel quel** : il ne prétend nulle part
+  qu'`app.css` est déjà réécrit. `docs/features/page-centre-de-controle.md` **non
+  touchée**, à raison — `diagramme.js` et `app.js` étant intacts, aucune couleur qu'elle
+  décrit n'est devenue fausse. `check_doc_links.sh` → **187 liens, tous résolus**.
+  ✔️ **Le piège que je guettais n'a pas été commis** : le `CHANGELOG` écrit « les cibles
+  tactiles (**boutons d'action, pilotage secondaire**) passent de 44 px à 48 px » — il
+  NOMME les composants concernés au lieu d'annoncer un passage général, donc il
+  n'affirme pas que `.nav-onglet` a suivi, ce qui serait faux. Et il dit explicitement
+  que l'identité de couleur par agent **n'est pas encore retirée**. La note d'`ADR-0032`
+  porte le compte exact (**19**), le lot de clôture (**4**) et le nom de la garde qui la
+  tient — une note qui se vérifie, pas une intention.
+- [2026-09-21 18:52] **LOT 2 CLOS** — livrable F6 (avec la réserve `.nav-onglet` 44 px,
+  clôture lot 3). Suite **1591 cas, 0 échec**. Trois lots sur sept. Reste : 3, 4, 5, 6.
+  ⚠️ Non commité à ce stade.
 ### 4. F17 — le registre `ATTENDU_ROUGE`, défini (l'agent principal avait transmis le terme sans sa définition)
 
 **Le problème qu'il résout.** Écrire les cinq gardes au lot 0 et les voir échouer,

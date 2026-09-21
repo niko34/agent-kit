@@ -1,176 +1,203 @@
 /* Centre de contrôle — feuille unique, aucune ressource distante.
  *
  * La CSP du serveur n'autorise que 'self' : pas de police Google, pas de CDN.
- * Les piles de polices sont donc celles du système, ce qui va d'ailleurs dans le
- * sens du « offline first » du projet.
+ * Le nom "Google Sans" dans `--sans` ci-dessous n'est qu'une entrée de REPLI
+ * dans `font-family` (copiée du prototype) : le navigateur l'ignore
+ * silencieusement s'il ne la trouve pas déjà installée, sans jamais la
+ * télécharger (aucun `@font-face`) — la CSP n'est pas concernée.
  *
- * Parti pris visuel : outil de développeur, pas tableau de bord d'entreprise.
- * Forte densité, une seule couleur d'accent, et la couleur sémantique réservée
- * à ce qui demande une décision — une divergence, un échec, un agent actif.
+ * Adoption Material 3 au bit près (feature-021, cycle 2, lot 2 — F6).
+ * Référence normative : `control-center/maquettes/2026-09-20-maquette-
+ * materiel-3.html` — JAMAIS sa copie sous `docs/`, que le clone jetable ne
+ * copie pas (PIEGES §32).
  *
- * Thème unique, clair (ADR-0033 : le thème sombre est retiré, feature-021
- * lot 1) : chaque couleur n'apparaît qu'UNE FOIS, comme littéral
- * `--clair-<jeton>`, dans l'unique bloc `:root` ci-dessous. Les jetons
- * SERVIS (`--fond`, `--a-debugger`…) ne contiennent plus jamais de littéral :
- * uniquement des `var()` vers ce jeu. C'est ce qui permet de vérifier
- * mécaniquement qu'aucun hexadécimal ne traîne ailleurs dans la feuille
- * (`grep` sur `#` / `rgba(` hors de ce premier bloc).
+ * ===========================================================================
+ * TROIS COUCHES dans le bloc `:root` ci-dessous, dans cet ordre :
  *
- * Les identités d'agent (`--a-<rôle>` trait/sigle/graduations,
- * `--f-<rôle>` remplissage) sont engendrées par la méthode du §2 : teinte
- * fixe par rôle, clarté et intensité constantes à l'intérieur d'un thème.
- * `--a-neutre` / `--f-neutre` sont le repli achromatique (C=0) pour un type
- * d'agent qui n'a pas encore de teinte assignée — jamais une teinte recyclée.
+ * 1. LES 24 JETONS DU PROTOTYPE, copiés au bit près (`test_conformite_
+ *    jetons.js`, F1 : inclusion stricte). Toute valeur ici DOIT être
+ *    identique à celle du prototype — c'est le prototype qui fait foi, cette
+ *    feuille le suit, jamais l'inverse.
+ *
+ * 2. `JETONS_AJOUTES` (déclarée côté garde, avec sa raison) — additions
+ *    PERMANENTES : les 8 hexadécimaux qui vivent HORS du bloc `:root` du
+ *    prototype lui-même (promus ici, sinon ils échappent à toute garde de
+ *    contraste — F1/F5a) + les constantes hors couleur déjà présentes avant
+ *    ce lot (polices, hauteur de barre). Toute propriété `--x` ajoutée ici
+ *    doit avoir son entrée dans `JETONS_AJOUTES`, sinon F1 échoue.
+ *
+ * 3. COUCHE TRANSITOIRE — l'ancien jeu de jetons sémantiques (`--fond`,
+ *    `--actif`…) et l'identité colorée par agent (`--a-<rôle>`/`--f-<rôle>`,
+ *    ADR-0032), conservés le temps que les fichiers qui les consomment
+ *    soient réécrits :
+ *      - les alias sémantiques disparaissent au LOT 3 (`index.html` réécrit,
+ *        `F1_TRANSITOIRE_SEMANTIQUE_CLAIR` dans `test_conformite_jetons.js`) ;
+ *      - les jetons d'identité d'agent + `--rebouclage` (qui en dépend)
+ *        disparaissent au LOT 4 (`diagramme.js`/`app.js` réécrits,
+ *        `F1_TRANSITOIRE_IDENTITE_AGENT`).
+ *    Aucun littéral `--clair-*` ne survit (retiré ce lot) : ces jetons
+ *    transitoires portent directement un `var()` vers un jeton M3 (ex.
+ *    `--fond: var(--bg)`) ou, quand le M3 n'a pas d'équivalent 1:1, un
+ *    `color-mix()` dérivé d'un jeton M3 — jamais un littéral recopié.
+ *    `--surface` n'a PAS d'alias distinct : le nom coïncide avec celui du
+ *    prototype (couche 1), la déclaration unique sert les deux rôles.
+ * ===========================================================================
  */
 
 :root {
-  /* ============================== littéraux =============================
-   * Un hexadécimal (ou une `rgba()`) par ligne, jamais recopié ailleurs.
-   * Groupés par thème ; c'est la SEULE section où une couleur est écrite en
-   * dur. */
+  /* ===== 1. les 24 jetons du prototype — copiés au bit près (F1) ========= */
+  color-scheme: light;
+  --bg: #f7f5fb;
+  --surface: #fffbff;
+  --surface-low: #f1eff7;
+  --surface-high: #ebe7f3;
+  --surface-highest: #e4e0eb;
+  --ink: #1d1b20;
+  --muted: #67636d;
+  --line: #d7d2de;
+  --line-strong: #8f8997;
+  --primary: #4f46d8;
+  --primary-soft: #e7e2ff;
+  --primary-ink: #27205e;
+  --teal: #087e6d;
+  --teal-soft: #d3f3ea;
+  --coral: #b44b31;
+  --coral-soft: #ffdbd1;
+  --amber: #946200;
+  --amber-soft: #ffdea3;
+  --danger: #ba1a1a;
+  --danger-soft: #ffdad6;
+  --shadow-1: 0 1px 2px rgba(31, 28, 37, .08), 0 4px 14px rgba(31, 28, 37, .05);
+  --shadow-2: 0 4px 12px rgba(31, 28, 37, .12), 0 12px 32px rgba(31, 28, 37, .08);
+  --spatial: cubic-bezier(.2, 1.28, .34, 1);
+  --effects: cubic-bezier(.2, 0, 0, 1);
 
-  /* -- littéraux clairs -- */
-  --clair-fond:        #f5f7f9;
-  --clair-surface:     #ffffff;
-  --clair-surface-2:   #eef0f4;
-  --clair-creux:       #ebedf1;
-  --clair-trait:       #c4c7ce;
-  --clair-trait-fin:   #d3d6db;
+  /* ===== 2. JETONS_AJOUTES — additions permanentes, déclarées dans
+   * test_conformite_jetons.js avec nom/valeur/origine ================== */
 
-  /* Jeton d'état achromatique (feature-016, item I) — le contour de « sans
-   * clôture » et d'« indéterminé », JAMAIS de couleur vive : la seule teinte
-   * réservée à un état est `--actif`, pour « en cours ». Mesuré par
-   * l'architecte : 3,92:1 contre `--clair-surface`. */
-  --clair-contour-etat: #777777;
+  /* -- 8 hexadécimaux du prototype vivant HORS de son bloc `:root`, promus
+   * ici (feature-021 cycle 2, notes d'implémentation §1) : F1 les couvrait
+   * jusque-là par aucune garde. Noms dérivés du SÉLECTEUR qui les porte dans
+   * le prototype, jamais de la valeur elle-même. */
+  --agent-state-pending: #aaa6b0; /* .agent-node{--state-color:#aaa6b0} l.263, .agent-node.state-pending l.304 */
+  --agent-state-done:    #777385; /* .agent-node.state-done{--state-color:#777385} l.303 */
+  --question-ink:        #4e1d12; /* .question{color:#4e1d12} l.454, sur fond --coral-soft */
+  --column-todo-dot:     #eea52a; /* .column-todo .column-label i{background:#eea52a} l.498 */
+  --column-done-dot:     #3b8f35; /* .column-done .column-label i{background:#3b8f35} l.500 */
+  --chip-todo-bg:        #fff0c8; /* .feature-chip.todo{background:#fff0c8} l.552 */
+  --chip-todo-ink:       #654b00; /* .feature-chip.todo{color:#654b00} l.552 */
+  --chip-high-ink:       #690005; /* .feature-chip.high{color:#690005} l.553, sur fond --danger-soft */
 
-  --clair-texte:       #1d1f23;
-  --clair-texte-doux:  #52555c;
-  --clair-texte-faible:#60636a;
-
-  /* Arbitré (feature-015, revue ux-ui-designer) : les jetons sémantiques
-   * portent une gravité, donc un ordre — ils ne suivent PAS le tableau L/C
-   * du §2 (catégoriel, « sans ordre ni grandeur »). Ils sont régénérés sur
-   * leur propre axe et tenus à ≥ 0,10 d'écart perceptuel de toute teinte
-   * d'agent, calculé APRÈS mappage de gamut — jamais recopié ici, la source
-   * reste ce bloc de littéraux. Le mappage réduit l'INTENSITÉ à clarté et
-   * teinte conservées, jamais un écrêtage canal par canal : un écrêtage
-   * déplace la clarté, ce qui casse la constante d'une palette catégorielle
-   * exactement là où le gamut mord — tout ajout futur doit réduire, pas
-   * écrêter. `--accent` clair est un brun profond, pas un laiton : à sa
-   * bande de clarté (L ≤ 0,315), l'ambre n'atteint pas plus d'intensité en
-   * sRGB ; la variante qui gardait le laiton faisait tomber le contraste de
-   * `.action-ecriture` de 8,1:1 à 5,0:1 — écartée. */
-  --clair-accent:      #282012;
-  --clair-actif:       #142f28;
-  --clair-alerte:      #3f260e;
-  --clair-echec:       #560b03;
-
-  /* Ombre portée (tiroir) : sur fond clair, une ombre franche redevient
-   * lisible avec une opacité beaucoup plus faible qu'en sombre — une ombre à
-   * 45% sur blanc écraserait la page. */
-  --clair-ombre: rgba(29, 31, 35, 0.16);
-
-  --clair-a-backend-developer: #005568;
-  --clair-f-backend-developer: #9ae6ff;
-  --clair-a-security-reviewer: #00594b;
-  --clair-f-security-reviewer: #9debd8;
-  --clair-a-test-engineer:     #5a3090;
-  --clair-f-test-engineer:     #dfd0ff;
-  --clair-a-spec-reader:       #1f439d;
-  --clair-f-spec-reader:       #c7daff;
-  --clair-a-code-reviewer:     #8c190a;
-  --clair-f-code-reviewer:     #ffcbc1;
-  --clair-a-debugger:          #644500;
-  --clair-f-debugger:          #f6d49b;
-  --clair-a-doc-writer:        #7a1e6a;
-  --clair-f-doc-writer:        #fdc5ee;
-  --clair-a-frontend-developer:#375700;
-  --clair-f-frontend-developer:#c7e5ab;
-  --clair-a-neutre:            #4c4c4c;
-  --clair-f-neutre:            #d9d9d9;
-
-  /* Voile de la porte d'authentification (`.porte-fond`) : littéral unique,
-   * thème unique (ADR-0033). Un voile qui isole la modale doit rester sombre
-   * même sur un fond clair : un voile blanc sur page blanche n'obscurcit
-   * rien et ne signale aucune modalité. Le littéral reprend `--clair-texte`
-   * (#1d1f23 = rgb(29,31,35)) en `rgba`, pas un nouveau noir arbitraire. */
-  --clair-voile: rgba(29, 31, 35, 0.45);
-
-  /* ============================ jetons servis =============================
-   * Thème unique, clair : aucun `data-theme`, aucune préférence système
-   * consultée (ADR-0033). `color-scheme: light` fait correspondre les
-   * éléments natifs (défilement, champs) au même registre. */
-  --fond:        var(--clair-fond);
-  --surface:     var(--clair-surface);
-  --surface-2:   var(--clair-surface-2);
-  --creux:       var(--clair-creux);
-  --trait:       var(--clair-trait);
-  --trait-fin:   var(--clair-trait-fin);
-  --contour-etat:var(--clair-contour-etat);
-
-  --texte:       var(--clair-texte);
-  --texte-doux:  var(--clair-texte-doux);
-  --texte-faible:var(--clair-texte-faible);
-
-  --accent:      var(--clair-accent);
-  --actif:       var(--clair-actif);
-  --alerte:      var(--clair-alerte);
-  --echec:       var(--clair-echec);
-
-  --ombre: var(--clair-ombre);
-  --voile: var(--clair-voile);
-
-  --a-backend-developer: var(--clair-a-backend-developer);
-  --f-backend-developer: var(--clair-f-backend-developer);
-  --a-security-reviewer: var(--clair-a-security-reviewer);
-  --f-security-reviewer: var(--clair-f-security-reviewer);
-  --a-test-engineer:     var(--clair-a-test-engineer);
-  --f-test-engineer:     var(--clair-f-test-engineer);
-  --a-spec-reader:       var(--clair-a-spec-reader);
-  --f-spec-reader:       var(--clair-f-spec-reader);
-  --a-code-reviewer:     var(--clair-a-code-reviewer);
-  --f-code-reviewer:     var(--clair-f-code-reviewer);
-  --a-debugger:          var(--clair-a-debugger);
-  --f-debugger:          var(--clair-f-debugger);
-  --a-doc-writer:        var(--clair-a-doc-writer);
-  --f-doc-writer:        var(--clair-f-doc-writer);
-  --a-frontend-developer:var(--clair-a-frontend-developer);
-  --f-frontend-developer:var(--clair-f-frontend-developer);
-  --a-neutre:            var(--clair-a-neutre);
-  --f-neutre:            var(--clair-f-neutre);
-
-  /* Alias neuf (feature-020, correspondance de jetons T.ye) : l'arc de
-   * rebouclage porte une couleur FIXE, pas une identité d'agent (décision
-   * R) — `var(--a-debugger)` se résout déjà par thème, ce alias n'a donc
-   * besoin d'être déclaré qu'UNE fois : la résolution de `var()` est vive,
-   * elle suit `--a-debugger` quel que soit le thème actif sans duplication. */
-  --rebouclage: var(--a-debugger);
-
+  /* -- constantes hors couleur, déjà présentes avant ce lot -- */
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-
-  /* Constante de mise en page (feature-019, revue) — PAS une couleur, donc
-   * hors du bloc de littéraux ci-dessus, mais nommée UNE FOIS pour ne plus
-   * répéter le nombre magique dans les trois règles qui en dépendaient
+  --sans: "Google Sans", "Roboto", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* Constante de mise en page (feature-019, revue) — nommée UNE FOIS pour ne
+   * plus répéter le nombre magique dans les règles qui en dépendaient
    * (`.mise-en-page`, `.nav-sections` ×2). Valeur de repli pour `.barre` sur
-   * UNE seule ligne ; `.barre` peut passer à la ligne (`flex-wrap: wrap`)
-   * et dépasser cette hauteur — `app.js` mesure alors la hauteur RÉELLEMENT
-   * rendue et corrige cette variable (`ResizeObserver`), pour que la nav
-   * collante ne se retrouve jamais sous la barre repliée sur deux lignes. */
+   * UNE seule ligne ; `app.js` corrige cette variable si `.barre` passe à la
+   * ligne (`ResizeObserver`), pour que la nav collante ne se retrouve jamais
+   * sous la barre repliée. */
   --hauteur-barre: 62px;
 
-  color-scheme: light;
+  /* ===== 3. couche transitoire — jamais de littéral, uniquement des alias
+   * vers la couche 1 (ou un color-mix() qui en dérive) ==================
+   * 3a. sémantiques (15), disparaissent au LOT 3 (F1_TRANSITOIRE_SEMANTIQUE_CLAIR) */
+  --fond:        var(--bg);
+  --surface-2:   var(--surface-low);
+  /* --creux vers --surface-high, pas --surface-low : "creux" désignait un
+   * fond ENCORE PLUS enfoncé que le hover/highlight (--surface-2) — champs de
+   * saisie, blocs de code, contenu du tiroir. Vérifié (feature-021 cycle 2
+   * lot 2) : `--muted` sur `--surface-high` = 4,8173 (≥ 4,65), aucun couple
+   * de F5a peint par cet alias. */
+  --creux:       var(--surface-high);
+  --trait:       var(--line);
+  /* --trait-fin NE PEUT PAS aliaser --line tel quel (essayé, revu) : le M3 du
+   * prototype n'a que DEUX jetons de trait (--line, --line-strong, plus
+   * SOMBRE) alors que `test_app_diagramme_navigateur.js` (E7) exige
+   * `.dg-guide` (--trait-fin) STRICTEMENT MOINS contrasté contre le fond que
+   * `.dg-graduation`/`.dg-cercle` (--trait) — un alias identique égalise les
+   * deux et fait échouer `E7_guide_moins_contraste_que_graduation_eteinte`/
+   * `..._que_contour_nominal` (mesuré : 1,447:1 = 1,447:1). Dérivé plutôt
+   * qu'inventé : `color-mix()` de --line VERS --surface (jamais un nouveau
+   * littéral), à un dosage qui reste strictement plus clair — vérifié
+   * (contraste sur --surface) : trait-fin 1,244:1 < trait 1,447:1. */
+  --trait-fin:   color-mix(in srgb, var(--line) 60%, var(--surface));
+  /* --contour-etat vers --line-strong : seul jeton de trait « renforcé » du
+   * prototype, même rôle que l'ancien littéral achromatique (contour d'un
+   * état, jamais une couleur vive). Peint uniquement sur --surface
+   * aujourd'hui (`.cycle-etat.indetermine`) : --line-strong y vaut largement
+   * plus que le seuil 3,0 (non listé dans les 24 couples interdits de F5a). */
+  --contour-etat:var(--line-strong);
+  --texte:       var(--ink);
+  --texte-doux:  var(--muted);
+  /* --texte-faible consolidé sur --muted, comme --texte-doux : le prototype
+   * n'a qu'UN SEUL palier de texte atténué, contre deux côté `--clair-*`. */
+  --texte-faible:var(--muted);
+  --accent:      var(--primary);
+  --actif:       var(--teal);
+  --alerte:      var(--amber);
+  --echec:       var(--danger);
+  /* --ombre / --voile : le prototype n'a pas de jeton de superposition
+   * `rgba()`, seulement `--shadow-1`/`--shadow-2` (des box-shadow complets,
+   * pas une teinte) — dérivées par `color-mix()` de `--ink`, jamais un noir
+   * recopié à la main (même idiome que `.action-ecriture:hover` plus bas). */
+  --ombre: color-mix(in srgb, var(--ink) 16%, transparent);
+  --voile: color-mix(in srgb, var(--ink) 45%, transparent);
+
+  /* 3b. identité colorée par agent (18) + --rebouclage qui en dépend,
+   * disparaissent au LOT 4 avec diagramme.js/app.js (ADR-0032,
+   * F1_TRANSITOIRE_IDENTITE_AGENT). Valeurs inchangées depuis avant ce lot —
+   * seule l'indirection `--clair-a-*` est retirée. */
+  --a-backend-developer: #005568;
+  --f-backend-developer: #9ae6ff;
+  --a-security-reviewer: #00594b;
+  --f-security-reviewer: #9debd8;
+  --a-test-engineer:     #5a3090;
+  --f-test-engineer:     #dfd0ff;
+  --a-spec-reader:       #1f439d;
+  --f-spec-reader:       #c7daff;
+  --a-code-reviewer:     #8c190a;
+  --f-code-reviewer:     #ffcbc1;
+  --a-debugger:          #644500;
+  --f-debugger:          #f6d49b;
+  --a-doc-writer:        #7a1e6a;
+  --f-doc-writer:        #fdc5ee;
+  --a-frontend-developer:#375700;
+  --f-frontend-developer:#c7e5ab;
+  --a-neutre:            #4c4c4c;
+  --f-neutre:            #d9d9d9;
+  /* Alias neuf (feature-020, correspondance de jetons T.ye) : l'arc de
+   * rebouclage porte une couleur FIXE, pas une identité d'agent (décision R)
+   * — dépend de --a-debugger, donc rangé dans la même couche transitoire,
+   * même lot de clôture. */
+  --rebouclage: var(--a-debugger);
 }
 
 * { box-sizing: border-box; }
 
+/* Typographie de base — police et interligne copiés du prototype (F6, lot 2) :
+ * `font-size: 14px` ne change pas (déjà conforme), `line-height` passe de
+ * 1.45 à 1.35 (mesuré `body { line-height: 1.35 }`, maquette l.45). */
 body {
   margin: 0;
   background: var(--fond);
   color: var(--texte);
   font-family: var(--sans);
   font-size: 14px;
-  line-height: 1.45;
+  line-height: 1.35;
+}
+
+/* Anneau de focus M3 (F6, lot 2) : 3 px, décalé de 3 px, sur `--primary`
+ * directement (pas l'alias transitoire `--accent`, qui disparaît au lot 3) —
+ * copié tel quel du prototype (l.51-54). N'écrase AUCUNE règle existante :
+ * chaque sélecteur `:focus-visible` déjà présent dans cette feuille porte une
+ * classe (spécificité 0,2,0), donc l'emporte sur ce repli générique par
+ * élément (0,1,1/0,1,0) — celui-ci ne s'applique qu'aux éléments interactifs
+ * qui n'ont pas encore leur propre règle, et deviendra la norme au fil des
+ * lots 3/4 quand les règles spécifiques seront réécrites aux jetons M3. */
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, [tabindex]:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
 }
 
 /* ---------------- barre ---------------- */
@@ -252,6 +279,12 @@ body {
   z-index: 11;
 }
 .nav-onglet {
+  /* Reste à 44px (PAS la cible M3, F6 lot 2) : `.nav-sections`/`.nav-onglet`
+   * est la navigation par onglets latérale d'AVANT ce cycle, qui disparaît
+   * entièrement à la structure mono-écran du lot 3 (F7, 0 role="tab") — la
+   * bumper à 48px casse `E9_nav_onglet_cible_44px_hors_media`
+   * (`test_app_navigation.js`) pour un composant sur le point d'être
+   * retiré. Revu au lot 3 avec le reste du fichier. */
   min-height: 44px;
   display: flex; align-items: center;
   padding: 8px 12px;
@@ -778,7 +811,7 @@ body {
 }
 
 .action-ecriture {
-  min-height: 44px; min-width: 44px; padding: 8px 18px;
+  min-height: 48px; min-width: 48px; padding: 8px 18px; /* cible M3, F6 lot 2 */
   background: var(--accent); color: var(--fond); border: none; border-radius: 2px;
   font-weight: 600; font: inherit; cursor: pointer;
 }
@@ -790,7 +823,7 @@ body {
 .action-ecriture:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .pilotage-secondaire {
-  min-height: 44px; min-width: 44px; padding: 8px 16px; background: none;
+  min-height: 48px; min-width: 48px; padding: 8px 16px; background: none; /* cible M3, F6 lot 2 */
   border: 1px solid var(--trait); color: var(--texte-doux); border-radius: 2px;
   font: inherit; cursor: pointer;
 }
