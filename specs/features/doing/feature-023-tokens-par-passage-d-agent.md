@@ -4,7 +4,7 @@
 - **ID** : feature-023
 - **Slug** : tokens-par-passage-d-agent
 - **Type** : feature
-- **Statut** : todo
+- **Statut** : doing — **absorbée dans le cycle `feature-021`** (lot 12), réouverture de périmètre
 - **Priorité** : normale
 - **Version cible** : N/A
 - **Dernière mise à jour** : 2026-09-20
@@ -46,7 +46,46 @@ Mesurées le 2026-09-20.
 - [x] backend-developer · [x] frontend-developer
 - [x] test-engineer · [x] code-reviewer · [x] doc-writer
 
-## Description
+## Absorption dans le cycle `feature-021` (2026-09-22)
+
+Cette spec n'est pas traitée seule. L'humain a rouvert le périmètre de
+`feature-021` le 2026-09-22 : « Rien ne justifie de livrer un livrable qui
+couvre une petite partie de ce que j'ai demandé. Fais ce qu'il faut pour
+mettre en œuvre la maquette. » La maquette Material 3 **entière** revient au
+périmètre du cycle, y compris les éléments que le découpage du 2026-09-20
+avait différés vers cette spec.
+
+⚠️ Le motif est **distinct** de celui de `bug-017` : ce n'est **pas**
+`ADR-0017` (une spec qui désarme ou rend inatteignable une garde livrée par le
+cycle en cours). Aucune garde livrée par `feature-021` n'est désarmée par
+l'absence de cette spec. Le motif est une réouverture de périmètre décidée
+par l'humain parce que le livrable initial ne couvrait qu'une fraction de sa
+demande. Les deux précédents ne se confondent pas.
+
+Conséquence de forme : le cycle porte désormais **cinq specs dans `doing/`**
+(`feature-021`, `bug-017`, `feature-022`, `feature-023`, `feature-025`), avec
+une **seule** phase de test, de revue et de documentation. **Le journal de
+bord de référence est celui de `feature-021`** — c'est là que les verdicts
+GATE (P1/P2) et les livrables de cette spec sont consignés au fil des étapes,
+pas ici. Cette spec reçoit uniquement, à la clôture, ses notes
+d'implémentation avant son déplacement vers `done/`.
+
+Cette spec porte le **lot 12** du plan du cycle 2.
+
+### Éléments du prototype qui lui reviennent
+
+Dérivés de `control-center/web/test_conformite_partition_donnees.js`
+(table F0, entrées taguées `differe:feature-023`) — **3 éléments uniques**
+(2 identifiants + 1 classe, sans recouvrement de nom) :
+
+- **Identifiants (2)** : `selected-tokens`, `summary-tokens`
+- **Classe (1)** : `token-value`
+
+`token-value` est le chiffre au centre du disque (M6 du plan) ; `selected-tokens`
+et `summary-tokens` sont les reprises du même chiffre dans la bottom sheet de
+détail et dans la bande de résumé.
+
+
 
 Afficher, au centre de chaque disque du graphe d'agents, le nombre de tokens consommés
 par ce passage : **`input_tokens + output_tokens`**.

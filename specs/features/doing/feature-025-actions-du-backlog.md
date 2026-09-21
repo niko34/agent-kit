@@ -4,7 +4,7 @@
 - **ID** : feature-025
 - **Slug** : actions-du-backlog
 - **Type** : feature
-- **Statut** : todo
+- **Statut** : doing — **absorbée dans le cycle `feature-021`** (lots 9-10), réouverture de périmètre
 - **Priorité** : normale
 - **Version cible** : N/A
 - **Dernière mise à jour** : 2026-09-20
@@ -37,7 +37,66 @@
 - [x] backend-developer · [x] frontend-developer
 - [x] test-engineer · [x] code-reviewer · [x] doc-writer
 
-## Description
+## Absorption dans le cycle `feature-021` (2026-09-22)
+
+Cette spec n'est pas traitée seule. L'humain a rouvert le périmètre de
+`feature-021` le 2026-09-22 : « Rien ne justifie de livrer un livrable qui
+couvre une petite partie de ce que j'ai demandé. Fais ce qu'il faut pour
+mettre en œuvre la maquette. » La maquette Material 3 **entière** revient au
+périmètre du cycle, y compris les éléments que le découpage du 2026-09-20
+avait différés vers cette spec.
+
+⚠️ Le motif est **distinct** de celui de `bug-017` : ce n'est **pas**
+`ADR-0017` (une spec qui désarme ou rend inatteignable une garde livrée par le
+cycle en cours). Aucune garde livrée par `feature-021` n'est désarmée par
+l'absence de cette spec. Le motif est une réouverture de périmètre décidée
+par l'humain parce que le livrable initial ne couvrait qu'une fraction de sa
+demande. Les deux précédents ne se confondent pas.
+
+Conséquence de forme : le cycle porte désormais **cinq specs dans `doing/`**
+(`feature-021`, `bug-017`, `feature-022`, `feature-023`, `feature-025`), avec
+une **seule** phase de test, de revue et de documentation. **Le journal de
+bord de référence est celui de `feature-021`** — c'est là que les verdicts
+GATE (P1/P2) et les livrables de cette spec sont consignés au fil des étapes,
+pas ici. Cette spec reçoit uniquement, à la clôture, ses notes
+d'implémentation avant son déplacement vers `done/`.
+
+Cette spec porte les **lots 9 et 10** du plan du cycle 2 (backend puis frontend).
+
+### Éléments du prototype qui lui reviennent
+
+Dérivés de `control-center/web/test_conformite_partition_donnees.js`
+(table F0, entrées taguées `differe:feature-025`) — **71 éléments uniques**
+(32 identifiants + 44 classes, 5 noms partagés entre les deux ensembles :
+`add-item-dialog`, `add-item-form`, `context-menu`, `feature-dialog`,
+`feature-kind`) :
+
+- **Identifiants (32)** : `add-item-dialog`, `add-item-form`, `add-item-intro`,
+  `add-item-title`, `cancel-add-item`, `cancel-delete`, `close-add-item`,
+  `close-feature`, `context-menu`, `delete-copy`, `delete-dialog`,
+  `delete-item`, `delete-title`, `edit-item`, `feature-agent`,
+  `feature-criteria`, `feature-dependency`, `feature-description`,
+  `feature-dialog`, `feature-done`, `feature-edit`, `feature-kind`,
+  `feature-priority`, `feature-status`, `feature-title`, `feature-updated`,
+  `item-description`, `item-priority`, `launch-divider`, `menu-launch-cycle`,
+  `open-add-item`, `view-details`
+- **Classes (44)** : `add-item-actions`, `add-item-body`, `add-item-button`,
+  `add-item-dialog`, `add-item-form`, `cancel`, `card-title-button`,
+  `confirm`, `context-menu`, `danger`, `dialog-actions`, `feature-chip`,
+  `feature-close`, `feature-dialog`, `feature-dialog-actions`,
+  `feature-dialog-body`, `feature-dialog-header`, `feature-dialog-heading`,
+  `feature-fact`, `feature-facts`, `feature-kind`, `feature-meta`,
+  `feature-section`, `field-help`, `field-label`, `form-buttons`,
+  `form-field`, `form-grid`, `form-intro`, `full`, `high`, `icon-button`,
+  `launch-action`, `menu-divider`, `menu-icon`, `menu-item`, `more-button`,
+  `primary`, `required-note`, `secondary`, `submit`, `todo`, `type-option`,
+  `type-segment`
+
+⚠️ La table F0 note explicitement sur `icon-button` : « aucune instance
+adoptée » — nommer la classe ne garantit pas qu'un élément du prototype la
+porte réellement ; à vérifier au lot 10, pas à supposer.
+
+
 
 Chaque carte du kanban porte un bouton `⋮` ouvrant un menu Material 3 ancré à la carte.
 Pour une carte de la première colonne, le menu commence par **« Lancer un cycle »**, puis

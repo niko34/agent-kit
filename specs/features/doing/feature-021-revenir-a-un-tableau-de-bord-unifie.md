@@ -2046,6 +2046,172 @@ par ce dépôt.
   non-`inset`, l'erreur va vers la **sous-estimation**. **Suite : 1323 → 1330, 0 échec, 33
   fichiers. Les 4 registres vides.** Vérification visuelle faite sur un cycle portant
   réellement une reprise (`frontend-developer` rappelé) : arc entier, sommet dans le cadre.
+- [2026-09-22 04:55] **COMMIT des lots 4 et 5** — agent principal — `f53a293`, 26 fichiers.
+  ⚠️ **Un seul commit pour deux lots, et c'est assumé** : ils ont réécrit les mêmes fichiers
+  (`app.js`, `app.css`, `index.html`) et **une reboucle du lot 4 est revenue APRÈS le
+  lot 5** (l'écrêtage signalé par l'humain), si bien qu'aucune coupure par fichier ne les
+  sépare honnêtement. Découper ici aurait produit deux commits dont aucun ne compile
+  l'histoire réelle. Plus `007c299`, la spec `bug-023` **seule**, parce qu'elle n'a rien à
+  voir avec ce cycle. Arbre propre, `check_specs.sh` 49 specs sans doublon,
+  `check_doc_links.sh` 191 liens résolus, suite **1330 cas 0 échec** depuis l'état commité.
+  Six commits sur la branche. **Rien poussé.**
+- [2026-09-22 05:40] **DÉCISION HUMAINE — LE PÉRIMÈTRE EST ROUVERT : la maquette ENTIÈRE.**
+  Mot pour mot : « Je t'avais autorisé à créer de nouvelles ADR. **Rien ne justifie de
+  livrer un livrable qui couvre une petite partie de ce que j'ai demandé.** Fais ce qu'il
+  faut pour mettre en œuvre la maquette. » Rappel de l'objectif d'origine du 2026-09-20 :
+  « pas juste une interprétation mais **la maquette précise** ».
+  ⚠️ **Erreur d'appréciation de l'agent principal, à l'origine de ce retour.** L'humain
+  avait autorisé les ADR neufs **dès le premier message** (« Des ADR pourraient contredire
+  les choix retenus. Il faudra alors écrire de nouveaux ADR »). J'ai traité `ADR-0020`,
+  `ADR-0023` et `PIEGES §16` comme des **contraintes acquises** au lieu de les rouvrir, et
+  la carte F0 a différé **88 éléments sur 113** en conséquence. Le point d'arrêt n°1 lui a
+  bien soumis les comptes — « la moitié du prototype part en `feature-025` » — mais **un
+  tableau de comptes ne montre pas ce que ça fait à l'écran** ; il aurait fallu deux
+  rendus côte à côte. Trois lots plus tard, la comparaison visuelle a tout dit d'un coup.
+  **Décisions de reprise** : (1) les **7** exclusions d'`ADR-0020`/`ADR-0023`
+  (`project-switcher`, `notification-button`, `notification-badge`, `avatar`, `user-name`,
+  `account-button`, `cycle-title`) **reviennent** ; (2) `progress-track` revient **sous la
+  forme déjà tranchée par l'humain le 2026-09-20** — l'anneau de la maquette animé sur
+  l'activité réelle, **sans pourcentage**, parce qu'aucune donnée ne mesure une progression
+  et qu'en afficher une serait inventer un chiffre (`PIEGES §16` conserve donc son motif,
+  pas son exclusion) ; (3) les **88 éléments** assignés à `feature-022`/`023`/`025`
+  rentrent dans le périmètre ; (4) **`security-reviewer` rôle GATE, P1 sur le design avant
+  tout code**, sur le panneau de conversation **avec saisie** et les modales qui **lancent,
+  modifient et suppriment** des specs — chemins d'écriture depuis une page servie sur le
+  réseau local (`hote = 0.0.0.0`). Non négociable (`CLAUDE.md`, Règles absolues), et
+  traité **en le faisant passer**, pas en l'évitant.
+  ⚠️ **Le trou que cette extension doit fermer** : on a **135 assertions vertes et un écran
+  qui ne ressemble pas à la maquette**. Les rayons employés (2/3/4 px) n'existent nulle
+  part dans le prototype, et les deux élévations M3 sont déclarées au bit près pour
+  **zéro usage** — aucune garde ne vérifiait qu'un jeton est *employé*, seulement qu'il est
+  *déclaré*. Il faut un livrable qui porte la **fidélité d'ensemble**, pas 135 propriétés
+  locales. `orchestrator` saisi du plan.
+- [2026-09-22 05:52] **RAPPEL DE L'HUMAIN : « prends aussi en compte les réponses que j'ai
+  déjà apportées »** — et il a raison, **une décision avait été perdue**.
+  ⚠️ **TOKENS — rétrécissement non autorisé, à annuler.** Le 2026-09-20, interrogé sur le
+  périmètre, l'humain avait **explicitement accepté que le backend entre dans le périmètre
+  pour capter les tokens**, et tranché la forme du chiffre : « est-ce que le mieux ne
+  serait pas d'**additionner input et output token** ? ». J'ai néanmoins sorti les tokens
+  vers `feature-023` et écrit F15 « centre du disque **sans chiffre** ». **Rien
+  n'autorisait ce rétrécissement.** `feature-023` est **absorbée** ; la capture côté
+  backend rentre dans le plan ; le chiffre est la **somme entrée + sortie**.
+  **Anneau de progression, reconfirmé** : « le cercle de progression peut **juste illustrer
+  le côté actif du sous-agent** ». Forme de la maquette, animée pendant l'activité, **sans
+  pourcentage** — la donnée n'existe pas.
+  **Décisions antérieures rappelées à l'`orchestrator` pour qu'il ne les repose pas** : la
+  maquette **HTML** fait foi (les PNG n'étaient que des illustrations, supprimés) ; « les
+  **données** ne sont que des exemples » — on reproduit la grammaire visuelle, jamais
+  « Sécuriser le checkout » ni « Jean Dupont » ; thème **clair seul** ; contraste = hex au
+  bit près, **usage** restreint (`ADR-0024 §5` en vigueur) ; « quitte à revoir le diagramme
+  **complètement** » ; « laisser le designer **totalement libre** de faire quelque chose
+  qui impressionne » ; suppressions réelles exigées.
+  ⚠️ **Règle générale posée pour tout le plan** : quand une décision de l'humain et une
+  contrainte héritée (ADR, `PIEGES`) se contredisent, **c'est la décision humaine qui
+  l'emporte** — il a autorisé les ADR neufs dès son premier message. **Seule exception** :
+  si reproduire la maquette obligeait à **afficher une donnée qui n'existe pas**, on garde
+  la forme et on la branche sur du réel (cas de l'anneau).
+  ⚠️ **Leçon de méthode, valable au-delà de ce cycle** : *quand un arbitrage porte sur du
+  visuel, montrer du VISUEL.* Le point d'arrêt n°1 a soumis un tableau de comptes, validé ;
+  trois lots plus tard la comparaison des deux rendus a montré ce que les chiffres ne
+  disaient pas. Les points d'arrêt du plan étendu porteront des **captures comparées
+  prototype/livré**.
+- [2026-09-22 06:20] Lot 6 étape 1 — test-engineer — **CAMPAGNE DE MUTATION SUR LES GARDES
+  ELLES-MÊMES**. 13 mutants, **11 tués du premier coup, 2 gardes creuses trouvées et
+  réparées** (aucune ligne de production touchée) :
+  **(1) F5b — une encre inconnue était comptée mais jamais jugée.** `.marque{color:#fefefe}`,
+  contraste **1,03:1**, traversait les 12 cas sans échec : une encre non rattachée à un
+  jeton était rangée « hors palette » et **jamais assertionnée** — alors que le commentaire
+  du fichier promettait « c'est un ÉCHEC EN SOI ». Un invariant écrit en commentaire, une
+  fois de plus.
+  **(2) F1 — le critère « aucun hexadécimal hors du `:root` » n'était appliqué QU'AU
+  PROTOTYPE, jamais à `app.css`.** Un hex neuf traversait les **33 fichiers / 1330 cas**.
+  C'était pourtant un critère d'acceptation de la spec, et le journal du lot 1 l'avait
+  signalé « à ne pas perdre » — il l'a été pendant cinq lots.
+  Réparations contre-vérifiées par l'agent principal : `#123456 @ .mutant-hex (color)` et
+  `rgb(254,254,254) sur rgb(255,251,255), contraste 1.02, seuil 4.65`. **Suite : 1347 cas,
+  35 fichiers, 0 échec.**
+  ⚠️ **Constat à trancher par l'architecte** : `app.css` l. 699 porte `--state-color:
+  #aaa6b0`, **valeur recopiée au lieu de `var(--agent-state-pending)`** (l. 88). Passe
+  aujourd'hui car la valeur est tracée, mais **divergerait en silence** si le jeton change.
+  ⚠️ **Deux gardes non couvertes** : `test_conformite_formes` et
+  `test_conformite_ordre_backlog`, créées **pendant** la campagne par le correctif de
+  fidélité concurrent. À muter dans une passe dédiée.
+  ⚠️ **Variante de `PIEGES §29` à consolider** : un clone `cp -a` pris pendant un WIP
+  concurrent peut manquer des **fichiers entiers** créés quelques secondes après la copie —
+  §29 ne parle que d'un fichier *muté* capturé, pas d'un fichier *absent*. Découvert en
+  comparant la liste des fichiers du clone à celle du dépôt réel, après coup.
+- [2026-09-22 06:35] **RETOUR HUMAIN : « l'intérêt d'avoir une maquette html, c'est de
+  RÉCUPÉRER DU CODE UTILE »** — signalé sur la feuille de détail (« coin carré au lieu
+  d'arrondi, pas d'ombre portée »). C'est le diagnostic de fond des six premiers lots : on
+  a **re-dérivé** le design — 24 jetons recopiés au bit près, durées, noms de classes,
+  rayons — au lieu de **reprendre les règles CSS du prototype**. Chaque re-dérivation a été
+  une occasion de dériver. **Principe porté au plan étendu** : pour tout composant adopté,
+  la règle du prototype est **reprise telle quelle** quand le sélecteur existe, adaptée
+  seulement là où la structure diffère, avec le motif écrit ; et la garde compare **règle à
+  règle**, pas jeton à jeton.
+- [2026-09-22 06:41] Reboucle de fidélité — frontend-developer — **livrée**. Rayons et
+  élévations repris **par sélecteur identique** au prototype quand il existe
+  (`.detail-sheet` → `28px 28px 0 0` + ombre, `.kanban-column` → 16px, `.feature-card` →
+  14px, `.summary-band` → 20px…), par **rôle le plus proche** sinon, chaque changement
+  commenté avec sélecteur et ligne d'origine. Les deux ombres M3 atterrissent enfin :
+  `--shadow-1` sur `.feature-card:hover`, `--shadow-2` sur `.porte-carte`. **Ordre corrigé** :
+  le kanban remonte juste sous la feuille de détail, il était enterré sous trois blocs.
+  Gardes neuves `test_conformite_formes` (9 cas, dont la **clause miroir qui aurait vu le
+  défaut d'origine** : jeton de forme ou d'élévation déclaré et jamais employé) et
+  `test_conformite_ordre_backlog` (4 cas). **Suite : 1347 cas, 35 fichiers, 0 échec.**
+  ⚠️ **CHIFFRE QUE J'AVAIS DONNÉ FAUX** : j'avais écrit que `2px/3px/4px` « n'existent
+  nulle part dans le prototype ». **`3px` y existe** (`.brand-mark i`, l. 109) ; seuls
+  `2px` et `4px` sont absents. Le sous-agent l'a vérifié au parseur au lieu de me croire —
+  sa première mutation, fondée sur ma phrase, **ne tuait rien**.
+  ⚠️ **FAUTE DE MÉTHODE DE L'AGENT PRINCIPAL** : j'ai fait tourner **deux sous-agents en
+  parallèle dans le MÊME arbre de travail** (campagne de mutation et reboucle de fidélité).
+  Conséquence mesurée : le total de 1347 **mélange leurs deux contributions et n'est pas
+  reproductible en isolation**, et un clone `cp -a` pris à 19:51:13 a manqué deux fichiers
+  créés à 19:51/19:52. Le plan étendu doit **séquencer** ce qui touche les mêmes fichiers.
+- [2026-09-22 06:58] **PLAN ÉTENDU rendu par l'`orchestrator`** (68 Ko, conservé dans les
+  résultats d'outil). **Huit lots (6 → 13)**, **4 ADR neufs** — `0038` méthode du cycle,
+  `0039` la fidélité prime sur les restrictions antérieures, `0040` les chemins d'écriture,
+  `0041` lecture hors racine — et `0005`/`0019`/`0020`/`0023` **amendés en ligne de statut
+  seulement, corps intacts** (`docs/adr/README.md:11`). `feature-022`/`023`/`025`
+  **absorbées** ; `feature-024` non (aucun élément du prototype ne lui appartient) ;
+  **`feature-009` bloque le lot 11** — elle doit trancher où vivent les messages.
+  **GATE `security-reviewer` P1 bloquant** sur les lots 9, 11, 12, puis **P2 ×3**.
+  **La garde de fidélité d'ensemble, en trois clauses**, dont la dernière manquait :
+  couverture (0 `differe:*` dans F0), vocabulaire de forme (inclusion **et** emploi, plus
+  l'égalité au bit près du vecteur de forme pour tout sélecteur présent des deux côtés), et
+  **ressemblance rendue** — prototype ET cockpit chargés dans **le même Chromium**,
+  comparés par ancre (style calculé, géométrie normalisée, ordre vertical) et par signature
+  globale. ⚠️ **Ce qui la rend non tautologique : l'attendu n'est pas une table recopiée,
+  c'est le prototype CHARGÉ.** Contre-épreuve exigée : changer le **texte** d'une carte doit
+  la laisser **verte**, sinon c'est un diff de pixels. Trois points d'arrêt humains, chacun
+  avec **deux rendus côte à côte** — jamais un tableau de comptes. Étape A lancée.
+- [2026-09-22 07:14] Étape A — spec-reader — **TROIS SPECS ABSORBÉES**. `git mv` de `todo/`
+  vers `doing/` pour `feature-022`, `023`, `025` — déplacement, jamais copie ;
+  `check_specs.sh` revérifié par l'agent principal : **49 specs, aucun doublon**, et
+  `doing/` porte bien **cinq** specs. Statut passé à `doing` dans chacune, avec son lot
+  (11, 12, 9-10). Section « Absorption dans le cycle » écrite sur le modèle de `bug-017`,
+  et **explicitement distinguée d'`ADR-0017`** : aucune garde livrée n'est désarmée par
+  leur absence, le motif est la **réouverture de périmètre par l'humain**. `feature-024` et
+  `feature-009` **non touchées**.
+  ✔️ **Le point qui transforme une comptabilité en engagement** : les **88 éléments** du
+  prototype sont recopiés nominativement dans leur spec cible — **14** dans `feature-022`,
+  **3** dans `023`, **71** dans `025` — dérivés de la table F0 par script, pas retapés.
+  Le total retombe exactement sur 88, ce qui confirme la lecture.
+  ⚠️ **Trois constats mesurés dans le dépôt, remontés à l'architecte** : (a) **collision
+  `#prompt`** — `index.html:225` porte déjà `<textarea id="prompt">` (composeur de
+  rédaction, `feature-008`) et F0 assigne le même nom au composeur de la conversation,
+  alors que `PIEGES` **interdit de renommer** les noms du prototype ; (b)
+  **`project-switcher` n'a aucune donnée** — `config.py` a pour défaut `"projet": {"nom":
+  "Projet sans nom"}` et aucune liste de projets n'existe ; (c) **`icon-button`** est
+  assignée à `feature-025` **sans aucune instance adoptée** — l'implémenter littéralement
+  créerait une classe morte, que `PIEGES §33` fait échouer.
+  ⚠️ **Risque que le plan n'avait pas nommé** : trancher le stockage des messages pour la
+  conversation *live* de `feature-022` sans dire si le choix engage `feature-009` (fils
+  attachés au cycle de vie d'une spec) produirait **deux mécanismes de persistance
+  divergents** dans le même dépôt. Porté à l'étape B comme arbitrage explicite.
+- [2026-09-22 07:18] Étape B — **architect saisi** des quatre arbitrages bloquants : le
+  stockage des messages (et s'il engage `feature-009`), la collision `#prompt`, le sort de
+  `project-switcher` sans données, et l'amendement d'`ADR-0023` sur `cycle-title`.
 ### 4. F17 — le registre `ATTENDU_ROUGE`, défini (l'agent principal avait transmis le terme sans sa définition)
 
 **Le problème qu'il résout.** Écrire les cinq gardes au lot 0 et les voir échouer,
