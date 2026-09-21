@@ -24,6 +24,14 @@ test exerce le VRAI chemin de code, pas une resimulation.
 ## Ce que chaque item vérifie ici (item = commande passée à test-engineer)
 
 - T1 : `_locale` sur les six valeurs de référence.
+- T1bis : `_locale` sous une ÉMULATION de la sémantique CPython D'AVANT le
+  correctif gh-117566 (`IPv6Address.is_loopback` valant `self._ip == 1`, donc
+  `::1` seulement) — la seule façon, sur ce poste où 3.13.5 est la SEULE
+  version installée, de faire mourir un mutant qui supprimerait l'extraction
+  `ipv4_mapped` de `_locale()` (bug-018, condition GATE P1 n°6). Sans cette
+  émulation, ce mutant ne meurt sur aucun test de ce fichier ici : il ne
+  meurt qu'en CI (Python système 3.12.3 d'`ubuntu-24.04`), ce qui revient à
+  livrer la garde du défaut B sans filet local.
 - T2 : distant sans jeton → 401, et AUCUN champ d'activité dans le corps.
 - T3 : distant avec jeton valide → 200 en lecture, 202 en écriture.
 - T4 : local sans jeton configuré → lecture ET écriture fonctionnent.
@@ -99,14 +107,99 @@ def main():
         for ip, attendu in (
             ("127.0.0.1", True), ("127.0.0.5", True), ("::1", True),
             ("::ffff:127.0.0.1", True),
+            # bug-018 : même adresse que ci-dessus, autre graphie — le
+            # discriminant qu'une reconnaissance par PRÉFIXE de chaîne rate
+            # (elle ne verrait pas "::ffff" devant une forme compressée).
+            ("::ffff:7f00:1", True),
             ("192.168.1.55", False), ("0.0.0.0", False),
+            # bug-018 : mappées NON locales — doivent rester non locales, sous
+            # peine d'ouvrir l'écriture sans jeton au réseau (l'inverse exact
+            # de ce que bug-012 a corrigé).
+            ("::ffff:192.168.1.55", False), ("::ffff:10.0.0.1", False),
+            ("::ffff:0.0.0.0", False),
+            # bug-018 : IPv4-compatible (pas mappée) et NAT64 — ne doivent
+            # jamais être confondues avec une adresse mappée locale.
+            ("::7f00:1", False), ("64:ff9b::7f00:1", False),
+            ("", False), (None, False),
         ):
-            check("test_T1_locale_%s" % ip.replace(":", "_").replace(".", "-"),
+            if ip is None:
+                nom_ip = "none"
+            elif ip == "":
+                nom_ip = "vide"
+            else:
+                nom_ip = ip.replace(":", "_").replace(".", "-")
+            check("test_T1_locale_%s" % nom_ip,
                   srv_nu._locale(ip) == attendu,
                   "obtenu %r pour %r, attendu %r" % (srv_nu._locale(ip), ip, attendu))
     finally:
         import shutil
         shutil.rmtree(tmp_nu, ignore_errors=True)
+
+    # =======================================================================
+    # T1bis — `_locale` sous ÉMULATION de la sémantique CPython D'AVANT
+    # gh-117566 (bug-018, condition GATE P1 n°6).
+    #
+    # Sur ce poste, une seule version de Python est installée (3.13.5, déjà
+    # corrigée) : supprimer l'extraction `ipv4_mapped` dans `_locale()` ne
+    # tue AUCUN test ici, parce que `IPv6Address.is_loopback` de 3.13.5 sait
+    # déjà reconnaître une adresse IPv4 mappée. La seule façon de faire
+    # mourir ce mutant SANS lancer la CI est de rejouer, temporairement, la
+    # sémantique D'AVANT le correctif : `IPv6Address.is_loopback` valait
+    # alors `self._ip == 1`, donc UNIQUEMENT `::1`.
+    #
+    # Sous cette émulation, mesuré à la main avant d'écrire ce test :
+    #   ::ffff:127.0.0.1   -> sans extraction : False | avec extraction : True
+    #   ::ffff:7f00:1      -> sans extraction : False | avec extraction : True
+    #   ::ffff:192.168.1.55-> sans extraction : False | avec extraction : False
+    #   ::1                -> sans extraction : True  | avec extraction : True
+    #
+    # Ce test appelle le VRAI `_locale()` (celui du clone importé), pas une
+    # resimulation : si un mutant retire l'extraction `ipv4_mapped`, ce test
+    # meurt SUR CE POSTE, sans attendre la CI.
+    #
+    # `ipaddress.IPv6Address.is_loopback` est une PROPRIÉTÉ DE CLASSE,
+    # partagée par tout le processus (y compris le module `ipaddress` importé
+    # par le clone : c'est le MÊME objet, mis en cache dans `sys.modules`).
+    # La substitution DOIT être restaurée dans un `finally`, sinon elle
+    # fuirait sur tous les tests suivants du même processus — un faux vert
+    # d'un genre nouveau.
+    # =======================================================================
+    import ipaddress as _ip_mod
+
+    srv_bis, tmp_bis, _ = TSE._importer_server_clone()
+    _propriete_originale = _ip_mod.IPv6Address.is_loopback
+    try:
+        def _is_loopback_avant_gh117566(self):
+            # Sémantique CPython < gh-117566 (absent de 3.12.3, présent à
+            # partir de 3.12.4 et de toute la série 3.13) : `::1` seulement,
+            # jamais une adresse IPv4 mappée.
+            return int(self) == 1
+
+        _ip_mod.IPv6Address.is_loopback = property(_is_loopback_avant_gh117566)
+
+        for ip, attendu in (
+            ("::1", True),
+            ("::ffff:127.0.0.1", True),
+            ("::ffff:7f00:1", True),
+            ("::ffff:192.168.1.55", False),
+        ):
+            nom_ip = ip.replace(":", "_").replace(".", "-")
+            obtenu = srv_bis._locale(ip)
+            check("test_T1bis_emulation_pre_gh117566_%s" % nom_ip,
+                  obtenu == attendu,
+                  "obtenu %r pour %r sous émulation pré-gh-117566, attendu %r"
+                  % (obtenu, ip, attendu))
+    finally:
+        _ip_mod.IPv6Address.is_loopback = _propriete_originale
+        import shutil
+        shutil.rmtree(tmp_bis, ignore_errors=True)
+
+    # Contrôle que la restauration a bien eu lieu : sous la sémantique
+    # RÉELLE de ce poste (3.13.5, corrigée), `::ffff:192.168.1.55` reste non
+    # locale ET `::ffff:127.0.0.1` reste locale — si la propriété substituée
+    # avait fui, ce contrôle mourrait à son tour.
+    check("test_T1bis_propriete_is_loopback_restauree",
+          _ip_mod.IPv6Address.is_loopback is _propriete_originale)
 
     # =======================================================================
     # T2 — distant SANS jeton : 401, et AUCUN champ d'activité dans le corps

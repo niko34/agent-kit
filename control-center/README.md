@@ -650,17 +650,18 @@ python3 control-center/hooks/test_record_event.py         # 19 cas
 python3 control-center/backend/test_specs.py               # 16 cas
 python3 control-center/backend/test_agents.py               # 24 cas
 python3 control-center/backend/test_events.py               # 71 cas
-python3 control-center/backend/test_config.py               # 59 cas
+python3 control-center/backend/test_config.py               # 61 cas
 python3 control-center/backend/test_vcs.py                  # 26 cas
 python3 control-center/backend/test_server.py                # 47 cas
-python3 control-center/backend/test_jeton.py                 # 48 cas
+python3 control-center/backend/test_jeton.py                 # 62 cas
 python3 control-center/backend/test_verrou.py                # 23 cas
 python3 control-center/backend/test_lanceur.py               # 33 cas
 python3 control-center/backend/test_server_ecriture.py       # 109 cas
-python3 control-center/backend/test_server_bug012.py         # 53 cas
+python3 control-center/backend/test_server_bug012.py         # 66 cas
 python3 control-center/backend/test_redaction_spec.py        # 93 cas — étape E
+python3 control-center/backend/test_ci_decouverte.py         # 4 cas — bug-018/019, se saute en non-root (voir plus bas)
 python3 control-center/web/test_app_bug012.py            # 53 cas (pont vers le harnais JS)
-python3 control-center/web/test_app_accordeon.py         # 237 cas (pont vers le harnais JS)
+python3 control-center/web/test_app_accordeon.py         # 236 cas (pont vers le harnais JS)
 python3 control-center/web/test_app_navigation.py        # 197 cas (pont vers le harnais JS)
 python3 control-center/web/test_app_navigation_http.py   # 25 cas
 python3 control-center/web/test_app_theme.py             # 317 cas (pont vers le harnais JS)
@@ -673,10 +674,27 @@ python3 control-center/backend/specs.py             # inventaire réel
 python3 control-center/backend/events.py            # workflows reconstruits
 ```
 
-**1817 cas verts au total sur ces vingt-trois suites** (mesure directe,
-2026-09-19 ; 1627 cas / 21 fichiers avant `feature-008`, 471 cas / 13 suites
-avant `feature-020` — les deux chiffres précédents étaient restés inscrits
-ici sans être remesurés, PIEGES §21).
+**Lancer la suite sous un utilisateur NON-root** (bug-018 : root lit un
+fichier que son mode interdit à tout autre utilisateur — « vert en local,
+rouge en CI » est resté invisible sept runs de suite pour cette raison) :
+
+```bash
+sudo ./tools/lancer_suite_control_center_non_root.sh
+```
+
+Travaille sur un clone jetable, jamais sur l'arbre de travail ; voir
+`control-center/PIEGES.md` §43. ⚠️ **Limite connue, pas un échec** : le
+script clone `control-center/` et trois chemins déclarés, **jamais
+`.gitlab/` ni `.github/`** — `test_ci_decouverte.py`, qui lit les fichiers de
+CI des deux forges, s'y **saute donc toujours proprement** (0 cas). C'est
+tout l'écart entre le compte mesuré en root et celui mesuré en non-root.
+
+**1887 cas verts au total sur ces vingt-quatre suites en root** (mesure
+directe, 2026-09-20 ; **1883** sous un utilisateur non-root, écart de 4 dû à
+`test_ci_decouverte.py` ci-dessus ; 1817 cas / 23 fichiers avant `bug-018`,
+1627 cas / 21 fichiers avant `feature-008`, 471 cas / 13 suites avant
+`feature-020` — les chiffres précédents étaient restés inscrits ici sans
+être remesurés, PIEGES §21).
 
 **Le harnais frontend** (`web/test_app_bug012.js`) teste `web/app.js` en
 conditions réelles — 39 assertions, zéro dépendance installée (`vm`/`fs`/`path`

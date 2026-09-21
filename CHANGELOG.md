@@ -11,6 +11,28 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 
 ### Centre de contrôle
 
+- **Correction de sécurité** : un fichier de jeton dont le propriétaire n'a
+  pas le bit de lecture (`0200`, `0300`, `0100`, `0000`) est désormais
+  **refusé**, avec un motif nommé, quelle que soit l'identité qui lance le
+  serveur. Auparavant, un serveur lancé en **root** acceptait un tel jeton
+  (root franchit les permissions de fichier) alors que le même serveur,
+  lancé sous un compte normal, le refusait déjà — la garde d'authentification
+  rendait un verdict différent selon qui la faisait tourner (`bug-018`). Le
+  cas perdu se répare en une commande (`chmod 600`).
+- **Correction de localité** : `::ffff:127.0.0.1` (et toute adresse IPv4
+  mappée en IPv6 pointant vers la boucle locale, quelle que soit sa graphie)
+  est désormais reconnue comme locale sur **toute** version de Python
+  supportée par le module — la décision qui gouverne l'obligation de
+  présenter un jeton (ADR-0020). Une adresse mappée **non** locale
+  (`::ffff:192.168.1.55`) continue d'être traitée comme distante, exigeant
+  toujours un jeton.
+- **Les deux CI mesurent désormais la même chose.** La CI GitHub épingle un
+  intervalle de versions Python déclaré (3.11 à 3.13, vérifié par une matrice
+  en plus du job système non épinglé) au lieu de dépendre implicitement de la
+  version du système d'exploitation du runner. La CI GitLab **découvre**
+  désormais ses fichiers de test (`find`) au lieu de les énumérer à la main —
+  elle lançait 6 fichiers sur 23, et omettait précisément les deux suites
+  d'authentification concernées par ce correctif (`bug-019`).
 - **Correction de sécurité** : le collecteur d'événements laissait fuir un
   mot de passe **entièrement en minuscules** (une passphrase, un mot du
   dictionnaire) dans le champ public `command_head`, journalisé puis servi
@@ -41,6 +63,19 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
   [nouveau] : arbitrage entre la variante retenue et les deux options
   écartées, mise en conformité de `_lancer()`, et la réserve sur ce que
   prouve — et ne prouve pas — l'oracle de validation du correctif.
+- `docs/adr/0035-ce-qu-une-suite-verte-prouve-identite-et-intervalle-de-versions.md`
+  [nouveau] : le jeton arbitré sur le bit de lecture plutôt que sur ce que
+  l'exécutant peut faire, l'intervalle Python déclaré et vérifié plutôt
+  qu'épinglé, l'absorption de `bug-019` au titre d'ADR-0017, et la
+  rectification d'une citation fautive (la règle groupe/autres du mode de
+  jeton vient du GATE P1 de `feature-007`, pas d'ADR-0007).
+- `control-center/README.md` : section Tests — comptes à jour (1887 cas /
+  24 fichiers en root, 1883 en non-root), commande de lancement en non-root
+  et sa limite connue (`.gitlab/` et `.github/` non clonés).
+- `control-center/PIEGES.md` : trois entrées ajoutées (§47-§49 — mesurer en
+  root ne mesure pas la CI, le partage de `stdin` dans une boucle
+  `while … done`, les deux listes Python du README de l'image runner
+  GitHub), et un complément à §1 sur les chemins hors du clone jetable.
 
 ---
 

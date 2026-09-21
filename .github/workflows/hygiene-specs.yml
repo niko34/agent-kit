@@ -195,3 +195,79 @@ jobs:
           done
 
           exit "$echec_global"
+
+  centre-de-controle-matrice:
+    name: Suite de tests (control-center/) — Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    # `contents: read` suffit, comme le job non épinglé ci-dessus.
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # Intervalle de Python DÉCLARÉ pour control-center/ (bug-018, ADR-0035).
+        #
+        # ⚠️ Plancher **3.11**, MESURÉ et non supposé. `control-center/backend/
+        # config.py` et `control-center/installer.py` importent `tomllib`, entré
+        # dans la bibliothèque standard en 3.11. `installer.py` le déclare déjà
+        # en clair : « il en faut 3.11 ou plus (tomllib) ».
+        #
+        # ⚠️ Ce job N'EST PAS la seule source de cette borne — `installer.py` en
+        # est une seconde, et elle est exécutable. Les deux doivent bouger
+        # ensemble ; une rédaction antérieure de ce commentaire affirmait le
+        # contraire, ce qui aurait laissé les deux diverger en silence
+        # (PIEGES §21).
+        #
+        # ⚠️ Une première rédaction déclarait **3.9**. Mesuré pendant la revue de
+        # bug-018, en émulant l'absence de `tomllib` : cette borne INTERROMPAIT
+        # `test_config.py` et `test_server_ecriture.py`, et faisait échouer
+        # `test_server.py` et `test_server_bug012.py`. Le job serait donc parti
+        # ROUGE dans le lot même dont le critère non substituable est « la CI est
+        # verte » — un plancher déclaré sans être exécuté n'est pas une mesure.
+        #
+        # Si la matrice devient rouge à la borne basse, remonter le plancher à la
+        # première borne VERTE mesurée — jamais l'inverse, et jamais sans
+        # relancer. Plafond 3.13 : dernière version disponible sur ce cycle.
+        python-version: ["3.11", "3.13"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Installer Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # Même script que le job `centre-de-controle` non épinglé ci-dessus —
+      # ce job-ci ne change QUE la version de Python, jamais la découverte ni
+      # la façon de lancer les suites (§6 : scripts autonomes, jamais
+      # `unittest discover`).
+      - name: Suite de tests du centre de contrôle (découverte)
+        run: |
+          if [ ! -d control-center ]; then
+            echo "ℹ️  control-center/ absent — rien à lancer."
+            exit 0
+          fi
+
+          mapfile -t fichiers < <(find control-center -type f -name 'test_*.py' | sort)
+
+          if [ "${#fichiers[@]}" -eq 0 ]; then
+            echo "❌ control-center/ existe mais aucun fichier test_*.py n'a été découvert." >&2
+            echo "   Une liste vide ne doit jamais se lire comme « tout est vert »." >&2
+            exit 1
+          fi
+
+          echo "Fichiers de test découverts (${#fichiers[@]}) :"
+          printf '  - %s\n' "${fichiers[@]}"
+          echo
+
+          echec_global=0
+          for fichier in "${fichiers[@]}"; do
+            echo "=== $fichier ==="
+            if ! python3 "$fichier"; then
+              echec_global=1
+            fi
+            echo
+          done
+
+          exit "$echec_global"

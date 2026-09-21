@@ -2,7 +2,7 @@
 
 ## Statut
 
-Accepté
+Accepté (§1, §2 et §3 révoqués par [ADR-0031](0031-la-grammaire-du-disque-d-agent-change.md) — nouvelle grammaire du disque d'agent alignée sur la maquette Material 3 ; §4, séparation géométrie/rendu, MAINTENU par ADR-0031 comme écart assumé à la maquette)
 
 ## Date
 
