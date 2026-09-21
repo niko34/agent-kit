@@ -77,8 +77,15 @@ les invocations `python3 <chemin>` de `.gitlab/ci/hygiene.yml`.
       ajoutant un fichier jetable et en constatant qu'il est pris
 - [x] Le job **échoue** si la découverte ne rend aucun fichier — mesuré
 - [ ] GitLab est rouge **tant que `bug-018` n'est pas corrigé**, et verte après —
+      ⚠️ **Non vérifiable depuis ce poste** : GitLab ne tourne pas sur cette
+      forge, et la CI GitHub — verte le 2026-09-21, run `35565985874`, 7 jobs
+      sur 7 — ne dit **rien** de celle-ci. C'est la moitié de cette spec qui
+      reste une intention vérifiée en local, pas une preuve. Raison écrite ici
+      et non plus seulement dans le journal de `bug-018`.
       c'est la preuve que les deux forges mesurent enfin la même chose
 - [ ] Aucune énumération manuelle de fichiers de test ne subsiste dans le dépôt.
+      **→ Ce critère est repris et fermé par `bug-021`**, écrit le 2026-09-21
+      précisément pour qu'il ne disparaisse pas avec cette spec.
       ⚠️ **Non satisfait, et volontairement** : **3** énumérations subsistent de
       chaque côté (`tests/test_update_kit.py`, `test_harnais_kit.py`,
       `test_sync_copilot_agents.py`). Elles sont **symétriques entre les deux
@@ -140,3 +147,25 @@ les invocations `python3 <chemin>` de `.gitlab/ci/hygiene.yml`.
   Revérifié : le cas qui avalait `stdin` donne désormais **4 découverts,
   4 exécutés** ; les trois autres branches (absent → 0, liste vide → 1, test
   rouge → 1) tiennent toujours ; `sh -n` valide sur 51 lignes.
+- [2026-09-21 06:23] Étapes 7 à 9 — **phase partagée avec `bug-018`** au titre d'`ADR-0017` :
+  un seul passage de tests, de revue et de documentation pour les deux specs.
+  Les verdicts détaillés (campagne de mutation, GATE P1/P2, revues, CI verte)
+  sont dans le **journal de `bug-018`** — cette ligne existe pour qu'on ne les
+  cherche pas ici en vain.
+- [2026-09-21 06:23] Étape 8bis — agent principal — **les 2 points bloquants de la revue
+  finale levés** : (1) les deux gardes nées de la revue — `< /dev/null` et la
+  comparaison exécutés/découverts — **n'étaient tenues par aucun test** ;
+  `test_ci_decouverte.py` passe de 4 à **6 cas**, et chaque garde a été **vue
+  mourir** (retrait de `< /dev/null` → 1 échec ; `if false` sur la comparaison
+  → 1 échec ; fichier restauré à l'identique, vérifié par `diff`). (2) Le
+  constat des **3 énumérations restantes par forge** ne vivait que dans cette
+  spec en partance pour `done/` : il a désormais sa spec, **`bug-021`**.
+  47 specs, aucun doublon.
+
+## Statut final
+
+✅ **Done — 2026-09-21 — commits `a9e654a`, `b0afc00`, `47b5fa1`** (branche `cycle/bug-018-ci-et-maquette-m3`, PR #1)
+
+GitLab découvre ses tests au lieu de les énumérer — 6 fichiers sur 23 lancés avant, 23 sur 23 après. `code-reviewer` **Approved** après deux reboucles ; `security-reviewer` **GO SOUS CONDITIONS** en P1 et en P2, toutes conditions tenues.
+
+⚠️ **Ce qui n'est PAS prouvé, et qui est écrit plutôt que coché** : GitLab n'a pas été vue changer de couleur — cette forge ne tourne pas depuis ce poste, et la CI GitHub n'en dit rien. Le suivi passe par `bug-021`.

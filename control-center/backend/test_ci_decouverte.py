@@ -135,6 +135,30 @@ def main():
           and "exit 1" in job,
           "aucune garde « liste vide => exit 1 » trouvée dans le job")
 
+    # --- la boucle ne partage pas son `stdin` avec les tests --------------
+    # Défaut trouvé EN REVUE, dans le correctif de bug-019 lui-même : la boucle
+    # `while … done < "$liste"` passait son `stdin` — qui EST la liste des
+    # fichiers — à chaque `python3`. Un test qui lit `stdin` avalait le reste
+    # de la liste : mesuré 4 fichiers découverts pour 1 seul exécuté, sortie
+    # « ✅ … tous verts », code 0. Un faux vert dans le code écrit pour
+    # corriger un faux vert. La parade est `< /dev/null` sur l'appel, et rien
+    # ne la gardait jusqu'ici.
+    check("test_job_centre_de_controle_isole_le_stdin_des_tests",
+          re.search(r'python3\s+"\$fichier"\s*<\s*/dev/null', job) is not None,
+          "l'appel `python3 \"$fichier\"` ne redirige pas son stdin depuis "
+          "/dev/null : un test qui lit stdin fera sauter les suivants EN "
+          "SILENCE, et le job annoncera le nombre DÉCOUVERT")
+
+    # --- le job compare les fichiers EXÉCUTÉS aux fichiers DÉCOUVERTS ------
+    # Seconde moitié de la même parade, et la seule qui protège contre une
+    # interruption de boucle qu'on n'a pas prévue : annoncer un compte qu'on
+    # n'a pas lancé est exactement le défaut que ce job existe pour fermer.
+    check("test_job_centre_de_controle_compare_executes_a_decouverts",
+          re.search(r'"\$executes"\s+-ne\s+"\$nombre"', job) is not None
+          and job.count("exit 1") >= 2,
+          "aucune comparaison « exécutés != découverts => exit 1 » trouvée "
+          "dans le job")
+
     print("\n%d cas, %d echec(s)" % (_tests, len(_echecs)))
     for echec in _echecs:
         print("  - %s" % echec)

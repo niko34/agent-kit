@@ -192,9 +192,10 @@ explicitement l'intervalle supporté et le vérifier.
       déclaré et vérifié
 - [x] C1 — `PIEGES.md` : mesurer en root ne mesure pas la CI ; `control-center/README.md`
       si le compte de tests change ; `CHANGELOG.md` ; ADR si arbitrage structurant
-- [ ] D1 — **La CI repasse au vert** — critère non substituable par une mesure locale.
-      ⚠️ **Seule case volontairement laissée vide.** Elle exige un commit et un
-      push, que seul l'humain autorise. Tout le reste est mesuré : 1887 cas en
+- [x] D1 — **La CI repasse au vert** — critère non substituable par une mesure
+      locale. **SATISFAIT le 2026-09-21** sur le run `35565985874` : les 7 jobs
+      verts, dont « Suite de tests (control-center/) » rouge depuis 7 runs, et
+      les deux bornes neuves de la matrice, 3.11 et 3.13. Tout le reste est mesuré : 1887 cas en
       root, 1883 en non-root, 0 échec, 12 mutations dont 1 survivant corrigé.
 - [x] D2 — Un moyen de lancer la suite **en non-root** depuis le poste, documenté,
       pour que l'écart ne puisse plus se reformer en silence
@@ -257,8 +258,8 @@ explicitement l'intervalle supporté et le vérifier.
 - `docs/adr/NNNN-*.md` — si l'ADR pressenti est confirmé
 
 ## Critères d'acceptation
-- [ ] **La CI est verte** — job « Suite de tests (control-center/) » compris.
-      ⚠️ En attente d'un commit et d'un push autorisés par l'humain.
+- [x] **La CI est verte** — job « Suite de tests (control-center/) » compris.
+      Run `35565985874`, 7 jobs verts.
       Ce critère ne peut être remplacé par aucune mesure locale
 - [x] La suite rend le **même verdict** en root et en non-root, et c'est
       vérifié par exécution dans les deux identités
@@ -971,3 +972,24 @@ joue aussi vigie gh-117566 — sans importance une fois le correctif livré.
   du vide.
   ⚠️ **Le cycle NE PART PAS en `done/`** : son critère non substituable est la
   CI verte, et elle exige un commit et un push que seul l'humain autorise.
+- [2026-09-21 05:51] **D1 SATISFAIT — la CI est VERTE** — agent principal. Run
+  `35565985874`, PR #1, branche `cycle/bug-018-ci-et-maquette-m3`.
+  **7 jobs verts sur 7** : « Suite de tests (control-center/) » — rouge depuis
+  **7 runs** —, « … Python 3.11 », « … Python 3.13 », unicité des specs, liens
+  de documentation, suite `tests/`, agents Copilot.
+  **Trois choses que seule la CI pouvait trancher, et qu'elle tranche** :
+  (1) le défaut A tient sous une identité **non-root réelle**, pas seulement
+  sous `nobody` en clone local ; (2) le défaut B tient sous une **vraie
+  3.12.3** — je n'en avais qu'une émulation de sémantique et une lecture du
+  code amont ; (3) le plancher **3.11 est le bon**, et la revue avait eu
+  raison de corriger le 3.9 que j'avais écrit, qui aurait livré ce job rouge.
+  ⚠️ Reste sans preuve : **GitLab**, qui ne tourne pas sur cette forge. Elle
+  doit virer au rouge puis au vert pour que `bug-019` soit démontré.
+
+## Statut final
+
+✅ **Done — 2026-09-21 — commits `a9e654a`, `b0afc00`, `47b5fa1`** (branche `cycle/bug-018-ci-et-maquette-m3`, PR #1)
+
+la suite rend le même verdict en root et en non-root (1887 / 1883 cas, 0 échec), et la CI est **verte** après 7 runs rouges. `code-reviewer` **Approved** après deux reboucles ; `security-reviewer` **GO SOUS CONDITIONS** en P1 et en P2, toutes conditions tenues.
+
+⚠️ **Ce qui n'est PAS prouvé, et qui est écrit plutôt que coché** : GitLab n'a pas été vue changer de couleur — cette forge ne tourne pas depuis ce poste, et la CI GitHub n'en dit rien. Le suivi passe par `bug-021`.
