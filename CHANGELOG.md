@@ -53,6 +53,36 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
   d'apparence sur des cycles déjà observés, sans qu'aucune donnée ne soit
   supprimée du journal réel.
 
+### Exploitation
+
+- **Les deux sessions distantes du conteneur (`claude-remote-kit.service`
+  pour le kit, `claude-remote.service` pour le firmware) se relèvent
+  désormais seules après un arrêt anormal**, au lieu de rester `failed`
+  jusqu'à ce qu'un humain le remarque. Incident déclencheur : la session
+  du kit a été tuée par l'OOM killer de l'hôte le 21/09/2026 à 05:54:34 UTC
+  (pic mesuré 3,6 Go + 931,3 Mo de swap) après 1 j 17 h 24 min de
+  fonctionnement, et n'est jamais revenue seule — ni `Restart=`, ni le
+  serveur tmux dédié (nettoyé à l'arrêt de l'unité) ne le permettaient.
+  `Restart=on-failure` + `RestartSec=10` couvre désormais ce cas.
+- **Chaque session est plafonnée en mémoire sur son propre pic mesuré**, pas
+  sur celui de sa jumelle : `MemoryHigh=1800M` / `MemoryMax=2400M` pour le
+  kit (pic constaté au kill : 3,6 Go), `MemoryHigh=2200M` / `MemoryMax=2800M`
+  pour le firmware (pic mesuré : 2,27 Go, jamais problématique). Effet
+  visible assumé : la session du kit peut désormais être coupée puis
+  relancée automatiquement **avant** d'atteindre le volume qui causait
+  l'ancien incident — un kill plus précoce, réparé en 10 secondes, contre un
+  kill tardif et définitif.
+- **La reprise d'une conversation en Remote Control passe par le service,
+  jamais par `/resume`** : la commande est indisponible à distance
+  (« /resume isn't available over Remote Control », CLI v2.1.278). Un
+  fichier d'environnement facultatif (`/etc/default/claude-remote-kit` ou
+  `/etc/default/claude-remote`) porte l'argument `--resume <session-id>`,
+  lu par le service au démarrage — procédure et mise en garde (vider le
+  fichier après usage) dans `.claude/memory/ou-vivent-les-deux-depots.md`.
+- Voir [ADR-0036](docs/adr/0036-une-session-distante-se-releve-seule-plafonnee-au-pic-mesure.md)
+  pour le trade-off assumé et l'alternative écartée (augmenter la RAM du
+  conteneur plutôt que réparer l'absence de relève).
+
 ### Documentation
 
 - `control-center/README.md` : section « La rédaction, et ce que le code
@@ -69,6 +99,11 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
   qu'épinglé, l'absorption de `bug-019` au titre d'ADR-0017, et la
   rectification d'une citation fautive (la règle groupe/autres du mode de
   jeton vient du GATE P1 de `feature-007`, pas d'ADR-0007).
+- `docs/adr/0036-une-session-distante-se-releve-seule-plafonnee-au-pic-mesure.md`
+  [nouveau] : relève automatique après OOM, plafond mémoire par service
+  calé sur son propre pic mesuré (jamais sur celui de sa jumelle), et
+  reprise d'une conversation via `--resume` transmis au démarrage du
+  service faute de `/resume` en Remote Control.
 - `control-center/README.md` : section Tests — comptes à jour (1887 cas /
   24 fichiers en root, 1883 en non-root), commande de lancement en non-root
   et sa limite connue (`.gitlab/` et `.github/` non clonés).
@@ -76,6 +111,11 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
   root ne mesure pas la CI, le partage de `stdin` dans une boucle
   `while … done`, les deux listes Python du README de l'image runner
   GitHub), et un complément à §1 sur les chemins hors du clone jetable.
+- `.claude/memory/ou-vivent-les-deux-depots.md` : nouvelle section « Relève
+  après OOM, et reprise d'une conversation à distance » — incident du
+  21/09/2026, plafonds mesurés, procédure de reprise via
+  `CLAUDE_KIT_ARGS`/`CLAUDE_POOL_ARGS` et l'obligation de vider le fichier
+  après usage.
 
 ---
 
