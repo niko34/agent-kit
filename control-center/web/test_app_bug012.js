@@ -137,35 +137,40 @@ class FakeNode {
 // script isolé, sans parseur HTML : ADR-0006).
 //
 // ⚠️ Piège mesuré (PIEGES.md §7) : cette liste tenue à la main a laissé
-// passer, sans échec, l'arrivée de la navigation à sections (feature-019) —
-// `nav-sections`, les six onglets, les six sections et leurs six titres,
-// PLUS `barre` (ajouté en revue pour `--hauteur-barre`) manquaient encore ici
-// pendant tout le cycle : chaque `if (section) …`/`if (onglet) …` de
-// `appliquerSection` (app.js) avalait silencieusement un `getElementById`
-// retombé à `null`, et la suite restait verte sur une navigation totalement
-// inerte. Complété le 2026-09-15 (revue) — comparé par exécution à
-// `grep -oE 'id="[a-zA-Z0-9-]+"' index.html`, pas recopié à l'œil.
+// Comparée par exécution à `grep -oE 'id="[a-zA-Z0-9-]+"' index.html`, pas
+// recopiée à l'œil (PIEGES §7). Resynchronisée au lot 3 (feature-021,
+// cycle 2, F7) : `nav-sections`/les six `onglet-*`/`section-*`/
+// `titre-section-*` disparaissent avec la navigation à onglets ; les 25 id
+// « adopté » de F0 (structure mono-écran, bottom sheet, connecteurs du
+// graphe) et les nouveaux titres de bloc (`titre-agents`, `titre-systeme`,
+// `titre-fichiers`, `titre-evenements`) entrent.
 const IDS = [
-  "agents", "bandeau-hote", "bandeau-hote-bouton", "bandeau-hote-texte",
-  "barre", "bouton-generer-brouillon", "compteur-prompt",
-  "compteur-specs", "derogation-minimale", "erreur-generer-brouillon",
-  "fichiers", "filtre", "filtre-divergences", "horodatage",
-  "jauge-flux", "jauge-git",
-  "jauge-pilotage", "kanban", "legende-cycles", "nav-sections", "note-agents",
-  "pied-cycles", "pilotage-corps", "porte-aide", "porte-bouton",
-  "porte-champ", "porte-corps", "porte-erreur", "porte-jeton", "porte-titre",
-  "projet", "prompt", "redaction-corps", "systeme",
-  "timeline", "tiroir", "tiroir-contenu",
-  "tiroir-fermer", "tiroir-titre", "titre-besoin", "titre-cycles", "titre-demande",
-  "titre-pilotage", "workflows",
-].concat(["agents", "systeme", "developper", "cycles", "fichiers", "evenements"]
-  .flatMap((s) => ["onglet-" + s, "section-" + s, "titre-section-" + s]));
+  "a11y-announcement", "agents", "backlog-column-count", "backlog-count",
+  "backlog-title", "bandeau-hote", "bandeau-hote-bouton",
+  "bandeau-hote-texte", "barre", "bouton-generer-brouillon",
+  "compteur-prompt", "compteur-specs", "cycle-canvas", "cycle-status",
+  "derogation-minimale", "erreur-generer-brouillon", "fichiers", "filtre",
+  "filtre-divergences", "horodatage", "jauge-flux", "jauge-git",
+  "jauge-pilotage", "kanban", "legende-cycles", "link-front-sec",
+  "link-front-tests", "link-front2-review", "link-reprise",
+  "link-sec-front2", "link-spec-front", "link-tests-front2", "main-content",
+  "motion-note", "note-agents", "pied-cycles", "pilotage-corps",
+  "porte-aide", "porte-bouton", "porte-champ", "porte-corps", "porte-erreur",
+  "porte-jeton", "porte-titre", "projet", "prompt", "redaction-corps",
+  "selected-code", "selected-duration", "selected-files", "selected-state",
+  "selected-task", "selected-title", "selected-tools", "summary-active",
+  "summary-step", "summary-time", "systeme", "timeline", "tiroir",
+  "tiroir-contenu", "tiroir-fermer", "tiroir-titre", "titre-agents",
+  "titre-besoin", "titre-cycle-surface", "titre-cycles", "titre-demande",
+  "titre-evenements", "titre-fichiers", "titre-pilotage", "titre-systeme",
+  "workflows",
+];
 // Cachés par défaut dans le HTML (attribut `hidden` présent sur le balisage
-// d'origine) — voir index.html.
+// d'origine) — voir index.html. `section-*` retirés avec la navigation à
+// onglets (lot 3) : plus aucune section n'est masquée.
 const CACHES_PAR_DEFAUT = new Set([
   "bandeau-hote", "tiroir", "porte-jeton", "porte-erreur",
-  "section-systeme", "section-developper", "section-cycles", "section-fichiers",
-  "section-evenements", "erreur-generer-brouillon",
+  "erreur-generer-brouillon",
 ]);
 
 // Garde structurelle contre la RÉCURRENCE du piège ci-dessus (§7) : `IDS`

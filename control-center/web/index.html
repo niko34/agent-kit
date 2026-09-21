@@ -5,11 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Centre de contrôle</title>
 <link rel="stylesheet" href="/app.css">
-<!-- Amorçage synchrone (feature-019) : pose `data-section` sur <html> AVANT
-     le premier rendu, transmis à app.js. Doit rester un fichier SERVI (pas
-     de `<script>` inline : la CSP `default-src 'self'` interdit
-     `unsafe-inline`, voir server.py). Thème sombre retiré (ADR-0033, lot 1) :
-     ce script ne pose plus `data-theme`. -->
+<!-- Amorçage synchrone (feature-019) : posait `data-section` sur <html>
+     AVANT le premier rendu. Depuis la structure mono-écran (feature-021,
+     cycle 2, lot 3, F7) il n'y a plus de section à masquer/afficher — ce
+     script tourne encore (fichier SERVI, inchangé, hors périmètre du lot 3)
+     mais son attribut n'a plus aucun lecteur côté app.js. Doit rester un
+     fichier SERVI (pas de `<script>` inline : la CSP `default-src 'self'`
+     interdit `unsafe-inline`, voir server.py). Thème sombre retiré
+     (ADR-0033, lot 1) : ce script ne pose plus `data-theme`. -->
 <script src="/theme.js"></script>
 </head>
 <body>
@@ -19,104 +22,188 @@
   <button type="button" id="bandeau-hote-bouton" class="action-ecriture">Réessayer</button>
 </div>
 
-<header class="barre" id="barre">
-  <div class="titre">
-    <span class="marque">Centre de contrôle</span>
-    <span class="projet" id="projet">…</span>
-  </div>
-  <div class="etat-barre">
-    <span class="jauge" id="jauge-flux" title="connexion au flux d'événements">flux …</span>
-    <span class="jauge" id="jauge-git">git …</span>
-    <span class="jauge lecture-seule" id="jauge-pilotage" title="chargement de l'état d'écriture…">lecture seule</span>
-    <span class="horodatage" id="horodatage"></span>
-  </div>
-</header>
+<a class="skip-link" href="#main-content">Aller au contenu principal</a>
 
-<div class="mise-en-page">
+<!-- `#porte-jeton`, plus bas, doit rester ENFANT DIRECT DE <body> — c'est ce
+     qui permet à `app.js` de poser `inert` sur SES FRÈRES (ce
+     `.bandeau-hote`, ce lien, `.app-shell`, `.tiroir`) quand la porte est
+     ouverte, et de le retirer à la fermeture (bug-017, absorbée dans ce
+     cycle au titre d'ADR-0017 — voir ADR-0038). Ne pas envelopper ces
+     éléments dans un conteneur commun : cela romprait la liste des frères
+     que `app.js` parcourt. -->
+<div class="app-shell">
+  <header class="top-app-bar" id="barre">
+    <div class="brand-row">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span class="titre">
+          <span class="marque">Centre de contrôle</span>
+          <span class="projet" id="projet">…</span>
+        </span>
+      </div>
+    </div>
+    <div class="top-actions">
+      <div class="status-inline">
+        <span class="jauge" id="jauge-flux" title="connexion au flux d'événements">flux …</span>
+        <span class="jauge" id="jauge-git">git …</span>
+        <span class="jauge lecture-seule" id="jauge-pilotage" title="chargement de l'état d'écriture…">lecture seule</span>
+      </div>
+      <span class="horodatage" id="horodatage"></span>
+    </div>
+  </header>
 
-  <!-- Colonne de navigation (feature-019, §5 du design system) : NAVIGUE,
-       ne porte aucun contenu. Motif WAI-ARIA `tablist` complet — roving
-       tabindex, les flèches déplacent le focus ET la sélection (app.js).
-       `section-agents` seule dépourvue de `hidden` : c'est l'état posé
-       STATIQUEMENT dans le HTML servi, qui tient le cas « sans JavaScript »
-       (rien n'est ajouté par app.js au chargement — voir app.css). -->
-  <nav class="nav-sections" id="nav-sections" role="tablist" aria-label="Sections du centre de contrôle">
-    <button type="button" class="nav-onglet" id="onglet-agents" role="tab"
-            aria-selected="true" aria-controls="section-agents" tabindex="0">Agents</button>
-    <button type="button" class="nav-onglet" id="onglet-systeme" role="tab"
-            aria-selected="false" aria-controls="section-systeme" tabindex="-1">Système</button>
-    <button type="button" class="nav-onglet" id="onglet-developper" role="tab"
-            aria-selected="false" aria-controls="section-developper" tabindex="-1">Développer</button>
-    <button type="button" class="nav-onglet" id="onglet-cycles" role="tab"
-            aria-selected="false" aria-controls="section-cycles" tabindex="-1">Cycles</button>
-    <button type="button" class="nav-onglet" id="onglet-fichiers" role="tab"
-            aria-selected="false" aria-controls="section-fichiers" tabindex="-1">Fichiers</button>
-    <button type="button" class="nav-onglet" id="onglet-evenements" role="tab"
-            aria-selected="false" aria-controls="section-evenements" tabindex="-1">Événements</button>
-  </nav>
+  <main class="main" id="main-content" tabindex="-1">
 
-  <main class="contenu">
+    <div class="visually-hidden" id="a11y-announcement" aria-live="polite" aria-atomic="true"></div>
 
-    <section class="section" id="section-agents" data-section="agents" role="tabpanel" aria-labelledby="onglet-agents">
-      <p class="fil-ariane">Centre de contrôle</p>
-      <h1 class="section-titre" id="titre-section-agents" tabindex="-1">Agents</h1>
-
-      <section class="bloc">
-        <h2>Agents</h2>
-        <p class="note" id="note-agents">découverts dans le dépôt</p>
-        <ul class="agents" id="agents"></ul>
-      </section>
+    <!-- Bande de résumé (classe adoptée `summary-band`, F0) : coquille
+         statique — le câblage aux données réelles du cycle vient avec le
+         graphe d'agents (F8/F9, lot 4). -->
+    <section class="summary-band" aria-label="Résumé du centre de contrôle">
+      <div class="summary-item">
+        <span class="summary-icon" aria-hidden="true">◴</span>
+        <span class="summary-copy"><strong id="summary-step">—</strong><span>Étape en cours</span></span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-icon" aria-hidden="true">◷</span>
+        <span class="summary-copy"><strong id="summary-time">00:00</strong><span>Temps écoulé</span></span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-icon" aria-hidden="true">●</span>
+        <span class="summary-copy"><strong id="summary-active">—</strong><span>agents actifs</span></span>
+      </div>
     </section>
 
-    <section class="section" id="section-systeme" data-section="systeme" hidden role="tabpanel" aria-labelledby="onglet-systeme">
-      <p class="fil-ariane">Centre de contrôle</p>
-      <h1 class="section-titre" id="titre-section-systeme" tabindex="-1">Système</h1>
+    <!-- Zone de travail (classe adoptée `workspace`) : le graphe d'agents
+         (disques, anneau, animations — F8/F9) est construit au LOT 4, pas
+         ici. Ce que ce lot livre est la COQUILLE structurelle, avec les 25
+         id adoptés par F0 présents et conformes (F4a) — `#cycle-canvas` ne
+         contient encore que les 7 connecteurs statiques du prototype,
+         aucun disque d'agent (`agent-node`/`agent-wrap`, classes adoptées
+         mais quarantinées jusqu'au lot 4 dans `F3A_CLASSES_ADOPTEES_
+         ABSENTES`). Le panneau de conversation permanente (`claude-panel`)
+         est hors périmètre de ce cycle (feature-022, différé par F0). -->
+    <div class="workspace">
+      <section class="cycle-surface" aria-labelledby="titre-cycle-surface">
+        <div class="cycle-toolbar">
+          <div class="cycle-tabs" role="group" aria-label="Vue des cycles">
+            <button class="tab-button" type="button" aria-pressed="true">Cycle actif</button>
+            <button class="tab-button" type="button" aria-pressed="false">Historique</button>
+          </div>
+        </div>
 
-      <section class="bloc">
-        <h2>Système</h2>
-        <dl class="systeme" id="systeme"></dl>
+        <div class="cycle-heading-row">
+          <div>
+            <h1 id="titre-cycle-surface">Centre de contrôle</h1>
+            <p class="cycle-subtitle">
+              <span class="live-label">vivant</span>
+              <span id="cycle-status">Aucun cycle sélectionné</span>
+            </p>
+          </div>
+          <div class="legend" role="group" aria-label="Légende des états">
+            <span><i class="active"></i>Actif</span>
+            <span><i class="parallel"></i>Travail en parallèle</span>
+            <span><i class="reprise"></i>Reprise</span>
+            <span><i></i>Non lancé</span>
+          </div>
+        </div>
+
+        <p class="motion-note" id="motion-note">Le disque grandit et révèle ses données quand un agent s'active — construit au lot 4.</p>
+
+        <div class="cycle-canvas" id="cycle-canvas">
+          <svg class="connector-layer" viewBox="0 0 1000 388" preserveAspectRatio="none" aria-hidden="true">
+            <path id="link-spec-front" d="M100 190 C165 190 235 190 300 190"></path>
+            <path id="link-front-tests" d="M300 190 C385 190 415 102 500 102"></path>
+            <path id="link-front-sec" d="M300 190 C385 190 415 278 500 278"></path>
+            <path id="link-tests-front2" d="M500 102 C605 102 615 190 720 190"></path>
+            <path id="link-sec-front2" d="M500 278 C605 278 615 190 720 190"></path>
+            <path id="link-front2-review" d="M720 190 C785 190 835 190 900 190"></path>
+            <path id="link-reprise" d="M500 102 C575 28 690 42 720 190" opacity="0"></path>
+          </svg>
+        </div>
+
+        <!-- Bottom sheet de détail (classe adoptée `detail-sheet`, F11) :
+             coquille statique, valeurs « — » tant que rien n'est
+             sélectionné — câblage réel au lot 5. -->
+        <section class="detail-sheet" aria-labelledby="selected-title">
+          <div class="sheet-handle" aria-hidden="true"></div>
+          <div class="sheet-heading">
+            <div class="selected-agent">
+              <span class="selected-mark" id="selected-code">—</span>
+              <span class="selected-copy">
+                <h2 id="selected-title">Aucun passage sélectionné</h2>
+                <p id="selected-task">—</p>
+              </span>
+            </div>
+            <button class="sheet-toggle" type="button" aria-label="Replier le détail"><span aria-hidden="true">⌄</span></button>
+          </div>
+          <div class="sheet-metrics">
+            <div class="metric"><span>Anneau · état</span><strong id="selected-state">—</strong></div>
+            <div class="metric"><span>Graduations · outils</span><strong id="selected-tools">—</strong></div>
+            <div class="metric"><span>Points · fichiers</span><strong id="selected-files">—</strong></div>
+            <div class="metric"><span>Sous le disque · durée</span><strong id="selected-duration">—</strong></div>
+          </div>
+        </section>
       </section>
+    </div>
+
+    <section class="bloc" aria-labelledby="titre-agents">
+      <h2 id="titre-agents">Agents</h2>
+      <p class="note" id="note-agents">découverts dans le dépôt</p>
+      <ul class="agents" id="agents"></ul>
     </section>
 
-    <section class="section" id="section-developper" data-section="developper" hidden role="tabpanel" aria-labelledby="onglet-developper">
-      <p class="fil-ariane">Centre de contrôle</p>
-      <h1 class="section-titre" id="titre-section-developper" tabindex="-1">Développer</h1>
+    <section class="bloc" aria-labelledby="titre-systeme">
+      <h2 id="titre-systeme">Système</h2>
+      <dl class="systeme" id="systeme"></dl>
+    </section>
 
-      <section class="bloc demande" aria-labelledby="titre-demande">
-        <h2 id="titre-demande">Que souhaitez-vous développer&nbsp;?</h2>
-        <div class="champ-titre">
-          <label for="titre-besoin">Titre du besoin (résumé en une phrase — nomme le fichier)</label>
-          <input type="text" id="titre-besoin" maxlength="200" autocomplete="off"
-            placeholder="Ex. : Ajouter un export CSV des specs affichées">
-        </div>
-        <textarea id="prompt" rows="4"
-          placeholder="Décrire le besoin en détail…"></textarea>
-        <span class="compteur" id="compteur-prompt" aria-live="polite">0 caractère</span>
-        <p class="note avert">
-          Ce texte finit dans un fichier versionné&nbsp;: n'y collez ni secret
-          ni mot de passe. Il ne quitte pas ce poste — aucun appel de modèle.
-        </p>
-        <label class="bascule">
-          <input type="checkbox" id="derogation-minimale">
-          <span>Traiter comme bug simple / refactor ponctuel (template minimal)</span>
-        </label>
-        <p class="note">
-          Un mot-clé sensible (auth, permission, données personnelles,
-          paiement, migration) impose quand même le template complet.
-        </p>
-        <p class="note erreur" id="erreur-generer-brouillon" role="alert" hidden></p>
-        <div class="pilotage-boutons">
-          <button type="button" id="bouton-generer-brouillon" class="pilotage-secondaire">Générer le brouillon</button>
-        </div>
-        <div id="redaction-corps"></div>
-      </section>
+    <section class="bloc demande" aria-labelledby="titre-demande">
+      <h2 id="titre-demande">Que souhaitez-vous développer&nbsp;?</h2>
+      <div class="champ-titre">
+        <label for="titre-besoin">Titre du besoin (résumé en une phrase — nomme le fichier)</label>
+        <input type="text" id="titre-besoin" maxlength="200" autocomplete="off"
+          placeholder="Ex. : Ajouter un export CSV des specs affichées">
+      </div>
+      <textarea id="prompt" rows="4"
+        placeholder="Décrire le besoin en détail…"></textarea>
+      <span class="compteur" id="compteur-prompt" aria-live="polite">0 caractère</span>
+      <p class="note avert">
+        Ce texte finit dans un fichier versionné&nbsp;: n'y collez ni secret
+        ni mot de passe. Il ne quitte pas ce poste — aucun appel de modèle.
+      </p>
+      <label class="bascule">
+        <input type="checkbox" id="derogation-minimale">
+        <span>Traiter comme bug simple / refactor ponctuel (template minimal)</span>
+      </label>
+      <p class="note">
+        Un mot-clé sensible (auth, permission, données personnelles,
+        paiement, migration) impose quand même le template complet.
+      </p>
+      <p class="note erreur" id="erreur-generer-brouillon" role="alert" hidden></p>
+      <div class="pilotage-boutons">
+        <button type="button" id="bouton-generer-brouillon" class="pilotage-secondaire">Générer le brouillon</button>
+      </div>
+      <div id="redaction-corps"></div>
+    </section>
 
-      <section class="bloc">
-        <div class="entete-bloc">
-          <h2>Spécifications</h2>
+    <!-- Kanban habillé aux classes adoptées (`backlog`, `kanban-*`, F0) : la
+         grille fonctionnelle `#kanban` (app.js, `rendreKanban`, INCHANGÉE)
+         reste à l'intérieur de `.kanban-viewport` — seule la coquille
+         change ici. `#backlog-count`/`#backlog-column-count` (id adoptés,
+         F4a) sont posés en coquille statique, volontairement discrets
+         (`.visually-hidden`) tant qu'ils ne portent aucune donnée réelle :
+         `#compteur-specs`, juste à côté, reste le compteur FONCTIONNEL
+         aujourd'hui. Le rendu 3 colonnes lues depuis `/api/etat.colonnes`
+         (F10) est le lot 5. -->
+    <section class="backlog" aria-labelledby="backlog-title">
+      <div class="kanban-heading">
+        <div class="kanban-title-row entete-bloc">
+          <h2 id="backlog-title">Spécifications</h2>
           <span class="compteur" id="compteur-specs"></span>
+          <span class="backlog-count visually-hidden" id="backlog-count">—</span>
         </div>
-        <div class="filtres">
+        <div class="kanban-actions filtres">
           <input type="search" id="filtre" placeholder="Filtrer par identifiant, titre ou statut…"
                  autocomplete="off" spellcheck="false">
           <label class="bascule">
@@ -124,60 +211,37 @@
             <span>divergences seulement</span>
           </label>
         </div>
+      </div>
+      <div class="kanban-viewport">
         <div class="kanban" id="kanban"></div>
-      </section>
-
-      <section class="bloc pilotage" aria-labelledby="titre-pilotage">
-        <h2 id="titre-pilotage">Pilotage</h2>
-        <div id="pilotage-corps">
-          <p class="vide">chargement…</p>
-        </div>
-      </section>
+      </div>
+      <span id="backlog-column-count" class="visually-hidden">—</span>
     </section>
 
-    <section class="section" id="section-cycles" data-section="cycles" hidden role="tabpanel" aria-labelledby="onglet-cycles">
-      <p class="fil-ariane">Centre de contrôle</p>
-      <h1 class="section-titre" id="titre-section-cycles" tabindex="-1">Cycles</h1>
-
-      <section class="bloc" aria-labelledby="titre-cycles">
-        <div class="entete-bloc">
-          <h2 id="titre-cycles">Cycles</h2>
-        </div>
-        <!-- Légende fixe (feature-016) : les deux bornages — cycles affichés
-             sur le total, et ce qu'est un cycle. Remplie par app.js, jamais
-             statique : le compte dépend de l'état chargé. Remplace l'ancien
-             compteur-workflows (« N derniers événements »), retiré : plus
-             aucun écrivain depuis la bascule vers la liste en accordéon. -->
-        <p class="note" id="legende-cycles"></p>
-        <!-- Liste en accordéon : un seul détail déplié à la fois, le plus
-             récent par défaut (docs/DESIGN-SYSTEM.md §6). Chaque en-tête est un
-             <button aria-expanded aria-controls> dans un <h3> ; le détail est
-             un <div role="region" aria-labelledby hidden>. La chaîne de
-             maillons (diagramme, feature-017) vit dans le détail d'un cycle :
-             elle ne bouge pas avec cette refonte. -->
-        <ul id="workflows" class="cycles"></ul>
-        <p class="note" id="pied-cycles"></p>
-      </section>
+    <section class="bloc" aria-labelledby="titre-pilotage">
+      <h2 id="titre-pilotage">Pilotage</h2>
+      <div id="pilotage-corps">
+        <p class="vide">chargement…</p>
+      </div>
     </section>
 
-    <section class="section" id="section-fichiers" data-section="fichiers" hidden role="tabpanel" aria-labelledby="onglet-fichiers">
-      <p class="fil-ariane">Centre de contrôle</p>
-      <h1 class="section-titre" id="titre-section-fichiers" tabindex="-1">Fichiers</h1>
-
-      <section class="bloc">
-        <h2>Fichiers touchés</h2>
-        <div id="fichiers"></div>
-      </section>
+    <section class="bloc" aria-labelledby="titre-cycles">
+      <div class="entete-bloc">
+        <h2 id="titre-cycles">Cycles</h2>
+      </div>
+      <p class="note" id="legende-cycles"></p>
+      <ul id="workflows" class="cycles"></ul>
+      <p class="note" id="pied-cycles"></p>
     </section>
 
-    <section class="section" id="section-evenements" data-section="evenements" hidden role="tabpanel" aria-labelledby="onglet-evenements">
-      <p class="fil-ariane">Centre de contrôle</p>
-      <h1 class="section-titre" id="titre-section-evenements" tabindex="-1">Événements</h1>
+    <section class="bloc" aria-labelledby="titre-fichiers">
+      <h2 id="titre-fichiers">Fichiers touchés</h2>
+      <div id="fichiers"></div>
+    </section>
 
-      <section class="bloc">
-        <h2>Derniers événements</h2>
-        <ol class="timeline" id="timeline"></ol>
-      </section>
+    <section class="bloc" aria-labelledby="titre-evenements">
+      <h2 id="titre-evenements">Derniers événements</h2>
+      <ol class="timeline" id="timeline"></ol>
     </section>
 
   </main>

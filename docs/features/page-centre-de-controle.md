@@ -1,85 +1,109 @@
 # Page — Centre de contrôle
 
 Tableau de bord web fourni avec le kit (`control-center/web/`), qui observe et
-pilote les workflows d'agents. Une seule page, découpée en **sections**
-atteintes depuis une colonne de navigation — jamais tout affiché à la fois.
-Voir `control-center/README.md` pour le modèle de déploiement et
-`docs/DESIGN-SYSTEM.md` pour les règles visuelles et leur méthode.
+pilote les workflows d'agents. **Un seul écran** (`feature-021`, lot 3,
+[ADR-0029](../adr/0029-le-tableau-de-bord-revient-au-mono-ecran.md)) : tout ce
+que la page montre est visible au chargement, empilé, sans clic ni navigation
+entre sections. Voir `control-center/README.md` pour le modèle de déploiement
+et `docs/DESIGN-SYSTEM.md` pour les règles visuelles et leur méthode.
 
 ## Structure de la page
 
-Depuis `feature-019` (voir
-[ADR-0024](../adr/0024-une-section-a-la-fois-dans-un-contenu-borne.md)), la
-page remplace l'ancien empilement à colonne latérale par une colonne de
-navigation étroite et une **section à la fois**, dans un contenu borné et
-centré.
+Depuis `feature-021` (lot 3), la page **révoque** le découpage par onglets
+introduit par `feature-019` : la colonne de navigation étroite (six
+`role="tab"`) et son affichage « une section à la fois » disparaissent.
+`index.html` est réécrit en entier pour cela. Ce que la navigation par onglets
+apportait est documenté ci-dessous **au passé**, comme trace de ce qui a
+changé — voir
+[ADR-0024](../adr/0024-une-section-a-la-fois-dans-un-contenu-borne.md)
+(§1 et la partie navigation de §2, remplacés par `ADR-0029`) pour la décision
+d'origine et [ADR-0029](../adr/0029-le-tableau-de-bord-revient-au-mono-ecran.md)
+pour la révocation.
 
-### La colonne de navigation
+### Ce qui a disparu avec les onglets
 
-Une colonne fixe (200 px, collante sous la barre supérieure) liste **six
-sections** ; elle **navigue**, elle ne contient aucun contenu propre. C'est un
-motif ARIA `tablist` (`role="tablist"` sur la colonne, `role="tab"` sur
-chaque entrée, `role="tabpanel"` sur chaque section) : un seul arrêt de
-tabulation, l'élément actif porte `aria-selected="true"`.
+- La colonne de navigation fixe (200 px, motif ARIA `tablist`/`tab`/
+  `tabpanel`, un seul arrêt de tabulation, roving tabindex aux flèches).
+- L'affichage « une section à la fois » : l'attribut `hidden` posé
+  statiquement sur cinq des six sections dans le HTML servi.
+- Le repli en bande horizontale défilante sous 600 px de large.
+- La persistance de la section active entre deux chargements
+  (`control-center/web/theme.js`).
 
-Les six sections, et les **huit blocs** qu'elles regroupent (aucun perdu
-depuis l'ancien affichage) :
+`index.html` ne porte plus aucun identifiant `#section-*` ni `#onglet-*` ;
+`control-center/web/theme.js` **continue d'être servi** (aucun script inline :
+la CSP `default-src 'self'` l'interdit) mais son attribut `data-section` n'a
+plus aucun lecteur côté `app.js` — c'est un fichier qui tourne sans effet
+observable, conservé tel quel car hors périmètre du lot 3.
 
-| Section | Bloc(s) |
-|---|---|
-| Agents | Agents |
-| Système | Système |
-| Développer | Que souhaitez-vous développer ? · Spécifications · Pilotage |
-| Cycles | Cycles (la liste en accordéon, voir plus bas) |
-| Fichiers | Fichiers touchés |
-| Événements | Derniers événements |
+### Ce que la page affiche maintenant
 
-« Développer » est la seule section à porter plusieurs blocs (trois) ; les
-cinq autres en portent chacune un seul.
-
-### Contenu borné, fil d'Ariane, titre
-
-Chaque section ouvre sur un fil d'Ariane (« Centre de contrôle ») et un titre
-de niveau `<h1>`, focusable. Le contenu est borné à 880 px et centré — jamais
-la pleine largeur de l'écran, quelle que soit la taille de la fenêtre.
-
-**Une seule section est visible à la fois.** L'attribut `hidden` est posé
-**statiquement** dans le HTML servi sur toutes les sections sauf celle par
-défaut (« Agents ») : c'est le seul mécanisme de masquage, avant même que le
-script ne s'exécute — la page n'affiche jamais les six sections d'un coup, y
-compris sans JavaScript ou avant son exécution.
+Toutes les sections qu'énumérait l'ancien tableau (Agents, Système,
+Développer — avec ses trois blocs, Cycles, Fichiers, Événements) sont
+**empilées sur une seule page**, chacune un `<section>` distinct, sans
+attribut `hidden` statique — la page n'a plus de contenu masqué au chargement.
+25 identifiants issus de la maquette Material 3 (`control-center/maquettes/`)
+sont posés dans le HTML servi ; leur câblage aux données réelles (le graphe
+d'agents, la feuille de détail d'un passage, l'historique des cycles) est le
+travail des lots 4 à 6, **non couvert par ce lot** — ce que le lot 3 livre est
+la structure statique et l'accessibilité de l'écran, pas encore le rendu
+dynamique de ces zones.
 
 ### États vides par section
 
-Chaque section affiche son propre état vide quand elle n'a rien à montrer —
-par exemple « aucun agent découvert », « aucun cycle observé pour l'instant »,
-« journal vide — aucun événement observé pour l'instant ». Aucune section
-n'affiche un espace muet en l'absence de données.
+Chaque section continue d'afficher son propre état vide quand elle n'a rien à
+montrer — par exemple « aucun agent découvert », « journal vide — aucun
+événement observé pour l'instant ». Aucune section n'affiche un espace muet
+en l'absence de données.
 
-### Navigation au clavier
+### Cibles tactiles à 48 px
 
-La colonne suit le motif `tablist` standard : `Tab` entre une seule fois dans
-le groupe, les flèches (haut/bas ou gauche/droite selon la disposition)
-parcourent les six entrées, et sélectionner une entrée déplace le focus sur
-le titre de la section ouverte (focusable, `tabindex="-1"`) — c'est ce titre
-que les lecteurs d'écran annoncent, pas un simple changement d'état visuel.
+`.tab-button` et `.small-button` passent de 36 à 48 px de hauteur minimale
+(seuil Material 3, posé au lot 2 — `F6`). Le lot 3 ne livre aucune cible sous
+ce seuil : la réserve `.nav-onglet` (44 px), propre à l'ancienne navigation,
+se ferme en disparaissant avec elle.
 
-### Repli en écran étroit
+### La porte d'authentification rend désormais le reste de la page inerte
 
-En dessous de 600 px de large, la colonne de navigation passe en **bande
-horizontale défilante** sous l'en-tête — mêmes boutons, même ordre, sans
-tiroir ni menu escamotable (ce qui aurait ajouté un état ouvert/fermé et une
-gestion de focus supplémentaires). Aucune section ne devient inatteignable à
-cette largeur.
+Corrigé dans ce même lot (`bug-017`, absorbée au titre d'
+[ADR-0017](../adr/0017-un-defaut-qui-desarme-la-garde-livree-entre-dans-le-cycle.md)
+— le lot réécrit `index.html` de toute façon, et corriger ailleurs aurait
+signifié refaire le correctif sur une structure qui n'allait plus exister).
+
+Avant ce correctif, le voile de la porte bloquait la souris mais pas la
+tabulation : jusqu'à 6 contrôles restaient atteignables au clavier sous la
+modale (section « Développer »), dont le bouton de lancement d'un cycle.
+Depuis ce lot :
+
+- `#porte-jeton` reste **enfant direct de `<body>`**, condition déjà établie
+  par `feature-019` et préservée ici — c'est ce qui permet à ses **frères**
+  (`.bandeau-hote`, le lien d'évitement, `.app-shell`, `.tiroir`) de recevoir
+  `inert` à l'ouverture de la porte, et de le perdre à sa fermeture.
+- `inert` retire un sous-arbre entier de l'arbre d'accessibilité **et** de
+  l'ordre de tabulation — ce qu'aucune des alternatives (`opacity`,
+  hors-écran, hauteur nulle) ne fait pour un sous-arbre complet.
+- Le focus, à la fermeture, revient à un endroit **nommé** : celui qui
+  l'avait avant l'ouverture, mémorisé puis restauré ; à défaut (rien de
+  mémorisé, ou élément disparu du DOM entre-temps), le repli se fait sur
+  `#main-content` (le lien d'évitement, `tabindex="-1"`) — jamais sur
+  `document.body`, qui ne nomme rien.
+- La rétention de focus déjà en place (piégeage `Tab` à l'intérieur de la
+  porte) reste, en complément : elle ne suffisait pas seule.
+
+Le **comptage** des contrôles atteignables hors modale (0 exigé), critère
+d'acceptation chiffré de `bug-017`, est une garde de lot ultérieur ; ce lot
+livre le mécanisme structurel qu'elle mesurera.
 
 Depuis `feature-021` (lot 1, [ADR-0033](../adr/0033-le-theme-sombre-est-supprime.md)),
 la page n'a plus qu'un **thème unique, clair** : le contrôle à trois positions
 (clair / système / sombre) qui figurait en haut à droite de la barre est
 retiré, ainsi que la persistance de choix de thème et le suivi de
-`prefers-color-scheme` qui l'accompagnaient. `control-center/web/theme.js`
-subsiste mais change de rôle : il ne pose plus `data-theme`, et ne reste
-responsable que de la persistance de la section active (voir ci-dessus,
-`feature-019`).
+`prefers-color-scheme` qui l'accompagnaient. Depuis le lot 3 (mono-écran,
+ci-dessus), `control-center/web/theme.js` n'a plus aucune responsabilité
+observable : il ne pose plus `data-theme`, et la persistance de section
+active qu'il assurait depuis `feature-019` n'a plus d'objet, la page n'ayant
+plus de section à persister. Le fichier reste servi tel quel (hors périmètre
+du lot 3).
 
 ## Identité de couleur par agent
 
@@ -248,9 +272,16 @@ et [ADR-0026](../adr/0026-trois-echelles-du-diagramme-alignees-sur-la-maquette.m
 - `docs/DESIGN-SYSTEM.md` — règles visuelles complètes, méthode de palette,
   grammaire du diagramme, §3 (surfaces), §4 (typographie), §6 (liste des
   cycles)
+- [ADR-0029](../adr/0029-le-tableau-de-bord-revient-au-mono-ecran.md) — le
+  retour au mono-écran, l'amendement d'`ADR-0024 §1`/§2 et le refus de
+  `three.js`
 - [ADR-0024](../adr/0024-une-section-a-la-fois-dans-un-contenu-borne.md) —
-  la colonne de navigation, une section à la fois, et l'absorption de
-  `bug-016`
+  la décision d'origine (colonne de navigation, une section à la fois,
+  révoquée par `ADR-0029 §1`/§2) et l'absorption de `bug-016` (§3, en
+  vigueur)
+- [ADR-0017](../adr/0017-un-defaut-qui-desarme-la-garde-livree-entre-dans-le-cycle.md)
+  — le critère d'absorption d'un bug dans le cycle qui livre la garde qu'il
+  désarme, appliqué à `bug-017` (porte d'authentification rendue inerte)
 - [ADR-0022](../adr/0022-deux-familles-de-jetons-couleur-plancher-perceptuel.md)
   — la décision derrière la séparation des deux familles de jetons
 - [ADR-0033](../adr/0033-le-theme-sombre-est-supprime.md) — le thème sombre

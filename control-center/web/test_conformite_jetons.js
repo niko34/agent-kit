@@ -40,13 +40,28 @@
 
 const lib = require("./test_conformite_lib.js");
 
+// F1_TRANSITOIRE_SEMANTIQUE_CLAIR : RETIRÉE du registre au lot 3 (clôture
+// réelle — fermeture mécanique, pas laissée verdir sans être ôtée, clause 2
+// d'ATTENDU_ROUGE). Les 15 anciens jetons sémantiques ont été retirés de
+// `:root` ; chaque `var(--fond)`, `var(--texte)`… a été re-pointé, PARTOUT
+// où il était consommé dans app.css, directement sur le jeton M3 équivalent
+// (ou un `color-mix()` qui en dérive) — substitution mécanique de texte,
+// aucune valeur peinte n'a changé. `JETONS_TRANSITOIRES_SEMANTIQUES`
+// ci-dessous est maintenant VIDE : la clause miroir (aucune entrée périmée)
+// continue de s'appliquer, elle est juste vide des deux côtés.
 const ATTENDU_ROUGE = {
-  F1_TRANSITOIRE_SEMANTIQUE_CLAIR: {
-    description: "15 anciens jetons sémantiques (--fond, --actif, --texte-doux…) survivent " +
-      "dans app.css :root, aliasés directement sur un jeton M3 (ou un color-mix() qui en " +
-      "dérive) — ils disparaissent quand index.html/les règles qui les consomment sont " +
-      "réécrits au lot 3.",
-    lotDeCloture: "lot 3",
+  F1_TRANSITOIRE_DIAGRAMME_SCOPE: {
+    description: "6 des 15 jetons sémantiques ne sont PAS morts au lot 3 : ils ont été " +
+      "redéclarés SCOPÉS sur `.dg-piste`, parce que le diagramme HÉRITÉ les consomme EN " +
+      "LIGNE dans app.js (l. 799-954, `guide.style.stroke = \"var(--trait-fin)\"`), hors " +
+      "de toute règle CSS. Les retirer casse le rendu du diagramme en silence — seul le " +
+      "harnais Chromium (E7, invariant `--trait-fin` < `--trait`) le voit. Ils meurent au " +
+      "lot 4 avec le diagramme lui-même (ADR-0032). ⚠️ Cette entrée existe parce que la " +
+      "fermeture de `F1_TRANSITOIRE_SEMANTIQUE_CLAIR` au lot 3 était une fermeture PAR " +
+      "DÉMÉNAGEMENT : les jetons avaient quitté `:root`, donc le champ de vision de la " +
+      "garde, sans quitter la feuille. Une quarantaine ne se ferme pas en déplaçant ce " +
+      "qu'elle suit.",
+    lotDeCloture: "lot 4",
     date: "2026-09-21",
   },
   F1_TRANSITOIRE_IDENTITE_AGENT: {
@@ -90,15 +105,11 @@ const JETONS_AJOUTES = [
     origine: "constante de mise en page, feature-019, hors prototype (aucun équivalent M3)" },
 ];
 
-// -- Couche transitoire 3a : alias sémantiques, ferment au LOT 3. Liste
-// DÉRIVÉE à la main (aucun artefact ne la porte, comme ROLES en F5a) mais
-// soumise à la CLAUSE MIROIR plus bas : toute entrée absente d'app.css doit
-// en être retirée, tout extra d'app.css doit y figurer — sinon échec.
-const JETONS_TRANSITOIRES_SEMANTIQUES = [
-  "--fond", "--surface-2", "--creux", "--trait", "--trait-fin", "--contour-etat",
-  "--texte", "--texte-doux", "--texte-faible", "--accent", "--actif", "--alerte",
-  "--echec", "--ombre", "--voile",
-];
+// -- Couche transitoire 3a : alias sémantiques — FERMÉE au LOT 3 (liste
+// vide, clôture réelle). Reste déclarée (vide) pour que la clause miroir
+// (F1_aucune_propriete_root_hors_de_tout_registre) continue de s'appliquer
+// symétriquement aux deux couches transitoires sans traitement spécial.
+const JETONS_TRANSITOIRES_SEMANTIQUES = [];
 
 // -- Couche transitoire 3b : identité colorée par agent + --rebouclage (en
 // dépend), ferment au LOT 4 (ADR-0032).
@@ -113,6 +124,27 @@ const JETONS_TRANSITOIRES_IDENTITE_AGENT = [
   "--a-frontend-developer", "--f-frontend-developer",
   "--a-neutre", "--f-neutre",
   "--rebouclage",
+];
+
+// -- Les 15 noms de l'ancienne couche sémantique. Sert de PÉRIMÈTRE DE
+// RECHERCHE : on les cherche dans TOUTE la feuille, pas seulement dans
+// `:root`. Sans ça, sortir un jeton de `:root` suffit à échapper à F1 — et
+// c'est exactement ce qui s'est produit au lot 3.
+const JETONS_SEMANTIQUES_HISTORIQUES = [
+  "--fond", "--surface-2", "--creux", "--trait", "--trait-fin", "--contour-etat",
+  "--texte", "--texte-doux", "--texte-faible", "--accent", "--actif", "--alerte",
+  "--echec", "--ombre", "--voile",
+];
+
+// -- Couche transitoire 3c : les SEULES redéclarations sémantiques tolérées
+// hors `:root`, chacune À SON SÉLECTEUR. Toute autre est un échec DUR.
+const JETONS_TRANSITOIRES_DIAGRAMME_SCOPE = [
+  { nom: "--trait", selecteur: ".dg-piste" },
+  { nom: "--trait-fin", selecteur: ".dg-piste" },
+  { nom: "--contour-etat", selecteur: ".dg-piste" },
+  { nom: "--texte-faible", selecteur: ".dg-piste" },
+  { nom: "--alerte", selecteur: ".dg-piste" },
+  { nom: "--creux", selecteur: ".dg-piste" },
 ];
 
 let _tests = 0;
@@ -220,6 +252,57 @@ check("F1_aucune_propriete_root_hors_de_tout_registre", horsTout.length === 0,
 const semPerimes = [...semDeclares].filter((n) => !appNoms.has(n));
 const agentPerimes = [...agentDeclares].filter((n) => !appNoms.has(n));
 check("F1_TRANSITOIRE_SEMANTIQUE_CLAIR_liste_sans_entree_perimee", semPerimes.length === 0, semPerimes.join(", "));
+
+// ===================================================================== //
+// F1 — LA FEUILLE ENTIÈRE, pas seulement `:root`.
+//
+// Le lot 3 a fermé `F1_TRANSITOIRE_SEMANTIQUE_CLAIR` en RETIRANT les 15
+// jetons de `:root` — mais 6 d'entre eux avaient seulement DÉMÉNAGÉ, sur
+// `.dg-piste`. `declarationsRoot()` ne scanne que `:root`, donc la garde
+// ne les voyait plus : une quarantaine fermée en déplaçant ce qu'elle suit.
+// Mesuré à l'époque : `.bloc { --texte:#ff0000 }` ajouté à app.css laissait
+// F1 à « 12 cas, 0 echec(s) ». Le précédent était posé — sortir un jeton de
+// `:root` pour échapper à F1.
+//
+// Donc : on cherche les 15 noms historiques dans TOUTES les règles (toutes
+// profondeurs, `@media` compris). Chaque occurrence doit être déclarée
+// ci-dessus AVEC SON SÉLECTEUR. Une occurrence non déclarée, ou déclarée à
+// un autre sélecteur, est un échec DUR — jamais quarantinable.
+// ===================================================================== //
+const nomsHistoriques = new Set(JETONS_SEMANTIQUES_HISTORIQUES);
+const scopeDeclare = new Map(
+  JETONS_TRANSITOIRES_DIAGRAMME_SCOPE.map((j) => [j.nom + "@" + j.selecteur, j]));
+
+const occurrencesFeuille = [];
+for (const regle of lib.reglesCss(cssApp)) {
+  if (regle.estKeyframes || regle.estAtRegle || regle.estAutreAtRegle) continue;
+  for (const d of lib.declarationsDeCorps(regle.corps)) {
+    if (nomsHistoriques.has(d.prop)) {
+      occurrencesFeuille.push({ prop: d.prop, selecteur: regle.selecteur, profondeur: regle.profondeur });
+    }
+  }
+}
+console.log("[dérivé] jetons sémantiques historiques trouvés dans TOUTE la feuille : " +
+  occurrencesFeuille.length + " occurrence(s) — " +
+  (occurrencesFeuille.map((o) => o.prop + "@" + o.selecteur).join(", ") || "aucune"));
+
+const horsScopeDeclare = occurrencesFeuille.filter((o) => !scopeDeclare.has(o.prop + "@" + o.selecteur));
+check("F1_aucun_jeton_semantique_hors_du_scope_declare",
+  horsScopeDeclare.length === 0,
+  horsScopeDeclare.length + " occurrence(s) non déclarée(s) : " +
+    horsScopeDeclare.map((o) => o.prop + " @ `" + o.selecteur + "`").slice(0, 8).join(" | "));
+
+// clause miroir : une entrée déclarée qui n'existe plus est une liste périmée
+const trouve = new Set(occurrencesFeuille.map((o) => o.prop + "@" + o.selecteur));
+const scopePerimes = [...scopeDeclare.keys()].filter((k) => !trouve.has(k));
+check("F1_TRANSITOIRE_DIAGRAMME_SCOPE_liste_sans_entree_perimee",
+  scopePerimes.length === 0, scopePerimes.join(", "));
+
+// clause (2) : la liste vide et l'entrée encore au registre
+if (JETONS_TRANSITOIRES_DIAGRAMME_SCOPE.length === 0 && ATTENDU_ROUGE.F1_TRANSITOIRE_DIAGRAMME_SCOPE) {
+  check("F1_TRANSITOIRE_DIAGRAMME_SCOPE_purgee_du_registre_si_verte", false,
+    "la couche scopée est vide mais l'entrée est encore dans ATTENDU_ROUGE — la retirer (clause 2)");
+}
 check("F1_TRANSITOIRE_IDENTITE_AGENT_liste_sans_entree_perimee", agentPerimes.length === 0, agentPerimes.join(", "));
 
 // -- fermeture de chaque couche transitoire : ATTENDU_ROUGE tant qu'elle

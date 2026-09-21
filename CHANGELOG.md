@@ -11,6 +11,20 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 
 ### Centre de contrôle
 
+- **Le tableau de bord devient un écran unique.** La navigation par onglets
+  (colonne de gauche, six sections, une seule affichée à la fois) disparaît :
+  tout ce que le centre de contrôle montre — agents, système, développement,
+  cycles, fichiers, événements — est désormais visible sur une seule page,
+  sans clic ni changement de section pour le consulter. Les cibles tactiles
+  (boutons de section, petits boutons) passent de 36 à 48 px de hauteur
+  minimale (`feature-021`, lot 3 ; voir `ADR-0029`).
+- **Correction d'accessibilité** : quand la porte d'authentification est
+  ouverte, le reste de la page n'est désormais **plus atteignable au
+  clavier**. Auparavant, le voile bloquait la souris mais pas la tabulation
+  — jusqu'à 6 contrôles restaient joignables sous la modale, dont le bouton
+  de lancement d'un cycle, ce qui permettait de changer de section pendant
+  que la porte était censée bloquer l'accès (`bug-017`, absorbée dans
+  `feature-021` au titre d'`ADR-0017`).
 - **Correction de sécurité** : un fichier de jeton dont le propriétaire n'a
   pas le bit de lecture (`0200`, `0300`, `0100`, `0000`) est désormais
   **refusé**, avec un motif nommé, quelle que soit l'identité qui lance le

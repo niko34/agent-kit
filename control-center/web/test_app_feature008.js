@@ -141,28 +141,35 @@ class FakeNode {
 }
 
 // Même liste que `test_app_bug012.js` (tenue à la main, PIEGES.md §7),
-// re-synchronisée pour cette feature.
+// re-synchronisée pour cette feature. Resynchronisée au lot 3 (feature-021,
+// cycle 2, F7) : voir le commentaire de `test_app_bug012.js`.
 const IDS = [
-  "agents", "bandeau-hote", "bandeau-hote-bouton", "bandeau-hote-texte",
-  "barre", "bouton-generer-brouillon", "compteur-prompt",
-  "compteur-specs", "derogation-minimale", "erreur-generer-brouillon",
-  "fichiers", "filtre", "filtre-divergences", "horodatage",
-  "jauge-flux", "jauge-git",
-  "jauge-pilotage", "kanban", "legende-cycles", "nav-sections", "note-agents",
-  "pied-cycles", "pilotage-corps", "porte-aide", "porte-bouton",
-  "porte-champ", "porte-corps", "porte-erreur", "porte-jeton", "porte-titre",
-  "projet", "prompt", "redaction-corps", "systeme",
-  "timeline", "tiroir", "tiroir-contenu",
-  "tiroir-fermer", "tiroir-titre", "titre-besoin", "titre-cycles", "titre-demande",
-  "titre-pilotage", "workflows",
-].concat(["agents", "systeme", "developper", "cycles", "fichiers", "evenements"]
-  .flatMap((s) => ["onglet-" + s, "section-" + s, "titre-section-" + s]));
+  "a11y-announcement", "agents", "backlog-column-count", "backlog-count",
+  "backlog-title", "bandeau-hote", "bandeau-hote-bouton",
+  "bandeau-hote-texte", "barre", "bouton-generer-brouillon",
+  "compteur-prompt", "compteur-specs", "cycle-canvas", "cycle-status",
+  "derogation-minimale", "erreur-generer-brouillon", "fichiers", "filtre",
+  "filtre-divergences", "horodatage", "jauge-flux", "jauge-git",
+  "jauge-pilotage", "kanban", "legende-cycles", "link-front-sec",
+  "link-front-tests", "link-front2-review", "link-reprise",
+  "link-sec-front2", "link-spec-front", "link-tests-front2", "main-content",
+  "motion-note", "note-agents", "pied-cycles", "pilotage-corps",
+  "porte-aide", "porte-bouton", "porte-champ", "porte-corps", "porte-erreur",
+  "porte-jeton", "porte-titre", "projet", "prompt", "redaction-corps",
+  "selected-code", "selected-duration", "selected-files", "selected-state",
+  "selected-task", "selected-title", "selected-tools", "summary-active",
+  "summary-step", "summary-time", "systeme", "timeline", "tiroir",
+  "tiroir-contenu", "tiroir-fermer", "tiroir-titre", "titre-agents",
+  "titre-besoin", "titre-cycle-surface", "titre-cycles", "titre-demande",
+  "titre-evenements", "titre-fichiers", "titre-pilotage", "titre-systeme",
+  "workflows",
+];
 
+// `section-*` retirés avec la navigation à onglets (lot 3, F7) : plus
+// aucune section n'est masquée.
 const CACHES_PAR_DEFAUT = new Set([
   "bandeau-hote", "tiroir", "porte-jeton", "porte-erreur",
   "erreur-generer-brouillon",
-  "section-systeme", "section-developper", "section-cycles",
-  "section-fichiers", "section-evenements",
 ]);
 
 function creerBac() {

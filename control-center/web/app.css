@@ -26,21 +26,13 @@
  *    ce lot (polices, hauteur de barre). Toute propriété `--x` ajoutée ici
  *    doit avoir son entrée dans `JETONS_AJOUTES`, sinon F1 échoue.
  *
- * 3. COUCHE TRANSITOIRE — l'ancien jeu de jetons sémantiques (`--fond`,
- *    `--actif`…) et l'identité colorée par agent (`--a-<rôle>`/`--f-<rôle>`,
- *    ADR-0032), conservés le temps que les fichiers qui les consomment
- *    soient réécrits :
- *      - les alias sémantiques disparaissent au LOT 3 (`index.html` réécrit,
- *        `F1_TRANSITOIRE_SEMANTIQUE_CLAIR` dans `test_conformite_jetons.js`) ;
- *      - les jetons d'identité d'agent + `--rebouclage` (qui en dépend)
- *        disparaissent au LOT 4 (`diagramme.js`/`app.js` réécrits,
- *        `F1_TRANSITOIRE_IDENTITE_AGENT`).
- *    Aucun littéral `--clair-*` ne survit (retiré ce lot) : ces jetons
- *    transitoires portent directement un `var()` vers un jeton M3 (ex.
- *    `--fond: var(--bg)`) ou, quand le M3 n'a pas d'équivalent 1:1, un
- *    `color-mix()` dérivé d'un jeton M3 — jamais un littéral recopié.
- *    `--surface` n'a PAS d'alias distinct : le nom coïncide avec celui du
- *    prototype (couche 1), la déclaration unique sert les deux rôles.
+ * 3. COUCHE TRANSITOIRE — l'identité colorée par agent (`--a-<rôle>`/
+ *    `--f-<rôle>`, ADR-0032) + `--rebouclage` qui en dépend, conservés le
+ *    temps que `diagramme.js`/`app.js` soient réécrits (LOT 4,
+ *    `F1_TRANSITOIRE_IDENTITE_AGENT`). L'ancien jeu de jetons sémantiques
+ *    (`--fond`, `--actif`…) a fermé au LOT 3 (`F1_TRANSITOIRE_SEMANTIQUE_
+ *    CLAIR`, feature-021 cycle 2) : chaque consommateur pointe désormais
+ *    directement sur un jeton M3, ou un `color-mix()` qui en dérive.
  * ===========================================================================
  */
 
@@ -91,58 +83,30 @@
   /* -- constantes hors couleur, déjà présentes avant ce lot -- */
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   --sans: "Google Sans", "Roboto", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  /* Constante de mise en page (feature-019, revue) — nommée UNE FOIS pour ne
-   * plus répéter le nombre magique dans les règles qui en dépendaient
-   * (`.mise-en-page`, `.nav-sections` ×2). Valeur de repli pour `.barre` sur
-   * UNE seule ligne ; `app.js` corrige cette variable si `.barre` passe à la
-   * ligne (`ResizeObserver`), pour que la nav collante ne se retrouve jamais
-   * sous la barre repliée. */
+  /* Constante de mise en page (feature-019) — hauteur nominale de
+   * `.top-app-bar` sur une ligne. Sa navigation collante d'origine
+   * (`.mise-en-page`/`.nav-sections`) a disparu au lot 3 (F7, structure
+   * mono-écran) : la variable reste déclarée (`JETONS_AJOUTES`, F1) mais
+   * n'a plus de lecteur CSS ni JS — conservée pour ne pas invalider
+   * l'entrée du registre, réutilisable si une future barre collante en a
+   * besoin. */
   --hauteur-barre: 62px;
 
   /* ===== 3. couche transitoire — jamais de littéral, uniquement des alias
    * vers la couche 1 (ou un color-mix() qui en dérive) ==================
-   * 3a. sémantiques (15), disparaissent au LOT 3 (F1_TRANSITOIRE_SEMANTIQUE_CLAIR) */
-  --fond:        var(--bg);
-  --surface-2:   var(--surface-low);
-  /* --creux vers --surface-high, pas --surface-low : "creux" désignait un
-   * fond ENCORE PLUS enfoncé que le hover/highlight (--surface-2) — champs de
-   * saisie, blocs de code, contenu du tiroir. Vérifié (feature-021 cycle 2
-   * lot 2) : `--muted` sur `--surface-high` = 4,8173 (≥ 4,65), aucun couple
-   * de F5a peint par cet alias. */
-  --creux:       var(--surface-high);
-  --trait:       var(--line);
-  /* --trait-fin NE PEUT PAS aliaser --line tel quel (essayé, revu) : le M3 du
-   * prototype n'a que DEUX jetons de trait (--line, --line-strong, plus
-   * SOMBRE) alors que `test_app_diagramme_navigateur.js` (E7) exige
-   * `.dg-guide` (--trait-fin) STRICTEMENT MOINS contrasté contre le fond que
-   * `.dg-graduation`/`.dg-cercle` (--trait) — un alias identique égalise les
-   * deux et fait échouer `E7_guide_moins_contraste_que_graduation_eteinte`/
-   * `..._que_contour_nominal` (mesuré : 1,447:1 = 1,447:1). Dérivé plutôt
-   * qu'inventé : `color-mix()` de --line VERS --surface (jamais un nouveau
-   * littéral), à un dosage qui reste strictement plus clair — vérifié
-   * (contraste sur --surface) : trait-fin 1,244:1 < trait 1,447:1. */
-  --trait-fin:   color-mix(in srgb, var(--line) 60%, var(--surface));
-  /* --contour-etat vers --line-strong : seul jeton de trait « renforcé » du
-   * prototype, même rôle que l'ancien littéral achromatique (contour d'un
-   * état, jamais une couleur vive). Peint uniquement sur --surface
-   * aujourd'hui (`.cycle-etat.indetermine`) : --line-strong y vaut largement
-   * plus que le seuil 3,0 (non listé dans les 24 couples interdits de F5a). */
-  --contour-etat:var(--line-strong);
-  --texte:       var(--ink);
-  --texte-doux:  var(--muted);
-  /* --texte-faible consolidé sur --muted, comme --texte-doux : le prototype
-   * n'a qu'UN SEUL palier de texte atténué, contre deux côté `--clair-*`. */
-  --texte-faible:var(--muted);
-  --accent:      var(--primary);
-  --actif:       var(--teal);
-  --alerte:      var(--amber);
-  --echec:       var(--danger);
-  /* --ombre / --voile : le prototype n'a pas de jeton de superposition
-   * `rgba()`, seulement `--shadow-1`/`--shadow-2` (des box-shadow complets,
-   * pas une teinte) — dérivées par `color-mix()` de `--ink`, jamais un noir
-   * recopié à la main (même idiome que `.action-ecriture:hover` plus bas). */
-  --ombre: color-mix(in srgb, var(--ink) 16%, transparent);
-  --voile: color-mix(in srgb, var(--ink) 45%, transparent);
+   * 3a. sémantiques (15) : RETIRÉE au LOT 3 (F1_TRANSITOIRE_SEMANTIQUE_CLAIR,
+   * feature-021 cycle 2). `index.html`/`app.css` sont réécrits : chaque
+   * `var(--fond)`, `var(--texte)`… ci-dessous a été RE-POINTÉ, partout où il
+   * était consommé dans cette feuille, directement sur le jeton M3
+   * équivalent — l'indirection meurt, la règle qui la consommait survit avec
+   * exactement la même valeur peinte (substitution mécanique de texte,
+   * aucune valeur changée). En particulier `--trait-fin` (`color-mix(in
+   * srgb, var(--line) 60%, var(--surface))`, 1,244:1) et `--trait` (devenu
+   * `var(--line)`, 1,447:1) : l'invariant « --trait-fin STRICTEMENT moins
+   * contrasté que --trait contre le fond peint » (`test_app_diagramme_
+   * navigateur.py`, E7) est préservé PAR CONSTRUCTION — les deux expressions
+   * sont recopiées à l'identique, aucune n'a changé de valeur, seul le nom
+   * intermédiaire a disparu. */
 
   /* 3b. identité colorée par agent (18) + --rebouclage qui en dépend,
    * disparaissent au LOT 4 avec diagramme.js/app.js (ADR-0032,
@@ -180,8 +144,8 @@
  * 1.45 à 1.35 (mesuré `body { line-height: 1.35 }`, maquette l.45). */
 body {
   margin: 0;
-  background: var(--fond);
-  color: var(--texte);
+  background: var(--bg);
+  color: var(--ink);
   font-family: var(--sans);
   font-size: 14px;
   line-height: 1.35;
@@ -200,8 +164,21 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   outline-offset: 3px;
 }
 
-/* ---------------- barre ---------------- */
-.barre {
+/* ---------------- barre supérieure (F7, lot 3 — classe adoptée `top-app-bar`,
+ * renommée depuis `.barre`) ---------------- */
+.app-shell { display: flex; flex-direction: column; min-height: 100vh; }
+.skip-link {
+  /* Sous la profondeur 30 (condition de sécurité 3, test_app_navigation.js
+   * E7_c3) : la porte d'authentification reste le seul plafond à 30. 15 :
+   * un cran au-dessus de `.top-app-bar` (10), largement sous le tiroir (20)
+   * et la porte. */
+  position: absolute; top: -40px; left: 8px; z-index: 15;
+  background: var(--primary); color: white; padding: 8px 14px;
+  border-radius: 2px; text-decoration: none; font-size: 13px;
+  transform: translateY(-100%);
+}
+.skip-link:focus { top: 8px; transform: translateY(0); }
+.top-app-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -209,32 +186,37 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   flex-wrap: wrap;
   padding: 10px 18px;
   background: var(--surface);
-  border-bottom: 1px solid var(--trait);
+  border-bottom: 1px solid var(--line);
   position: sticky;
   top: 0;
   z-index: 10;
 }
+.brand-row, .top-actions { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand-mark { display: inline-flex; gap: 3px; }
+.brand-mark i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
+.brand-mark i:nth-child(2), .brand-mark i:nth-child(3), .brand-mark i:nth-child(4) { opacity: .68; }
 .titre { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
 .marque { font-weight: 600; letter-spacing: -0.01em; }
-.projet { font-family: var(--mono); font-size: 12px; color: var(--texte-faible); }
-.etat-barre { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.projet { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.status-inline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .jauge {
   font-family: var(--sans);
   font-size: 11px;
   padding: 2px 8px;
-  border: 1px solid var(--trait);
+  border: 1px solid var(--line);
   border-radius: 2px;
-  color: var(--texte-doux);
+  color: var(--muted);
   white-space: nowrap;
 }
-.jauge.ok { color: var(--actif); border-color: color-mix(in srgb, var(--actif) 40%, var(--trait)); }
-.jauge.ko { color: var(--echec); border-color: color-mix(in srgb, var(--echec) 40%, var(--trait)); }
-.jauge.lecture-seule { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--trait)); }
+.jauge.ok { color: var(--teal); border-color: color-mix(in srgb, var(--teal) 40%, var(--line)); }
+.jauge.ko { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
+.jauge.lecture-seule { color: var(--primary); border-color: color-mix(in srgb, var(--primary) 45%, var(--line)); }
 /* Ni « ok » ni « ko » : le repli sur sondage périodique est un mode ATTENDU
  * quand le poste ne peut pas transmettre de jeton à `EventSource`, pas une
  * panne du flux — teinte neutre, jamais teal ni rouille (bug-012). */
-.jauge.sondage { color: var(--texte-doux); border-color: var(--trait); cursor: help; }
-.horodatage { font-family: var(--sans); font-size: 11px; color: var(--texte-faible); font-variant-numeric: tabular-nums; }
+.jauge.sondage { color: var(--muted); border-color: var(--line); cursor: help; }
+.horodatage { font-family: var(--sans); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* ---------------- bandeau hôte ---------------- */
 /* Distinct de la porte : un hôte non reconnu (421) ou une panne réseau ne se
@@ -245,107 +227,148 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   display: flex; align-items: center; justify-content: space-between; gap: 14px;
   flex-wrap: wrap;
   padding: 10px 16px;
-  /* var(--surface), pas var(--surface-2) (feature-019, §3) : le bandeau est
+  /* var(--surface), pas var(--surface-low) (feature-019, §3) : le bandeau est
    * déjà délimité par son filet (border-bottom) — un aplat plus marqué en
    * plus violait « un bloc se délimite par son filet ». */
   background: var(--surface);
-  border-bottom: 1px solid color-mix(in srgb, var(--echec) 50%, var(--trait));
+  border-bottom: 1px solid color-mix(in srgb, var(--danger) 50%, var(--line));
 }
 .bandeau-hote[hidden] { display: none; }
-.bandeau-hote p { margin: 0; font-size: 12.5px; color: var(--texte-doux); }
+.bandeau-hote p { margin: 0; font-size: 12.5px; color: var(--muted); }
 
-/* ---------------- mise en page (feature-019, §5/§6 du design system) ----------------
- * Colonne de navigation étroite + contenu borné et centré, une section
- * visible à la fois — remplace l'ancien empilement (`.grille`/`.rail`/
- * `.centre`, feature-015/016). */
-.mise-en-page { display: flex; align-items: flex-start; min-height: calc(100vh - var(--hauteur-barre)); }
+/* ---------------- structure mono-écran (F7, lot 3) ----------------
+ * `feature-021` cycle 2 : la colonne de navigation à onglets (feature-019,
+ * ADR-0024 §1, amendée par ADR-0029) est RETIRÉE en bloc — 0 `role="tab"`,
+ * plus de section masquée : tout le contenu est empilé, lisible sans
+ * aucune navigation (docs/DESIGN-SYSTEM.md, révisé). `.main`/`#main-content`
+ * (classe et id adoptés du prototype) remplacent `.contenu` ; `.workspace`
+ * (adopté) porte la zone de travail du cycle (F8/F9, lot 4) ; les blocs
+ * fonctionnels préexistants (agents, système, kanban, cycles, fichiers,
+ * événements, pilotage, demande) restent dans leurs conteneurs `#id`
+ * INCHANGÉS pour `app.js` — seule la coquille autour d'eux change. */
+.main { flex: 1 1 auto; min-width: 0; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
 
-/* Nav : NAVIGUE, ne porte aucun contenu (§5). Reste sous la profondeur 30
- * (§6, condition de sécurité 3) : 11, un cran au-dessus de `.barre` (10),
- * nettement sous le tiroir (20) et la porte (30). */
-.nav-sections {
-  flex: none;
-  width: 200px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 14px 10px;
-  position: sticky;
-  top: var(--hauteur-barre);
-  align-self: flex-start;
-  max-height: calc(100vh - var(--hauteur-barre));
-  overflow-y: auto;
-  border-right: 1px solid var(--trait);
-  z-index: 11;
+/* ---- bande de résumé (classe adoptée `summary-band`) ---- */
+.summary-band {
+  display: flex; flex-wrap: wrap; gap: 4px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 3px;
+  padding: 10px 4px;
 }
-.nav-onglet {
-  /* Reste à 44px (PAS la cible M3, F6 lot 2) : `.nav-sections`/`.nav-onglet`
-   * est la navigation par onglets latérale d'AVANT ce cycle, qui disparaît
-   * entièrement à la structure mono-écran du lot 3 (F7, 0 role="tab") — la
-   * bumper à 48px casse `E9_nav_onglet_cible_44px_hors_media`
-   * (`test_app_navigation.js`) pour un composant sur le point d'être
-   * retiré. Revu au lot 3 avec le reste du fichier. */
-  min-height: 44px;
-  display: flex; align-items: center;
-  padding: 8px 12px;
-  background: none; border: none; border-radius: 2px;
-  color: var(--texte-doux);
-  font: inherit; font-size: 13.5px; text-align: left; cursor: pointer;
+.summary-item {
+  display: flex; align-items: center; gap: 10px; min-width: 0;
+  padding: 4px 16px; border-right: 1px solid var(--line);
 }
-.nav-onglet:hover { color: var(--texte); background: var(--surface-2); }
-.nav-onglet:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.nav-onglet[aria-selected="true"] {
-  color: var(--accent); font-weight: 600;
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
+.summary-item:last-child { border-right: 0; }
+.summary-icon { font-size: 16px; color: var(--muted); }
+.summary-copy { display: grid; min-width: 0; }
+.summary-copy strong { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.summary-copy span { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+/* ---- zone de travail (classe adoptée `workspace`) : le graphe d'agents
+ * (`cycle-surface`/`cycle-canvas`) est construit au LOT 4 (F8/F9) — cette
+ * coquille est un conteneur STATIQUE (25 id adoptés présents, F4a), aucune
+ * géométrie ni animation n'y est branchée ici. ---- */
+.workspace { display: flex; flex-direction: column; gap: 16px; }
+.cycle-surface {
+  min-width: 0; display: flex; flex-direction: column; gap: 10px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 3px;
+  padding: 14px;
 }
+.cycle-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.cycle-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.tab-button, .small-button {
+  /* Cible M3 : 48px (F6 lot 2 pose le seuil, ce lot ne livre aucune cible
+   * sous 48px — la réserve `.nav-onglet` 44px, elle, se ferme ici en
+   * disparaissant avec la navigation). */
+  min-height: 48px; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line);
+  background: none; color: var(--muted); font: inherit; font-size: 12.5px; cursor: pointer;
+}
+.tab-button[aria-pressed="true"] { background: var(--primary); color: white; border-color: var(--primary); }
+.cycle-heading-row { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.cycle-subtitle { display: flex; align-items: center; gap: 9px; color: var(--muted); margin: 4px 0 0; font-size: 12.5px; }
+.live-label { color: var(--teal); font-weight: 500; }
+.live-label::before { content: ""; width: 8px; height: 8px; display: inline-block; border-radius: 50%; background: var(--teal); margin-right: 6px; }
+.legend { display: flex; gap: 14px; color: var(--muted); font-size: 12px; flex-wrap: wrap; margin: 0; padding: 0; list-style: none; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 8px; height: 8px; border-radius: 50%; background: var(--line); display: inline-block; }
+.legend i.active { background: var(--primary); }
+.legend i.parallel { background: var(--teal); }
+.legend i.reprise { background: var(--coral); }
+.motion-note { margin: 0; font-size: 12.5px; color: var(--muted); }
+.cycle-canvas {
+  /* Le prototype (l.231-237) ne pose AUCUN fond propre — transparent,
+   * hérite de `--surface` (cycle-surface) — ni bordure : géométrie et
+   * `overflow` seulement. `--surface-low` serait un aplat de REPOS, interdit
+   * hors teinte d'interaction (ADR-0024 §4, verrou maintenu par ADR-0029). */
+  position: relative; min-height: 120px;
+}
+.connector-layer { display: block; width: 100%; height: auto; }
+.connector-layer path { fill: none; stroke: var(--line); stroke-width: 1.5; }
 
-.contenu { flex: 1 1 auto; min-width: 0; padding: 24px; }
-.section { max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
-/* L'attribut `hidden`, posé STATIQUEMENT dans le HTML servi pour toute
- * section autre que la section par défaut (condition de sécurité 5), est le
- * SEUL mécanisme de masquage (condition 1) : `display: none`, rien d'autre —
- * ni opacité, ni hors-écran, ni hauteur nulle. Cette règle doit rester
- * déclarée APRÈS toute autre règle `display` d'auteur sur `.section`
- * (condition 2) : `.section` ci-dessus est la SEULE règle `display`
- * d'auteur qui reste sur ce sélecteur, elle précède celle-ci dans la
- * feuille, et sa spécificité (0,1,0 — une classe) reste sous celle de
- * `.section[hidden]` (0,2,0 — classe + attribut) : aucune concurrence
- * possible, dans un sens comme dans l'autre.
- *
- * ⚠️ Défaut corrigé (revue) : une première version ajoutait ici un bloc
- * `:root[data-section="X"] .section[data-section="X"] { display: flex }`
- * pour éviter un flash de la section par défaut avant `app.js`. Sa
- * spécificité (0,4,0) battait CETTE règle malgré l'ordre — mesuré : la
- * section calculait `display: flex` tout en portant `hidden`. Retiré : la
- * garde de sécurité prime sur le confort visuel, qui n'a plus d'autre
- * mécanisme que `hidden` lui-même. Le flash résiduel est borné à la durée
- * du parsing du `<body>` — `app.js`, en dernière ligne du document,
- * synchronise `hidden` de façon synchrone dès qu'il s'exécute, avant tout
- * retour à la boucle d'événements. */
-.section[hidden] { display: none; }
+/* ---- bottom sheet de détail (classe adoptée `detail-sheet`, F11, lot 5) —
+ * coquille statique ici, valeurs affichées « — » tant que rien n'est
+ * sélectionné. ---- */
+.detail-sheet {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 3px;
+  padding: 12px 14px;
+}
+.sheet-handle { width: 34px; height: 4px; border-radius: 999px; background: var(--line); margin: 0 auto 10px; }
+.sheet-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.selected-agent { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.selected-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 50%; flex: none;
+  background: var(--surface-high); font-family: var(--mono); font-size: 11px; font-weight: 600;
+}
+.selected-copy { min-width: 0; }
+.selected-copy h2 { margin: 0; font-size: 14px; }
+.selected-copy p { margin: 2px 0 0; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sheet-toggle {
+  width: 48px; height: 48px; border-radius: 50%; flex: none;
+  background: var(--surface-low); border: 1px solid var(--line); cursor: pointer;
+}
+.sheet-metrics {
+  margin-top: 12px; border-top: 1px solid var(--line); padding-top: 11px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px;
+}
+.metric { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+.metric strong { color: var(--ink); font-size: 13px; font-variant-numeric: tabular-nums; }
 
-.fil-ariane { margin: 0; font-size: 12px; color: var(--texte-faible); }
-.section-titre { margin: 0; font-size: 27px; font-weight: 700; color: var(--texte); }
-.section-titre:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* ---- fil d'état du dépôt (classe adoptée `repo-strip`) — décorative ici,
+ * les données réelles restent portées par `.jauge`/`.systeme` (§16 PIEGES :
+ * tout chiffre affiché vient des données ; câblage réel différé, F10/F11). --- */
+.repo-strip { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.repo-strip .ok { color: var(--teal); }
+
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+/* ---- kanban habillé aux classes adoptées (`backlog`, `kanban-*`) — la
+ * grille fonctionnelle `#kanban`/`.colonne`/`.carte` (app.js, inchangée)
+ * reste À L'INTÉRIEUR de `.kanban-viewport` : seule la coquille change ici,
+ * le rendu 3-colonnes `/api/etat.colonnes` est F10 (lot 5). ---- */
+.backlog { background: var(--surface); border: 1px solid var(--line); border-radius: 3px; padding: 12px 14px; }
+.kanban-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 9px; }
+.kanban-title-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.backlog-count { color: var(--muted); font-size: 12px; }
+.kanban-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* Non vide (PIEGES §33 : une règle vide ne protège rien) — le défilement
+ * commun aux trois colonnes est celui d'`.kanban` (inchangée, app.js) ;
+ * cette coquille porte la couleur de focus pour `tabindex="0"` que le
+ * prototype attend sur ce conteneur (posé au lot 5, F10). */
+.kanban-viewport { display: block; }
+.kanban-viewport:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
 
 @media (max-width: 600px) {
-  /* Repli en bande horizontale défilante sous l'en-tête (§9) : mêmes
-   * boutons, même ordre — pas de tiroir ni de menu escamotable, ça éviterait
-   * un état ouvert/fermé et une gestion de focus supplémentaires. */
-  .mise-en-page { flex-direction: column; min-height: 0; }
-  .nav-sections {
-    width: 100%; flex-direction: row; overflow-x: auto; overflow-y: visible;
-    max-height: none; position: static;
-    border-right: none; border-bottom: 1px solid var(--trait);
-    padding: 8px 10px;
-  }
-  .nav-onglet { flex: none; white-space: nowrap; }
-  .contenu { padding: 16px; }
+  .main { padding: 16px; }
+  .summary-band { flex-direction: column; }
+  .summary-item { border-right: 0; border-bottom: 1px solid var(--line); }
+  .summary-item:last-child { border-bottom: 0; }
+  .cycle-toolbar, .cycle-heading-row { align-items: flex-start; flex-direction: column; }
 }
 
 .bloc {
   background: var(--surface);
-  border: 1px solid var(--trait);
+  border: 1px solid var(--line);
   border-radius: 3px;
   padding: 12px 14px;
 }
@@ -357,20 +380,20 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .bloc h2 {
   margin: 0 0 8px;
   font-size: 18px;
-  color: var(--texte);
+  color: var(--ink);
   font-weight: 600;
   font-family: var(--sans);
 }
 .entete-bloc { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .entete-bloc h2 { margin-bottom: 8px; }
-.compteur { font-family: var(--sans); font-size: 11px; color: var(--texte-faible); font-variant-numeric: tabular-nums; }
-.note { margin: 0 0 8px; font-size: 12px; color: var(--texte-faible); }
-.note.avert { color: var(--texte-doux); border-left: 2px solid var(--accent); padding-left: 10px; }
+.compteur { font-family: var(--sans); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.note { margin: 0 0 8px; font-size: 12px; color: var(--muted); }
+.note.avert { color: var(--muted); border-left: 2px solid var(--primary); padding-left: 10px; }
 /* feature-008 : même rôle que `#porte-erreur` (jeton refusé) — réutilise le
  * jeton `--echec` déjà servi ailleurs pour un message d'erreur actionnable,
  * jamais une nouvelle teinte. */
-.note.erreur { color: var(--echec); }
-.note code { font-family: var(--mono); font-size: 11.5px; color: var(--accent); }
+.note.erreur { color: var(--danger); }
+.note code { font-family: var(--mono); font-size: 11.5px; color: var(--primary); }
 
 /* ---------------- agents ---------------- */
 .agents { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
@@ -383,30 +406,30 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   border-radius: 2px;
   font-size: 12.5px;
 }
-.agents li.actif { background: color-mix(in srgb, var(--actif) 12%, transparent); }
+.agents li.actif { background: color-mix(in srgb, var(--teal) 12%, transparent); }
 .agents .nom { font-family: var(--mono); font-size: 12px; }
-.agents li.actif .nom { color: var(--actif); }
+.agents li.actif .nom { color: var(--teal); }
 .agents .modele {
   font-family: var(--mono);
   font-size: 10.5px;
-  color: var(--texte-faible);
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
-.agents .plume { color: var(--texte-faible); font-size: 10.5px; }
+.agents .plume { color: var(--muted); font-size: 10.5px; }
 
 .systeme { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 12px; }
-.systeme dt { color: var(--texte-faible); }
+.systeme dt { color: var(--muted); }
 .systeme dd { margin: 0; font-family: var(--sans); font-size: 11.5px; text-align: right; font-variant-numeric: tabular-nums; }
-.systeme dd .suffixe-ecriture { color: var(--texte-faible); }
+.systeme dd .suffixe-ecriture { color: var(--muted); }
 
 /* ---------------- demande ---------------- */
 .demande textarea {
   width: 100%;
-  background: var(--creux);
-  border: 1px solid var(--trait);
+  background: var(--surface-high);
+  border: 1px solid var(--line);
   border-radius: 2px;
-  color: var(--texte-doux);
+  color: var(--muted);
   font-family: var(--sans);
   font-size: 13px;
   padding: 8px 10px;
@@ -422,37 +445,37 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
  * comme tout le reste de `.demande textarea`, jamais `.pilotage-jeton input`
  * (chasse fixe, réservée aux identifiants/jetons). */
 .demande .champ-titre { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
-.demande .champ-titre label { font-size: 12px; color: var(--texte-doux); }
+.demande .champ-titre label { font-size: 12px; color: var(--muted); }
 .demande input[type="text"] {
-  width: 100%; background: var(--creux); border: 1px solid var(--trait);
-  border-radius: 2px; color: var(--texte); font-family: var(--sans);
+  width: 100%; background: var(--surface-high); border: 1px solid var(--line);
+  border-radius: 2px; color: var(--ink); font-family: var(--sans);
   font-size: 13px; padding: 8px 10px;
 }
-.demande input[type="text"]:focus-visible { outline: 1px solid var(--accent); border-color: var(--accent); }
+.demande input[type="text"]:focus-visible { outline: 1px solid var(--primary); border-color: var(--primary); }
 
 /* ---------------- filtres ---------------- */
 .filtres { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
 .filtres input[type="search"] {
   flex: 1 1 260px;
-  background: var(--creux);
-  border: 1px solid var(--trait);
+  background: var(--surface-high);
+  border: 1px solid var(--line);
   border-radius: 2px;
-  color: var(--texte);
+  color: var(--ink);
   font-family: var(--sans);
   font-size: 12px;
   padding: 5px 9px;
 }
-.filtres input[type="search"]:focus-visible { outline: 1px solid var(--accent); border-color: var(--accent); }
-.bascule { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--texte-doux); cursor: pointer; }
-.bascule input { accent-color: var(--alerte); }
+.filtres input[type="search"]:focus-visible { outline: 1px solid var(--primary); border-color: var(--primary); }
+.bascule { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); cursor: pointer; }
+.bascule input { accent-color: var(--amber); }
 
 /* ---------------- kanban ---------------- */
 .kanban { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; align-items: start; }
 .colonne { flex: 1 1 0; min-width: 210px; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
 .colonne-entete {
   display: flex; justify-content: space-between; align-items: baseline;
-  font-family: var(--sans); font-size: 11px; color: var(--texte-faible); font-variant-numeric: tabular-nums;
-  border-bottom: 1px solid var(--trait); padding-bottom: 5px;
+  font-family: var(--sans); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums;
+  border-bottom: 1px solid var(--line); padding-bottom: 5px;
   position: sticky; top: 0; background: var(--surface); z-index: 1;
 }
 
@@ -466,14 +489,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   scrollbar-width: thin;
 }
 .colonne-liste::-webkit-scrollbar { width: 8px; }
-.colonne-liste::-webkit-scrollbar-thumb { background: var(--trait); border-radius: 4px; }
+.colonne-liste::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
 .colonne-liste::-webkit-scrollbar-track { background: transparent; }
 .carte {
-  /* var(--surface), pas var(--surface-2) (feature-019, §3) : la carte est
+  /* var(--surface), pas var(--surface-low) (feature-019, §3) : la carte est
    * déjà délimitée par son propre filet ci-dessous. */
   background: var(--surface);
-  border: 1px solid var(--trait-fin);
-  border-left: 2px solid var(--trait);
+  border: 1px solid color-mix(in srgb, var(--line) 60%, var(--surface));
+  border-left: 2px solid var(--line);
   border-radius: 2px;
   padding: 7px 9px;
   cursor: pointer;
@@ -483,10 +506,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   width: 100%;
   display: block;
 }
-.carte:hover { border-color: var(--texte-faible); }
-.carte:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.carte.divergente { border-left-color: var(--alerte); }
-.carte .cid { font-family: var(--mono); font-size: 11px; color: var(--texte-doux); }
+.carte:hover { border-color: var(--muted); }
+.carte:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.carte.divergente { border-left-color: var(--amber); }
+.carte .cid { font-family: var(--mono); font-size: 11px; color: var(--muted); }
 .carte .ctitre {
   font-size: 12.5px; margin-top: 2px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
@@ -495,10 +518,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .carte .cbas { display: flex; gap: 6px; align-items: center; margin-top: 5px; flex-wrap: wrap; }
 .etiquette {
   font-family: var(--sans); font-size: 10px; padding: 1px 5px; border-radius: 2px;
-  border: 1px solid var(--trait); color: var(--texte-faible);
+  border: 1px solid var(--line); color: var(--muted);
 }
-.etiquette.divergence { color: var(--alerte); border-color: color-mix(in srgb, var(--alerte) 45%, var(--trait)); }
-.etiquette.priorite-haute, .etiquette.priorite-critique { color: var(--echec); border-color: color-mix(in srgb, var(--echec) 45%, var(--trait)); }
+.etiquette.divergence { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 45%, var(--line)); }
+.etiquette.priorite-haute, .etiquette.priorite-critique { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--line)); }
 
 /* ---------------- cycles (feature-016) ----------------
  * Liste en accordéon (docs/DESIGN-SYSTEM.md §6) : un seul détail ouvert à la
@@ -509,7 +532,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
  * CONTOUR et la FORME d'un badge dédié (`.cycle-etat`), jamais en recolorant
  * un texte d'identité par-dessus. */
 .cycles { list-style: none; margin: 0; padding: 0; }
-.cycle { border-top: 1px solid var(--trait-fin); }
+.cycle { border-top: 1px solid color-mix(in srgb, var(--line) 60%, var(--surface)); }
 .cycle:first-child { border-top: none; }
 .cycle-entete { margin: 0; }
 .cycle-bouton {
@@ -517,10 +540,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   width: 100%; text-align: left; padding: 9px 2px; margin: 0;
   background: none; border: none; color: inherit; font: inherit; cursor: pointer;
 }
-.cycle-bouton:hover { background: var(--surface-2); }
-.cycle-bouton:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cycle-bouton:hover { background: var(--surface-low); }
+.cycle-bouton:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .cycle-designation { font-family: var(--sans); font-size: 12.5px; }
-.cycle-resume { color: var(--texte-faible); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.cycle-resume { color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 
 /* Badge d'état — tableau arrêté à quatre cases (feature-016). Le libellé
  * n'est JAMAIS tronqué, à aucune largeur : c'est ce qui rend acceptable le
@@ -537,38 +560,38 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   font-size: 11px; white-space: normal;
 }
 .cycle-etat .glyphe { font-size: 11px; line-height: 1; }
-.cycle-etat.en-cours { border: 1px solid var(--actif); color: var(--actif); }
-.cycle-etat.termine { border: 1px solid var(--trait); color: var(--texte); }
+.cycle-etat.en-cours { border: 1px solid var(--teal); color: var(--teal); }
+.cycle-etat.termine { border: 1px solid var(--line); color: var(--ink); }
 /* Pointillé (`dotted`), PAS tirets (`dashed`, revue) : les tirets sont
  * réservés au RÔLE (`.maillon.principal`) ailleurs dans cette feuille —
  * un même état ne peut pas se dessiner en pointillé dans la chaîne
  * (`.maillon.sans-cloture`, plus bas) et en tirets dans ce badge. */
-.cycle-etat.sans-cloture { border: 1px dotted var(--contour-etat); color: var(--texte); }
+.cycle-etat.sans-cloture { border: 1px dotted var(--line-strong); color: var(--ink); }
 /* Contour double = deuxième forme distincte, réservée à « indéterminé » —
  * aucun autre état de ce tableau ne la porte. */
-.cycle-etat.indetermine { border: 3px double var(--contour-etat); color: var(--texte); }
+.cycle-etat.indetermine { border: 3px double var(--line-strong); color: var(--ink); }
 
 .cycle-detail { padding: 0 2px 12px; }
 .cycle-proprietes {
   margin: 0 0 12px; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px;
   font-size: 12px; max-width: 420px;
 }
-.cycle-proprietes dt { color: var(--texte-faible); }
+.cycle-proprietes dt { color: var(--muted); }
 .cycle-proprietes dd { margin: 0; font-family: var(--sans); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 
 /* ---- table des passages ---- */
 .table-passages { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 10px; }
 .table-passages th, .table-passages td { text-align: left; padding: 3px 8px 3px 0; }
 .table-passages th {
-  color: var(--texte-faible); font-weight: 400; font-size: 11px;
-  border-bottom: 1px solid var(--trait-fin);
+  color: var(--muted); font-weight: 400; font-size: 11px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, var(--surface));
 }
-.table-passages td { border-bottom: 1px solid var(--trait-fin); font-variant-numeric: tabular-nums; }
+.table-passages td { border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, var(--surface)); font-variant-numeric: tabular-nums; }
 .table-passages tr:last-child td { border-bottom: none; }
 /* Ancrage du rebouclage sur SA ligne (réutilise `indicesRepris`) : même
  * grammaire que `.maillon.repris` dans la chaîne — un liseré, jamais un fond
  * ni une bordure complète. */
-.table-passages tr.repris { border-left: 2px dashed var(--alerte); }
+.table-passages tr.repris { border-left: 2px dashed var(--amber); }
 .table-passages .colonne-agent { display: flex; align-items: center; gap: 6px; }
 .agent-sigle {
   display: inline-flex; align-items: center; justify-content: center;
@@ -608,23 +631,48 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
  * atteignable au clavier (§8). */
 .dg-entete { display: flex; align-items: baseline; gap: 10px; margin: 16px 2px 6px; }
 .dg-entete-titre { font-size: 13px; font-weight: 600; }
-.dg-entete-phrase { font-size: 12px; color: var(--texte-faible); }
+.dg-entete-phrase { font-size: 12px; color: var(--muted); }
 
 /* -- piste (item S/C3) : radius 6, fond creux, voiles latéraux signalant le
  * défilement caché — le VOILE est un simple dégradé CSS, aucun script. */
 .dg-piste {
   position: relative;
-  background: var(--creux); border: 1px solid var(--trait); border-radius: 6px;
+  background: var(--surface-high); border: 1px solid var(--line); border-radius: 6px;
   margin-bottom: 10px;
+  /* ⚠️ Repli LOCAL, SCOPÉ À `.dg-piste` (jamais `:root`) — 6 des 15 jetons
+   * sémantiques retirés par F1_TRANSITOIRE_SEMANTIQUE_CLAIR (lot 3) sont
+   * encore consommés EN LIGNE par le diagramme HÉRITÉ (feature-017/020,
+   * `construireCercleAgent`/`construireSoclesCreneau`, app.js l.799-954,
+   * ex. `guide.style.stroke = "var(--trait-fin)"`) : ce code peint « le
+   * graphe dans app.js », explicitement hors périmètre de ce lot — il sera
+   * réécrit au lot 4, pas ici. Sans ce repli, ces 6 chaînes `var(--x)`
+   * pointeraient vers rien et le diagramme peindrait la couleur héritée par
+   * défaut (souvent transparente/noire), cassant silencieusement
+   * `test_app_diagramme_navigateur.py` (E7 : invariant de contraste
+   * `--trait-fin` STRICTEMENT < `--trait`, mesuré, JAMAIS ailleurs que dans
+   * ce commentaire avant ce lot).
+   * `test_conformite_jetons.js` (`declarationsRoot`) ne scanne QUE les blocs
+   * `:root` — une redéclaration ICI, sur `.dg-piste`, est invisible à F1 et
+   * ne réouvre donc PAS le registre `F1_aucun_jeton_semantique_transitoire_
+   * restant`. Valeurs IDENTIQUES à celles que `:root` portait avant ce
+   * lot : aucun pixel ne change. Ferme avec le diagramme hérité lui-même,
+   * au lot 4 (ADR-0032/ADR-0038), en même temps que ce fichier réécrit ses
+   * appelants. */
+  --trait: var(--line);
+  --trait-fin: color-mix(in srgb, var(--line) 60%, var(--surface));
+  --contour-etat: var(--line-strong);
+  --texte-faible: var(--muted);
+  --alerte: var(--amber);
+  --creux: var(--surface-high);
 }
 .diagramme-scroll { overflow-x: auto; overflow-y: hidden; padding: 8px 0 2px; }
-.diagramme-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.diagramme-scroll:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .dg-svg { display: block; }
 .dg-voile {
   position: absolute; top: 1px; bottom: 11px; width: 34px; pointer-events: none;
 }
-.dg-voile.g { left: 1px; background: linear-gradient(90deg, var(--creux), transparent); }
-.dg-voile.d { right: 1px; background: linear-gradient(270deg, var(--creux), transparent); }
+.dg-voile.g { left: 1px; background: linear-gradient(90deg, var(--surface-high), transparent); }
+.dg-voile.d { right: 1px; background: linear-gradient(270deg, var(--surface-high), transparent); }
 
 /* -- groupes structurants — le rendu vient entièrement de leurs enfants ;
  * déclarés explicitement pour que « posé ⇔ déclaré » (item C1) reste
@@ -654,7 +702,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
  * (défaut A, D1) : trop fréquent pour être une exception visuelle. */
 .dg-contour-plein { stroke-dasharray: none; }
 .dg-contour-pointille { stroke-dasharray: 2 3; }
-.dg-croix-echec line { stroke: var(--alerte); stroke-width: 2; stroke-linecap: round; }
+.dg-croix-echec line { stroke: var(--amber); stroke-width: 2; stroke-linecap: round; }
 .dg-anneau-en-cours { stroke-width: 1; }
 /* `pointer-events: none` laisse le survol ATTEINDRE le cercle sous le
  * texte (le sigle est peint dessus, au même point). */
@@ -684,27 +732,27 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
  * donc en ligne, dans `element.style.fontSize`, qui gagne sur l'un ET
  * l'autre. */
 .dg-socle-heure, .dg-socle-nom {
-  font-family: var(--sans); fill: var(--texte-faible);
+  font-family: var(--sans); fill: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 .dg-socle-duree, .dg-socle-heure-duree {
-  font-family: var(--mono); fill: var(--texte); font-variant-numeric: tabular-nums;
+  font-family: var(--mono); fill: var(--ink); font-variant-numeric: tabular-nums;
 }
 .dg-socle-duree.actif, .dg-socle-heure-duree.actif { font-weight: 700; }
-.dg-repli, .dg-libelle-cadre { font-family: var(--sans); fill: var(--texte-faible); }
+.dg-repli, .dg-libelle-cadre { font-family: var(--sans); fill: var(--muted); }
 
 /* -- créneau empilé (agents simultanés) -- */
-.dg-cadre-simultane { stroke: var(--trait); stroke-width: 1; }
+.dg-cadre-simultane { stroke: var(--line); stroke-width: 1; }
 .dg-libelle-cadre-masque { }
 
 /* -- liens et pastilles d'attente -- */
-.dg-lien { stroke: var(--trait); stroke-width: 1.2; }
-.dg-lien-pointe { stroke: var(--texte-faible); stroke-width: 1; stroke-linejoin: round; }
+.dg-lien { stroke: var(--line); stroke-width: 1.2; }
+.dg-lien-pointe { stroke: var(--muted); stroke-width: 1; stroke-linejoin: round; }
 .dg-pastille-attente rect {
-  fill: var(--creux); stroke: var(--trait-fin); stroke-width: 1;
+  fill: var(--surface-high); stroke: color-mix(in srgb, var(--line) 60%, var(--surface)); stroke-width: 1;
 }
 .dg-pastille-attente text {
-  font-family: var(--sans); font-size: 10.5px; fill: var(--texte-faible);
+  font-family: var(--sans); font-size: 10.5px; fill: var(--muted);
 }
 
 /* -- rebouclage -- */
@@ -715,7 +763,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
 .diagramme-legende {
   margin: 0 0 12px; display: grid; grid-template-columns: auto 1fr;
-  gap: 2px 10px; font-size: 11px; color: var(--texte-faible); max-width: 480px;
+  gap: 2px 10px; font-size: 11px; color: var(--muted); max-width: 480px;
 }
 .diagramme-legende dt { font-family: var(--sans); }
 .diagramme-legende dd { margin: 0; }
@@ -724,18 +772,18 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .chaine { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-bottom: 10px; }
 .maillon {
   display: inline-flex; align-items: baseline; gap: 6px;
-  /* var(--surface), pas var(--surface-2) (feature-019, §3) : le maillon est
+  /* var(--surface), pas var(--surface-low) (feature-019, §3) : le maillon est
    * déjà délimité par son propre filet ci-dessous. */
-  background: var(--surface); border: 1px solid var(--trait-fin);
+  background: var(--surface); border: 1px solid color-mix(in srgb, var(--line) 60%, var(--surface));
   border-radius: 2px; padding: 3px 7px; font-size: 12px;
 }
 .maillon .mnom { font-family: var(--mono); font-size: 11.5px; }
-.maillon .mduree { font-family: var(--sans); font-size: 10.5px; color: var(--texte-faible); font-variant-numeric: tabular-nums; }
+.maillon .mduree { font-family: var(--sans); font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 /* Précédence identité/état (§8) : le texte (`.mnom`) ne porte plus la
  * couleur d'état — l'identité de l'agent la porte désormais (couleur posée
  * en ligne par app.js). L'état reste lisible au CONTOUR ci-dessous. */
-.maillon.en-cours { border-color: color-mix(in srgb, var(--actif) 50%, var(--trait)); }
-.maillon.echec { border-color: color-mix(in srgb, var(--echec) 50%, var(--trait)); }
+.maillon.en-cours { border-color: color-mix(in srgb, var(--teal) 50%, var(--line)); }
+.maillon.echec { border-color: color-mix(in srgb, var(--danger) 50%, var(--line)); }
 /* Fin sans annonce (bug-013/feature-010) : NI teal (en cours) ni rouille
  * (échec) — ce n'est ni un succès ni un échec du travail, un simple fait
  * signalé. Bordure EN POINTILLÉ (`dotted`) pour le distinguer visuellement
@@ -744,11 +792,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
  * (revue, §8) : un même trait ne peut pas porter à la fois un rôle et un
  * état. Combinaison impossible par construction (events.py) : le segment
  * principal a `termine: true` fixé à la création, jamais `sans_cloture`. */
-.maillon.sans-cloture { border-color: var(--trait); border-style: dotted; }
+.maillon.sans-cloture { border-color: var(--line); border-style: dotted; }
 /* Ancrage du rebouclage dans la chaîne (feature-010, §8) : un simple liseré,
  * jamais un fond ni une bordure complète — le maillon reste lisible comme un
  * agent normal, ce trait ajoute juste le contexte « déjà vu ». */
-.maillon.repris { border-left: 2px dashed var(--alerte); }
+.maillon.repris { border-left: 2px dashed var(--amber); }
 
 /* L'agent principal est un acteur à part : c'est lui qui orchestre. Un fond
  * creusé et un nom en retrait le distinguent des sous-agents sans le mettre en
@@ -756,16 +804,16 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
  * TIRETS (`dashed`) restent le registre du RÔLE (`.principal`) — jamais
  * réutilisés pour un état : l'état s'écrit en POINTILLÉ (`dotted`,
  * `.sans-cloture` ci-dessus), jamais en tirets. */
-.maillon.principal { background: var(--creux); border-style: dashed; }
-.maillon.principal .mnom { color: var(--texte-faible); font-style: italic; }
-.fleche { color: var(--texte-faible); font-size: 11px; }
-.wf-notes { margin-top: 6px; margin-bottom: 6px; font-size: 11.5px; color: var(--texte-faible); }
-.wf-notes .alerte { color: var(--alerte); }
+.maillon.principal { background: var(--surface-high); border-style: dashed; }
+.maillon.principal .mnom { color: var(--muted); font-style: italic; }
+.fleche { color: var(--muted); font-size: 11px; }
+.wf-notes { margin-top: 6px; margin-bottom: 6px; font-size: 11.5px; color: var(--muted); }
+.wf-notes .alerte { color: var(--amber); }
 /* Une information ATTENDUE ne se peint pas comme une anomalie. */
-.wf-notes.attendu { color: var(--texte-faible); cursor: help; }
+.wf-notes.attendu { color: var(--muted); cursor: help; }
 /* Le rebouclage EST une anomalie du déroulement nominal (pas du récit) :
  * seule bande en ambre du bloc de détail, distincte de `.attendu`. */
-.wf-notes.reboucle { color: var(--alerte); }
+.wf-notes.reboucle { color: var(--amber); }
 
 .action-repli { margin-bottom: 8px; }
 
@@ -773,62 +821,62 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 /* Un bouton qui écrit dans le dépôt et dépense de l'argent n'a pas la
  * sémantique visuelle d'un filtre (.bascule) ni d'un lien de navigation
  * (.fichier) : il porte sa propre classe, jamais réutilisée ailleurs. */
-.jauge.pilotage-actif { color: var(--actif); border-color: color-mix(in srgb, var(--actif) 40%, var(--trait)); }
+.jauge.pilotage-actif { color: var(--teal); border-color: color-mix(in srgb, var(--teal) 40%, var(--line)); }
 .jauge.pilotage-en-cours {
-  color: var(--actif); font-weight: 600;
-  border-color: color-mix(in srgb, var(--actif) 50%, var(--trait));
+  color: var(--teal); font-weight: 600;
+  border-color: color-mix(in srgb, var(--teal) 50%, var(--line));
 }
 
 .pilotage-select, .pilotage-jeton { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; max-width: 420px; }
-.pilotage-select label, .pilotage-jeton label { font-size: 12px; color: var(--texte-doux); }
+.pilotage-select label, .pilotage-jeton label { font-size: 12px; color: var(--muted); }
 .pilotage-select select, .pilotage-jeton input {
-  background: var(--creux); border: 1px solid var(--trait); border-radius: 2px;
-  color: var(--texte); font-family: var(--mono); font-size: 12.5px; padding: 6px 8px;
+  background: var(--surface-high); border: 1px solid var(--line); border-radius: 2px;
+  color: var(--ink); font-family: var(--mono); font-size: 12.5px; padding: 6px 8px;
   min-height: 32px;
 }
 .pilotage-select select:focus-visible, .pilotage-jeton input:focus-visible {
-  outline: 2px solid var(--accent); outline-offset: 1px;
+  outline: 2px solid var(--primary); outline-offset: 1px;
 }
 
 .pilotage-ligne { font-family: var(--sans); font-size: 12.5px; margin: 0 0 8px; }
-.pilotage-ligne.en-cours { color: var(--actif); }
-.pilotage-ligne.bloque { color: var(--alerte); }
-.pilotage-ligne.termine { color: var(--actif); }
-.pilotage-ligne.echec { color: var(--echec); }
-.pilotage-ligne.interrompu { color: var(--texte-faible); }
+.pilotage-ligne.en-cours { color: var(--teal); }
+.pilotage-ligne.bloque { color: var(--amber); }
+.pilotage-ligne.termine { color: var(--teal); }
+.pilotage-ligne.echec { color: var(--danger); }
+.pilotage-ligne.interrompu { color: var(--muted); }
 
 .pilotage-tronque {
-  font-family: var(--sans); font-size: 11.5px; color: var(--alerte);
-  border: 1px solid color-mix(in srgb, var(--alerte) 45%, var(--trait));
+  font-family: var(--sans); font-size: 11.5px; color: var(--amber);
+  border: 1px solid color-mix(in srgb, var(--amber) 45%, var(--line));
   border-radius: 2px; padding: 4px 8px; margin-bottom: 6px;
 }
 
 #sortie-lancement {
-  margin: 0 0 8px; padding: 10px; background: var(--creux); border: 1px solid var(--trait);
+  margin: 0 0 8px; padding: 10px; background: var(--surface-high); border: 1px solid var(--line);
   border-radius: 2px; font-family: var(--mono); font-size: 12px; line-height: 1.55;
-  white-space: pre-wrap; overflow-wrap: anywhere; color: var(--texte-doux);
+  white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted);
   max-height: 320px; overflow-y: auto;
 }
 
 .action-ecriture {
   min-height: 48px; min-width: 48px; padding: 8px 18px; /* cible M3, F6 lot 2 */
-  background: var(--accent); color: var(--fond); border: none; border-radius: 2px;
+  background: var(--primary); color: var(--bg); border: none; border-radius: 2px;
   font-weight: 600; font: inherit; cursor: pointer;
 }
-/* `var(--texte)` plutôt qu'un littéral « white » : `--texte` est sombre sur
+/* `var(--ink)` plutôt qu'un littéral « white » : `--texte` est sombre sur
  * ce thème clair (le mélange ASSOMBRIT), donc l'effet de survol reste
  * cohérent avec le reste de la palette sans littéral dupliqué. */
-.action-ecriture:hover { background: color-mix(in srgb, var(--accent) 88%, var(--texte)); }
-.action-ecriture:focus-visible { outline: 2px solid var(--texte); outline-offset: 2px; }
+.action-ecriture:hover { background: color-mix(in srgb, var(--primary) 88%, var(--ink)); }
+.action-ecriture:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .action-ecriture:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .pilotage-secondaire {
   min-height: 48px; min-width: 48px; padding: 8px 16px; background: none; /* cible M3, F6 lot 2 */
-  border: 1px solid var(--trait); color: var(--texte-doux); border-radius: 2px;
+  border: 1px solid var(--line); color: var(--muted); border-radius: 2px;
   font: inherit; cursor: pointer;
 }
-.pilotage-secondaire:hover { color: var(--texte); border-color: var(--texte-faible); }
-.pilotage-secondaire:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pilotage-secondaire:hover { color: var(--ink); border-color: var(--muted); }
+.pilotage-secondaire:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .pilotage-secondaire:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .pilotage-boutons { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
@@ -849,11 +897,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   display: grid; grid-template-columns: 76px 1fr; gap: 8px; align-items: baseline;
   padding: 3px 0; font-size: 12px; width: 100%;
   background: none; border: none; color: inherit; text-align: left; cursor: pointer;
-  border-bottom: 1px solid var(--trait-fin);
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, var(--surface));
 }
-.fichier:hover .fchemin, .fichier:hover .fsujet { color: var(--accent); }
-.fichier:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.fichier .fcode { font-family: var(--mono); font-size: 10.5px; color: var(--texte-faible); }
+.fichier:hover .fchemin, .fichier:hover .fsujet { color: var(--primary); }
+.fichier:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.fichier .fcode { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
 /* Chemin de fichier — un identifiant technique (§4), chasse fixe. */
 .fichier .fchemin { font-family: var(--mono); font-size: 11.5px; overflow-wrap: anywhere; }
 /* Sujet de commit (feature-019) — une phrase écrite par un humain, pas un
@@ -865,37 +913,37 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .timeline { list-style: none; margin: 0; padding: 0; max-height: 340px; overflow-y: auto; }
 .timeline li {
   display: grid; grid-template-columns: 74px 1fr; gap: 9px;
-  padding: 2px 0; font-size: 12px; border-bottom: 1px solid var(--trait-fin);
+  padding: 2px 0; font-size: 12px; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, var(--surface));
 }
-.timeline .heure { font-family: var(--sans); font-size: 11px; color: var(--texte-faible); font-variant-numeric: tabular-nums; }
+.timeline .heure { font-family: var(--sans); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .timeline .quoi { font-family: var(--mono); font-size: 11.5px; overflow-wrap: anywhere; }
-.timeline li.echec .quoi { color: var(--echec); }
-.timeline li.agent .quoi { color: var(--actif); }
+.timeline li.echec .quoi { color: var(--danger); }
+.timeline li.agent .quoi { color: var(--teal); }
 
-.vide { color: var(--texte-faible); font-size: 12px; font-style: italic; }
+.vide { color: var(--muted); font-size: 12px; font-style: italic; }
 
 /* ---------------- tiroir ---------------- */
 .tiroir {
   position: fixed; inset: 0 0 0 auto; width: min(760px, 100%);
-  background: var(--surface); border-left: 1px solid var(--trait);
+  background: var(--surface); border-left: 1px solid var(--line);
   display: flex; flex-direction: column; z-index: 20;
-  box-shadow: -16px 0 40px var(--ombre);
+  box-shadow: -16px 0 40px color-mix(in srgb, var(--ink) 16%, transparent);
 }
 .tiroir[hidden] { display: none; }
 .tiroir-barre {
   display: flex; justify-content: space-between; align-items: center; gap: 10px;
-  padding: 10px 14px; border-bottom: 1px solid var(--trait);
+  padding: 10px 14px; border-bottom: 1px solid var(--line);
   font-family: var(--mono); font-size: 12px;
 }
 .tiroir-barre button {
-  background: none; border: 1px solid var(--trait); color: var(--texte-doux);
+  background: none; border: 1px solid var(--line); color: var(--muted);
   border-radius: 2px; cursor: pointer; padding: 2px 8px; font: inherit;
 }
-.tiroir-barre button:hover { color: var(--texte); border-color: var(--texte-faible); }
+.tiroir-barre button:hover { color: var(--ink); border-color: var(--muted); }
 #tiroir-contenu {
   margin: 0; padding: 14px; overflow: auto; flex: 1;
   font-family: var(--mono); font-size: 12px; line-height: 1.55;
-  white-space: pre-wrap; overflow-wrap: anywhere; color: var(--texte-doux);
+  white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted);
 }
 
 /* ---------------- porte (authentification) ---------------- */
@@ -908,31 +956,31 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   display: flex; align-items: center; justify-content: center;
 }
 .porte[hidden] { display: none; }
-.porte-fond { position: absolute; inset: 0; background: var(--voile); }
+.porte-fond { position: absolute; inset: 0; background: color-mix(in srgb, var(--ink) 45%, transparent); }
 .porte-carte {
   /* Mêmes déclarations que `.bloc` — le gabarit imposé par le design ne
    * porte pas la classe `bloc` en plus de `porte-carte`, donc on les
    * reproduit ici plutôt que de modifier le HTML livré. */
   position: relative;
   background: var(--surface);
-  border: 1px solid var(--trait);
+  border: 1px solid var(--line);
   border-radius: 3px;
   padding: 12px 14px;
   max-width: 380px;
   width: calc(100% - 32px);
 }
-.porte-carte h2 { margin: 0 0 8px; font-size: 15px; font-weight: 600; color: var(--texte); }
-.porte-carte label { display: block; font-size: 12px; color: var(--texte-doux); margin-bottom: 4px; }
+.porte-carte h2 { margin: 0 0 8px; font-size: 15px; font-weight: 600; color: var(--ink); }
+.porte-carte label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
 /* `#porte-champ` reprend `.pilotage-jeton input` TEL QUEL (bug-012) : même
  * structure de règles, dupliquée ici car le HTML livré n'enveloppe pas le
  * champ dans un conteneur `.pilotage-jeton`. */
 #porte-champ {
   width: 100%;
-  background: var(--creux); border: 1px solid var(--trait); border-radius: 2px;
-  color: var(--texte); font-family: var(--mono); font-size: 12.5px; padding: 6px 8px;
+  background: var(--surface-high); border: 1px solid var(--line); border-radius: 2px;
+  color: var(--ink); font-family: var(--mono); font-size: 12.5px; padding: 6px 8px;
   min-height: 32px; margin-bottom: 8px;
 }
-#porte-champ:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-#porte-erreur { color: var(--echec); }
+#porte-champ:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+#porte-erreur { color: var(--danger); }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

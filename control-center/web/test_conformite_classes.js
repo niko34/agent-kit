@@ -31,20 +31,17 @@
 const lib = require("./test_conformite_lib.js");
 const { ADOPTE, PARTITION_CLASSES } = require("./test_conformite_partition_donnees.js");
 
+// F3A_CLASSE_POSEE_SANS_DECLARATION_PREEXISTANTE : RETIRÉE du registre au
+// lot 3 (clôture réelle) — le défaut préexistant (`class="bloc pilotage"`
+// sans règle `.pilotage`) a disparu à la réécriture complète d'index.html
+// (feature-021 cycle 2, F7) : la section « Pilotage » ne porte plus que
+// `class="bloc"`.
 const ATTENDU_ROUGE = {
   F3A_CLASSES_ADOPTEES_ABSENTES: {
     description: "les classes du prototype classées « adopté » par F0 (structure, kanban, " +
       "graphe d'agents, bottom sheet) sont encore absentes d'index.html et d'app.css : la " +
-      "structure mono-écran n'est écrite qu'au lot 3, le graphe qu'au lot 4.",
+      "structure mono-écran est écrite au lot 3, le graphe qu'au lot 4.",
     lotDeCloture: "lot 4",
-    date: "2026-09-21",
-  },
-  F3A_CLASSE_POSEE_SANS_DECLARATION_PREEXISTANTE: {
-    description: "défaut PRÉEXISTANT, sans rapport avec feature-021, découvert par cette " +
-      "garde neuve : `index.html` pose `class=\"bloc pilotage\"` (ligne 181) mais aucune règle " +
-      "`.pilotage` n'existe dans app.css (seules des classes composées `pilotage-*` existent). " +
-      "Disparaît de lui-même à la réécriture complète d'index.html.",
-    lotDeCloture: "lot 3",
     date: "2026-09-21",
   },
 };

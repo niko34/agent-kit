@@ -1,7 +1,7 @@
 # Bug — La porte d'authentification laisse la page atteignable au clavier
 
 - **Type** : bug
-- **Statut** : todo
+- **Statut** : doing — **absorbé dans le cycle `feature-021`** (lot 3), au titre d'`ADR-0017`
 - **Priorité** : normale
 - **Version cible** : [à fixer par l'agent qui reprend cette spec]
 - **Créée** : 2026-09-15 (passage GATE P2 de `feature-019`)
@@ -16,6 +16,23 @@
 - [x] test-engineer
 - [x] code-reviewer
 - [x] doc-writer
+
+## Absorption dans le cycle `feature-021` (2026-09-21)
+
+Ce bug n'est pas traité seul. Il entre dans le cycle `feature-021` **au lot 3**,
+au titre d'`ADR-0017` : le lot 3 réécrit `index.html` en entier, donc la porte
+d'authentification change de place dans le document de toute façon. Traiter le
+défaut ailleurs qu'ici reviendrait à corriger une structure qui n'existera plus
+à la fin du cycle, puis à refaire le correctif sur la structure neuve.
+
+Conséquence de forme : le cycle porte **deux specs dans `doing/`**, avec une
+**seule** phase de test, de revue et de documentation. Le journal de bord de
+référence est celui de `feature-021`, section « cycle 2 » — c'est là que les
+verdicts de ce bug sont écrits, pas ici.
+
+Le **correctif structurel** (porte enfant direct de `<body>`, `inert` sur ses
+frères) est au lot 3. Le **comptage** des contrôles atteignables hors modale,
+qui est le critère d'acceptation chiffré, est la garde F4b au **lot 5**.
 
 ## Symptôme observé
 
@@ -85,3 +102,31 @@ de toute section : ce sont deux conditions déjà établies et gardées par
 - La rétention de focus **à l'intérieur** de la modale, si elle fonctionne déjà.
 - Toute modification des routes ou du modèle d'autorisation : le serveur reste
   la seule autorité.
+
+## Notes d'implémentation (lot 3 de `feature-021`)
+
+Le correctif structurel est livré. `control-center/web/index.html` conserve
+`#porte-jeton` en enfant direct de `<body>`, au-dessus des sections (condition
+héritée de `feature-019`, non régressée par la réécriture du lot 3).
+`control-center/web/app.js` ajoute :
+
+- `freresDeLaPorte()` — lit les enfants du parent de `#porte-jeton` autres
+  qu'elle-même (`.bandeau-hote`, le lien d'évitement, `.app-shell`, `.tiroir`).
+- `fixerInerteAutourDeLaPorte(inerte)` — pose `inert` sur ces frères à
+  l'ouverture, le retire à la fermeture. `ouvrirPorte()`/`fermerPorte()`
+  l'appellent ; la rétention de focus déjà présente (piège `Tab` interne à la
+  porte) reste en complément, elle ne suffisait pas seule.
+- Le focus est mémorisé (`dernierFocusAvantPorte`) à l'ouverture et restauré
+  à la fermeture ; repli nommé sur `#main-content` si rien n'était mémorisé
+  ou si l'élément a disparu du DOM entre-temps — jamais `document.body`.
+
+`control-center/web/test_app_bug017.js` et son pendant `.py` couvrent le
+mécanisme (frères rendus inertes à l'ouverture, retirés à la fermeture, la
+porte elle-même ne reçoit jamais `inert`).
+
+**Ce que ce lot ne livre pas** : le critère d'acceptation « un test **compte**
+les contrôles atteignables hors modale et exige zéro » est la garde `F4b`,
+prévue au **lot 5** du cycle (harnais HTTP + navigateur, seul moyen fiable de
+mesurer l'atteignabilité réelle). Ce lot livre le mécanisme structurel que
+cette garde mesurera, pas la mesure elle-même — les critères d'acceptation
+correspondants restent donc à cocher au lot 5, pas ici.

@@ -27,20 +27,11 @@
 const lib = require("./test_conformite_lib.js");
 const { ADOPTE, PARTITION_IDS } = require("./test_conformite_partition_donnees.js");
 
-const ATTENDU_ROUGE = {
-  F4A_IDS_ARIA_MANQUANTS: {
-    description: "les id/role/aria-* du prototype classés « adopté » par F0 sont encore " +
-      "absents d'index.html : la structure mono-écran n'est réécrite qu'au lot 3.",
-    lotDeCloture: "lot 3",
-    date: "2026-09-21",
-  },
-  F4A_ROLE_TAB_RESIDUEL: {
-    description: "index.html porte encore 6 `role=\"tab\"` du découpage en onglets " +
-      "(feature-019/feature-016), retirés seulement au lot 3.",
-    lotDeCloture: "lot 3",
-    date: "2026-09-21",
-  },
-};
+// F4A_IDS_ARIA_MANQUANTS et F4A_ROLE_TAB_RESIDUEL : RETIRÉES du registre au
+// lot 3 (clôture réelle, feature-021 cycle 2) — index.html est réécrit en
+// structure mono-écran (F7) : les 25 id « adopté » de F0 sont présents et
+// conformes, et les 6 `role="tab"` du découpage en onglets ont disparu.
+const ATTENDU_ROUGE = {};
 
 // Écart déclaré : le <dialog> de la porte d'authentification n'existe PAS
 // dans le prototype — il est ajouté ici comme exigence supplémentaire,

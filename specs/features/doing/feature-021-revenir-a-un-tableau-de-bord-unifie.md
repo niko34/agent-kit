@@ -1620,7 +1620,155 @@ par ce dépôt.
   tient — une note qui se vérifie, pas une intention.
 - [2026-09-21 18:52] **LOT 2 CLOS** — livrable F6 (avec la réserve `.nav-onglet` 44 px,
   clôture lot 3). Suite **1591 cas, 0 échec**. Trois lots sur sept. Reste : 3, 4, 5, 6.
-  ⚠️ Non commité à ce stade.
+  Commité en `d14dee2`.
+- [2026-09-21 19:14] **ABSORPTION de `bug-017`** — agent principal — `git mv` de
+  `specs/features/todo/` vers `doing/` (**déplacement, jamais copie** — `check_specs.sh`
+  revérifié : 48 specs, aucun doublon). Statut passé à `doing`, et une section
+  « Absorption dans le cycle » écrite dans la spec du bug. Motif `ADR-0017` : le lot 3
+  réécrit `index.html` en entier, **la porte change donc de place dans le document de
+  toute façon** ; traiter le défaut ailleurs reviendrait à corriger une structure qui
+  n'existera plus à la fin du cycle, puis à refaire le correctif sur la structure neuve.
+  Conséquence de forme assumée : le cycle porte **deux specs dans `doing/`** avec une
+  **seule** phase de test, de revue et de documentation, et le journal de référence est
+  celui-ci. Répartition : **correctif structurel au lot 3** (porte enfant direct de
+  `<body>`, `inert` sur ses frères) ; **comptage des contrôles atteignables — le critère
+  chiffré — en F4b au lot 5**. Relevé de l'auditeur du 2026-09-15, repris tel quel :
+  porte ouverte, **2** contrôles atteignables hors modale en section par défaut, **jusqu'à
+  6** en section « Développer », dont le bouton de lancement.
+- [2026-09-21 19:16] Lot 3 — **LANCÉ** — frontend-developer. État du registre à l'entrée,
+  relevé entrée par entrée : **4 à fermer** (`F4A_ROLE_TAB_RESIDUEL` → 0 `role="tab"`, il
+  y en a 6 ; `F4A_IDS_ARIA_MANQUANTS` → les 25 id adoptés ; `F3A_CLASSE_POSEE_SANS_
+  DECLARATION_PREEXISTANTE` → `.pilotage` ; `F1_TRANSITOIRE_SEMANTIQUE_CLAIR` → les 15
+  jetons sémantiques) et **3 à NE PAS toucher**, qui sont du lot 4
+  (`F3A_CLASSES_ADOPTEES_ABSENTES`, car les 71 classes adoptées incluent celles du graphe ;
+  `F1_TRANSITOIRE_IDENTITE_AGENT` ; `F2_TABLE_DES_DUREES`). Trois contraintes portées au
+  brief : (1) **`#porte-jeton` doit survivre** — écart déclaré de F4a, déjà vert, une
+  réécriture qui le perd casse la porte ; (2) retirer les 15 jetons sémantiques veut dire
+  **re-pointer** chaque `var(--fond)`/`var(--texte)`/`var(--trait-fin)` sur son jeton M3,
+  la règle survivant à l'indirection — avec l'invariant « `--trait-fin` STRICTEMENT moins
+  contrasté que `--trait` », qui n'existe **que** dans un commentaire d'`app.css` l. 587 et
+  sur lequel le lot 2 s'est déjà fait piéger ; (3) la réserve `.nav-onglet` **se ferme
+  ici**, aucune cible sous 48 px dans ce qui est écrit. Mutation exigée : réintroduire un
+  `role="tab"`, retirer un id adopté, **et retirer l'`inert` des frères de la porte** — si
+  cette troisième n'est vue par rien, le correctif de `bug-017` serait livré sans garde,
+  ce qui a déjà été refusé au lot 1 pour le thème sombre.
+- [2026-09-21 20:02] Lot 3 — frontend-developer — **F7 + `bug-017` livrés**. `index.html`
+  réécrit (215 → 279 lignes), **0** `role="tab"` (6 avant), **25 id adoptés** conformes,
+  `#porte-jeton` conservé et passé **enfant direct de `<body>`**, aucune cible sous 48 px
+  (`.tab-button`/`.small-button` corrigés 36 → 48). Registre : **4 entrées retirées**
+  (`F4A_ROLE_TAB_RESIDUEL`, `F4A_IDS_ARIA_MANQUANTS`, `F3A_CLASSE_POSEE_SANS_DECLARATION_
+  PREEXISTANTE`, `F1_TRANSITOIRE_SEMANTIQUE_CLAIR`), **3 intactes** (lot 4). Fichiers neufs
+  `test_app_bug017.{js,py}`. **Suite 1591 → 1538, 0 échec, 31 fichiers**, chaque écart
+  expliqué : −55 `test_app_navigation.js` (tout le comportement des onglets — roving
+  tabindex, flèches, persistance — disparaît avec eux), −12 `test_app_navigation_http.py`,
+  +13 la garde neuve de `bug-017`, +1 dérivé sur la partition navigateur. Invariant
+  `--trait-fin` < `--trait` préservé par substitution mécanique.
+- [2026-09-21 20:28] Lot 3 — agent principal — **REBOUCLE : deux gardes creuses, même
+  maladie deux fois** — *une propriété affirmée dans un commentaire, et une garde qui
+  vérifie le mécanisme au lieu du résultat*. Le travail de fond est bon et vérifié (suite,
+  comptes, 3 entrées du lot 4 intactes, et la neutralisation de
+  `fixerInerteAutourDeLaPorte` tue bien 3 cas en nommant les quatre frères).
+  **(1) Une quarantaine fermée par DÉMÉNAGEMENT.** `F1_TRANSITOIRE_SEMANTIQUE_CLAIR` a été
+  retirée, mais **6 des 15 jetons vivent encore**, l. 661-666 d'`app.css`, redéclarés sur
+  `.dg-piste` : `--trait`, `--trait-fin`, `--contour-etat`, `--texte-faible`, `--alerte`,
+  `--creux`. **Déclarés nulle part** dans le registre (0 mention). Le rapport l'écrit
+  lui-même : « `declarationsRoot()` ne scanne que `:root`, donc F1 reste clos ». La cécité
+  est **générale**, mesurée : `.bloc { --texte: #ff0000; --accent: #00ff00; }` ajouté à
+  `app.css` → **F1 : 12 cas, 0 echec(s), EXIT=0**, et les six autres gardes vertes aussi.
+  Le dépôt porte désormais le précédent « sortir un jeton de `:root` pour échapper à F1 ».
+  La **stratégie CSS est légitime** (le diagramme hérité consomme ces jetons en ligne,
+  `app.js` l. 799-954, ils doivent vivre jusqu'au lot 4) — c'est le **bilan** qui est faux :
+  scission exigée, 9 clos / 6 déclarés à leur sélecteur avec clôture lot 4, et la
+  vérification portée sur **toute la feuille** au lieu du seul `:root`.
+  **(2) Une garde qui épouse l'implémentation.** `index.html` l. 27 déclare en commentaire
+  que `#porte-jeton` doit rester **enfant direct de `<body>`**. Porte enveloppée dans un
+  `<div>` → **`test_app_bug017` reste à 13 cas, 0 échec**. Or `fixerInerteAutourDeLaPorte`
+  parcourt les **frères** : enveloppée, la porte n'en a plus hors de l'enveloppe, **plus
+  rien ne reçoit `inert`**, et toute la page redevient atteignable — le défaut d'origine de
+  `bug-017`, revenu, suite verte. Les trois cas passent parce qu'ils vérifient « les frères
+  sont inertes », ce qui **mesure le mécanisme et non ce que le bug demande**. Exigé :
+  assertion sur `parentElement === body`, et un cas qui **compte les contrôles atteignables
+  hors porte** (relevé d'origine : 2, jusqu'à 6) plutôt que de constater la pose d'un
+  attribut.
+- [2026-09-21 20:51] Lot 3 — **REBOUCLE VÉRIFIÉE, lot 3 CLOS**. Les deux gardes creuses
+  sont fermées, et j'ai rejoué moi-même sur clone neuf les deux mutations que j'avais
+  trouvées, plus la clause miroir :
+
+      (a) .bloc { --texte:#ff0000; --accent:#00ff00 }
+          ECHEC  F1_aucun_jeton_semantique_hors_du_scope_declare :
+                 --texte @ `.bloc` | --accent @ `.bloc`                       EXIT=1
+      (c) --creux retiré de .dg-piste, registre intact
+          ECHEC  F1_TRANSITOIRE_DIAGRAMME_SCOPE_liste_sans_entree_perimee :
+                 --creux@.dg-piste                                            EXIT=1
+      (d) porte enveloppée (+ un <button> planté dans l'enveloppe)
+          ECHEC  A0_porte_est_enfant_direct_de_body : profondeur mesurée 1
+          ECHEC  A0_zero_controle_atteignable_hors_porte_quand_ouverte :
+                 enveloppe-mutant (3)                                         EXIT=1
+
+  (d) est prise **deux fois indépendamment**, et le bouton planté est bien compté comme
+  contrôle atteignable — la garde mesure désormais **ce que `bug-017` demande**, plus la
+  pose d'un attribut. Entrée neuve `F1_TRANSITOIRE_DIAGRAMME_SCOPE` (clôture **lot 4**)
+  déclarant les 6 survivants **avec leur sélecteur**, et la vérification porte maintenant
+  sur **toute la feuille**, toutes profondeurs, `@media` compris.
+  **Suite : 1538 → 1543, 0 échec, 31 fichiers.** **Registre final : 4 entrées, TOUTES au
+  lot 4** (`F1_TRANSITOIRE_DIAGRAMME_SCOPE`, `F1_TRANSITOIRE_IDENTITE_AGENT`,
+  `F2_TABLE_DES_DUREES`, `F3A_CLASSES_ADOPTEES_ABSENTES`) ; les registres de `perimetre`,
+  `contrastes`, `theme_unique` **et désormais `a11y`** sont vides.
+  ⚠️ **Leçon de forme à retenir pour les lots 4 à 6** : les deux défauts de ce lot étaient
+  la **même** maladie — *une propriété affirmée dans un commentaire, et une garde qui
+  vérifie le mécanisme au lieu du résultat*. `index.html` l. 27 déclarait la parenté de la
+  porte en commentaire ; `app.css` l. 587 déclarait l'invariant `--trait-fin` en
+  commentaire, et le lot 2 s'était déjà fait piéger dessus. **Un invariant qui n'existe
+  qu'en commentaire sera violé, et la suite restera verte.**
+- [2026-09-21 20:54] **POINT D'ARRÊT HUMAIN n°2 — structure mono-écran** — capture du
+  rendu réelle (Chromium headless, 1440×1000, fichiers statiques servis sans l'API, donc
+  état vide et bandeau « Serveur injoignable » attendu) **envoyée à l'humain pour
+  validation**. En attente.
+- [2026-09-21 21:03] Étape 9 — doc-writer — **doc du lot 3, contre-vérifiée**. Deux
+  fichiers : `CHANGELOG.md` (deux entrées **distinctes** — l'écran unique d'une part, la
+  correction d'accessibilité `bug-017` d'autre part, qualifiée comme telle) et
+  `docs/features/page-centre-de-controle.md` (section « Structure de la page » réécrite :
+  ce qui disparaît — colonne de navigation, motif `tablist`, repli 600 px, persistance de
+  section — et ce qui reste, avec le câblage dynamique **explicitement renvoyé aux lots
+  4-6 non couverts**). Notes d'implémentation ajoutées à `bug-017`, **sans cocher aucun
+  critère** : ceux qui portent sur le **comptage** dépendent de F4b au lot 5, et
+  l'abstention est la bonne conduite. **Aucun ADR créé, aucune note additive** :
+  `ADR-0029` relu, le lot 3 n'en est qu'une **étape d'exécution planifiée** (`index.html`),
+  pas un état achevé ni divergent ; `ADR-0038` est prévu au **lot 6** par le plan, le créer
+  ici serait prématuré. `check_doc_links.sh` → **192 liens, tous résolus**.
+  ✔️ **Affirmation vérifiée plutôt que crue** : la fiche déclare `ADR-0024 §1`/§2 révoqués
+  par `ADR-0029`, §3 restant en vigueur. Contrôlé dans l'ADR — son §2 s'intitule
+  littéralement « **Sort d'ADR-0024 : amendé, pas révoqué en bloc** ». La doc ne s'invente
+  donc pas une révocation ; elle reprend celle que l'ADR porte, avec la même nuance.
+- [2026-09-21 21:19] **POINT D'ARRÊT HUMAIN n°2 — STRUCTURE VALIDÉE**. Capture Chromium
+  du rendu réel soumise à l'humain (1440×1000, statiques servis sans l'API, donc état vide
+  et bandeau « Serveur injoignable » — attendu et signalé comme tel), avec trois questions
+  explicites : densité, hiérarchie (titre sous le segment), et repos de la feuille de
+  détail. **Feu vert donné.** Le point de non-retour visuel est franchi ; le lot 4 peut
+  poser le graphe par-dessus. ⚠️ Lot 3 **non commité** à ce stade — dernier commit `d14dee2`
+  (lot 2).
+- [2026-09-21 21:22] Lot 4 — **LANCÉ** — frontend-developer, livrables F8, F9, F14, F15,
+  F16. **Les 4 entrées de registre encore ouvertes doivent TOUTES être vidées par ce lot**
+  (`F2_TABLE_DES_DUREES`, `F3A_CLASSES_ADOPTEES_ABSENTES`, `F1_TRANSITOIRE_IDENTITE_AGENT`
+  19 jetons, `F1_TRANSITOIRE_DIAGRAMME_SCOPE` 6 jetons) — **il n'y a pas de lot 5 pour
+  elles**, aucune ne peut être repoussée. Les 25 jetons transitoires meurent pour de bon,
+  y compris les **12 chaînes `var(--…)` peintes en ligne** dans `app.js` qui avaient piégé
+  le lot 3. Cibles de F2 relevées par l'agent principal dans le prototype et portées au
+  brief : **4** `@keyframes` (`work-orbit`, `dot-orbit`, `tick-work`, `link-flow`), **6**
+  `animation:`, **9** `transition:`, **2** `animation-delay: calc(…)` (120 ms / 95 ms),
+  **1** bloc `prefers-reduced-motion` ; `KEYFRAMES_AJOUTES` **reste vide**, les quatre
+  inventions de F16 étant statiques. Noms de F16 imposés depuis `CLASSES_AJOUTEES` déjà
+  déclarées au lot 0 : `state-sans-cloture`, `has-echec`, `role-principal`, `agent-flag`,
+  `agent-flag--echec`, `agent-flag--sans-cloture`, `role-ring`. Rappels portés au brief :
+  `disposer()` **unique autorité de géométrie** (`ADR-0031 §4`) ; `state-sans-cloture`
+  existe parce que **`SessionEnd` ne se déclenche jamais** (`PIEGES §17`) — un passage sans
+  fin observée **n'est pas un échec** ; la lecture des tokens au centre du disque est
+  **sortie vers `feature-023`**, F15 se livre **dégradable et jamais à trous**.
+  **Les deux leçons du lot 3 transmises explicitement** : (1) un invariant qui n'existe
+  qu'en commentaire sera violé, suite verte — déjà deux fois (`index.html` l. 27,
+  `app.css` l. 587) ; (2) une garde qui vérifie le **mécanisme** ne prouve rien, il faut
+  assertionner le **résultat observable**. Quatre mutations exigées, dont le retrait du
+  bloc `prefers-reduced-motion` — F14 sans garde serait un livrable déclaratif.
 ### 4. F17 — le registre `ATTENDU_ROUGE`, défini (l'agent principal avait transmis le terme sans sa définition)
 
 **Le problème qu'il résout.** Écrire les cinq gardes au lot 0 et les voir échouer,

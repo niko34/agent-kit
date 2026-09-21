@@ -112,18 +112,26 @@ class FakeNode {
 
 // Identifiants réellement présents dans `control-center/web/index.html` —
 // tenus à jour à la main (même liste que `test_app_bug012.js`, ADR-0006).
+// Resynchronisée au lot 3 (feature-021, cycle 2, F7).
 const IDS = [
-  "agents", "bandeau-hote", "bandeau-hote-bouton", "bandeau-hote-texte",
-  "bouton-generer-brouillon", "compteur-prompt",
-  "compteur-specs", "derogation-minimale", "erreur-generer-brouillon",
-  "fichiers", "filtre", "filtre-divergences", "horodatage",
-  "jauge-flux", "jauge-git",
-  "jauge-pilotage", "kanban", "legende-cycles", "note-agents", "pied-cycles",
-  "pilotage-corps", "porte-aide", "porte-bouton", "porte-champ",
-  "porte-corps", "porte-erreur", "porte-jeton", "porte-titre", "projet",
-  "prompt", "redaction-corps", "systeme",
-  "timeline", "tiroir", "tiroir-contenu", "tiroir-fermer",
-  "tiroir-titre", "titre-besoin", "titre-cycles", "titre-demande", "titre-pilotage",
+  "a11y-announcement", "agents", "backlog-column-count", "backlog-count",
+  "backlog-title", "bandeau-hote", "bandeau-hote-bouton",
+  "bandeau-hote-texte", "barre", "bouton-generer-brouillon",
+  "compteur-prompt", "compteur-specs", "cycle-canvas", "cycle-status",
+  "derogation-minimale", "erreur-generer-brouillon", "fichiers", "filtre",
+  "filtre-divergences", "horodatage", "jauge-flux", "jauge-git",
+  "jauge-pilotage", "kanban", "legende-cycles", "link-front-sec",
+  "link-front-tests", "link-front2-review", "link-reprise",
+  "link-sec-front2", "link-spec-front", "link-tests-front2", "main-content",
+  "motion-note", "note-agents", "pied-cycles", "pilotage-corps",
+  "porte-aide", "porte-bouton", "porte-champ", "porte-corps", "porte-erreur",
+  "porte-jeton", "porte-titre", "projet", "prompt", "redaction-corps",
+  "selected-code", "selected-duration", "selected-files", "selected-state",
+  "selected-task", "selected-title", "selected-tools", "summary-active",
+  "summary-step", "summary-time", "systeme", "timeline", "tiroir",
+  "tiroir-contenu", "tiroir-fermer", "tiroir-titre", "titre-agents",
+  "titre-besoin", "titre-cycle-surface", "titre-cycles", "titre-demande",
+  "titre-evenements", "titre-fichiers", "titre-pilotage", "titre-systeme",
   "workflows",
 ];
 const CACHES_PAR_DEFAUT = new Set([
@@ -1269,25 +1277,34 @@ function sondeJetonsCssDesLiensEtPastilles() {
   } else {
     check("sondeJeton_declare_dans_design_system", jetonDoc === "--trait", "obtenu " + jetonDoc);
   }
-  const jeton = "--trait";
 
+  // feature-021 cycle 2, lot 3 (F1_TRANSITOIRE_SEMANTIQUE_CLAIR, clôturée) :
+  // la couche transitoire sémantique (`--trait`, `--trait-fin`) a fermé —
+  // chaque `var(--trait)`/`var(--trait-fin)` d'app.css a été RE-POINTÉ par
+  // substitution mécanique de texte sur le jeton M3 équivalent, SANS
+  // CHANGER LA VALEUR PEINTE (`--trait` devient littéralement `var(--line)`
+  // partout ; `--trait-fin` devient le `color-mix()` qu'il désignait déjà —
+  // voir app.css, tête de `:root`). Ces sondes suivent donc le texte
+  // RÉELLEMENT présent dans app.css aujourd'hui, pas le nom historique du
+  // jeton ; la doc ci-dessus continue de nommer `--trait` par son RÔLE
+  // (docs/DESIGN-SYSTEM.md est hors périmètre de ce lot, non modifiée).
   const css = fs.readFileSync(path.join(__dirname, "app.css"), "utf8");
 
   const regleLien = extraireRegleCss(css, ".dg-lien {");
   check("sonde_dg_lien_regle_presente", !!regleLien);
   check("sonde_dg_lien_porte_var_trait",
-    !!regleLien && new RegExp("stroke:\\s*var\\(" + jeton + "\\)").test(regleLien),
+    !!regleLien && /stroke:\s*var\(--line\)/.test(regleLien),
     "règle=" + regleLien);
 
   // feature-020 (table de correspondance de jetons) : le contour de la
   // pastille suit `T.bd` (le plus clair), au même titre que l'anneau guide
-  // — soit `--trait-fin`, PAS `--trait` (qui reste, lui, le jeton des liens
-  // et des graduations éteintes, `T.bd2`).
-  const jetonPastille = "--trait-fin";
+  // — soit l'ancien `--trait-fin`, PAS l'ancien `--trait` (resté, lui, le
+  // jeton des liens et des graduations éteintes, `T.bd2`) — désormais deux
+  // expressions M3 distinctes plutôt que deux noms d'alias distincts.
   const reglePastille = extraireRegleCss(css, ".dg-pastille-attente rect");
   check("sonde_dg_pastille_attente_regle_presente", !!reglePastille);
   check("sonde_dg_pastille_attente_porte_var_trait_fin",
-    !!reglePastille && new RegExp("stroke:\\s*var\\(" + jetonPastille + "\\)").test(reglePastille),
+    !!reglePastille && /stroke:\s*color-mix\(in srgb, var\(--line\) 60%, var\(--surface\)\)/.test(reglePastille),
     "règle=" + reglePastille);
 }
 

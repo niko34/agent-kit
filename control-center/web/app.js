@@ -1462,6 +1462,44 @@ function texteHorodatageAffiche() {
   return heure(new Date().toISOString());
 }
 
+/* bug-017 (absorbée dans ce cycle au titre d'ADR-0017, feature-021 cycle 2,
+ * lot 3 — voir ADR-0038) : la porte doit rendre le RESTE DU DOCUMENT
+ * INERTE, pas seulement reprendre un focus qui s'en échappe. La rétention
+ * de focus ci-dessous (`keydown` sur Tab) reste en place, EN COMPLÉMENT —
+ * elle ne suffisait pas seule, mesuré par l'auditeur le 2026-09-15 (jusqu'à
+ * 6 contrôles atteignables hors modale, dont le bouton de lancement).
+ *
+ * `#porte-jeton` reste ENFANT DIRECT DE <body> (index.html, condition déjà
+ * établie par feature-019, préservée ici) : ses FRÈRES — tout ce qui vit au
+ * même niveau qu'elle — reçoivent `inert` à l'ouverture, le perdent à la
+ * fermeture. `inert` retire un sous-arbre ENTIER de l'arbre d'accessibilité
+ * ET de l'ordre de tabulation — ce qu'aucune des alternatives de PIEGES §15
+ * (`opacity`, hors-écran, hauteur nulle, détourage) ne fait pour un
+ * sous-arbre. Le comptage des contrôles atteignables hors modale (0 exigé)
+ * est le critère de F4b, lot 5 — ce correctif est structurel : il pose le
+ * mécanisme que F4b viendra mesurer.
+ *
+ * Focus au retour : mémorisé à l'ouverture, restauré à la fermeture — « un
+ * endroit NOMMÉ, pas au hasard » (critère du bug). Repli sur `#main-content`
+ * (skip-link, tabindex="-1") si rien n'était mémorisé ou si l'élément a
+ * disparu du DOM entre-temps (ex. rafraîchissement complet d'une liste) —
+ * jamais `document.body`, qui ne nomme rien. */
+let dernierFocusAvantPorte = null;
+
+function freresDeLaPorte() {
+  const porte = $("porte-jeton");
+  const parent = porte && porte.parentNode;
+  if (!parent || !parent.children) return [];
+  return Array.prototype.filter.call(parent.children, (noeud) => noeud !== porte);
+}
+
+function fixerInerteAutourDeLaPorte(inerte) {
+  freresDeLaPorte().forEach((frere) => {
+    if (inerte) frere.setAttribute("inert", "");
+    else frere.removeAttribute("inert");
+  });
+}
+
 function ouvrirPorte(motif) {
   const porte = $("porte-jeton");
   const titre = $("porte-titre");
@@ -1489,11 +1527,25 @@ function ouvrirPorte(motif) {
     bouton.textContent = "Ouvrir le tableau de bord";
   }
 
+  dernierFocusAvantPorte = (document.activeElement && document.activeElement !== document.body)
+    ? document.activeElement : null;
+  fixerInerteAutourDeLaPorte(true);
   porte.hidden = false;
   requestAnimationFrame(() => { champ.focus(); });
 }
 
-function fermerPorte() { $("porte-jeton").hidden = true; }
+function fermerPorte() {
+  $("porte-jeton").hidden = true;
+  fixerInerteAutourDeLaPorte(false);
+  const cible = dernierFocusAvantPorte;
+  dernierFocusAvantPorte = null;
+  if (cible && typeof cible.focus === "function") {
+    cible.focus();
+  } else {
+    const repli = $("main-content");
+    if (repli && repli.focus) repli.focus();
+  }
+}
 
 /* Point d'entrée UNIQUE pour toute lecture qui essuie un 401 après le
  * premier chargement : arrête les minuteurs actifs, oublie le jeton
@@ -2729,143 +2781,21 @@ function brancherFlux() {
   };
 }
 
-/* ============================================================ navigation ==
- * Colonne de navigation à onglets (feature-019, §5/§6) : une section visible
- * à la fois, `hidden` réel comme SEUL mécanisme de masquage. Motif WAI-ARIA
- * `tablist` complet — roving tabindex, les flèches déplacent le focus ET la
- * sélection.
+/* ==================================================== structure mono-écran
+ * feature-021, cycle 2, lot 3 (F7) : la colonne de navigation à onglets
+ * (feature-019, §5/§6, ADR-0024 §1 amendé par ADR-0029) est RETIRÉE — 0
+ * `role="tab"`, plus de section masquée, tout le contenu est empilé et
+ * lisible sans navigation. `SECTIONS`/`CLE_SECTION`/`sectionActuelle`/
+ * `memoriserSection`/`appliquerSection` et les gestionnaires clavier
+ * (roving tabindex ArrowLeft/Right/Home/End) sont SUPPRIMÉS avec elle —
+ * `index.html` ne porte plus aucun `#section-*`/`#onglet-*`/
+ * `#titre-section-*` à piloter (retirer ce code, pas seulement le laisser
+ * no-op sur des ids absents, évite qu'une suite continue d'exercer une
+ * fonctionnalité qu'aucune page réelle ne peut plus atteindre — un vert à
+ * tort, PIEGES §21/§33). `theme.js` continue de poser `data-section` sur
+ * `<html>` (fichier hors périmètre de ce lot) : cet attribut n'a plus AUCUN
+ * lecteur ici, volontairement.
  * ========================================================================= */
-
-const SECTIONS = ["agents", "systeme", "developper", "cycles", "fichiers", "evenements"];
-const CLE_SECTION = "section";
-
-/* RELAIS D'AMORÇAGE, pas un état vivant (revue) : `theme.js` écrit
- * `data-section` sur `<html>` UNE SEULE FOIS, avant que ce fichier ne
- * s'exécute, en relisant `localStorage` sous son propre `try/catch` — c'est
- * ce relais qui évite à `app.js` de relire `localStorage` une seconde fois
- * juste pour cette valeur. Lu ICI, une seule fois, à l'appel initial
- * (voir plus bas `appliquerSection(sectionActuelle(), false)`).
- * `appliquerSection` ne réécrit PLUS cet attribut à chaque navigation
- * (retiré en revue : app.css n'a aucune règle qui en dépend depuis que la
- * garde `.section[hidden]` a cessé d'être concurrencée — la réécriture ne
- * pilotait plus rien, seulement `hidden` et `localStorage` comptent après
- * le chargement). Ne pas le reprendre pour « tenir l'attribut à jour » :
- * ce serait remettre en circulation un état qui n'a plus de lecteur. */
-function sectionActuelle() {
-  const racine = document.documentElement;
-  const valeur = racine && racine.getAttribute("data-section");
-  return SECTIONS.indexOf(valeur) !== -1 ? valeur : SECTIONS[0];
-}
-
-/* Lecture ET écriture protégées (feature-019) : `localStorage` peut échouer
- * (fenêtre privée, données bloquées, quota) — jamais d'exception remontée à
- * l'appelant. */
-function memoriserSection(slug) {
-  try {
-    localStorage.setItem(CLE_SECTION, slug);
-  } catch (erreur) {
-    // localStorage indisponible : la préférence ne survit pas au
-    // rechargement, la page reste par ailleurs pleinement fonctionnelle.
-  }
-}
-
-/* `deplacerFocus` : false lors de la synchronisation initiale (la page vient
- * de se charger, rien à annoncer — voler le focus au chargement serait une
- * régression d'accessibilité) ; true sur toute activation ultérieure
- * (clic ou clavier), où la spec exige le focus programmatique sur le titre
- * de la section nouvellement visible. */
-function appliquerSection(slug, deplacerFocus) {
-  if (SECTIONS.indexOf(slug) === -1) slug = SECTIONS[0];
-  // Pas de `racine.setAttribute("data-section", slug)` ici : `data-section`
-  // n'est plus qu'un relais d'amorçage lu une fois par `sectionActuelle()`
-  // (voir son commentaire) — le réécrire à chaque navigation n'a plus aucun
-  // lecteur depuis que la garde `.section[hidden]` a cessé d'être
-  // concurrencée en CSS. `hidden`, ci-dessous, est désormais la SEULE
-  // source de vérité de l'affichage ; `memoriserSection`, plus bas, celle
-  // de la persistance.
-
-  SECTIONS.forEach((s) => {
-    const section = $("section-" + s);
-    const onglet = $("onglet-" + s);
-    if (section) section.hidden = s !== slug;   // condition de sécurité 1 : `hidden`, rien d'autre
-    if (onglet) {
-      const actif = s === slug;
-      onglet.setAttribute("aria-selected", actif ? "true" : "false");
-      onglet.tabIndex = actif ? 0 : -1;
-    }
-  });
-
-  memoriserSection(slug);
-
-  if (deplacerFocus) {
-    const titre = $("titre-section-" + slug);
-    if (titre && titre.focus) titre.focus();
-  }
-}
-
-/* Le focus suit la SECTION, pas l'onglet (§6 : « focus programmatique sur le
- * titre de la section nouvellement visible », à chaque changement — clic
- * COMME clavier) : le motif accessible établi pour un changement de route
- * est de poser le focus sur le titre de la page arrivée. */
-SECTIONS.forEach((slug, index) => {
-  const onglet = $("onglet-" + slug);
-  if (!onglet) return;
-  onglet.addEventListener("click", () => appliquerSection(slug, true));
-  onglet.addEventListener("keydown", (evenement) => {
-    const touche = evenement.key;
-    let indexSuivant;
-    if (touche === "ArrowRight" || touche === "ArrowDown") {
-      indexSuivant = (index + 1) % SECTIONS.length;
-    } else if (touche === "ArrowLeft" || touche === "ArrowUp") {
-      indexSuivant = (index - 1 + SECTIONS.length) % SECTIONS.length;
-    } else if (touche === "Home") {
-      indexSuivant = 0;
-    } else if (touche === "End") {
-      indexSuivant = SECTIONS.length - 1;
-    } else {
-      return;
-    }
-    evenement.preventDefault();
-    appliquerSection(SECTIONS[indexSuivant], true);
-  });
-});
-
-/* Synchronisation initiale, SANS déplacer le focus (§6) : `theme.js` a pu
- * poser `data-section` avant le premier rendu (préférence retrouvée dans
- * `localStorage`) — mais `app.css` n'a AUCUNE règle qui affiche une section
- * d'après cet attribut (retiré en revue : il entrait en concurrence de
- * spécificité avec `.section[hidden]{display:none}`, la garde de sécurité,
- * et pouvait la faire perdre — voir app.css). `hidden` est donc encore à
- * son état statique du HTML servi à cet instant (seule « agents » visible) ;
- * cet appel pose le VRAI `hidden` sur chaque section dès que le DOM existe,
- * sans attendre d'autre événement. Si aucune préférence n'était posée,
- * `sectionActuelle()` retombe sur « agents » : no-op. */
-appliquerSection(sectionActuelle(), false);
-
-/* ------------------------------------------------ hauteur réelle de .barre
- * `--hauteur-barre` (app.css) fixe le repli de `.nav-sections` (`position:
- * sticky; top`) à 62px, la hauteur de `.barre` sur UNE ligne. `.barre` porte
- * `flex-wrap: wrap` : à une largeur intermédiaire, elle peut passer sur
- * deux lignes et dépasser 62px — la nav collante se retrouverait alors
- * SOUS la barre repliée (revue). `ResizeObserver` mesure la hauteur
- * RÉELLEMENT rendue et corrige la variable en conséquence, dans les deux
- * sens (une barre qui repasse sur une ligne doit aussi redescendre). Repli
- * silencieux si l'API est absente (navigateur ancien, ou bac à sable de
- * test) : la valeur par défaut d'app.css reste en vigueur. */
-(function observerHauteurBarre() {
-  if (typeof ResizeObserver !== "function") return;
-  const barre = $("barre");   // pas de querySelector (convention du module)
-  const racine = document.documentElement;
-  if (!barre || !racine || !racine.style) return;
-  const observateur = new ResizeObserver((entrees) => {
-    const entree = entrees[entrees.length - 1];
-    const hauteur = entree && entree.borderBoxSize && entree.borderBoxSize[0]
-      ? entree.borderBoxSize[0].blockSize
-      : barre.offsetHeight;
-    if (hauteur) racine.style.setProperty("--hauteur-barre", hauteur + "px");
-  });
-  observateur.observe(barre);
-})();
 
 /* Filtrer ne redemande RIEN au serveur : on redessine l'état déjà chargé. Une
  * requête par frappe ferait tourner `git status` et relire 167 fichiers à chaque
