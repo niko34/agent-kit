@@ -2,11 +2,13 @@
 
 ## Statut
 
-Accepté — remplace `ADR-0025 §1` sur quatre paragraphes (nombre de
-graduations, formule du rayon, encodage du liseré des fichiers, et le rendu
-du zéro / du plafond / de la pleine échelle sur chaque forme). `ADR-0025`
-n'est pas réécrit ; il porte une mention de remplacement aux endroits
-concernés.
+Superseded by [ADR-0031](0031-la-grammaire-du-disque-d-agent-change.md) — révoqué en entier, la grammaire du disque d'agent s'aligne désormais sur la maquette Material 3, dont aucune des trois échelles ci-dessous ne subsiste.
+
+Historique conservé tel quel : à l'origine, remplaçait `ADR-0025 §1` sur quatre
+paragraphes (nombre de graduations, formule du rayon, encodage du liseré des
+fichiers, et le rendu du zéro / du plafond / de la pleine échelle sur chaque
+forme). `ADR-0025` n'est pas réécrit ; il porte une mention de remplacement aux
+endroits concernés.
 
 ## Date
 

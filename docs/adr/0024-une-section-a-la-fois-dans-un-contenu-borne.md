@@ -2,7 +2,7 @@
 
 ## Statut
 
-Accepté
+Accepté (§1 et la partie navigation de §2 remplacés par [ADR-0029](0029-le-tableau-de-bord-revient-au-mono-ecran.md) ; §4 révoqué par [ADR-0030](0030-material-design-3-ecrit-a-la-main-devient-le-systeme-visuel.md) — `--surface-2` peut désormais servir d'aplat de repos, la maquette M3 le fait délibérément)
 
 ## Date
 

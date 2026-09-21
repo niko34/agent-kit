@@ -2,7 +2,7 @@
 
 ## Statut
 
-Accepté
+Accepté (§1, §2, §3 révoqués par [ADR-0032](0032-l-identite-coloree-des-agents-disparait-du-diagramme.md) — l'identité colorée par agent disparaît ; §5 devient sans objet, non révoqué, tant qu'aucune identité colorée n'existe — voir ADR-0032 §4 ; partiellement révoqué en outre par [ADR-0033](0033-le-theme-sombre-est-supprime.md) — le thème sombre disparaît, rendant sans objet toute clause « dans les deux thèmes »)
 
 ## Date
 

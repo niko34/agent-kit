@@ -1,0 +1,1259 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Le Couloir — prototype animé</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f5fb;
+      --surface: #fffbff;
+      --surface-low: #f1eff7;
+      --surface-high: #ebe7f3;
+      --surface-highest: #e4e0eb;
+      --ink: #1d1b20;
+      --muted: #67636d;
+      --line: #d7d2de;
+      --line-strong: #8f8997;
+      --primary: #4f46d8;
+      --primary-soft: #e7e2ff;
+      --primary-ink: #27205e;
+      --teal: #087e6d;
+      --teal-soft: #d3f3ea;
+      --coral: #b44b31;
+      --coral-soft: #ffdbd1;
+      --amber: #946200;
+      --amber-soft: #ffdea3;
+      --danger: #ba1a1a;
+      --danger-soft: #ffdad6;
+      --shadow-1: 0 1px 2px rgba(31, 28, 37, .08), 0 4px 14px rgba(31, 28, 37, .05);
+      --shadow-2: 0 4px 12px rgba(31, 28, 37, .12), 0 12px 32px rgba(31, 28, 37, .08);
+      --spatial: cubic-bezier(.2, 1.28, .34, 1);
+      --effects: cubic-bezier(.2, 0, 0, 1);
+    }
+
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body {
+      margin: 0;
+      min-width: 320px;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: "Google Sans", "Roboto", Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.35;
+    }
+
+    button, input, textarea, select { font: inherit; }
+    button { color: inherit; }
+    svg { display: block; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, [tabindex]:focus-visible {
+      outline: 3px solid var(--primary);
+      outline-offset: 3px;
+    }
+
+    .skip-link {
+      position: fixed;
+      left: 16px;
+      top: 10px;
+      z-index: 100;
+      padding: 10px 14px;
+      border-radius: 12px;
+      background: var(--primary);
+      color: white;
+      transform: translateY(-160%);
+      transition: transform 180ms var(--effects);
+    }
+    .skip-link:focus { transform: translateY(0); }
+
+    .app-shell { min-height: 100vh; }
+
+    .top-app-bar {
+      height: 64px;
+      padding: 0 28px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      background: color-mix(in srgb, var(--surface) 92%, transparent);
+      border-bottom: 1px solid var(--line);
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      backdrop-filter: blur(14px);
+    }
+
+    .brand-row, .top-actions, .project-switcher, .status-inline,
+    .summary-item, .cycle-tabs, .legend, .agent-meta,
+    .sheet-heading, .sheet-metrics, .repo-strip, .kanban-heading,
+    .card-footer, .claude-title, .composer { display: flex; align-items: center; }
+
+    .brand-row { gap: 20px; }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 19px;
+      font-weight: 500;
+      letter-spacing: -.02em;
+    }
+    .brand-mark {
+      width: 26px;
+      height: 26px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2px;
+      transform: rotate(45deg);
+    }
+    .brand-mark i { background: var(--primary); border-radius: 3px; }
+    .brand-mark i:nth-child(2), .brand-mark i:nth-child(3) { opacity: .68; }
+    .project-switcher { min-height: 48px; gap: 8px; color: var(--primary-ink); border: 0; border-radius: 14px; background: transparent; cursor: pointer; padding: 0 10px; }
+    .project-switcher:hover { background: var(--surface-low); }
+    .project-switcher::before { content: ""; height: 28px; width: 1px; background: var(--line); margin-right: 12px; }
+
+    .top-actions { gap: 8px; }
+    .status-inline { gap: 7px; color: var(--muted); margin-right: 8px; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--teal); }
+
+    .icon-button, .avatar, .small-button, .tab-button,
+    .more-button, .send-button, .menu-item, .agent-node, .sheet-toggle {
+      border: 0;
+      cursor: pointer;
+    }
+    .icon-button, .avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: transparent;
+    }
+    .icon-button:hover { background: var(--surface-low); }
+    .icon-button svg, .send-button svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .notification-button { position: relative; }
+    .notification-badge {
+      position: absolute;
+      top: 2px;
+      right: 1px;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 5px;
+      display: grid;
+      place-items: center;
+      border: 2px solid var(--surface);
+      border-radius: 999px;
+      background: var(--danger);
+      color: white;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .avatar { background: var(--primary-soft); color: var(--primary-ink); font-weight: 500; }
+    .account-button { min-height: 48px; border: 0; border-radius: 24px; display: flex; align-items: center; gap: 8px; padding: 0 10px 0 0; background: transparent; cursor: pointer; }
+    .account-button:hover { background: var(--surface-low); }
+
+    .main { padding: 16px 28px 28px; max-width: 1900px; margin: 0 auto; }
+
+    .summary-band {
+      min-height: 64px;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      background: var(--surface-low);
+      border-radius: 20px;
+      padding: 10px 14px;
+      margin-bottom: 16px;
+    }
+    .summary-item { gap: 12px; min-width: 0; padding: 0 18px; border-right: 1px solid var(--line); }
+    .summary-item:last-child { border-right: 0; }
+    .summary-icon {
+      width: 34px; height: 34px; border-radius: 12px;
+      display: grid; place-items: center; color: var(--primary); background: var(--primary-soft); flex: 0 0 auto;
+    }
+    .summary-copy { display: grid; min-width: 0; }
+    .summary-copy strong { font-weight: 500; white-space: nowrap; }
+    .summary-copy span { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 340px;
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .cycle-surface { min-width: 0; display: flex; flex-direction: column; }
+    .cycle-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 6px;
+    }
+    .cycle-tabs { gap: 8px; }
+    .tab-button, .small-button {
+      min-height: 48px;
+      border-radius: 12px;
+      padding: 0 14px;
+      background: transparent;
+      color: var(--primary-ink);
+    }
+    .tab-button[aria-pressed="true"] { background: var(--primary); color: white; }
+    .small-button { border: 1px solid color-mix(in srgb, var(--primary) 38%, var(--line)); background: var(--surface); }
+
+    .cycle-heading-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 16px;
+      margin: 4px 0 2px;
+    }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: 26px; line-height: 1.1; font-weight: 500; letter-spacing: -.025em; }
+    h2 { font-size: 20px; font-weight: 500; letter-spacing: -.015em; }
+    h3 { font-size: 15px; font-weight: 500; }
+    .cycle-subtitle { display: flex; align-items: center; gap: 9px; color: var(--muted); margin-top: 7px; }
+    .live-label { color: var(--teal); font-weight: 500; }
+    .live-label::before { content: ""; width: 8px; height: 8px; display: inline-block; border-radius: 50%; background: var(--teal); margin-right: 6px; }
+
+    .legend { gap: 14px; color: var(--muted); font-size: 12px; flex-wrap: wrap; justify-content: flex-end; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .legend i { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+    .legend .active { background: var(--primary); }
+    .legend .parallel { background: var(--teal); }
+    .legend .reprise { background: var(--coral); }
+
+    .motion-note {
+      color: var(--muted);
+      font-size: 12px;
+      min-height: 18px;
+      margin-top: 3px;
+    }
+
+    .cycle-canvas {
+      position: relative;
+      height: 388px;
+      min-height: 388px;
+      overflow: hidden;
+      isolation: isolate;
+    }
+
+    .connector-layer { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; overflow: visible; }
+    .connector-layer path {
+      fill: none;
+      stroke: var(--line);
+      stroke-width: 2;
+      vector-effect: non-scaling-stroke;
+      transition: stroke 260ms var(--effects), opacity 260ms var(--effects);
+    }
+    .connector-layer path.is-complete { stroke: color-mix(in srgb, var(--primary) 55%, var(--line)); }
+    .connector-layer path.is-flowing { stroke: var(--teal); stroke-dasharray: 7 8; animation: link-flow 1.8s linear infinite; }
+    .connector-layer path.is-reprise { stroke: var(--coral); stroke-dasharray: 4 6; animation: link-flow 1.7s linear infinite reverse; }
+
+    .agent-wrap {
+      --x: 50%;
+      --y: 50%;
+      position: absolute;
+      left: var(--x);
+      top: var(--y);
+      width: 1px;
+      height: 1px;
+      z-index: 3;
+    }
+
+    .agent-node {
+      --state-color: #aaa6b0;
+      --progress: 0deg;
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 52px;
+      height: 52px;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      padding: 5px;
+      background: conic-gradient(var(--state-color) var(--progress), var(--line) 0);
+      color: var(--ink);
+      box-shadow: 0 0 0 6px color-mix(in srgb, var(--state-color) 8%, transparent);
+      transition:
+        width 820ms var(--spatial),
+        height 820ms var(--spatial),
+        background 460ms var(--effects),
+        box-shadow 460ms var(--effects),
+        filter 460ms var(--effects);
+      outline-offset: 5px;
+    }
+    .agent-node:hover { filter: brightness(.985); }
+    .agent-node:focus-visible { outline: 3px solid var(--primary); }
+
+    .agent-node::after {
+      content: "";
+      position: absolute;
+      inset: 5px;
+      border-radius: 50%;
+      background: var(--surface);
+      z-index: 0;
+    }
+
+    .agent-node.state-active,
+    .agent-node.state-done {
+      width: 88px;
+      height: 88px;
+    }
+    .agent-node.state-active { --state-color: var(--primary); }
+    .agent-node.state-active.parallel { --state-color: var(--teal); }
+    .agent-node.state-done { --state-color: #777385; }
+    .agent-node.state-pending { --state-color: #aaa6b0; --progress: 0deg; }
+
+    .work-orbit {
+      position: absolute;
+      inset: -9px;
+      border-radius: 50%;
+      opacity: 0;
+      z-index: -1;
+      background: repeating-conic-gradient(from 0deg, var(--state-color) 0 4deg, transparent 4deg 26deg);
+      mask: radial-gradient(circle, transparent 67%, #000 69% 74%, transparent 76%);
+      transition: opacity 420ms var(--effects);
+    }
+    .state-active .work-orbit { opacity: .82; animation: work-orbit 5.2s linear infinite; }
+
+    .agent-face {
+      position: relative;
+      z-index: 2;
+      height: 100%;
+      display: grid;
+      place-content: center;
+      gap: 1px;
+      text-align: center;
+    }
+    .agent-code { font-weight: 500; font-size: 12px; letter-spacing: .02em; }
+    .agent-data {
+      display: grid;
+      gap: 1px;
+      opacity: 0;
+      transform: translateY(5px);
+      transition: opacity 440ms 300ms var(--effects), transform 520ms 260ms var(--spatial);
+    }
+    .state-active .agent-data, .state-done .agent-data { opacity: 1; transform: translateY(0); }
+    .token-value { color: var(--primary-ink); font-size: 12px; font-variant-numeric: tabular-nums; }
+    .file-dots { display: flex; justify-content: center; gap: 3px; margin-top: 2px; }
+    .file-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--teal); opacity: .35; }
+    .file-dots i.on { opacity: 1; }
+
+    .agent-name {
+      position: absolute;
+      left: 50%;
+      bottom: 33px;
+      transform: translateX(-50%);
+      min-width: 132px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      transition: bottom 820ms var(--spatial), color 420ms var(--effects);
+      pointer-events: none;
+    }
+    .agent-name strong { display: block; color: var(--ink); font-weight: 500; font-size: 13px; }
+    .state-active + .agent-name, .state-done + .agent-name { bottom: 53px; }
+    .state-active + .agent-name { color: var(--teal); }
+
+    .agent-duration {
+      position: absolute;
+      top: 31px;
+      left: 50%;
+      transform: translateX(-50%);
+      min-width: 90px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      opacity: 0;
+      transition: top 820ms var(--spatial), opacity 420ms 300ms var(--effects);
+      pointer-events: none;
+    }
+    .state-active ~ .agent-duration, .state-done ~ .agent-duration { top: 51px; opacity: 1; }
+    .state-active ~ .agent-duration { color: var(--teal); }
+
+    .work-dot {
+      position: absolute;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--state-color);
+      left: 50%; top: 50%;
+      margin: -3.5px;
+      opacity: 0;
+      z-index: 5;
+    }
+    .state-active .work-dot { opacity: 1; animation: dot-orbit 4.2s linear infinite; }
+
+    .tool-ticks { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+    .tool-ticks i {
+      position: absolute;
+      left: 50%; top: 50%;
+      width: 2px; height: 6px;
+      margin-left: -1px; margin-top: -3px;
+      border-radius: 999px;
+      background: var(--state-color);
+      opacity: 0;
+      transform: rotate(calc(var(--i) * 30deg)) translateY(-53px);
+      transition: opacity 160ms var(--effects);
+    }
+    .state-active .tool-ticks i,
+    .state-done .tool-ticks i { opacity: .22; }
+    .state-active .tool-ticks i:nth-child(3n + 1) { animation: tick-work 2.8s ease-in-out infinite; animation-delay: calc(var(--i) * 120ms); }
+    .state-active .tool-ticks i:nth-child(3n + 2) { animation: tick-work 3.5s ease-in-out infinite; animation-delay: calc(var(--i) * 95ms); }
+
+    .detail-sheet {
+      background: var(--surface);
+      border-radius: 28px 28px 0 0;
+      box-shadow: 0 -3px 14px rgba(31, 28, 37, .09);
+      padding: 7px 22px 16px;
+      min-height: 134px;
+      position: relative;
+      z-index: 10;
+    }
+    .sheet-handle { width: 34px; height: 4px; border-radius: 999px; background: var(--line); margin: 0 auto 10px; }
+    .sheet-heading { justify-content: space-between; gap: 16px; }
+    .selected-agent { display: flex; align-items: center; gap: 11px; min-width: 0; }
+    .selected-mark {
+      width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center;
+      background: var(--primary-soft); color: var(--primary); font-weight: 500; flex: 0 0 auto;
+    }
+    .selected-copy { min-width: 0; }
+    .selected-copy p { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sheet-toggle { width: 48px; height: 48px; border-radius: 50%; background: var(--surface-low); }
+    .sheet-metrics { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 11px; }
+    .metric { min-width: 0; flex: 1 1 0; padding: 0 16px; border-right: 1px solid var(--line); }
+    .metric:first-child { padding-left: 0; }
+    .metric:last-child { border-right: 0; padding-right: 0; }
+    .metric span { display: block; color: var(--muted); font-size: 12px; }
+    .metric strong { display: block; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+    .repo-strip {
+      min-height: 34px; gap: 12px; padding: 0 16px; color: var(--muted); background: var(--surface-low); border-radius: 12px; margin-top: 8px; font-size: 12px;
+    }
+    .repo-strip .ok { color: var(--teal); }
+
+    .claude-panel {
+      background: var(--surface);
+      border-radius: 24px;
+      box-shadow: var(--shadow-1);
+      padding: 18px;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 14px;
+    }
+    .claude-title { justify-content: space-between; gap: 12px; }
+    .claude-ident { display: flex; align-items: center; gap: 10px; }
+    .claude-mark { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; color: var(--coral); background: var(--coral-soft); font-size: 22px; }
+    .claude-status { color: var(--teal); font-size: 12px; }
+    .conversation { display: grid; align-content: start; gap: 12px; min-height: 0; overflow: auto; padding-right: 2px; }
+    .message { display: grid; grid-template-columns: 30px 1fr; gap: 8px; align-items: start; }
+    .message-avatar { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--coral-soft); color: var(--coral); }
+    .bubble { background: var(--surface-low); border-radius: 6px 16px 16px 16px; padding: 10px 12px; color: var(--primary-ink); }
+    .bubble time { display: block; color: var(--muted); font-size: 12px; margin-bottom: 3px; }
+    .question { background: var(--coral-soft); border-radius: 16px; padding: 12px; color: #4e1d12; }
+    .question strong { font-weight: 500; }
+    .composer { gap: 8px; padding: 5px 5px 5px 14px; background: var(--surface-low); border-radius: 22px; }
+    .composer input { flex: 1; min-width: 0; min-height: 48px; border: 0; background: transparent; color: var(--ink); }
+    .composer input::placeholder { color: var(--muted); opacity: 1; }
+    .send-button { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; background: var(--primary); color: white; }
+
+    .backlog { margin-top: 16px; }
+    .kanban-heading { justify-content: space-between; gap: 16px; margin-bottom: 9px; }
+    .kanban-title-row { display: flex; align-items: center; gap: 14px; }
+    .kanban-actions { display: flex; align-items: center; gap: 8px; }
+    .add-item-button { min-height: 48px; display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 14px; padding: 0 16px; background: var(--primary); color: white; cursor: pointer; font-weight: 500; }
+    .add-item-button:hover { filter: brightness(.96); }
+    .add-item-button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+    .backlog-count { color: var(--muted); font-size: 12px; }
+    .kanban-viewport {
+      max-height: 390px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
+      padding-right: 5px;
+      border-radius: 16px;
+    }
+    .kanban-viewport:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
+    .kanban-viewport::-webkit-scrollbar { width: 10px; }
+    .kanban-viewport::-webkit-scrollbar-track { background: transparent; }
+    .kanban-viewport::-webkit-scrollbar-thumb { background: var(--line); border: 3px solid var(--bg); border-radius: 999px; }
+    .kanban-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .kanban-column { background: var(--surface-low); border-radius: 16px; padding: 10px; min-width: 0; align-self: start; }
+    .column-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin: -4px -2px 9px;
+      padding: 7px 2px 8px;
+      font-weight: 500;
+      position: sticky;
+      top: 0;
+      z-index: 4;
+      background: var(--surface-low);
+    }
+    .column-label { display: flex; align-items: center; gap: 8px; }
+    .column-label i { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
+    .column-todo .column-label i { background: #eea52a; }
+    .column-doing .column-label i { background: var(--primary); }
+    .column-done .column-label i { background: #3b8f35; }
+    .feature-card { background: var(--surface); border-radius: 14px; padding: 12px; min-height: 126px; position: relative; box-shadow: 0 1px 0 rgba(31, 28, 37, .05); cursor: pointer; transition: background 180ms var(--effects), box-shadow 180ms var(--effects), transform 180ms var(--effects); }
+    .feature-card + .feature-card { margin-top: 9px; }
+    .feature-card:hover { background: color-mix(in srgb, var(--primary-soft) 22%, var(--surface)); box-shadow: var(--shadow-1); }
+    .feature-card.active-card { background: color-mix(in srgb, var(--primary-soft) 56%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 28%, transparent); }
+    .feature-card h3 { padding-right: 44px; }
+    .card-title-button { min-height: 48px; width: 100%; border: 0; padding: 0; background: transparent; color: var(--ink); text-align: left; font-weight: 500; cursor: pointer; }
+    .card-title-button:hover { color: var(--primary); }
+    .feature-card p { color: var(--muted); margin-top: 5px; min-height: 38px; font-size: 12px; }
+    .more-button { position: absolute; top: 3px; right: 3px; width: 48px; height: 48px; border-radius: 50%; background: transparent; font-size: 24px; color: var(--primary-ink); z-index: 2; }
+    .more-button:hover, .more-button[aria-expanded="true"] { background: var(--primary-soft); }
+    .card-footer { justify-content: space-between; gap: 8px; margin-top: 10px; color: var(--muted); font-size: 12px; }
+    .priority-high { color: var(--danger); }
+    .progress-track { height: 6px; border-radius: 999px; background: var(--line-strong); overflow: hidden; margin-top: 9px; }
+    .progress-track i { display: block; height: 100%; width: 70%; background: var(--primary); border-radius: inherit; }
+
+    .context-menu {
+      position: fixed;
+      z-index: 60;
+      width: 190px;
+      padding: 6px;
+      background: var(--surface);
+      border-radius: 14px;
+      box-shadow: var(--shadow-2);
+    }
+    .context-menu[hidden] { display: none; }
+    .menu-item[hidden], .menu-divider[hidden] { display: none; }
+    .menu-item { width: 100%; min-height: 48px; display: flex; align-items: center; gap: 10px; padding: 0 10px; border-radius: 9px; background: transparent; text-align: left; }
+    .menu-icon { width: 22px; display: inline-grid; place-items: center; font-size: 18px; }
+    .menu-item:hover { background: var(--surface-low); }
+    .menu-item.launch-action { color: var(--primary); font-weight: 500; }
+    .menu-item.danger { color: var(--danger); }
+    .menu-divider { height: 1px; background: var(--line); margin: 5px 6px; }
+
+    dialog { border: 0; border-radius: 24px; padding: 22px; max-width: 420px; color: var(--ink); background: var(--surface); box-shadow: var(--shadow-2); }
+    dialog::backdrop { background: rgba(29, 27, 32, .28); }
+    dialog p { color: var(--muted); margin: 8px 0 18px; }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    .dialog-actions button { min-height: 48px; border: 0; border-radius: 13px; padding: 0 14px; cursor: pointer; }
+    .dialog-actions .cancel { background: var(--surface-high); }
+    .dialog-actions .confirm { background: var(--danger); color: white; }
+
+    .feature-dialog { width: min(620px, calc(100vw - 32px)); max-width: 620px; max-height: calc(100vh - 32px); padding: 0; overflow: hidden; }
+    .feature-dialog[open] { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+    .feature-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 22px 22px 15px; }
+    .feature-dialog-heading { display: grid; gap: 7px; }
+    .feature-dialog-heading h2 { font-size: 22px; }
+    .feature-kind { justify-self: start; min-height: 28px; display: inline-flex; align-items: center; padding: 0 9px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-ink); font-size: 12px; font-weight: 500; letter-spacing: .03em; text-transform: uppercase; }
+    .feature-close { flex: 0 0 auto; margin: -5px -5px 0 0; }
+    .feature-dialog-body { padding: 0 22px 20px; overflow-y: auto; }
+    .feature-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+    .feature-chip { min-height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 10px; background: var(--surface-low); color: var(--muted); font-size: 12px; }
+    .feature-chip.todo { background: #fff0c8; color: #654b00; }
+    .feature-chip.high { background: var(--danger-soft); color: #690005; }
+    .feature-section { padding: 15px 0; border-top: 1px solid var(--line); }
+    .feature-section h3 { font-size: 13px; margin-bottom: 7px; }
+    .feature-section p { margin: 0; color: var(--ink); line-height: 1.5; }
+    .feature-section ul { margin: 0; padding-left: 20px; color: var(--ink); }
+    .feature-section li + li { margin-top: 5px; }
+    .feature-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .feature-fact { min-width: 0; padding: 11px 12px; border-radius: 12px; background: var(--surface-low); }
+    .feature-fact span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 3px; }
+    .feature-fact strong { display: block; font-weight: 500; overflow-wrap: anywhere; }
+    .feature-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 22px 18px; background: var(--surface-low); }
+    .feature-dialog-actions button { min-height: 48px; border: 0; border-radius: 13px; padding: 0 16px; cursor: pointer; }
+    .feature-dialog-actions .secondary { background: transparent; color: var(--primary); }
+    .feature-dialog-actions .primary { background: var(--primary); color: white; }
+
+    .add-item-dialog { width: min(720px, calc(100vw - 32px)); max-width: 720px; max-height: calc(100vh - 32px); padding: 0; overflow: hidden; }
+    .add-item-dialog[open] { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+    .add-item-form { min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+    .add-item-body { overflow-y: auto; padding: 0 22px 22px; }
+    .form-intro { color: var(--muted); margin: 0 0 18px; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .form-field { display: grid; gap: 7px; min-width: 0; }
+    .form-field.full { grid-column: 1 / -1; }
+    .form-field > label, .field-label { font-weight: 500; font-size: 13px; }
+    .form-field input, .form-field select, .form-field textarea { width: 100%; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface); color: var(--ink); padding: 11px 12px; }
+    .form-field input, .form-field select { min-height: 48px; }
+    .form-field textarea { min-height: 88px; resize: vertical; }
+    .field-help { color: var(--muted); font-size: 12px; }
+    .type-segment { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; border-radius: 14px; background: var(--surface-low); }
+    .type-option { position: relative; cursor: pointer; }
+    .type-option input { position: absolute; opacity: 0; pointer-events: none; }
+    .type-option span { min-height: 44px; display: grid; place-items: center; border-radius: 10px; color: var(--muted); font-weight: 500; }
+    .type-option input:checked + span { background: var(--surface); color: var(--primary); box-shadow: var(--shadow-1); }
+    .type-option input:focus-visible + span { outline: 3px solid var(--primary); outline-offset: 2px; }
+    .add-item-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 22px 18px; background: var(--surface-low); }
+    .required-note { color: var(--muted); font-size: 12px; }
+    .form-buttons { display: flex; gap: 8px; }
+    .form-buttons button { min-height: 48px; border: 0; border-radius: 13px; padding: 0 16px; cursor: pointer; }
+    .form-buttons .cancel { background: transparent; color: var(--primary); }
+    .form-buttons .submit { background: var(--primary); color: white; font-weight: 500; }
+
+    .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+    @keyframes work-orbit { to { transform: rotate(360deg); } }
+    @keyframes dot-orbit { from { transform: rotate(0deg) translateX(49px) rotate(0deg); } to { transform: rotate(360deg) translateX(49px) rotate(-360deg); } }
+    @keyframes tick-work { 0%, 68%, 100% { opacity: .18; } 28% { opacity: 1; } }
+    @keyframes link-flow { to { stroke-dashoffset: -30; } }
+
+    .motion-paused .state-active .work-orbit,
+    .motion-paused .state-active .work-dot,
+    .motion-paused .state-active .tool-ticks i,
+    .motion-paused .connector-layer path { animation-play-state: paused !important; }
+
+    @media (max-width: 1180px) {
+      .workspace { grid-template-columns: 1fr; }
+      .claude-panel { min-height: 360px; }
+      .summary-band { grid-template-columns: repeat(3, 1fr); }
+      .summary-item:nth-child(3) { border-right: 0; }
+      .summary-item:nth-child(n+4) { margin-top: 8px; }
+      .kanban-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 760px) {
+      .top-app-bar { padding: 0 14px; }
+      .main { padding: 12px; }
+      .project-switcher, .status-inline, .user-name { display: none; }
+      .summary-band { grid-template-columns: 1fr 1fr; }
+      .summary-item { border-right: 0; padding: 8px; }
+      .cycle-toolbar, .cycle-heading-row { align-items: flex-start; flex-direction: column; }
+      .cycle-canvas { overflow-x: auto; }
+      .connector-layer { min-width: 850px; }
+      .agent-wrap { transform: translateX(calc((850px - 100%) * (var(--x-num, .5) * -1))); }
+      .detail-sheet { padding-inline: 14px; }
+      .sheet-metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+      .metric { border-right: 0; padding: 0; }
+      .kanban-viewport { max-height: none; overflow: visible; padding-right: 0; }
+      .column-title { position: static; }
+      .kanban-grid { grid-template-columns: 1fr; }
+      .kanban-heading { align-items: flex-start; }
+      .kanban-actions { width: 100%; justify-content: space-between; }
+      .add-item-button { flex: 1; justify-content: center; }
+      .form-grid { grid-template-columns: 1fr; }
+      .form-field.full { grid-column: auto; }
+      .add-item-actions { align-items: stretch; flex-direction: column; }
+      .form-buttons { justify-content: flex-end; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .001ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Aller au contenu principal</a>
+  <div class="app-shell">
+    <header class="top-app-bar">
+      <div class="brand-row">
+        <div class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Le Couloir</div>
+        <button class="project-switcher" type="button" aria-label="Changer de projet, projet actuel : Checkout web">Checkout web <span aria-hidden="true">⌄</span></button>
+      </div>
+      <div class="top-actions">
+        <div class="status-inline"><span class="status-dot" aria-hidden="true"></span>Connecté</div>
+        <button class="icon-button notification-button" type="button" aria-label="Notifications, 3 non lues">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path><path d="M10 21h4"></path></svg>
+          <span class="notification-badge" aria-hidden="true">3</span>
+        </button>
+        <button class="icon-button" type="button" aria-label="Ouvrir les réglages">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.09a2 2 0 0 1 1 1.74v.5a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+        </button>
+        <button class="account-button" type="button" aria-label="Ouvrir le menu du compte de Jean Dupont"><span class="avatar" aria-hidden="true">JD</span><span class="user-name">Jean Dupont</span><span aria-hidden="true">⌄</span></button>
+      </div>
+    </header>
+
+    <main class="main" id="main-content" tabindex="-1">
+      <section class="summary-band" aria-label="Résumé du cycle">
+        <div class="summary-item"><span class="summary-icon" aria-hidden="true">◴</span><span class="summary-copy"><strong>Cycle #42</strong><span id="summary-step">Démonstration prête</span></span></div>
+        <div class="summary-item"><span class="summary-icon" aria-hidden="true">◷</span><span class="summary-copy"><strong id="summary-time">00:00</strong><span>Temps écoulé</span></span></div>
+        <div class="summary-item"><span class="summary-icon" aria-hidden="true">●</span><span class="summary-copy"><strong id="summary-active">0 agent actif</strong><span>sur 6 passages</span></span></div>
+        <div class="summary-item"><span class="summary-icon" aria-hidden="true">◫</span><span class="summary-copy"><strong id="summary-tokens">0 token</strong><span>consommés</span></span></div>
+        <div class="summary-item"><span class="summary-icon" aria-hidden="true">□</span><span class="summary-copy"><strong>1 question en attente</strong><span>De Claude</span></span></div>
+      </section>
+
+      <div class="workspace">
+        <section class="cycle-surface" aria-labelledby="cycle-title">
+          <div class="cycle-toolbar">
+            <div class="cycle-tabs" role="group" aria-label="Vue des cycles">
+              <button class="tab-button" type="button" aria-pressed="true">Cycle actif</button>
+              <button class="tab-button" type="button" aria-pressed="false">Historique</button>
+              <button class="small-button" type="button" aria-label="Choisir un cycle, cycle actuel : 42">Cycle #42&nbsp;<span aria-hidden="true">⌄</span></button>
+            </div>
+          </div>
+
+          <div class="cycle-heading-row">
+            <div>
+              <h1 id="cycle-title">Sécuriser le checkout</h1>
+              <p class="cycle-subtitle"><span class="live-label">vivant</span><span id="cycle-status">Démarrage du cycle</span></p>
+            </div>
+            <div class="legend" role="group" aria-label="Légende des états">
+              <span><i class="active"></i>Actif</span>
+              <span><i class="parallel"></i>Travail en parallèle</span>
+              <span><i class="reprise"></i>Reprise</span>
+              <span><i></i>Non lancé</span>
+            </div>
+          </div>
+          <p class="motion-note" id="motion-note">Spec reader s’active : le disque grandit et révèle ses données.</p>
+
+          <div class="cycle-canvas" id="cycle-canvas">
+            <svg class="connector-layer" viewBox="0 0 1000 388" preserveAspectRatio="none" aria-hidden="true">
+              <path id="link-spec-front" d="M100 190 C165 190 235 190 300 190"></path>
+              <path id="link-front-tests" d="M300 190 C385 190 415 102 500 102"></path>
+              <path id="link-front-sec" d="M300 190 C385 190 415 278 500 278"></path>
+              <path id="link-tests-front2" d="M500 102 C605 102 615 190 720 190"></path>
+              <path id="link-sec-front2" d="M500 278 C605 278 615 190 720 190"></path>
+              <path id="link-front2-review" d="M720 190 C785 190 835 190 900 190"></path>
+              <path id="link-reprise" d="M500 102 C575 28 690 42 720 190" opacity="0"></path>
+            </svg>
+
+            <div class="agent-wrap" data-id="spec" style="--x:10%;--y:49%;--x-num:.1">
+              <button class="agent-node state-pending" type="button" aria-label="Spec reader, non lancé"><span class="work-orbit"></span><span class="work-dot"></span><span class="tool-ticks"></span><span class="agent-face"><span class="agent-code">SR</span><span class="agent-data"><span class="token-value">0</span><span class="file-dots"><i></i><i></i><i></i></span></span></span></button>
+              <span class="agent-name"><strong>Spec reader</strong><span>Analyse et structure</span></span><span class="agent-duration">—</span>
+            </div>
+            <div class="agent-wrap" data-id="front1" style="--x:30%;--y:49%;--x-num:.3">
+              <button class="agent-node state-pending" type="button" aria-label="Frontend, non lancé"><span class="work-orbit"></span><span class="work-dot"></span><span class="tool-ticks"></span><span class="agent-face"><span class="agent-code">FE</span><span class="agent-data"><span class="token-value">0</span><span class="file-dots"><i></i><i></i><i></i></span></span></span></button>
+              <span class="agent-name"><strong>Frontend</strong><span>Implémente le flux</span></span><span class="agent-duration">—</span>
+            </div>
+            <div class="agent-wrap" data-id="tests" style="--x:50%;--y:27%;--x-num:.5">
+              <button class="agent-node state-pending parallel" type="button" aria-label="Tests, non lancé"><span class="work-orbit"></span><span class="work-dot"></span><span class="tool-ticks"></span><span class="agent-face"><span class="agent-code">T</span><span class="agent-data"><span class="token-value">0</span><span class="file-dots"><i></i><i></i><i></i></span></span></span></button>
+              <span class="agent-name"><strong>Tests</strong><span>Exécute et signale</span></span><span class="agent-duration">—</span>
+            </div>
+            <div class="agent-wrap" data-id="security" style="--x:50%;--y:72%;--x-num:.5">
+              <button class="agent-node state-pending parallel" type="button" aria-label="Sécurité, non lancé"><span class="work-orbit"></span><span class="work-dot"></span><span class="tool-ticks"></span><span class="agent-face"><span class="agent-code">SEC</span><span class="agent-data"><span class="token-value">0</span><span class="file-dots"><i></i><i></i><i></i></span></span></span></button>
+              <span class="agent-name"><strong>Sécurité</strong><span>Analyse les risques</span></span><span class="agent-duration">—</span>
+            </div>
+            <div class="agent-wrap" data-id="front2" style="--x:72%;--y:49%;--x-num:.72">
+              <button class="agent-node state-pending" type="button" aria-label="Frontend reprise, non lancé"><span class="work-orbit"></span><span class="work-dot"></span><span class="tool-ticks"></span><span class="agent-face"><span class="agent-code">FE-2</span><span class="agent-data"><span class="token-value">0</span><span class="file-dots"><i></i><i></i><i></i></span></span></span></button>
+              <span class="agent-name"><strong>Frontend · reprise</strong><span>Corrige les cas limites</span></span><span class="agent-duration">—</span>
+            </div>
+            <div class="agent-wrap" data-id="review" style="--x:90%;--y:49%;--x-num:.9">
+              <button class="agent-node state-pending" type="button" aria-label="Reviewer, non lancé"><span class="work-orbit"></span><span class="work-dot"></span><span class="tool-ticks"></span><span class="agent-face"><span class="agent-code">RV</span><span class="agent-data"><span class="token-value">0</span><span class="file-dots"><i></i><i></i><i></i></span></span></span></button>
+              <span class="agent-name"><strong>Reviewer</strong><span>Valide et synthétise</span></span><span class="agent-duration">—</span>
+            </div>
+          </div>
+
+          <section class="detail-sheet" aria-labelledby="selected-title">
+            <div class="sheet-handle" aria-hidden="true"></div>
+            <div class="sheet-heading">
+              <div class="selected-agent"><span class="selected-mark" id="selected-code">SR</span><span class="selected-copy"><h2 id="selected-title">Spec reader · actif</h2><p id="selected-task">Analyse les spécifications du checkout</p></span></div>
+              <button class="sheet-toggle" type="button" aria-label="Replier le détail"><span aria-hidden="true">⌄</span></button>
+            </div>
+            <div class="sheet-metrics">
+              <div class="metric"><span>Anneau · état</span><strong id="selected-state">Actif</strong></div>
+              <div class="metric"><span>Centre · tokens</span><strong id="selected-tokens">1 100</strong></div>
+              <div class="metric"><span>Graduations · outils</span><strong id="selected-tools">2 appels</strong></div>
+              <div class="metric"><span>Points · fichiers</span><strong id="selected-files">1 fichier</strong></div>
+              <div class="metric"><span>Sous le disque · durée</span><strong id="selected-duration">00:08</strong></div>
+            </div>
+          </section>
+
+          <div class="repo-strip"><span aria-hidden="true">◆</span><span>main</span><span aria-hidden="true">·</span><span>3 fichiers modifiés</span><span aria-hidden="true">·</span><span>tests 42/44</span><span class="ok"><span aria-hidden="true">●</span><span class="visually-hidden">Tests validés</span></span></div>
+        </section>
+
+        <aside class="claude-panel" aria-labelledby="claude-title">
+          <div class="claude-title">
+            <div class="claude-ident"><span class="claude-mark" aria-hidden="true">✺</span><span><h2 id="claude-title">Claude</h2><span class="claude-status"><span aria-hidden="true">●</span> En ligne</span></span></div>
+            <button class="icon-button" type="button" aria-label="Options de la conversation"><span aria-hidden="true">⋮</span></button>
+          </div>
+          <div class="conversation">
+            <article class="message"><span class="message-avatar" aria-hidden="true">✺</span><div class="bubble"><time>14:28</time>J’ai préparé l’orchestration. Les agents apparaîtront au moment de leur activation.</div></article>
+            <article class="message"><span class="message-avatar" aria-hidden="true">✺</span><div class="bubble"><time>14:31</time><span id="claude-live-message">Spec reader analyse les règles du checkout.</span></div></article>
+            <div class="question"><strong>Question en attente</strong><p>Souhaitez-vous bloquer la fusion tant que Sécurité n’a pas terminé ?</p></div>
+          </div>
+          <form class="composer" id="composer"><label class="visually-hidden" for="prompt">Répondre à Claude</label><input id="prompt" autocomplete="off" placeholder="Répondre à Claude…"><button class="send-button" type="submit" aria-label="Envoyer le message"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path></svg></button></form>
+        </aside>
+      </div>
+
+      <section class="backlog" aria-labelledby="backlog-title">
+        <div class="kanban-heading"><div class="kanban-title-row"><h2 id="backlog-title">Backlog</h2><span class="backlog-count" id="backlog-count">12 éléments · défilement commun</span><span class="repo-strip"><span aria-hidden="true">◆</span><span>main</span><span aria-hidden="true">·</span><span>3 fichiers modifiés</span><span aria-hidden="true">·</span><span>tests 42/44</span></span></div><div class="kanban-actions"><button class="add-item-button" id="open-add-item" type="button"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"></path></svg><span>Ajouter un élément</span></button><button class="small-button" type="button" aria-label="Filtrer le backlog, filtre actuel : tous">Tous&nbsp;<span aria-hidden="true">⌄</span></button></div></div>
+        <div class="kanban-viewport" tabindex="0" role="region" aria-label="Backlog, défilement vertical commun aux trois colonnes">
+        <div class="kanban-grid">
+          <section class="kanban-column column-todo">
+            <div class="column-title"><span class="column-label"><i></i>Todo</span><span id="backlog-column-count">6</span></div>
+            <article class="feature-card" data-feature-id="F-023"><button class="more-button" type="button" aria-label="Actions pour F-023" aria-haspopup="menu" aria-controls="context-menu" aria-expanded="false" data-menu-for="F-023" data-launchable="true"><span aria-hidden="true">⋮</span></button><h3><button class="card-title-button" type="button">F-023 · Remboursement partiel</button></h3><p>Gérer les remboursements partiels et les avoirs.</p><div class="card-footer"><span>⌃ Moyenne</span><span>T</span></div></article>
+            <article class="feature-card" data-feature-id="B-014"><button class="more-button" type="button" aria-label="Actions pour B-014" aria-haspopup="menu" aria-controls="context-menu" aria-expanded="false" data-menu-for="B-014" data-launchable="true"><span aria-hidden="true">⋮</span></button><h3><button class="card-title-button" type="button">B-014 · TVA incorrecte</button></h3><p>Le taux local n’est pas appliqué après un changement d’adresse.</p><div class="card-footer"><span class="priority-high">⌃ Haute</span><span>BE</span></div></article>
+            <article class="feature-card" data-feature-id="F-026"><button class="more-button" type="button" aria-label="Actions pour F-026" aria-haspopup="menu" aria-controls="context-menu" aria-expanded="false" data-menu-for="F-026" data-launchable="true"><span aria-hidden="true">⋮</span></button><h3><button class="card-title-button" type="button">F-026 · Paiement récurrent</button></h3><p>Préparer les mandats et le renouvellement automatique.</p><div class="card-footer"><span>⌄ Basse</span><span>SR</span></div></article>
+            <article class="feature-card" data-feature-id="F-022"><button class="more-button" type="button" aria-label="Actions pour F-022" aria-haspopup="menu" aria-controls="context-menu" aria-expanded="false" data-menu-for="F-022" data-launchable="true"><span aria-hidden="true">⋮</span></button><h3><button class="card-title-button" type="button">F-022 · Paiement invité</button></h3><p>Permettre un checkout sans compte utilisateur.</p><div class="card-footer"><span class="priority-high">⌃ Haute</span><span>FE</span></div></article>
+            <article class="feature-card" data-feature-id="B-018"><button class="more-button" type="button" aria-label="Actions pour B-018" aria-haspopup="menu" aria-controls="context-menu" aria-expanded="false" data-menu-for="B-018" data-launchable="true"><span aria-hidden="true">⋮</span></button><h3><button class="card-title-button" type="button">B-018 · Panier vide bloqué</button></h3><p>Le retour depuis le paiement conserve un panier fantôme.</p><div class="card-footer"><span class="priority-high">⌃ Haute</span><span>T</span></div></article>
+            <article class="feature-card" data-feature-id="F-025"><button class="more-button" type="button" aria-label="Actions pour F-025" aria-haspopup="menu" aria-controls="context-menu" aria-expanded="false" data-menu-for="F-025" data-launchable="true"><span aria-hidden="true">⋮</span></button><h3><button class="card-title-button" type="button">F-025 · Adresses enregistrées</button></h3><p>Réutiliser une adresse de livraison déjà validée.</p><div class="card-footer"><span>⌃ Moyenne</span><span>FE</span></div></article>
+          </section>
+          <section class="kanban-column column-doing">
+            <div class="column-title"><span class="column-label"><i></i>Doing</span><span>3</span></div>
+            <article class="feature-card active-card" data-feature-id="F-021"><button class="more-button" type="button" aria-label="Actions pour F-021" aria-haspopup="menu" aria-controls="context-menu" aria-expanded="false" data-menu-for="F-021"><span aria-hidden="true">⋮</span></button><h3><button class="card-title-button" type="button">F-021 · Sécuriser le checkout</button></h3><p>Renforcer la validation et la protection du checkout.</p><div class="progress-track" role="progressbar" aria-label="Progression de F-021" aria-valuemin="0" aria-valuemax="100" aria-valuenow="70"><i></i></div><div class="card-footer"><span class="priority-high">⌃ Haute</span><span>FE · 70 %</span></div></article>
+            <article class="feature-card" data-feature-id="B-017"><button class="more-button" type="button" aria-label="Actions pour B-017" aria-haspopup="menu" aria-controls="context-menu" aria-expanded="false" data-menu-for="B-017"><span aria-hidden="true">⋮</span></button><h3><button class="card-title-button" type="button">B-017 · Double débit 3DS</button></h3><p>Éviter la seconde capture après une reprise d’authentification.</p><div class="progress-track" role="progressbar" aria-label="Progression de B-017" aria-valuemin="0" aria-valuemax="100" aria-valuenow="45"><i style="width:45%"></i></div><div class="card-footer"><span class="priority-high">⌃ Haute</span><span>SEC · 45 %</span></div></article>
+            <article class="feature-card" data-feature-id="F-020"><button class="more-button" type="button" aria-label="Actions pour F-020" aria-haspopup="menu" aria-controls="context-menu" aria-expanded="false" data-menu-for="F-020"><span aria-hidden="true">⋮</span></button><h3><button class="card-title-button" type="button">F-020 · Webhooks de paiement</button></h3><p>Fiabiliser le traitement différé et les reprises.</p><div class="progress-track" role="progressbar" aria-label="Progression de F-020" aria-valuemin="0" aria-valuemax="100" aria-valuenow="30"><i style="width:30%"></i></div><div class="card-footer"><span>⌃ Moyenne</span><span>BE · 30 %</span></div></article>
+          </section>
+          <section class="kanban-column column-done">
+            <div class="column-title"><span class="column-label"><i></i>Done</span><span>3</span></div>
+            <article class="feature-card" data-feature-id="F-024"><button class="more-button" type="button" aria-label="Actions pour F-024" aria-haspopup="menu" aria-controls="context-menu" aria-expanded="false" data-menu-for="F-024"><span aria-hidden="true">⋮</span></button><h3><button class="card-title-button" type="button">F-024 · Journal d’audit</button></h3><p>Tracer les événements sensibles de paiement.</p><div class="card-footer"><span>⌄ Basse</span><span>SEC</span></div></article>
+            <article class="feature-card" data-feature-id="B-012"><button class="more-button" type="button" aria-label="Actions pour B-012" aria-haspopup="menu" aria-controls="context-menu" aria-expanded="false" data-menu-for="B-012"><span aria-hidden="true">⋮</span></button><h3><button class="card-title-button" type="button">B-012 · Expiration de session</button></h3><p>Restaurer proprement le panier après expiration.</p><div class="card-footer"><span>⌃ Moyenne</span><span>FE</span></div></article>
+            <article class="feature-card" data-feature-id="F-019"><button class="more-button" type="button" aria-label="Actions pour F-019" aria-haspopup="menu" aria-controls="context-menu" aria-expanded="false" data-menu-for="F-019"><span aria-hidden="true">⋮</span></button><h3><button class="card-title-button" type="button">F-019 · Reçu PDF</button></h3><p>Générer un justificatif accessible après paiement.</p><div class="card-footer"><span>⌄ Basse</span><span>BE</span></div></article>
+          </section>
+        </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="context-menu" id="context-menu" role="menu" hidden>
+    <button class="menu-item launch-action" id="menu-launch-cycle" type="button" role="menuitem"><span class="menu-icon" aria-hidden="true">▶</span><span>Lancer un cycle</span></button>
+    <div class="menu-divider" id="launch-divider"></div>
+    <button class="menu-item" id="view-details" type="button" role="menuitem"><span class="menu-icon" aria-hidden="true">◉</span><span>Voir les détails</span></button>
+    <button class="menu-item" id="edit-item" type="button" role="menuitem"><span class="menu-icon" aria-hidden="true">✎</span><span>Modifier</span></button>
+    <div class="menu-divider"></div>
+    <button class="menu-item danger" id="delete-item" type="button" role="menuitem"><span class="menu-icon" aria-hidden="true">⌫</span><span>Supprimer</span></button>
+  </div>
+
+  <dialog class="feature-dialog" id="feature-dialog" aria-labelledby="feature-title" aria-describedby="feature-description">
+    <div class="feature-dialog-header">
+      <div class="feature-dialog-heading"><span class="feature-kind" id="feature-kind">Feature</span><h2 id="feature-title">F-022 · Paiement invité</h2></div>
+      <button class="icon-button feature-close" id="close-feature" type="button" aria-label="Fermer le détail"><span aria-hidden="true">×</span></button>
+    </div>
+    <div class="feature-dialog-body">
+      <div class="feature-meta"><span class="feature-chip todo" id="feature-status">● Todo</span><span class="feature-chip high" id="feature-priority">⌃ Haute</span><span class="feature-chip" id="feature-agent">Agent · FE</span></div>
+      <section class="feature-section"><h3>Description</h3><p id="feature-description"></p></section>
+      <section class="feature-section"><h3>Critères d’acceptation</h3><ul id="feature-criteria"></ul></section>
+      <section class="feature-section"><div class="feature-facts"><div class="feature-fact"><span>Dépendance</span><strong id="feature-dependency"></strong></div><div class="feature-fact"><span>Dernière mise à jour</span><strong id="feature-updated"></strong></div></div></section>
+    </div>
+    <div class="feature-dialog-actions"><button class="secondary" id="feature-edit" type="button">Modifier</button><button class="primary" id="feature-done" type="button">Fermer</button></div>
+  </dialog>
+
+  <dialog class="add-item-dialog" id="add-item-dialog" aria-labelledby="add-item-title" aria-describedby="add-item-intro">
+    <div class="feature-dialog-header">
+      <div class="feature-dialog-heading"><span class="feature-kind">Backlog</span><h2 id="add-item-title">Ajouter un élément</h2></div>
+      <button class="icon-button feature-close" id="close-add-item" type="button" aria-label="Fermer le formulaire"><span aria-hidden="true">×</span></button>
+    </div>
+    <form class="add-item-form" id="add-item-form">
+      <div class="add-item-body">
+        <p class="form-intro" id="add-item-intro">Décrivez le besoin. Claude rédigera la spec avant de l’ajouter à Todo.</p>
+        <div class="form-grid">
+          <fieldset class="form-field full" style="border:0;padding:0;margin:0">
+            <legend class="field-label">Type d’élément</legend>
+            <div class="type-segment">
+              <label class="type-option"><input type="radio" name="item-type" value="feature" checked><span>Feature</span></label>
+              <label class="type-option"><input type="radio" name="item-type" value="bug"><span>Bug</span></label>
+            </div>
+          </fieldset>
+          <div class="form-field full"><label for="item-description">Description <span aria-hidden="true">*</span></label><textarea id="item-description" name="description" required maxlength="280" placeholder="Décrivez le besoin ou le comportement observé…"></textarea><span class="field-help">Une ou deux phrases centrées sur le résultat attendu.</span></div>
+          <div class="form-field full"><label for="item-priority">Priorité</label><select id="item-priority" name="priority"><option value="Moyenne" selected>Moyenne</option><option value="Haute">Haute</option><option value="Basse">Basse</option></select></div>
+        </div>
+      </div>
+      <div class="add-item-actions"><span class="required-note"><span aria-hidden="true">*</span> Champs obligatoires</span><div class="form-buttons"><button class="cancel" id="cancel-add-item" type="button">Annuler</button><button class="submit" type="submit">Ajouter au backlog</button></div></div>
+    </form>
+  </dialog>
+
+  <dialog id="delete-dialog" aria-labelledby="delete-title" aria-describedby="delete-copy"><h2 id="delete-title">Supprimer cet élément ?</h2><p id="delete-copy">Cette action supprimera définitivement la feature.</p><div class="dialog-actions"><button class="cancel" id="cancel-delete" type="button">Annuler</button><button class="confirm" type="button">Supprimer</button></div></dialog>
+  <div class="visually-hidden" id="a11y-announcement" aria-live="polite" aria-atomic="true"></div>
+
+  <script>
+    (() => {
+      const agentDefinitions = {
+        spec: { code: 'SR', name: 'Spec reader', task: 'Analyse les spécifications du checkout', finalTokens: 6200, finalTools: 9, finalFiles: 1, finalDuration: '02:48' },
+        front1: { code: 'FE', name: 'Frontend · passage #1', task: 'Implémente le flux nominal', finalTokens: 18700, finalTools: 22, finalFiles: 5, finalDuration: '06:31' },
+        tests: { code: 'T', name: 'Tests', task: 'Exécute les scénarios et signale les régressions', finalTokens: 9400, finalTools: 18, finalFiles: 2, finalDuration: '04:09' },
+        security: { code: 'SEC', name: 'Sécurité', task: 'Vérifie les montants, sessions et permissions', finalTokens: 7100, finalTools: 11, finalFiles: 2, finalDuration: '05:46' },
+        front2: { code: 'FE-2', name: 'Frontend · reprise #2', task: 'Corrige les cas limites signalés par Tests', finalTokens: 12300, finalTools: 14, finalFiles: 3, finalDuration: '03:12' },
+        review: { code: 'RV', name: 'Reviewer', task: 'Valide les changements et produit la synthèse', finalTokens: 4900, finalTools: 7, finalFiles: 1, finalDuration: '02:06' }
+      };
+
+      const featureDetails = {
+        'F-023': { kind: 'Feature', title: 'Remboursement partiel', status: 'Todo', priority: 'Moyenne', agent: 'Tests', description: 'Permettre un remboursement partiel avec génération automatique d’un avoir.', criteria: ['Saisir un montant inférieur au paiement initial', 'Tracer chaque remboursement dans l’historique', 'Empêcher un cumul supérieur au montant encaissé'], dependency: 'API avoirs', updated: 'Il y a 18 min' },
+        'B-014': { kind: 'Bug', title: 'TVA incorrecte', status: 'Todo', priority: 'Haute', agent: 'Backend', description: 'Le taux local n’est pas recalculé après un changement d’adresse de facturation.', criteria: ['Recalcul immédiat après validation de l’adresse', 'Conserver le détail du calcul dans la commande', 'Couvrir les changements de pays en test'], dependency: 'Matrice fiscale', updated: 'Il y a 32 min' },
+        'F-026': { kind: 'Feature', title: 'Paiement récurrent', status: 'Todo', priority: 'Basse', agent: 'Spec reader', description: 'Préparer les mandats et le renouvellement automatique des abonnements.', criteria: ['Créer un mandat explicite', 'Notifier avant chaque renouvellement', 'Permettre la révocation depuis le compte'], dependency: 'Contrat PSP', updated: 'Hier, 17:40' },
+        'F-022': { kind: 'Feature', title: 'Paiement invité', status: 'Todo', priority: 'Haute', agent: 'Frontend', description: 'Permettre un checkout complet sans imposer la création préalable d’un compte utilisateur.', criteria: ['Payer avec une adresse e-mail uniquement', 'Proposer la création du compte après confirmation', 'Conserver panier et formulaire en cas d’échec'], dependency: 'Spécification paiement v2', updated: 'Il y a 4 min' },
+        'B-018': { kind: 'Bug', title: 'Panier vide bloqué', status: 'Todo', priority: 'Haute', agent: 'Tests', description: 'Le retour depuis le prestataire de paiement conserve un panier fantôme inutilisable.', criteria: ['Nettoyer le panier après confirmation', 'Restaurer le panier après annulation', 'Tester le retour navigateur et le lien direct'], dependency: 'Webhooks de paiement', updated: 'Il y a 11 min' },
+        'F-025': { kind: 'Feature', title: 'Adresses enregistrées', status: 'Todo', priority: 'Moyenne', agent: 'Frontend', description: 'Réutiliser une adresse de livraison déjà validée pendant le checkout.', criteria: ['Lister les adresses actives', 'Préselectionner la dernière adresse utilisée', 'Permettre une modification sans quitter le flux'], dependency: 'Profil client', updated: 'Il y a 27 min' },
+        'F-021': { kind: 'Feature', title: 'Sécuriser le checkout', status: 'Doing · 70 %', priority: 'Haute', agent: 'Frontend', description: 'Renforcer la validation des montants, des sessions et des permissions du checkout.', criteria: ['Signer les montants côté serveur', 'Expirer les sessions inactives', 'Bloquer toute modification après capture'], dependency: 'Audit sécurité #18', updated: 'À l’instant' },
+        'B-017': { kind: 'Bug', title: 'Double débit 3DS', status: 'Doing · 45 %', priority: 'Haute', agent: 'Sécurité', description: 'Une reprise d’authentification 3DS peut provoquer une seconde capture.', criteria: ['Garantir l’idempotence de la capture', 'Réutiliser l’intention de paiement existante', 'Couvrir les retours 3DS tardifs'], dependency: 'Clé d’idempotence', updated: 'Il y a 2 min' },
+        'F-020': { kind: 'Feature', title: 'Webhooks de paiement', status: 'Doing · 30 %', priority: 'Moyenne', agent: 'Backend', description: 'Fiabiliser le traitement différé et les reprises des notifications de paiement.', criteria: ['Vérifier la signature de chaque événement', 'Rejouer les événements en échec', 'Dédupliquer les notifications reçues'], dependency: 'File d’événements', updated: 'Il y a 6 min' },
+        'F-024': { kind: 'Feature', title: 'Journal d’audit', status: 'Done', priority: 'Basse', agent: 'Sécurité', description: 'Tracer les événements sensibles du paiement dans un journal immuable.', criteria: ['Horodater chaque action', 'Masquer les données sensibles', 'Exporter une trace par commande'], dependency: 'Stockage audit', updated: 'Aujourd’hui, 10:42' },
+        'B-012': { kind: 'Bug', title: 'Expiration de session', status: 'Done', priority: 'Moyenne', agent: 'Frontend', description: 'Restaurer proprement le panier quand la session expire pendant le paiement.', criteria: ['Afficher une explication concise', 'Conserver les lignes du panier', 'Redemander uniquement les données expirées'], dependency: 'Gestion de session', updated: 'Hier, 16:15' },
+        'F-019': { kind: 'Feature', title: 'Reçu PDF', status: 'Done', priority: 'Basse', agent: 'Backend', description: 'Générer un justificatif PDF accessible après le paiement.', criteria: ['Respecter le modèle de facture', 'Rendre le document accessible', 'Permettre un nouveau téléchargement'], dependency: 'Service documentaire', updated: '18 sept., 14:08' }
+      };
+
+      const steps = [
+        { label: 'Lecture de la spec', note: 'Spec reader s’active : le disque grandit et révèle ses données.', message: 'Spec reader analyse la spec du checkout.', states: { spec: 'active', front1: 'pending', tests: 'pending', security: 'pending', front2: 'pending', review: 'pending' }, links: [] },
+        { label: 'Implémentation', note: 'Spec reader se stabilise. Frontend s’ouvre et commence à produire.', message: 'Spec reader a terminé. Frontend implémente le flux nominal.', states: { spec: 'done', front1: 'active', tests: 'pending', security: 'pending', front2: 'pending', review: 'pending' }, links: ['link-spec-front'] },
+        { label: 'Travail parallèle', note: 'Tests et Sécurité démarrent en parallèle. Leur activité est visible sans pulsation de taille.', message: 'Tests et Sécurité travaillent maintenant en parallèle.', states: { spec: 'done', front1: 'done', tests: 'active', security: 'active', front2: 'pending', review: 'pending' }, links: ['link-spec-front', 'link-front-tests', 'link-front-sec'] },
+        { label: 'Retour de tests', note: 'Tests détecte une régression et déclenche une reprise Frontend.', message: 'Tests a détecté deux régressions. Je relance Frontend avec le contexte.', states: { spec: 'done', front1: 'done', tests: 'done', security: 'active', front2: 'active', review: 'pending' }, links: ['link-spec-front', 'link-front-tests', 'link-front-sec', 'link-tests-front2', 'link-sec-front2'], reprise: true },
+        { label: 'Revue finale', note: 'La reprise est terminée. Reviewer s’active pour la synthèse finale.', message: 'Les corrections sont prêtes. Reviewer vérifie maintenant le résultat.', states: { spec: 'done', front1: 'done', tests: 'done', security: 'done', front2: 'done', review: 'active' }, links: ['link-spec-front', 'link-front-tests', 'link-front-sec', 'link-tests-front2', 'link-sec-front2', 'link-front2-review'] },
+        { label: 'Cycle terminé', note: 'Tous les agents sont stabilisés. Aucune animation continue ne subsiste.', message: 'Le cycle est terminé. La synthèse et les changements sont disponibles.', states: { spec: 'done', front1: 'done', tests: 'done', security: 'done', front2: 'done', review: 'done' }, links: ['link-spec-front', 'link-front-tests', 'link-front-sec', 'link-tests-front2', 'link-sec-front2', 'link-front2-review'] }
+      ];
+
+      const root = document.documentElement;
+      const motionNote = document.getElementById('motion-note');
+      const cycleStatus = document.getElementById('cycle-status');
+      const summaryStep = document.getElementById('summary-step');
+      const summaryTime = document.getElementById('summary-time');
+      const summaryActive = document.getElementById('summary-active');
+      const summaryTokens = document.getElementById('summary-tokens');
+      const claudeMessage = document.getElementById('claude-live-message');
+      const a11yAnnouncement = document.getElementById('a11y-announcement');
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      let currentStep = 0;
+      let playing = !reducedMotion;
+      let selectedAgent = 'spec';
+      let demoTimer = null;
+      let metricTimer = null;
+      let elapsedSeconds = 0;
+      let menuTarget = '';
+      const metrics = {};
+
+      Object.keys(agentDefinitions).forEach((id) => {
+        metrics[id] = { tokens: 0, tools: 0, files: 0, duration: 0 };
+        const node = document.querySelector(`[data-id="${id}"] .agent-node`);
+        const ticks = node.querySelector('.tool-ticks');
+        for (let index = 0; index < 12; index += 1) {
+          const tick = document.createElement('i');
+          tick.style.setProperty('--i', index);
+          ticks.appendChild(tick);
+        }
+        node.addEventListener('click', () => selectAgent(id));
+      });
+
+      const formatNumber = (value) => new Intl.NumberFormat('fr-FR').format(Math.round(value));
+      const formatCompact = (value) => value >= 1000 ? `${(value / 1000).toFixed(1).replace('.', ',')}k` : String(Math.round(value));
+      const formatElapsed = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+
+      function stateLabel(state) {
+        if (state === 'active') return 'Actif · travail en cours';
+        if (state === 'done') return 'Terminé';
+        return 'Non lancé';
+      }
+
+      function selectAgent(id) {
+        selectedAgent = id;
+        updateDetailSheet();
+        document.querySelectorAll('.agent-node').forEach((node) => node.removeAttribute('aria-pressed'));
+        document.querySelector(`[data-id="${id}"] .agent-node`).setAttribute('aria-pressed', 'true');
+      }
+
+      function updateDetailSheet() {
+        const def = agentDefinitions[selectedAgent];
+        const state = steps[currentStep].states[selectedAgent];
+        const data = metrics[selectedAgent];
+        document.getElementById('selected-code').textContent = def.code;
+        document.getElementById('selected-title').textContent = `${def.name} · ${state === 'active' ? 'actif' : state === 'done' ? 'terminé' : 'non lancé'}`;
+        document.getElementById('selected-task').textContent = def.task;
+        document.getElementById('selected-state').textContent = stateLabel(state);
+        document.getElementById('selected-tokens').textContent = state === 'pending' ? '—' : formatNumber(data.tokens);
+        document.getElementById('selected-tools').textContent = state === 'pending' ? '—' : `${data.tools} appel${data.tools > 1 ? 's' : ''}`;
+        document.getElementById('selected-files').textContent = state === 'pending' ? '—' : `${data.files} fichier${data.files > 1 ? 's' : ''}`;
+        document.getElementById('selected-duration').textContent = state === 'pending' ? '—' : formatElapsed(data.duration);
+      }
+
+      function updateNode(id, state) {
+        const def = agentDefinitions[id];
+        const wrap = document.querySelector(`[data-id="${id}"]`);
+        const node = wrap.querySelector('.agent-node');
+        const token = node.querySelector('.token-value');
+        const duration = wrap.querySelector('.agent-duration');
+        const dots = node.querySelectorAll('.file-dots i');
+        node.classList.remove('state-pending', 'state-active', 'state-done');
+        node.classList.add(`state-${state}`);
+        const progress = state === 'done' ? 360 : state === 'active' ? Math.max(72, Math.min(315, metrics[id].tokens / def.finalTokens * 315)) : 0;
+        node.style.setProperty('--progress', `${progress}deg`);
+        token.textContent = state === 'pending' ? '' : formatCompact(metrics[id].tokens);
+        duration.textContent = state === 'pending' ? '—' : `${formatElapsed(metrics[id].duration)} · ${state === 'active' ? 'En cours' : 'Terminé'}`;
+        dots.forEach((dot, index) => dot.classList.toggle('on', index < metrics[id].files));
+        node.setAttribute('aria-label', `${def.name}, ${stateLabel(state)}${state === 'pending' ? '' : `, ${formatNumber(metrics[id].tokens)} tokens`}`);
+      }
+
+      function applyStep(index, resetMetrics = false) {
+        currentStep = (index + steps.length) % steps.length;
+        const step = steps[currentStep];
+        if (resetMetrics) {
+          Object.keys(metrics).forEach((id) => { metrics[id] = { tokens: 0, tools: 0, files: 0, duration: 0 }; });
+          elapsedSeconds = 0;
+        }
+
+        Object.entries(step.states).forEach(([id, state]) => {
+          const def = agentDefinitions[id];
+          if (state === 'done') {
+            metrics[id] = { tokens: def.finalTokens, tools: def.finalTools, files: def.finalFiles, duration: durationToSeconds(def.finalDuration) };
+          } else if (state === 'active' && metrics[id].tokens === 0) {
+            metrics[id] = { tokens: Math.round(def.finalTokens * .12), tools: 1, files: 1, duration: 8 };
+          }
+          updateNode(id, state);
+        });
+
+        document.querySelectorAll('.connector-layer path').forEach((path) => {
+          path.classList.remove('is-flowing', 'is-complete', 'is-reprise');
+          if (step.links.includes(path.id)) path.classList.add(currentStep >= 4 ? 'is-complete' : 'is-flowing');
+        });
+        const reprise = document.getElementById('link-reprise');
+        reprise.style.opacity = step.reprise ? '1' : '0';
+        reprise.classList.toggle('is-reprise', Boolean(step.reprise));
+        motionNote.textContent = step.note;
+        cycleStatus.textContent = step.label;
+        summaryStep.textContent = step.label;
+        claudeMessage.textContent = step.message;
+        updateSummary();
+        updateDetailSheet();
+      }
+
+      function durationToSeconds(value) {
+        const [minutes, seconds] = value.split(':').map(Number);
+        return minutes * 60 + seconds;
+      }
+
+      function advanceMetrics() {
+        if (!playing) return;
+        elapsedSeconds += 1;
+        const states = steps[currentStep].states;
+        Object.entries(states).forEach(([id, state]) => {
+          if (state !== 'active') return;
+          const def = agentDefinitions[id];
+          const data = metrics[id];
+          data.tokens = Math.min(def.finalTokens * .92, data.tokens + Math.max(70, def.finalTokens * .018));
+          data.tools = Math.min(def.finalTools, Math.max(1, Math.floor(data.tokens / def.finalTokens * def.finalTools)));
+          data.files = Math.min(def.finalFiles, Math.max(1, Math.ceil(data.tokens / def.finalTokens * def.finalFiles)));
+          data.duration += 1;
+          updateNode(id, state);
+        });
+        updateSummary();
+        updateDetailSheet();
+      }
+
+      function updateSummary() {
+        const states = steps[currentStep].states;
+        const activeCount = Object.values(states).filter((state) => state === 'active').length;
+        const tokenTotal = Object.values(metrics).reduce((sum, data) => sum + data.tokens, 0);
+        summaryActive.textContent = `${activeCount} agent${activeCount > 1 ? 's' : ''} actif${activeCount > 1 ? 's' : ''}`;
+        summaryTokens.textContent = `${formatCompact(tokenTotal)} tokens`;
+        summaryTime.textContent = formatElapsed(elapsedSeconds);
+      }
+
+      function announce(message) {
+        a11yAnnouncement.textContent = '';
+        window.setTimeout(() => { a11yAnnouncement.textContent = message; }, 30);
+      }
+
+      function setPlaying(next) {
+        playing = next && !reducedMotion;
+        document.body.classList.toggle('motion-paused', !playing);
+        clearInterval(demoTimer);
+        if (playing) demoTimer = setInterval(() => {
+          const nextStepIndex = (currentStep + 1) % steps.length;
+          applyStep(nextStepIndex, nextStepIndex === 0);
+        }, 5600);
+      }
+
+      document.getElementById('composer').addEventListener('submit', (event) => {
+        event.preventDefault();
+        const input = document.getElementById('prompt');
+        if (!input.value.trim()) return;
+        claudeMessage.textContent = `Message reçu : ${input.value.trim()}`;
+        input.value = '';
+      });
+
+      const menu = document.getElementById('context-menu');
+      let menuButtons = [...document.querySelectorAll('.more-button')];
+      const launchMenuItem = document.getElementById('menu-launch-cycle');
+      const launchDivider = document.getElementById('launch-divider');
+      let activeMenuButton = null;
+      function closeMenu(restoreFocus = false) {
+        menu.hidden = true;
+        menuButtons.forEach((button) => button.setAttribute('aria-expanded', 'false'));
+        if (restoreFocus && activeMenuButton) activeMenuButton.focus();
+      }
+      function wireMenuButton(button) {
+        button.addEventListener('click', (event) => {
+          event.stopPropagation();
+          const wasOpen = button.getAttribute('aria-expanded') === 'true';
+          closeMenu();
+          if (wasOpen) return;
+          activeMenuButton = button;
+          menuTarget = button.dataset.menuFor;
+          const canLaunch = button.dataset.launchable === 'true';
+          launchMenuItem.hidden = !canLaunch;
+          launchDivider.hidden = !canLaunch;
+          const rect = button.getBoundingClientRect();
+          menu.hidden = false;
+          const left = Math.min(window.innerWidth - 202, Math.max(8, rect.right - 190));
+          const top = Math.min(window.innerHeight - (canLaunch ? 226 : 174), rect.bottom + 4);
+          menu.style.left = `${left}px`;
+          menu.style.top = `${top}px`;
+          button.setAttribute('aria-expanded', 'true');
+          window.setTimeout(() => (canLaunch ? launchMenuItem : document.getElementById('view-details')).focus(), 0);
+        });
+      }
+      menuButtons.forEach(wireMenuButton);
+      document.addEventListener('click', (event) => { if (!menu.contains(event.target)) closeMenu(); });
+      window.addEventListener('resize', closeMenu);
+      window.addEventListener('scroll', closeMenu, true);
+      menu.addEventListener('keydown', (event) => {
+        const items = [...menu.querySelectorAll('[role="menuitem"]:not([hidden])')];
+        const currentIndex = items.indexOf(document.activeElement);
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeMenu(true);
+        } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault();
+          const direction = event.key === 'ArrowDown' ? 1 : -1;
+          items[(currentIndex + direction + items.length) % items.length].focus();
+        } else if (event.key === 'Home') {
+          event.preventDefault();
+          items[0].focus();
+        } else if (event.key === 'End') {
+          event.preventDefault();
+          items.at(-1).focus();
+        }
+      });
+
+      const featureDialog = document.getElementById('feature-dialog');
+      function openFeatureDetails(id) {
+        const detail = featureDetails[id];
+        if (!detail) return;
+        document.getElementById('feature-kind').textContent = detail.kind;
+        document.getElementById('feature-title').textContent = `${id} · ${detail.title}`;
+        const status = document.getElementById('feature-status');
+        status.textContent = `● ${detail.status}`;
+        status.classList.toggle('todo', detail.status === 'Todo');
+        const priority = document.getElementById('feature-priority');
+        priority.textContent = `${detail.priority === 'Haute' ? '⌃' : detail.priority === 'Basse' ? '⌄' : '◆'} ${detail.priority}`;
+        priority.classList.toggle('high', detail.priority === 'Haute');
+        document.getElementById('feature-agent').textContent = `Agent · ${detail.agent}`;
+        document.getElementById('feature-description').textContent = detail.description;
+        document.getElementById('feature-criteria').replaceChildren(...detail.criteria.map((criterion) => {
+          const item = document.createElement('li');
+          item.textContent = criterion;
+          return item;
+        }));
+        document.getElementById('feature-dependency').textContent = detail.dependency;
+        document.getElementById('feature-updated').textContent = detail.updated;
+        closeMenu();
+        featureDialog.showModal();
+      }
+
+      function wireFeatureCard(card) {
+        card.addEventListener('click', (event) => {
+          if (event.target.closest('button')) return;
+          openFeatureDetails(card.dataset.featureId);
+        });
+        card.querySelector('.card-title-button').addEventListener('click', () => openFeatureDetails(card.dataset.featureId));
+      }
+      document.querySelectorAll('.feature-card').forEach(wireFeatureCard);
+      document.getElementById('view-details').addEventListener('click', () => openFeatureDetails(menuTarget));
+      document.getElementById('close-feature').addEventListener('click', () => featureDialog.close());
+      document.getElementById('feature-done').addEventListener('click', () => featureDialog.close());
+      featureDialog.addEventListener('click', (event) => { if (event.target === featureDialog) featureDialog.close(); });
+
+      launchMenuItem.addEventListener('click', () => {
+        const launchedFeature = featureDetails[menuTarget];
+        closeMenu();
+        applyStep(0, true);
+        setPlaying(true);
+        claudeMessage.textContent = `Cycle lancé pour ${menuTarget} · ${launchedFeature?.title || 'élément sélectionné'}. Spec reader prend en charge la spec.`;
+        announce(`Cycle lancé pour ${menuTarget}, ${launchedFeature?.title || 'élément sélectionné'}.`);
+        window.scrollTo({ top: 0, behavior: reducedMotion ? 'auto' : 'smooth' });
+      });
+
+      const addItemDialog = document.getElementById('add-item-dialog');
+      const addItemForm = document.getElementById('add-item-form');
+      const backlogColumn = document.querySelector('.column-todo');
+      let backlogTotal = 12;
+      let backlogColumnTotal = 6;
+      let nextFeatureId = 27;
+      let nextBugId = 19;
+      const prioritySymbols = { Haute: '⌃', Moyenne: '◆', Basse: '⌄' };
+
+      document.getElementById('open-add-item').addEventListener('click', () => {
+        addItemForm.reset();
+        addItemDialog.showModal();
+        window.setTimeout(() => document.getElementById('item-description').focus(), 0);
+      });
+      document.getElementById('close-add-item').addEventListener('click', () => addItemDialog.close());
+      document.getElementById('cancel-add-item').addEventListener('click', () => addItemDialog.close());
+
+      addItemForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        if (!addItemForm.reportValidity()) return;
+        const data = new FormData(addItemForm);
+        const type = data.get('item-type');
+        const id = type === 'bug' ? `B-${String(nextBugId++).padStart(3, '0')}` : `F-${String(nextFeatureId++).padStart(3, '0')}`;
+        const title = 'Titre choisi par Claude';
+        const description = String(data.get('description')).trim();
+        const priority = String(data.get('priority'));
+
+        featureDetails[id] = {
+          kind: type === 'bug' ? 'Bug' : 'Feature',
+          title,
+          status: 'Todo',
+          priority,
+          agent: 'À déterminer par Claude',
+          description,
+          criteria: ['Définis par Claude dans la spec'],
+          dependency: 'Spec rédigée par Claude',
+          updated: 'À l’instant'
+        };
+
+        const card = document.createElement('article');
+        card.className = 'feature-card';
+        card.dataset.featureId = id;
+
+        const more = document.createElement('button');
+        more.className = 'more-button';
+        more.type = 'button';
+        more.setAttribute('aria-label', `Actions pour ${id}`);
+        more.setAttribute('aria-haspopup', 'menu');
+        more.setAttribute('aria-controls', 'context-menu');
+        more.setAttribute('aria-expanded', 'false');
+        more.dataset.menuFor = id;
+        more.dataset.launchable = 'true';
+        const moreIcon = document.createElement('span');
+        moreIcon.setAttribute('aria-hidden', 'true');
+        moreIcon.textContent = '⋮';
+        more.append(moreIcon);
+
+        const heading = document.createElement('h3');
+        const titleButton = document.createElement('button');
+        titleButton.className = 'card-title-button';
+        titleButton.type = 'button';
+        titleButton.textContent = `${id} · ${title}`;
+        heading.append(titleButton);
+
+        const copy = document.createElement('p');
+        copy.textContent = description;
+        const footer = document.createElement('div');
+        footer.className = 'card-footer';
+        const priorityLabel = document.createElement('span');
+        if (priority === 'Haute') priorityLabel.className = 'priority-high';
+        priorityLabel.textContent = `${prioritySymbols[priority]} ${priority}`;
+        const agentLabel = document.createElement('span');
+        agentLabel.textContent = '—';
+        footer.append(priorityLabel, agentLabel);
+        card.append(more, heading, copy, footer);
+        backlogColumn.append(card);
+
+        menuButtons.push(more);
+        wireMenuButton(more);
+        wireFeatureCard(card);
+        backlogTotal += 1;
+        backlogColumnTotal += 1;
+        document.getElementById('backlog-count').textContent = `${backlogTotal} éléments · défilement commun`;
+        document.getElementById('backlog-column-count').textContent = String(backlogColumnTotal);
+        addItemDialog.close();
+        card.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'nearest' });
+        titleButton.focus({ preventScroll: true });
+        announce(`${featureDetails[id].kind} ${id}, ${title}, ajoutée à Todo après rédaction de la spec par Claude.`);
+      });
+
+      const deleteDialog = document.getElementById('delete-dialog');
+      document.getElementById('delete-item').addEventListener('click', () => {
+        document.getElementById('delete-copy').textContent = `Cette action supprimera définitivement ${menuTarget || 'cet élément'} du backlog.`;
+        closeMenu();
+        deleteDialog.showModal();
+      });
+      document.getElementById('cancel-delete').addEventListener('click', () => deleteDialog.close());
+
+      metricTimer = setInterval(advanceMetrics, 1500);
+      applyStep(reducedMotion ? steps.length - 1 : 0, true);
+      selectAgent('spec');
+      setPlaying(playing);
+      if (reducedMotion) motionNote.textContent += ' Les animations continues sont désactivées selon vos préférences.';
+    })();
+  </script>
+</body>
+</html>
