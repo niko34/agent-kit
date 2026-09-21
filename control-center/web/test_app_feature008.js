@@ -157,7 +157,7 @@ const IDS = [
   "porte-aide", "porte-bouton", "porte-champ", "porte-corps", "porte-erreur",
   "porte-jeton", "porte-titre", "projet", "prompt", "redaction-corps",
   "selected-code", "selected-duration", "selected-files", "selected-state",
-  "selected-task", "selected-title", "selected-tools", "summary-active",
+  "selected-task", "selected-title", "selected-tools", "sheet-metrics", "sheet-toggle", "summary-active",
   "summary-step", "summary-time", "systeme", "timeline", "tiroir",
   "tiroir-contenu", "tiroir-fermer", "tiroir-titre", "titre-agents",
   "titre-besoin", "titre-cycle-surface", "titre-cycles", "titre-demande",

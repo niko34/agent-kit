@@ -147,3 +147,15 @@ abrogé et risquerait de le refaire à neuf, moins bien mesuré que la première
 > `app.js` — les seuls fichiers qui les consomment — seront réécrits à leur
 > tour. Jusque-là, le diagramme continue d'afficher une couleur par rôle
 > d'agent, sans changement visible sur ce point précis.
+
+> **Note (2026-09-21, seconde)** : le lot 4 de `feature-021` a appliqué la
+> décision ci-dessus. `control-center/web/diagramme.js` et
+> `control-center/web/app.js` ont été intégralement réécrits (nouveau
+> `disposer()`, nouvelle peinture du disque, `ADR-0031`) ; les 19 jetons
+> d'identité par agent et `--rebouclage` ont été retirés de
+> `control-center/web/app.css`, et la couche transitoire qui les portait est
+> vide (`F1_TRANSITOIRE_IDENTITE_AGENT` : registre vide, vérifié par mutation
+> — les jetons ont disparu de toute la feuille, pas seulement déplacés). Un
+> agent se reconnaît désormais uniquement par son sigle et son nom, jamais
+> par une teinte. Voir `docs/features/page-centre-de-controle.md` (section
+> « Diagramme du déroulé ») et `CHANGELOG.md`.

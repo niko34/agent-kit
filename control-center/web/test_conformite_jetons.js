@@ -49,30 +49,15 @@ const lib = require("./test_conformite_lib.js");
 // aucune valeur peinte n'a changé. `JETONS_TRANSITOIRES_SEMANTIQUES`
 // ci-dessous est maintenant VIDE : la clause miroir (aucune entrée périmée)
 // continue de s'appliquer, elle est juste vide des deux côtés.
-const ATTENDU_ROUGE = {
-  F1_TRANSITOIRE_DIAGRAMME_SCOPE: {
-    description: "6 des 15 jetons sémantiques ne sont PAS morts au lot 3 : ils ont été " +
-      "redéclarés SCOPÉS sur `.dg-piste`, parce que le diagramme HÉRITÉ les consomme EN " +
-      "LIGNE dans app.js (l. 799-954, `guide.style.stroke = \"var(--trait-fin)\"`), hors " +
-      "de toute règle CSS. Les retirer casse le rendu du diagramme en silence — seul le " +
-      "harnais Chromium (E7, invariant `--trait-fin` < `--trait`) le voit. Ils meurent au " +
-      "lot 4 avec le diagramme lui-même (ADR-0032). ⚠️ Cette entrée existe parce que la " +
-      "fermeture de `F1_TRANSITOIRE_SEMANTIQUE_CLAIR` au lot 3 était une fermeture PAR " +
-      "DÉMÉNAGEMENT : les jetons avaient quitté `:root`, donc le champ de vision de la " +
-      "garde, sans quitter la feuille. Une quarantaine ne se ferme pas en déplaçant ce " +
-      "qu'elle suit.",
-    lotDeCloture: "lot 4",
-    date: "2026-09-21",
-  },
-  F1_TRANSITOIRE_IDENTITE_AGENT: {
-    description: "18 jetons d'identité colorée par agent (--a-<rôle>/--f-<rôle>) + " +
-      "--rebouclage (qui en dépend) survivent dans app.css :root, en littéraux directs " +
-      "(l'indirection --clair-a-* a disparu) — ils disparaissent avec diagramme.js/app.js " +
-      "au lot 4 (ADR-0032).",
-    lotDeCloture: "lot 4",
-    date: "2026-09-21",
-  },
-};
+// F1_TRANSITOIRE_DIAGRAMME_SCOPE et F1_TRANSITOIRE_IDENTITE_AGENT : FERMÉES
+// au LOT 4 (feature-021 cycle 2). Le diagramme hérité qui consommait les 6
+// jetons scopés sur `.dg-piste` (guide/graduations/socle) et les 19 jetons
+// d'identité colorée par agent (`--a-*`/`--f-*` + `--rebouclage`) est
+// intégralement retiré, remplacé par le disque Material 3 (`ADR-0031`), qui
+// n'a plus d'identité colorée par agent — les deux listes ci-dessous
+// (`JETONS_TRANSITOIRES_DIAGRAMME_SCOPE`, `JETONS_TRANSITOIRES_IDENTITE_
+// AGENT`) sont désormais VIDES, clôture réelle (pas laissée à passer).
+const ATTENDU_ROUGE = {};
 
 // -- Liste déclarée : TOUT jeton PERMANENT qu'app.css ajoute au-delà des 24
 // requis — les 8 hexadécimaux promus hors du `:root` du prototype (nom
@@ -111,20 +96,11 @@ const JETONS_AJOUTES = [
 // symétriquement aux deux couches transitoires sans traitement spécial.
 const JETONS_TRANSITOIRES_SEMANTIQUES = [];
 
-// -- Couche transitoire 3b : identité colorée par agent + --rebouclage (en
-// dépend), ferment au LOT 4 (ADR-0032).
-const JETONS_TRANSITOIRES_IDENTITE_AGENT = [
-  "--a-backend-developer", "--f-backend-developer",
-  "--a-security-reviewer", "--f-security-reviewer",
-  "--a-test-engineer", "--f-test-engineer",
-  "--a-spec-reader", "--f-spec-reader",
-  "--a-code-reviewer", "--f-code-reviewer",
-  "--a-debugger", "--f-debugger",
-  "--a-doc-writer", "--f-doc-writer",
-  "--a-frontend-developer", "--f-frontend-developer",
-  "--a-neutre", "--f-neutre",
-  "--rebouclage",
-];
+// -- Couche transitoire 3b : identité colorée par agent + --rebouclage —
+// FERMÉE au LOT 4 (liste vide, clôture réelle : ADR-0031 §2 retire toute
+// identité colorée du disque). Reste déclarée (vide) pour que la clause
+// miroir continue de s'appliquer symétriquement.
+const JETONS_TRANSITOIRES_IDENTITE_AGENT = [];
 
 // -- Les 15 noms de l'ancienne couche sémantique. Sert de PÉRIMÈTRE DE
 // RECHERCHE : on les cherche dans TOUTE la feuille, pas seulement dans
@@ -137,15 +113,10 @@ const JETONS_SEMANTIQUES_HISTORIQUES = [
 ];
 
 // -- Couche transitoire 3c : les SEULES redéclarations sémantiques tolérées
-// hors `:root`, chacune À SON SÉLECTEUR. Toute autre est un échec DUR.
-const JETONS_TRANSITOIRES_DIAGRAMME_SCOPE = [
-  { nom: "--trait", selecteur: ".dg-piste" },
-  { nom: "--trait-fin", selecteur: ".dg-piste" },
-  { nom: "--contour-etat", selecteur: ".dg-piste" },
-  { nom: "--texte-faible", selecteur: ".dg-piste" },
-  { nom: "--alerte", selecteur: ".dg-piste" },
-  { nom: "--creux", selecteur: ".dg-piste" },
-];
+// hors `:root`, chacune À SON SÉLECTEUR — FERMÉE au LOT 4 (liste vide,
+// clôture réelle) : `.dg-piste` et le diagramme hérité qui la scopait ont
+// disparu ensemble. Toute redéclaration future est un échec DUR.
+const JETONS_TRANSITOIRES_DIAGRAMME_SCOPE = [];
 
 let _tests = 0;
 const _echecs = [];

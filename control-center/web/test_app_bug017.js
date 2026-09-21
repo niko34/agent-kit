@@ -128,7 +128,12 @@ const ICI = __dirname;
   // Relevé d'origine (auditeur, 2026-09-15) : 2 atteignables en section par
   // défaut, jusqu'à 6 en « Développer », dont le bouton de lancement.
   // ------------------------------------------------------------------ //
-  const FRERES_INERTES = ["bandeau-hote", "skip-link", "app-shell", "tiroir"];
+  // feature-021 cycle 2, lot 4 : `#gabarits-adoptes` (gabarit statique du
+  // disque d'agent et de la carte kanban, F3a) rejoint la liste — il est
+  // `hidden` PAR CONSTRUCTION (déjà retiré du rendu et de l'arbre
+  // d'accessibilité, PIEGES §15) ET reçoit `inert` comme tout autre frère à
+  // l'ouverture de la porte (double protection, aucune n'est retirée).
+  const FRERES_INERTES = ["bandeau-hote", "skip-link", "app-shell", "tiroir", "gabarits-adoptes"];
   const FOCALISABLE = /<(a\s[^>]*href=|button|input|select|textarea|[a-zA-Z][a-zA-Z0-9-]*\s[^>]*tabindex=")/gi;
   (function compterAtteignablesHorsPorte() {
     const sansCommentaires = html.replace(/<!--[\s\S]*?-->/g, "");
@@ -253,6 +258,7 @@ function creerBac() {
     "summary-step", "summary-time", "summary-active", "cycle-status", "motion-note",
     "cycle-canvas", "selected-code", "selected-title", "selected-task",
     "selected-state", "selected-tools", "selected-files", "selected-duration",
+    "sheet-metrics", "sheet-toggle",
     "backlog-title", "backlog-count", "backlog-column-count",
   ];
   AUTRES_IDS.forEach((id) => appShell.appendChild(creer(id)));

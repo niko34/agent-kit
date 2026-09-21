@@ -44,6 +44,7 @@
     </div>
     <div class="top-actions">
       <div class="status-inline">
+        <span class="status-dot" aria-hidden="true" id="status-dot"></span>
         <span class="jauge" id="jauge-flux" title="connexion au flux d'événements">flux …</span>
         <span class="jauge" id="jauge-git">git …</span>
         <span class="jauge lecture-seule" id="jauge-pilotage" title="chargement de l'état d'écriture…">lecture seule</span>
@@ -89,6 +90,12 @@
           <div class="cycle-tabs" role="group" aria-label="Vue des cycles">
             <button class="tab-button" type="button" aria-pressed="true">Cycle actif</button>
             <button class="tab-button" type="button" aria-pressed="false">Historique</button>
+            <!-- Classe adoptée `small-button` (F0) : sélecteur de cycle,
+                 décoratif à ce lot — le contenu réel (numéro de cycle) vient
+                 de `rendreCycles`/`etat.workflows`, câblé ci-dessous
+                 (F8/F9), la LISTE des cycles antérieurs reste dans
+                 l'accordéon « Cycles » (feature-016, inchangé). -->
+            <button class="small-button" type="button" id="cycle-indice" aria-label="Cycle affiché">—</button>
           </div>
         </div>
 
@@ -122,9 +129,11 @@
           </svg>
         </div>
 
-        <!-- Bottom sheet de détail (classe adoptée `detail-sheet`, F11) :
-             coquille statique, valeurs « — » tant que rien n'est
-             sélectionné — câblage réel au lot 5. -->
+        <!-- Bottom sheet de détail (classe adoptée `detail-sheet`, F11,
+             câblée au lot 5) : cliquer un disque du graphe la remplit ;
+             chaque valeur est légendée par le libellé du `.metric` qui la
+             porte (« Graduations · outils » dit ce que le chiffre compte,
+             §16 PIEGES) — valeurs « — » tant que rien n'est sélectionné. -->
         <section class="detail-sheet" aria-labelledby="selected-title">
           <div class="sheet-handle" aria-hidden="true"></div>
           <div class="sheet-heading">
@@ -132,18 +141,30 @@
               <span class="selected-mark" id="selected-code">—</span>
               <span class="selected-copy">
                 <h2 id="selected-title">Aucun passage sélectionné</h2>
-                <p id="selected-task">—</p>
+                <p id="selected-task">Cliquez un disque du graphe pour voir son détail.</p>
               </span>
             </div>
-            <button class="sheet-toggle" type="button" aria-label="Replier le détail"><span aria-hidden="true">⌄</span></button>
+            <button class="sheet-toggle" id="sheet-toggle" type="button" aria-expanded="true"
+                    aria-controls="sheet-metrics" aria-label="Replier le détail">
+              <span aria-hidden="true">⌄</span>
+            </button>
           </div>
-          <div class="sheet-metrics">
+          <div class="sheet-metrics" id="sheet-metrics">
             <div class="metric"><span>Anneau · état</span><strong id="selected-state">—</strong></div>
             <div class="metric"><span>Graduations · outils</span><strong id="selected-tools">—</strong></div>
             <div class="metric"><span>Points · fichiers</span><strong id="selected-files">—</strong></div>
             <div class="metric"><span>Sous le disque · durée</span><strong id="selected-duration">—</strong></div>
           </div>
         </section>
+
+        <!-- Fil d'état du dépôt (classe adoptée `repo-strip`, F0) — données
+             RÉELLES (`etat.git`), câblé dans `rafraichir()` (lot 4) : ni
+             décoratif ni figé, contrairement au reste de la coquille du
+             lot 3 (PIEGES §16, tout chiffre affiché vient des données). -->
+        <p class="repo-strip" id="repo-strip">
+          <span aria-hidden="true">◆</span><span id="repo-strip-texte">—</span>
+          <span class="ok" id="repo-strip-ok" hidden><span aria-hidden="true">●</span><span class="visually-hidden">dépôt accessible</span></span>
+        </p>
       </section>
     </div>
 
@@ -187,15 +208,14 @@
       <div id="redaction-corps"></div>
     </section>
 
-    <!-- Kanban habillé aux classes adoptées (`backlog`, `kanban-*`, F0) : la
-         grille fonctionnelle `#kanban` (app.js, `rendreKanban`, INCHANGÉE)
-         reste à l'intérieur de `.kanban-viewport` — seule la coquille
-         change ici. `#backlog-count`/`#backlog-column-count` (id adoptés,
-         F4a) sont posés en coquille statique, volontairement discrets
-         (`.visually-hidden`) tant qu'ils ne portent aucune donnée réelle :
-         `#compteur-specs`, juste à côté, reste le compteur FONCTIONNEL
-         aujourd'hui. Le rendu 3 colonnes lues depuis `/api/etat.colonnes`
-         (F10) est le lot 5. -->
+    <!-- Kanban M3 câblé (F10, feature-021 cycle 2, lot 5) : `#kanban`
+         (`.kanban-grid`) est peuplé par `rendreKanban`, lu depuis
+         `etat.colonnes` (ADR-0003, jamais figé à Todo/Doing/Done) — une
+         colonne par entrée, `column-<classe>` pour l'accroche visuelle.
+         `#backlog-count`/`#backlog-column-count` (id adoptés, F4a) restent
+         `.visually-hidden` (discrets, `#compteur-specs` reste le compteur
+         visible) mais portent désormais la MÊME mesure que lui, jamais une
+         seconde source de vérité. -->
     <section class="backlog" aria-labelledby="backlog-title">
       <div class="kanban-heading">
         <div class="kanban-title-row entete-bloc">
@@ -212,8 +232,8 @@
           </label>
         </div>
       </div>
-      <div class="kanban-viewport">
-        <div class="kanban" id="kanban"></div>
+      <div class="kanban-viewport" tabindex="0" role="region" aria-label="Backlog, défilement vertical commun aux colonnes">
+        <div class="kanban-grid" id="kanban"></div>
       </div>
       <span id="backlog-column-count" class="visually-hidden">—</span>
     </section>
@@ -245,6 +265,51 @@
     </section>
 
   </main>
+</div>
+
+<!-- Gabarit statique du disque d'agent et de la carte kanban — posé ici
+     UNIQUEMENT pour fermer F3a (classes adoptées, structure complète du
+     prototype) : `app.js` NE LE LIT JAMAIS, il construit ses propres
+     éléments par `document.createElement` (PIEGES §38 : le bac à sable JS
+     de test ne connaît que les id/classes du HTML STATIQUE — un
+     `<template>` cloné à l'exécution y serait invisible, donc inutilisable
+     comme SOURCE de rendu ici). `hidden` : retiré du rendu ET de l'arbre
+     d'accessibilité — ce n'est ni un doublon visible ni un piège au clavier.
+     Le graphe réel est construit dans `#cycle-canvas` (F8/F9) ; le kanban
+     3-colonnes est câblé par `rendreKanban` (F10, lot 5) sur ces MÊMES
+     classes M3 (`kanban-grid`/`kanban-column`/`feature-card`/`column-*`) —
+     ce fragment garde seulement `active-card`, qu'aucune donnée réelle ne
+     pilote encore (aucun signal « spec en cours de lancement »), pour que
+     F3a continue de voir la classe posée quelque part dans le HTML statique. -->
+<div hidden aria-hidden="true" id="gabarits-adoptes">
+  <div class="agent-wrap">
+    <button class="agent-node state-pending" type="button">
+      <span class="work-orbit"></span>
+      <span class="work-dot"></span>
+      <span class="tool-ticks"></span>
+      <span class="agent-face">
+        <span class="agent-code">??</span>
+        <span class="agent-data"><span class="file-dots"><i></i><i></i><i></i></span></span>
+      </span>
+    </button>
+    <span class="agent-name"><strong>—</strong></span>
+    <span class="agent-duration">—</span>
+  </div>
+  <div class="kanban-grid">
+    <section class="kanban-column column-todo">
+      <div class="column-title"><span class="column-label"><i></i>Todo</span><span>—</span></div>
+      <article class="feature-card active-card">
+        <p>—</p>
+        <div class="card-footer"><span class="priority-high">—</span></div>
+      </article>
+    </section>
+    <section class="kanban-column column-doing">
+      <div class="column-title"><span class="column-label"><i></i>Doing</span><span>—</span></div>
+    </section>
+    <section class="kanban-column column-done">
+      <div class="column-title"><span class="column-label"><i></i>Done</span><span>—</span></div>
+    </section>
+  </div>
 </div>
 
 <div class="tiroir" id="tiroir" hidden>

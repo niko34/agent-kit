@@ -19,30 +19,21 @@
 
 const lib = require("./test_conformite_lib.js");
 
-/* ⚠️ LIMITE DE SENSIBILITÉ, À LIRE AVANT DE CROIRE CETTE GARDE SOUS FILET.
- *
- * Tant que `F2_TABLE_DES_DUREES` est intégralement sous `ATTENDU_ROUGE`
- * (clôture lot 4), une mutation du prototype se propage bien à l'attendu —
- * vérifié : renommer `@keyframes work-orbit` en `work-orbitXX` change la
- * liste dérivée — mais elle NE PEUT PAS rendre la garde rouge, puisque
- * l'assertion est déjà quarantinée. F2 ne tue donc aucun mutant AUJOURD'HUI ;
- * sa sensibilité n'est démontrable qu'au lot 4, quand l'entrée sort du
- * registre. Les quatre `mesure_*` ci-dessous, eux, sont sous filet dès
- * maintenant : ils portent sur le prototype seul.
- *
- * Note de cascade : `clefApp` est une Map construite dans l'ordre du
+/* Note de cascade : `clefApp` est une Map construite dans l'ordre du
  * document, donc une (sélecteur, propriété) déclarée deux fois retient la
  * DERNIÈRE — ce qui est bien la sémantique CSS à spécificité égale.
+ *
+ * `F2_TABLE_DES_DUREES` FERMÉE au LOT 4 (feature-021 cycle 2) : les 17
+ * déclarations (6 animation, 9 transition, 2 animation-delay) et les 4
+ * `@keyframes` du prototype sont désormais bit-identiques dans `app.css`,
+ * sous les NOMS DE SÉLECTEUR littéraux du prototype (clé de jointure, notes
+ * d'implémentation cycle 2 §4). Vérifié par mutation : une durée changée
+ * dans `app.css` fait échouer `F2_table_des_durees_conforme_au_prototype`
+ * (nomme la déclaration divergente) ; un `@keyframes` renommé fait échouer
+ * `F2_table_des_durees_conforme_au_prototype` (le nomme manquant) ET
+ * `aucun_keyframes_extra_non_declare` si le nouveau nom n'est pas listé.
  */
-const ATTENDU_ROUGE = {
-  F2_TABLE_DES_DUREES: {
-    description: "aucune des déclarations animation/transition/animation-delay ni des " +
-      "4 @keyframes du prototype n'existe encore dans app.css : le graphe d'agents et ses " +
-      "animations d'enchaînement ne sont pas encore implémentés.",
-    lotDeCloture: "lot 4",
-    date: "2026-09-21",
-  },
-};
+const ATTENDU_ROUGE = {};
 
 // Toute déclaration ou tout `@keyframes` qu'app.css ajoute au-delà de ceux du
 // prototype, AVEC sa raison (F16 : 4 représentations neuves, statiques —
@@ -114,6 +105,27 @@ if (tableEstConforme && ATTENDU_ROUGE.F2_TABLE_DES_DUREES) {
 }
 for (const [cle, entree] of Object.entries(ATTENDU_ROUGE)) {
   check("ATTENDU_ROUGE_" + cle + "_porte_un_lot_de_cloture_nomme", !!(entree.lotDeCloture && entree.lotDeCloture.trim()));
+}
+
+// ===================================================================== //
+// F14 — `prefers-reduced-motion` : garde ADDITIVE (hors ATTENDU_ROUGE),
+// pas comptée dans les 6/9/2/4 mesurés sur le prototype (ce bloc ne pose
+// que des `animation-duration`/`transition-duration`/`animation-iteration-
+// count`, jamais les raccourcis `animation`/`transition` que F2 traque).
+// Sans cette garde, retirer le bloc entier laisserait TOUT le lot 4 vert à
+// tort — « aucune garde jamais vue rouge ne prouve rien ».
+// ===================================================================== //
+const reglesReduites = lib.reglesCss(cssApp).filter(
+  (r) => r.estAtRegle && r.selecteur.replace(/\s+/g, " ").trim() === "@media (prefers-reduced-motion: reduce)");
+check("F14_bloc_prefers_reduced_motion_present", reglesReduites.length >= 1,
+  "aucun bloc @media (prefers-reduced-motion: reduce) trouvé dans app.css");
+if (reglesReduites.length >= 1) {
+  const corpsUni = reglesReduites.map((r) => r.corps).join("\n");
+  const coupeAnimation = /animation\s*:\s*none/.test(corpsUni) || /animation-duration/.test(corpsUni);
+  const coupeTransition = /transition\s*:\s*none/.test(corpsUni) || /transition-duration/.test(corpsUni);
+  check("F14_bloc_prefers_reduced_motion_coupe_animation_et_transition",
+    coupeAnimation && coupeTransition,
+    "animation coupée=" + coupeAnimation + ", transition coupée=" + coupeTransition);
 }
 
 function main() {

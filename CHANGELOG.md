@@ -11,6 +11,32 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 
 ### Centre de contrôle
 
+- **Le diagramme du déroulé de chaque cycle est entièrement redessiné.**
+  Chaque agent est désormais un **disque** — sigle au centre, jusqu'à
+  3 pastilles de fichiers dessous — relié en séquence par un fil. Le disque
+  **grandit quand l'agent devient actif** (52 px non lancé → 88 px actif ou
+  terminé) et porte un **anneau d'activité** animé pendant le travail, stable
+  une fois terminé — l'anneau ne prétend jamais mesurer une avancée en
+  pourcentage, faute de savoir combien de temps il reste à un agent en cours.
+  Trois nouveaux états deviennent visibles d'un coup d'œil, sans lire le
+  texte : un **échec** (anneau recoloré + drapeau « ! »), un passage **sans
+  clôture observée** (contour pointillé + « ⋯ » — distinct d'un échec : une
+  fin non annoncée n'est pas un échec du travail), et l'**agent principal**
+  (anneau pointillé secondaire, sigle souligné). Les animations respectent
+  `prefers-reduced-motion` : si le mouvement est réduit, l'état d'un agent
+  reste lisible par sa taille, sa couleur et ses pastilles, sans qu'aucune
+  animation ne soit nécessaire pour le comprendre.
+- **La couleur cesse d'identifier un agent par son rôle.** Jusqu'ici, chaque
+  type d'agent (`spec-reader`, `frontend-developer`…) avait sa propre teinte
+  sur le diagramme et dans la liste des agents. Cette identité colorée
+  disparaît : un agent se reconnaît désormais uniquement à son **sigle** et à
+  son **nom**, écrits en toutes lettres. La couleur redevient exclusivement
+  un signal d'**état** (actif, terminé, en échec…), jamais de rôle.
+- **Le centre du disque ne porte plus de chiffre.** Le nombre d'appels
+  d'outils et le décompte exact de fichiers restent mesurés dans le journal,
+  mais ne sont plus peints sur le disque — la lecture des jetons consommés
+  par un agent, envisagée un temps pour cet emplacement, est reportée à une
+  prochaine évolution.
 - **Le tableau de bord devient un écran unique.** La navigation par onglets
   (colonne de gauche, six sections, une seule affichée à la fois) disparaît :
   tout ce que le centre de contrôle montre — agents, système, développement,

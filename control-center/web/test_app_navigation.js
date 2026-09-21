@@ -137,18 +137,34 @@ const CSS_SANS_COMMENTAIRES = sansCommentairesCSS(CSS);
   const compteSans = (CSS_SANS_COMMENTAIRES.match(/var\(--sans\)/g) || []).length;
   // feature-021 cycle 2, lot 3 (F7) : `#selected-code` (bottom sheet, id
   // adopté F0 — sigle du passage sélectionné, ex. « SR ») rejoint la chasse
-  // fixe, MÊME NATURE que `.agent-sigle`/`.dg-sigle` déjà présents — un
-  // sigle de deux à trois lettres est un identifiant, pas une phrase lue.
-  // 19 → 20 mono ; sans-serif inchangé (24, aucune règle neuve n'y ajoute
-  // de `font-family` explicite — `body{font-family:var(--sans)}` couvre le
-  // reste par héritage, non compté par ce grep littéral).
-  check("C_compte_mono_final_vingt", compteMono === 20, "obtenu " + compteMono);
-  check("C_compte_sans_final_vingt_quatre", compteSans === 24, "obtenu " + compteSans);
+  // fixe, MÊME NATURE que `.agent-sigle` — un sigle de deux à trois lettres
+  // est un identifiant, pas une phrase lue.
+  // feature-021 cycle 2, lot 4 : le diagramme hérité (`.dg-sigle`,
+  // `.dg-socle-duree`/`.dg-socle-heure-duree`, `.dg-socle-heure`/`.dg-socle-
+  // nom`, `.dg-repli`/`.dg-libelle-cadre`, `.dg-pastille-attente text`,
+  // `.dg-arc-libelle`, `.diagramme-legende dt`) est RETIRÉ avec ses jetons
+  // transitoires (ADR-0031/0032) : 20 → 18 mono (−2, `.dg-sigle` et
+  // `.dg-socle-duree, .dg-socle-heure-duree`) ; 24 → 19 sans-serif (−5, les
+  // cinq règles `font-family: var(--sans)` du diagramme hérité). Le disque
+  // Material 3 (`.agent-code`/`.agent-name`/`.agent-duration`) n'impose
+  // AUCUN `font-family` explicite — comme le prototype, il hérite du
+  // sans-serif de `body`, non compté par ce grep littéral.
+  //
+  // feature-021 cycle 2, lot 5 (F10) : le kanban est réécrit sur les classes
+  // M3 (`kanban-grid`/`kanban-column`/`column-title`/`feature-card`/
+  // `card-footer`), qui n'imposent — comme le prototype — AUCUN
+  // `font-family` explicite : 18 → 17 mono (−1, `.carte .cid` disparaît
+  // avec `.carte`, aucun remplaçant dédié : l'identifiant de spec n'a plus
+  // de chasse fixe propre dans la carte M3) ; 19 → 17 sans (−2,
+  // `.colonne-entete` et `.etiquette` disparaissent avec le rendu qu'ils
+  // habillaient, sans qu'aucune règle neuve ne redéclare `var(--sans)` —
+  // héritée du corps, comme dans le prototype).
+  check("C_compte_mono_final_dix_sept", compteMono === 17, "obtenu " + compteMono);
+  check("C_compte_sans_final_dix_sept", compteSans === 17, "obtenu " + compteSans);
 
   const DOIT_RESTER_MONO = [
     ".projet", ".note code", ".agents .nom", ".agents .modele",
-    ".carte .cid", ".agent-sigle", ".agent-nom", ".maillon .mnom",
-    ".dg-sigle", ".dg-socle-duree", ".dg-socle-heure-duree",
+    ".agent-sigle", ".agent-nom", ".maillon .mnom",
     ".pilotage-jeton input", "#sortie-lancement", ".fichier .fcode",
     ".fichier .fchemin", ".timeline .quoi", ".tiroir-barre",
     "#tiroir-contenu", "#porte-champ", ".selected-mark",
@@ -160,7 +176,7 @@ const CSS_SANS_COMMENTAIRES = sansCommentairesCSS(CSS);
 
   const DOIT_ETRE_SANS = [
     ".jauge", ".horodatage", ".bloc h2", ".compteur", ".systeme dd",
-    '.filtres input[type="search"]', ".colonne-entete", ".etiquette",
+    '.filtres input[type="search"]', ".column-title", ".card-footer",
     ".cycle-designation", ".cycle-etat", ".cycle-proprietes dd",
     ".maillon .mduree", ".pilotage-ligne", ".pilotage-tronque",
     ".timeline .heure",
@@ -232,15 +248,16 @@ function analyserReglesCSS(css) {
 
   const LISTE_BLANCHE_MONO = [
     ".projet", ".note code", ".agents .nom", ".agents .modele",
-    ".carte .cid", ".agent-sigle", ".agent-nom", ".maillon .mnom",
-    ".dg-sigle", ".dg-socle-duree", ".dg-socle-heure-duree",
+    ".agent-sigle", ".agent-nom", ".maillon .mnom",
     ".pilotage-jeton input", ".pilotage-select select", "#sortie-lancement",
     ".fichier .fcode", ".fichier .fchemin", ".timeline .quoi",
     ".tiroir-barre", "#tiroir-contenu", "#porte-champ",
     ".demande textarea.brouillon",
     // feature-021 cycle 2, lot 3 (F7) : sigle du passage sélectionné
-    // (bottom sheet, id adopté), même nature que `.agent-sigle`/`.dg-sigle`.
+    // (bottom sheet, id adopté), même nature que `.agent-sigle`.
     ".selected-mark",
+    // `.carte .cid` (feature-008) RETIRÉ au lot 5 (F10) : le kanban M3 ne
+    // porte plus de chasse fixe dédiée à l'identifiant de spec.
   ];
 
   const blancheSet = new Set(LISTE_BLANCHE_MONO);
@@ -258,7 +275,7 @@ function analyserReglesCSS(css) {
 })();
 
 (function testChiffresTabularNums() {
-  const CIBLES = [".systeme dd", ".timeline .heure", ".colonne-entete", ".compteur", ".horodatage", ".maillon .mduree"];
+  const CIBLES = [".systeme dd", ".timeline .heure", ".column-title", ".compteur", ".horodatage", ".maillon .mduree"];
   CIBLES.forEach((selecteur) => {
     const i = CSS_SANS_COMMENTAIRES.indexOf(selecteur);
     if (i === -1) { check("C_tabular_nums_" + selecteur, false, "sélecteur introuvable"); return; }
@@ -308,7 +325,7 @@ function analyserReglesCSS(css) {
   check("C_bandeau_hote_surface_pas_surface_low",
     /\.bandeau-hote\s*\{[^}]*background:\s*var\(--surface\)\s*;/.test(CSS_SANS_COMMENTAIRES));
   check("C_carte_surface_pas_surface_low",
-    /\.carte\s*\{[^}]*background:\s*var\(--surface\)\s*;/.test(CSS_SANS_COMMENTAIRES));
+    /\.feature-card\s*\{[^}]*background:\s*var\(--surface\)\s*;/.test(CSS_SANS_COMMENTAIRES));
   check("C_maillon_surface_pas_surface_low",
     /\.maillon\s*\{[^}]*background:\s*var\(--surface\)\s*[;,]/.test(CSS_SANS_COMMENTAIRES));
 })();

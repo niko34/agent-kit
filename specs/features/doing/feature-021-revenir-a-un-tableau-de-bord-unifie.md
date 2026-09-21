@@ -1769,6 +1769,283 @@ par ce dépôt.
   `app.css` l. 587) ; (2) une garde qui vérifie le **mécanisme** ne prouve rien, il faut
   assertionner le **résultat observable**. Quatre mutations exigées, dont le retrait du
   bloc `prefers-reduced-motion` — F14 sans garde serait un livrable déclaratif.
+- [2026-09-21 21:34] **COMMIT du lot 3** — agent principal — `63324ac`, 17 fichiers,
+  +1820/−1595, y compris le `git mv` de `bug-017` vers `doing/` détecté comme renommage.
+  Arbre propre après commit. ⚠️ **Manœuvre risquée, à ne pas refaire à l'aveugle** :
+  commiter pendant qu'un lot tourne expose à capturer un état **partiel** du lot en cours.
+  Ici c'était sûr, et **vérifié avant** plutôt que supposé — `find control-center/web specs
+  -newermt "2026-09-21 21:22"` ne remontait **aucun** fichier, le lot 4 étant encore en
+  lecture, et `git status` correspondait exactement à l'état lot 3 déjà contrôlé
+  (1543 cas). Contrôlé **après** aussi : la liste des 17 fichiers du commit ne contient rien
+  du lot 4, et l'arbre est resté vide. **Règle pour la suite : ne commiter pendant un lot
+  actif qu'après avoir mesuré qu'il n'a rien écrit, jamais sur la seule impression qu'il
+  « est encore en train de lire ».**
+- [2026-09-21 22:41] Lot 4 — frontend-developer — **F8, F9, F14, F15, F16 livrés**.
+  `diagramme.js` réécrit (nouveau `disposer()`, contrat
+  `{largeur, hauteur, axeY, agents[], connecteurs[]}`), `app.js` réécrit (peinture du
+  disque, **identité de couleur retirée partout** et pas seulement dans le graphe —
+  `ADR-0032`), `app.css` réécrit, `index.html` complété. **Les 4 registres VIDES**, vérifié
+  par l'agent principal : `ATTENDU_ROUGE = {}` dans `jetons`, `animations`, `classes` ; les
+  **25 jetons transitoires** (19 identité + 6 scopés `.dg-piste`) ont disparu de **toute la
+  feuille**, mutation refaite pour s'en assurer — **disparus, pas déplacés**. F2 bit-identique
+  au prototype (4 `@keyframes`, 6 `animation:`, 9 `transition:`, 2 `animation-delay:`), la
+  clé de jointure étant le nom littéral du sélecteur — l'indentation multi-ligne de
+  `.agent-node` a causé un premier échec, corrigé. F15 : `.agent-code` seul au centre,
+  `place-content: center` recentre **sans réserver d'espace** — dégradable sans être à
+  trous, et `.token-value` n'est **jamais** posé, la branche « avec chiffre » n'étant pas
+  écrite (sortie vers `feature-023`). F16 : `has-echec` recolore `--state-color` en
+  `--danger` + glyphe « ! » ; `state-sans-cloture` contour pointillé + glyphe « ⋯ » ;
+  `role-principal` + `.role-ring` ; non-chevauchement porté par `disposer()`. Mutations
+  rejouées par l'agent principal, toutes tuent : bloc `prefers-reduced-motion` retiré →
+  `F14_bloc_prefers_reduced_motion_present` meurt ; `has-echec` neutralisé → un cas de
+  `test_app_accordeon.py` meurt. **Les gardes écrites sont bonnes.**
+- [2026-09-21 22:58] Lot 4 — agent principal — **REBOUCLE : problème d'ÉTENDUE, pas de
+  qualité**. Suite 1543 → 1257, mais le chiffre qui compte est ailleurs :
+
+      couverture propre du diagramme
+        AVANT  test_app_diagramme 165 + _conformite 51 + _navigateur 17 = 233
+        APRÈS  test_app_diagramme  40                                   =  40   (−83 %)
+
+  **Sur le livrable le plus complexe du cycle, dans le lot même qui le livre.** Et il ne
+  reste **qu'un seul** harnais navigateur dans tout le dépôt (`test_app_navigation_http.py`,
+  qui couvre la navigation) : **plus rien ne mesure ce que le diagramme peint**. Or c'est
+  précisément le harnais supprimé qui avait attrapé **en exécutant** deux défauts que la
+  relecture n'avait pas vus — la consolidation de `--trait-fin` au lot 2, la casse du rendu
+  par retrait des jetons au lot 3. ✔️ **Non contesté** : la suppression de
+  `test_app_diagramme_conformite.{js,py}` est légitime, elle vérifiait la table TK de
+  l'ancienne maquette, grammaire révoquée. Exigé : (1) un **harnais navigateur sur le
+  nouveau diagramme** (capture headless + `getComputedStyle`, marqueur sur une seule ligne
+  physique, reprise unique sur `TimeoutExpired`) — **pas du travail jetable, F5b et F4b en
+  ont besoin au lot 5** ; (2) le **décompte poste par poste** des 125 + 91 cas perdus,
+  chaque groupe rangé dans « réellement disparu avec la grammaire révoquée » ou « **encore
+  vrai, et désormais non couvert** » — le second tas est ce qui dit ce que le lot a cessé
+  de garder **sans le décider** ; (3) `disposer()`, unique autorité de géométrie, éprouvé
+  par des **propriétés adverses** (libellés très longs, nombreux agents, un seul agent,
+  largeurs inégales) et non par une assertion ; (4) les 4 représentations de F16 vérifiées
+  **à l'exécution** — un échec doit *se voir*, pas seulement poser une classe.
+- [2026-09-21 23:47] Lot 4 — **REBOUCLE VÉRIFIÉE, lot 4 CLOS**, et elle a produit **la
+  trouvaille la plus importante du cycle**. Harnais navigateur neuf
+  `test_app_diagramme_navigateur.py`, **24 cas**, découvert **seul** par la garde de
+  partition (50 → 51). Décompte poste par poste des 216 cas perdus, rendu comme demandé :
+  ~150 **réellement disparus** avec la grammaire révoquée (socle, bandes de rayon, cadres
+  simultanés, structure `dg-*`, liseret, anneau guide, graduations data-dépendantes — les
+  12 nouvelles sont fixes et décoratives, `ADR-0031 §2`, changement de conception et non
+  perte de couverture) ; **~66 encore vrais et non couverts, RATTRAPÉS** (échec 22, agent
+  principal 15, anneau et graduations 11, pastilles 18 — tous **peints**, d'où leur
+  disparition avec le harnais et leur retour par lui) ; **1 poste encore non couvert et
+  NOMMÉ** : les comptes exacts d'outils et de fichiers, qui relèvent de F11 au lot 5, pas
+  d'un trou de garde.
+  ⚠️ **Une garde tautologique, la troisième du cycle, que seul le navigateur a vue.**
+  `ecart_couvre_la_reserve` comparait l'écart à `demiDroite + demiGauche` — **les valeurs
+  que `disposer()` avait elle-même produites**. Formule rétrécie, les deux côtés
+  rétrécissent, assertion verte. Son commentaire jurait « pas en recopiant la formule
+  interne » : il ne la recopiait pas, **il en consommait la sortie**. Cartographie faite
+  par l'agent principal en amputant le coefficient de réservation :
+
+      coeff    0.60  0.50  |  0.42  0.35  |  0.30  0.20
+      pur        ok    ok  |    ok    ok  | ÉCHEC ÉCHEC
+      navigateur ok    ok  | ÉCHEC ÉCHEC  | ÉCHEC ÉCHEC
+
+  Le navigateur se déclenche **exactement là où le chevauchement réel commence** ; à 0,50
+  et 0,60 aucun des deux ne tire, et c'est correct — la garde porte sur la **propriété**,
+  pas sur la constante. Remplacée par un **oracle indépendant** (plancher typographique
+  `N × taille × 0,42`, très en dessous du coefficient 0,70 du kit, ne dépendant d'aucune
+  sortie de `disposer()`), éprouvé sur un agent seul, libellés de 50 caractères, largeurs
+  inégales, 30 agents, les 11 noms réels, et **200 tirages pseudo-aléatoires non choisis**,
+  plus une contre-épreuve que la borne contraint vraiment — sinon elle serait verte par
+  vacuité. **7 mutations, 6 tuent** ; la septième (retrait de la marge de 10 px) survit et
+  **ce n'est pas un défaut** : aucun chevauchement réel n'en résulte, vérifié au
+  navigateur. Honnêteté notée — le sous-agent l'a dit au lieu de la maquiller.
+  **Suite : 1257 → 1290, 0 échec, 30 fichiers. Les 4 registres restent VIDES.**
+- [2026-09-21 23:52] **POINT D'ARRÊT HUMAIN n°3 — graphe d'agents** — capture envoyée,
+  rendue avec **l'état réel du dépôt** (282 Ko d'`/api/etat` rejoués par un serveur de
+  substitution qui répond 204 sur `/api/flux` : le flux SSE restant ouvert, la page
+  n'atteignait jamais l'inactivité réseau et Chromium ne rendait jamais la main — d'où le
+  bandeau « flux rompu », artefact de la capture et non du code). Neuf disques, sigles,
+  pastilles, anneaux pointillés de l'agent principal, deux drapeaux d'échec. En attente.
+  ✔️ **Fausse piste écartée en chemin, à ne pas rouvrir** : un `401` sur `127.0.0.1` m'a
+  fait soupçonner une régression de la garde d'authentification. Vérifié —
+  `_locale('127.0.0.1')` rend bien `True`, et `_autorisation_lecture` s'applique **aussi en
+  local dès qu'un `fichier_jeton` est déclaré**, délibérément : c'est le correctif qui
+  empêche un jeton en mode 0644 de rouvrir lecture ET écriture derrière un intermédiaire
+  local. **Comportement voulu, documenté dans le code. Aucun défaut.**
+- [2026-09-22 00:14] Étape 9 — doc-writer — **doc du lot 4 livrée, dont une section que
+  le sous-agent voulait ajourner**. `CHANGELOG.md` et `docs/features/page-centre-de-
+  controle.md` réécrits sur la grammaire du lot 4 ; `ADR-0031` laissé **intact** à raison
+  (le lot exécute exactement ce qu'il prescrit, aucun écart) ; `ADR-0032` reçoit une
+  **seconde** note datée — celle du lot 2 annonçait la survie de l'identité couleur
+  jusqu'au lot 4, la nouvelle en constate l'application, et **la première n'a pas été
+  réécrite** : un ADR s'empile. Le sous-agent a aussi noté, justement, que la garde
+  tautologique de `disposer()` est une **nouvelle occurrence de `PIEGES §30`** et non un
+  fait neuf — pas d'entrée redondante ajoutée.
+  ⚠️ **Renvoyé par l'agent principal** : `docs/DESIGN-SYSTEM.md` §5 était signalé « hors
+  périmètre, pour un prochain passage » alors que la section **écrit elle-même son
+  déclencheur** — « sera réécrite au cycle d'implémentation de `feature-021`, **une fois
+  le disque livré** ». Le disque l'est. Son avertissement « le disque **va** changer »
+  parlait au futur d'une chose au passé, et l'ajourner aurait été précisément la dette que
+  la règle d'auto-vérification de fin de tour existe pour empêcher — c'est ce tour-ci qui
+  l'a rendue fausse. Réécrit : §5 sur la grammaire du lot 4, §8 sur le vocabulaire des
+  traits, `ADR-0025`/`0026` marqués révoqués, **séparation géométrie/rendu conservée**
+  (`ADR-0025 §4` / `ADR-0031 §4`, que le lot 4 respecte).
+- [2026-09-22 00:19] **DÉFAUT D'OUTILLAGE TROUVÉ EN CHEMIN — `bug-023` créé, NON absorbé**.
+  En réécrivant `DESIGN-SYSTEM.md`, le sous-agent a cassé un lien Markdown (URL coupée sur
+  deux lignes) et l'a remarqué **parce que le compte BAISSAIT alors qu'il ajoutait des
+  liens** — 192 → 190. L'agent principal a reproduit le défaut délibérément sur un autre
+  lien :
+
+      état sain              ✅ 191 lien(s) relatif(s), toutes les cibles existent.
+      un lien coupé en deux  ✅ 190 lien(s) relatif(s), toutes les cibles existent.
+      restauré               ✅ 191 lien(s) relatif(s), toutes les cibles existent.
+
+  **`check_doc_links.sh` reste VERT : un lien cassé ne fait pas échouer, il DISPARAÎT du
+  compte.** L'outil établit « tout lien reconnu résout », jamais « tout lien voulu est
+  reconnu ». C'est le même patron que les trois gardes creuses de ce cycle (`PIEGES §30`),
+  appliqué cette fois à l'outillage d'hygiène qui tourne **en CI**. ⚠️ **Non absorbé dans
+  `feature-021`** : le défaut ne désarme aucune garde livrée par ce cycle, donc `ADR-0017`
+  ne s'applique pas et le cycle ne prend pas une troisième spec. Écrit en
+  `specs/features/todo/bug-023-un-lien-casse-disparait-du-compte-au-lieu-d-echouer.md`,
+  avec la question ouverte posée à l'architecte (détecter les syntaxes fautives — qui
+  reproduirait le défaut par énumération, leçon de `bug-022` — ou surveiller le compte
+  dérivé comme un attendu déclaré, à la manière d'`ATTENDU_ROUGE`).
+- [2026-09-22 01:30] **RETOUR HUMAIN sur la capture du lot 4 — trois écarts, dont un seul
+  est un défaut**. L'humain signale « le graphe n'est clairement pas comme sur la
+  maquette », puis « les agents sont tronqués en haut et en bas, et les pointillés du
+  cadran n'apparaissent que sur certains ». Prototype rendu dans les mêmes conditions pour
+  comparer, puis diagnostic **mesuré** :
+  **(1) DÉFAUT RÉEL — écrêtage.** `hauteur = axeY + demiHauteurMax + margeBasPx`, avec
+  `margeHautPx = 44`, `margeBasPx = 40`, et `demiHauteurMax = 0` sur nos données (aucun
+  créneau parallèle) → **hauteur 84 px pour un disque de 88**. Les marges valent **exactement
+  le rayon** : il ne reste rien pour ce qui se dessine HORS du disque — anneau pointillé de
+  l'agent principal, halo d'échec, drapeau, `.agent-name` au-dessus, `.agent-duration` en
+  dessous. Le disque déborde déjà de 4 px. L'anneau pointillé n'apparaît donc pas « sur
+  certains » : il est **coupé pour tous**, et ce qu'on en voit dépend d'où le fragment tombe.
+  Prototype pour comparaison : ~77 px au-dessus de l'axe, ~75 px en dessous. **À reboucler
+  au lot 4.**
+  **(2) PAS UN DÉFAUT — libellés vides faute de donnée.** `app.js` pose bien `.agent-name`
+  et `.agent-duration` autour de chaque disque, comme le prototype. Ils sont vides parce que
+  **14 `SubagentStop` sur 16 arrivent avec `agent_type: None`**. Conséquence à ne pas
+  perdre : la 4ᵉ représentation de F16, le non-chevauchement des libellés — celle dont j'ai
+  fait renforcer la garde au lot 4 avec 200 tirages adverses — **s'exerce aujourd'hui sur
+  des chaînes vides**.
+  **(3) ⚠️ ERREUR DE L'AGENT PRINCIPAL, corrigée.** J'avais écrit que `disposer()` « ne sait
+  pas bifurquer ». **Faux** : `construireCreneaux` groupe les passages en créneaux,
+  `espacementVerticalPx: 168` les étale verticalement, et les connecteurs sont **déjà des
+  courbes de Bézier**, comme le prototype. Notre graphe est droit **parce que nos données le
+  sont** — un agent à la fois. J'allais envoyer un lot chercher une capacité qui existe.
+- [2026-09-22 01:34] **Question de l'humain : « si le lot 5 tourne, pourquoi je ne vois pas
+  d'agent animé ? »** — répondu par mesure sur le journal réel : la capture date de
+  **17:39:21 UTC**, le `SubagentStart` du lot 5 de **17:40:20 UTC**. La capture précède
+  l'agent de **59 secondes** ; « 0 agent actif » était juste à cet instant. Trouvé en
+  chemin, et à ne pas perdre : **3 passages ouverts sans fermeture**, dont deux datant du
+  **2026-09-13** et du **2026-09-16** — des zombies vieux d'une semaine. Et sur tout le
+  journal (17 508 lignes) : **327 `SubagentStart` contre 4 054 `SubagentStop`**, soit 12 fois
+  plus de fermetures que d'ouvertures. La distinction échec / sans-clôture est donc bancale
+  **à la racine de la donnée**, pas dans son rendu.
+- [2026-09-22 02:05] **Question de l'humain : « et les agents qui ne se mettent pas en
+  parallèle, et aucune boucle de retour arrière ? »** — répondu par mesure, et la réponse
+  n'est pas celle qu'on croit. ⚠️ **Je corrige d'abord mon propre chiffre** : « 12 fois plus
+  de fermetures que d'ouvertures » était trompeur. `events.py` documente que ces
+  `SubagentStop` en excès « **ne sont PAS des sous-agents du workflow** » — artefacts de fin
+  de tour, déjà écartés côté serveur en `fermetures_orphelines`. Le nombre de passages réels
+  suit les **327 ouvertures**, pas les 4 054 fermetures.
+  **Rebouclages : la capacité marche, la donnée en regorge, le cycle affiché n'en a pas.**
+  `python3 events.py` sur le journal réel rend `reprises : doc-writer 9, frontend-developer
+  8, backend-developer 7, code-reviewer 7, architect 5, fork 5, spec-reader 4,
+  ux-ui-designer 4, test-engineer 3, orchestrator 2, debugger 2, security-reviewer 2` —
+  **douze agents rappelés**. Mais la capture montre **Cycle #2**, dont les sous-agents sont
+  `OR, SP, AR, UX, FR`, **tous distincts** : aucune répétition, donc aucun arc à tracer. Le
+  rendu est juste ; c'est le cycle affiché qui est pauvre. → **Conséquence d'ergonomie à
+  arbitrer** : ouvrir sur un cycle qui a de la matière, sinon la fonction la plus visible du
+  graphe ne se voit jamais.
+  **Parallélisme : exclu par la MODÉLISATION, ni par le rendu ni par la donnée.**
+  `construireCreneaux` groupe par chevauchement temporel réel, mais `events.py` ferme le
+  segment de l'agent principal **dès qu'un sous-agent démarre** (commentaire explicite). Or
+  dans la réalité ils se chevauchent en permanence — l'humain travaille pendant que l'agent
+  tourne. Deux sous-agents simultanés s'afficheraient bien côte à côte ; le cycle les a
+  lancés un par un. → **Décision de conception à arbitrer**, pas un correctif.
+- [2026-09-22 02:12] Lot 5 — **REBOUCLE VÉRIFIÉE, lot 5 CLOS**. Le rôle de contraste se
+  porte désormais **par usage** : table neuve `USAGES_APLAT` (`{sélecteur → {role, motif}}`,
+  `INDICATEUR` seuil 3,0 ou `DECOR` exempt avec motif écrit), F5b résolvant chaque élément
+  par `el.matches()` — le moteur de sélecteurs qui a réellement peint — et mesurant contre
+  **le fond réellement derrière**. `.status-dot`, `.legend i` et `.sheet-handle` passent à
+  `--line-strong` (**3,31 sur `--surface`**, mesuré peint). `.column-label i` s'est révélé
+  être un **repli jamais peint** (les trois colonnes le surchargent, comme le prototype) —
+  déclaré `DECOR` avec ce motif, et la clause miroir le confirme. **12 usages d'aplat
+  déclarés, dont 7 que la clause miroir a débusqués** et que personne n'avait regardés.
+  Mutations rejouées par l'agent principal :
+
+      (a) .status-dot repeint en --line   ECHEC  1 aplat porteur d'information sous 3.0:1
+                                                 1.45 · rgb(215,210,222) sur rgb(255,251,255)
+      (c) une BORDURE en --line           EXIT=0, 12 cas — aucune sur-correction
+
+  ⚠️ **Sa propre trouvaille, la plus instructive** : sa première mutation (a) **survivait**,
+  parce que la scène ne rendait `.status-dot` qu'à l'état **actif** (teal) — l'état inactif,
+  justement peint dans le jeton le plus pâle, n'était **jamais balayé**. La garde ne voyait
+  pas la couleur qu'elle juge. Balayage en **deux passes** désormais, la seconde après
+  retrait des classes d'état : **196 aplats au lieu de 98, 17 indicateurs au lieu de 11**.
+  **Suite : 1319 cas, 0 échec, 33 fichiers. Les 4 registres vides**, vérifié en excluant les
+  mentions en commentaire qu'un `grep` naïf compte à tort.
+- [2026-09-22 03:40] Lot 4 — **REBOUCLE ÉCRÊTAGE livrée et vérifiée**. Marges
+  **44/40 → 72/70**, dérivées **en mesurant le DOM peint dans Chromium**, jamais en lisant
+  le CSS du prototype ni en reprenant mes ~77/~75 (qui n'étaient qu'une lecture de
+  capture). Source : `.agent-name` à 69,5 px au-dessus du centre, `.agent-duration` à
+  67,2 px en dessous, les deux dominant l'anneau de rôle. ⚠️ **Valeur qu'aucune lecture du
+  CSS ne donnait** : l'anneau de rôle mesure **±55 px et non ±13** comme le déclare la
+  feuille — le `<button>.agent-node` non réinitialisé porte une bordure UA de ~2 px qui
+  rétrécit son *padding-box*, donc le bloc conteneur réel de `.role-ring` n'est pas celui
+  que le CSS décrit. Garde neuve : 4 cas `F_ecretage_{actif,echec,sans_cloture,principal}`,
+  oracle = union des `getBoundingClientRect()` comparée au rect réel de `.graphe-scroll`,
+  **jamais recalculée depuis `disposer()`**. Mutation rejouée par l'agent principal (retour
+  à 44/40) : les 4 cas meurent en nommant les chiffres — `boîte agent [15.6, 152.4],
+  canevas [37.2, 127.2], dépassement haut 21.5 px, bas 25.2 px`. **Suite 1319 → 1323, 0
+  échec.**
+  ⚠️ **CORRECTION D'UN DIAGNOSTIC QUE J'AVAIS DONNÉ FAUX** : j'avais écrit que les libellés
+  étaient **vides faute de donnée**. Ils étaient **écrêtés**. La capture d'après correctif
+  montre `orchestrator`, `spec-reader`, `architect`, `ux-ui-designer` et les durées
+  (`12 min 15`, `8 min 21`…). Conséquence : la 4ᵉ représentation de F16 — le
+  non-chevauchement des libellés, celle dont j'ai fait renforcer la garde avec 200 tirages
+  adverses — **ne s'exerçait PAS sur des chaînes vides**. Elle protégeait du réel, rendu
+  invisible par l'écrêtage.
+- [2026-09-22 03:52] **SECOND ÉCRÊTAGE signalé par l'humain (sur téléphone) : les arcs de
+  reprise sont tronqués en haut.** Mesuré : `sommetY = min(y1,y2) − repriseElevationPx =
+  28 − 90 = **−62**`, soit 62 px au-dessus du canevas ; la marge nécessaire est
+  `rayon + élévation = 134` contre `margeHautPx = 72`.
+  ⚠️ **La garde neuve ne pouvait pas le voir, et c'est la formulation de MON brief qui l'a
+  exclu** : j'avais exigé que « tout ce qui appartient à un **agent** tienne dans le
+  canevas », en énumérant disque, anneau, drapeau, nom, durée. **Un arc de reprise
+  n'appartient à aucun agent** — il relie deux passages. Leçon à porter au-delà de ce
+  cycle : *une garde ne couvre que ce que son énoncé nomme, et un énoncé qui énumère laisse
+  toujours dehors ce qu'il n'a pas listé.* Reboucle : dimensionner le canevas sur **l'union
+  de tout ce qui est tracé**, agents ET connecteurs, plutôt que d'ajouter une seconde
+  constante qui se refera piéger au prochain élément dessiné hors du disque ; garde étendue
+  aux connecteurs sur une scène **portant réellement une reprise** ; contre-épreuve qu'un
+  cycle sans reprise ne gagne pas 90 px de vide.
+- [2026-09-22 04:38] Lot 4 — **SECONDE REBOUCLE VÉRIFIÉE, écrêtage CLOS**. La hauteur se
+  **dérive** désormais de l'union de tout ce qui est tracé :
+  `extensionHaut = max(demiHauteurMax + margeHautPx, débordements des arcs)`. Le décalage
+  vertical de chaque agent est calculé **avant** l'axe — il ne dépend que du créneau — ce
+  qui casse la circularité « l'arc dépend des positions, les positions de la hauteur ».
+  ⚠️ **Le sommet retenu est l'extremum ANALYTIQUE de la Bézier, jamais son point de
+  contrôle** : contrôles à −62, sommet réellement peint à **−39,5**, soit **22,5 px de vide
+  évité**. Pas de pire cas imposé. Garde étendue aux **connecteurs**, sur une scène qui
+  **porte réellement une reprise** — aucune n'en portait, donc aucune mesure n'en voyait
+  jamais. Épreuves rejouées par l'agent principal :
+
+      hauteur ignorant les arcs   navigateur ÉCHEC 35.5 px   ·   pur ÉCHEC −39.50 px
+      cycle SANS reprise          hauteur = 142 = 72+70, aucun vide ajouté
+      halo porté à 60 px          ÉCHEC 32.0 px
+
+  Et le message de la garde porte la leçon : « *un arc de reprise culmine au-dessus du plus
+  haut disque, il ne peut pas être couvert par une garde qui n'énumère que les parties d'un
+  agent* ».
+  ⚠️ **Troisième débordement trouvé en cherchant, et il invalidait l'oracle lui-même** :
+  `getBoundingClientRect()` n'inclut **ni `box-shadow` ni `outline`**. Or le halo d'échec
+  EST un `box-shadow: 0 0 0 6px` (`app.css` l. 633) et le focus un `outline: 3px` avec
+  `outline-offset` — l'union était aveugle aux deux. Rectangle du disque désormais gonflé
+  de leur extension lue sur le **style calculé**. Limite déclarée : forme simple
+  non-`inset`, l'erreur va vers la **sous-estimation**. **Suite : 1323 → 1330, 0 échec, 33
+  fichiers. Les 4 registres vides.** Vérification visuelle faite sur un cycle portant
+  réellement une reprise (`frontend-developer` rappelé) : arc entier, sommet dans le cadre.
 ### 4. F17 — le registre `ATTENDU_ROUGE`, défini (l'agent principal avait transmis le terme sans sa définition)
 
 **Le problème qu'il résout.** Écrire les cinq gardes au lot 0 et les voir échouer,

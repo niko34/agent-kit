@@ -36,15 +36,13 @@ const { ADOPTE, PARTITION_CLASSES } = require("./test_conformite_partition_donne
 // sans règle `.pilotage`) a disparu à la réécriture complète d'index.html
 // (feature-021 cycle 2, F7) : la section « Pilotage » ne porte plus que
 // `class="bloc"`.
-const ATTENDU_ROUGE = {
-  F3A_CLASSES_ADOPTEES_ABSENTES: {
-    description: "les classes du prototype classées « adopté » par F0 (structure, kanban, " +
-      "graphe d'agents, bottom sheet) sont encore absentes d'index.html et d'app.css : la " +
-      "structure mono-écran est écrite au lot 3, le graphe qu'au lot 4.",
-    lotDeCloture: "lot 4",
-    date: "2026-09-21",
-  },
-};
+// F3A_CLASSES_ADOPTEES_ABSENTES : FERMÉE au LOT 4 (feature-021 cycle 2). Les
+// 71 classes « adoptées » (structure, kanban, graphe d'agents, bottom sheet)
+// sont désormais toutes posées dans `index.html` et déclarées avec un corps
+// non vide dans `app.css` — le graphe (F8/F9/F16) et le gabarit kanban
+// (`#gabarits-adoptes`, jamais lu par `app.js`, F10 reste lot 5) ferment ce
+// registre ensemble.
+const ATTENDU_ROUGE = {};
 
 // F16 (designer) : state-sans-cloture, has-echec, role-principal, agent-flag,
 // agent-flag--echec, agent-flag--sans-cloture, role-ring — 4 représentations

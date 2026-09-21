@@ -148,19 +148,21 @@ const IDS = [
   "a11y-announcement", "agents", "backlog-column-count", "backlog-count",
   "backlog-title", "bandeau-hote", "bandeau-hote-bouton",
   "bandeau-hote-texte", "barre", "bouton-generer-brouillon",
-  "compteur-prompt", "compteur-specs", "cycle-canvas", "cycle-status",
-  "derogation-minimale", "erreur-generer-brouillon", "fichiers", "filtre",
-  "filtre-divergences", "horodatage", "jauge-flux", "jauge-git",
+  "compteur-prompt", "compteur-specs", "cycle-canvas", "cycle-indice",
+  "cycle-status", "derogation-minimale", "erreur-generer-brouillon",
+  "fichiers", "filtre", "filtre-divergences", "gabarits-adoptes",
+  "horodatage", "jauge-flux", "jauge-git",
   "jauge-pilotage", "kanban", "legende-cycles", "link-front-sec",
   "link-front-tests", "link-front2-review", "link-reprise",
   "link-sec-front2", "link-spec-front", "link-tests-front2", "main-content",
   "motion-note", "note-agents", "pied-cycles", "pilotage-corps",
   "porte-aide", "porte-bouton", "porte-champ", "porte-corps", "porte-erreur",
   "porte-jeton", "porte-titre", "projet", "prompt", "redaction-corps",
+  "repo-strip", "repo-strip-ok", "repo-strip-texte",
   "selected-code", "selected-duration", "selected-files", "selected-state",
-  "selected-task", "selected-title", "selected-tools", "summary-active",
-  "summary-step", "summary-time", "systeme", "timeline", "tiroir",
-  "tiroir-contenu", "tiroir-fermer", "tiroir-titre", "titre-agents",
+  "selected-task", "selected-title", "selected-tools", "sheet-metrics", "sheet-toggle", "status-dot",
+  "summary-active", "summary-step", "summary-time", "systeme", "timeline",
+  "tiroir", "tiroir-contenu", "tiroir-fermer", "tiroir-titre", "titre-agents",
   "titre-besoin", "titre-cycle-surface", "titre-cycles", "titre-demande",
   "titre-evenements", "titre-fichiers", "titre-pilotage", "titre-systeme",
   "workflows",
@@ -170,7 +172,7 @@ const IDS = [
 // onglets (lot 3) : plus aucune section n'est masquée.
 const CACHES_PAR_DEFAUT = new Set([
   "bandeau-hote", "tiroir", "porte-jeton", "porte-erreur",
-  "erreur-generer-brouillon",
+  "erreur-generer-brouillon", "gabarits-adoptes", "repo-strip-ok",
 ]);
 
 // Garde structurelle contre la RÉCURRENCE du piège ci-dessus (§7) : `IDS`

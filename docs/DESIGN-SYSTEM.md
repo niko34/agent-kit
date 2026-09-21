@@ -176,47 +176,62 @@ confirmé, pas contredit, par `ADR-0006`.*
 
 ---
 
-## 5. Le diagramme de déroulé
+## 5. Le disque d'agent (diagramme de déroulé)
 
 C'est le composant le plus spécifique du centre de contrôle. Sa grammaire est
 fixée ; ne pas la changer sans ADR.
 
-⚠️ **Cette section décrit le code actuellement en production.** Le disque d'agent
-(diamètre, graduations, liseré des fichiers) va changer : `feature-021` a déjà
-statué sur une nouvelle grammaire, alignée sur la maquette Material 3, qui révoque
+**Grammaire du lot 4 de `feature-021`**, livrée et en production : le disque
+Material 3 du prototype (`control-center/maquettes/2026-09-20-maquette-
+materiel-3.html`), reproduit au bit près. Elle **remplace intégralement**
+l'ancienne grammaire du cercle (diamètre fonction de la durée, graduations
+comptant les appels d'outils, liseré des fichiers en continu) :
 [ADR-0025](adr/0025-grammaire-du-diagramme-de-deroule.md) §1-§3 et
-[ADR-0026](adr/0026-trois-echelles-du-diagramme-alignees-sur-la-maquette.md) en
-entier — voir [ADR-0031](adr/0031-la-grammaire-du-disque-d-agent-change.md), qui
-nomme aussi les pertes (appels d'outils, granularité des fichiers, échec, « sans
-clôture », agent principal, heure de départ). Cette section sera réécrite au
-cycle d'implémentation de `feature-021`, une fois le disque livré ; d'ici là, elle
-reste exacte pour le code servi. La séparation géométrie/rendu ci-dessous (et
-`ADR-0025 §4`) reste en vigueur, écart assumé à la maquette.
+[ADR-0026](adr/0026-trois-echelles-du-diagramme-alignees-sur-la-maquette.md)
+en entier sont **révoqués** ;
+[ADR-0031](adr/0031-la-grammaire-du-disque-d-agent-change.md) fait foi, y
+compris ses cinq pertes nommées (appels d'outils, granularité des fichiers,
+échec, « sans clôture », agent principal — ces trois dernières réinventées
+ci-dessous — et heure de
+départ, qui n'a plus d'emplacement). La séparation géométrie/rendu ci-dessous
+(`ADR-0025 §4`, maintenue par `ADR-0031 §4`) reste en vigueur.
 
 ### Ce que chaque forme encode
 
-Grammaire alignée sur la maquette de référence par `feature-020`
-(`control-center/maquettes/2026-09-15-diagramme-reference.html` — voir
-avertissement plus bas) ; les échelles du rayon, des graduations, du liseré
-et le rendu du zéro / du plafond sont fixés par
-[ADR-0026](adr/0026-trois-echelles-du-diagramme-alignees-sur-la-maquette.md),
-qui remplace `ADR-0025 §1` sur ces quatre points.
-
 | Forme | Donnée |
 |---|---|
-| Diamètre du cercle | durée de l'agent — `11 + 0,80·√(durée_s)`, plafonné à 56 px |
-| Graduations autour du cercle | nombre d'appels d'outils — 24, 36 ou 52 graduations selon le rayon (seuils à 22 et 32 px), pas une formule continue |
-| Longueur de graduation | **allumée** (7 px) contre **éteinte** (3,2 px) — la longueur distingue l'état de la graduation, plus ses bornes (zéro, plafond) |
-| Liseré intérieur | nombre de fichiers écrits, encodé par **opacité** (`0,22 + min(f,8)/8 × 0,45`), à épaisseur constante 1 px |
-| Zéro appel d'outil | deux barres superposées en haut du cercle (blanche, puis grise par-dessus) |
-| Croix + contour `--alerte` | échec |
-| Pointillé sur le contour du cercle | **seul** motif restant sur ce contour — état « sans clôture » ; l'échec ne le porte plus (voir §8, vocabulaire des traits) |
+| Diamètre du disque | **état**, plus la durée — 52 px non lancé, **88 px actif ou terminé** ; deux passages de durées très différentes, tous deux actifs, ont le même diamètre |
+| Anneau d'activité (`.work-orbit`) | éteint au repos, **animation indéterminée en boucle** pendant le travail, **complet et stable** une fois terminé — ne code **jamais** une progression chiffrée : aucun total final n'est connu pour un passage en cours (`ADR-0031 §5`) |
+| 12 graduations radiales | **fixes, purement décoratives** — elles ne comptent plus les appels d'outils (`ADR-0031 §2`) |
+| 3 pastilles de fichiers | **binaires** (allumée/éteinte), plafonnées à 3 — un passage à 4 fichiers et un passage à 40 fichiers dessinent pareil |
+| Centre du disque | le **sigle** de l'agent, seul. Aucun chiffre n'y est posé (report vers `feature-023`, voir la rectification ci-dessous) ; le disque est **dégradable**, jamais *à trous* : aucun espace n'est réservé à un chiffre absent |
+| Au-dessus du disque | le **nom** de l'agent |
+| Sous le disque | la **durée**, seule — l'heure de départ n'a plus d'emplacement |
 
-Le plafond de l'échelle et le remplissage à pleine échelle (anciennement
-« anneau fantôme », « cran épais ») n'ont **plus de rendu visuel** depuis
-`feature-020` : l'information (`plafondAtteint`) reste disponible dans
-l'infobulle du cercle (`<title>`), pas dans son tracé — la maquette de
-référence ne les dessine pas non plus.
+Les appels d'outils et le compte exact de fichiers restent mesurés dans le
+journal ; ils ne sont plus peints sur le disque. Leur affichage détaillé par
+passage (bottom sheet, F11) reste à livrer — **lot 5, non fait**.
+
+### Trois représentations ajoutées, absentes du prototype
+
+Le prototype ne connaît que trois états (`state-pending`, `state-active`,
+`state-done`), colorés par un unique jeton `--state-color` par disque. Ce
+cycle a dû **inventer** trois représentations supplémentaires, en **ajout**
+de classe — jamais une variante de ces trois états :
+
+| Cas | Représentation |
+|---|---|
+| Échec (`.has-echec`) | anneau recoloré en `--danger` **et** drapeau glyphé « ! » — deux moyens redondants, jamais la seule couleur |
+| Sans clôture (`.state-sans-cloture`) | contour pointillé **et** drapeau glyphé « ⋯ ». Dérivé du champ `etat === "sans_cloture"` du journal, **jamais** d'une absence de `SessionEnd` — cet événement ne se déclenche jamais sur une session longue. Un passage sans fin observée **n'est pas un échec** : les deux représentations ne se cumulent jamais sur un même disque |
+| Agent principal (`.role-principal`) | anneau pointillé secondaire en périphérie (`.role-ring`) **et** sigle souligné ; sigle « AP », jamais « ?? » |
+
+### Non-chevauchement des libellés
+
+Calculé par `disposer()` (`control-center/web/diagramme.js`), pas par la
+feuille de style : chaque disque réserve, de chaque côté, la moitié du plus
+exigeant entre son diamètre **maximal possible** (88 px, jamais 52 — un
+agent qui s'active ne doit jamais chevaucher son voisin) et son libellé (nom
+ou durée) le plus large.
 
 > **Rectification (2026-09-20)** : la phrase ci-dessous était vraie du journal
 > d'événements (`agent-events.jsonl`), et **reste vraie de lui** — il ne porte
@@ -225,21 +240,23 @@ référence ne les dessine pas non plus.
 > par sous-agent (`~/.claude/projects/<projet>/<session>/subagents/agent-<id>.jsonl`),
 > appariement `agent_id` ↔ nom de fichier exact sur **225/225**, et **223 des 223
 > passages dessinés** (ceux qui portent un `agent_type`) trouvent leur transcript —
-> **100 %** de couverture. Le chiffre retenu est `input_tokens + output_tokens`
+> **100 %** de couverture. Le chiffre retenu serait `input_tokens + output_tokens`
 > (écart 205× entre passages) plutôt qu'un total incluant le cache, qui pèse 241×
 > l'ensemble et écraserait toute lecture. **Le principe reste entier** : on
 > n'affiche jamais un chiffre qu'on ne sait pas mesurer — c'est le *fait* « les
 > jetons ne sont mesurables nulle part » qui était faux, pas le principe. La
 > lecture de ces transcripts franchit la racine du projet et expose des
 > conversations entières (secrets, données personnelles) : elle exige un GATE
-> `security-reviewer` avant tout accès, voir `feature-023`. Voir
-> [ADR-0031](adr/0031-la-grammaire-du-disque-d-agent-change.md).
+> `security-reviewer` avant tout accès. **Le lot 4 (feature-021) a statué que
+> le disque se livre sans ce chiffre** — voir le tableau ci-dessus, centre du
+> disque ; la lecture des transcripts est reportée à `feature-023`, non fait.
+> Voir [ADR-0031](adr/0031-la-grammaire-du-disque-d-agent-change.md).
 
 **Le journal d'événements ne porte pas les jetons.** Il contient l'horodatage,
 l'outil, le fichier et l'échec — pas les jetons consommés. Toute maquette qui
 prétendrait les tirer *de ce journal* inventerait une donnée ; ce n'est plus vrai
 d'une maquette qui les tire des transcripts de sous-agent, sous réserve du GATE
-ci-dessus.
+ci-dessus — sujet hors périmètre du disque livré par ce cycle.
 
 ⚠️ La maquette de référence citée ci-dessus (`control-center/maquettes/`)
 **n'est pas suivie par git** : le chemin résout en local mais casse sur tout
@@ -248,40 +265,30 @@ autre poste ou après un clone. Ce n'est pas un lien de doc vérifiable par
 
 ### Placement
 
-**L'écart horizontal ne mesure pas le temps.** Il sert la lisibilité. Chaque
-agent réclame la demi-largeur du plus exigeant entre son cercle avec ses
-graduations et le plus long de ses trois libellés. Un gros cercle s'écarte donc
-davantage — un petit cercle au nom long aussi.
-
-Une échelle de temps a été essayée puis abandonnée : deux agents séparés de
-38 secondes se retrouvaient à 14 pixels l'un de l'autre, et aucune largeur de
-zone ne les séparait. Le temps se **lit** sous chaque cercle — heure de départ,
-puis durée, puis nom — il ne se mesure plus en distance.
-
-L'attente entre deux agents s'écrit dans une **pastille posée sur le lien**
-au-delà de deux minutes, et la place lui est réservée dans le calcul.
+**L'écart horizontal ne mesure pas le temps.** Il sert la lisibilité. Le
+temps se **lit** sous chaque disque — durée seule — il ne se mesure pas en
+distance.
 
 ### Agents simultanés
 
-Ils occupent **un seul créneau horizontal** et s'empilent **verticalement**, dans
-un cadre au filet discret — même fond que le diagramme, jamais d'aplat. Leurs
-libellés passent à droite du cercle, pas en dessous, faute de quoi trois agents
-empilés dépasseraient six cents pixels de haut.
-
-Le cycle avance d'un cran quel que soit le nombre d'agents du créneau. C'est ce
-que la disposition en deux couloirs n'arrivait pas à dire.
-
-**À surveiller** : la hauteur du bloc est dictée par le plus grand groupe.
-Au-delà de quatre agents simultanés, replier la pile (« +3 ») plutôt que laisser
-le bloc grandir.
+Ils occupent **un seul créneau horizontal** et s'empilent **verticalement**,
+sur le même axe, reliés au créneau précédent et au créneau suivant. Le cycle
+avance d'un cran quel que soit le nombre d'agents du créneau.
 
 ### Rebouclage
 
-Un arc pointillé, de **couleur fixe** (`--rebouclage`, alias de
-`--a-debugger` quel que soit le thème), relie une reprise à **l'occurrence
-précédente du même agent** — pas à un agent arbitraire. Il ne porte **aucune
-pointe de direction** (aligné sur la maquette de référence, `feature-020` ;
-auparavant l'arc portait une pointe et une couleur d'identité, corrigés ici).
+Un arc **séparé**, élevé au-dessus du rang, relie une reprise à
+**l'occurrence précédente du même agent** — pas à un agent arbitraire. Trait
+pointillé corail animé (`.is-reprise`), distinct du connecteur séquentiel
+(plein pour un lien déjà parcouru, pointillé teal animé pour un lien en
+train de se parcourir). Il ne porte aucune pointe de direction, ni couleur
+d'identité — la couleur ne porte plus qu'un état (voir §8).
+
+### Ce que ce lot ne livre pas
+
+Le kanban, la feuille de détail peuplée d'un passage (comptes exacts
+d'outils/fichiers, F11) et les gardes runtime F3b/F4b/F5b restent au
+**lot 5** — non fait, à ne pas présenter comme acquis.
 
 ---
 
@@ -366,10 +373,11 @@ encore moins lisible.
   désormais mesurés contre les **quatre** surfaces (`--fond`, `--surface`,
   `--surface-2`, `--creux`), dans les deux thèmes ; le pire cas retenu
   (thème sombre, `--texte-faible` contre `--surface-2`) tient 4,77:1.
-- **Aucune information portée par la seule couleur.** Un échec se signale par la
-  couleur *et* une croix *et* un contour `--alerte`. Un agent en cours par la
-  couleur (contour, exception nommée ci-dessous) *et* un anneau supplémentaire
-  *et* la graisse de la durée sur son socle.
+- **Aucune information portée par la seule couleur.** Sur le disque d'agent
+  (§5) : un échec se signale par la couleur de l'anneau *et* un drapeau
+  glyphé « ! » ; un passage sans clôture par un contour pointillé *et* un
+  drapeau glyphé « ⋯ » ; l'agent principal par un anneau pointillé
+  secondaire *et* un sigle souligné.
 - Focus visible sur tout élément atteignable au clavier, y compris la zone qui
   défile.
 - `prefers-reduced-motion` respecté : aucune transition supérieure à 150 ms, et
@@ -389,13 +397,16 @@ encore moins lisible.
   devrait aussi statuer à nouveau sur une règle de précédence — celle-ci
   n'est pas réactivée automatiquement.
 
-- **Vocabulaire des traits sur le cercle du diagramme**, réduit à un seul
-  motif ambigu résolu par `feature-020` : **pointillé** = état « sans
-  clôture » (`sans_cloture`, bug-013), et c'est désormais le **seul** motif
-  restant sur ce contour — l'agent principal ne porte plus de tirets (il se
-  distingue par son fond et son sigle « AP », voir `docs/features/page-centre-de-controle.md`)
-  et l'échec ne porte plus de pointillé (il se signale par la croix et le
-  contour `--alerte` seuls, voir §5).
+- **Vocabulaire des traits sur le disque d'agent** (grammaire du lot 4,
+  `ADR-0031`, voir §5) : **pointillé sur le contour du disque** = « sans
+  clôture » ; **anneau pointillé secondaire, en périphérie** = agent
+  principal. Les deux booléens sont **indépendants** de l'état et l'un de
+  l'autre (`echec`, `sansCloture`, `principal`, `diagramme.js`) : un agent
+  principal sans clôture cumulerait les deux motifs, sans ambiguïté, chacun
+  occupant un tracé distinct (contour du disque vs anneau en périphérie).
+  L'échec ne porte **plus** de contour ni de croix : il se signale par la
+  couleur de l'anneau d'activité (`--danger`) et un drapeau glyphé « ! »
+  (voir §5).
 - **Vocabulaire des traits ailleurs sur l'écran** (bande de sélection des
   cycles, liste de fichiers — la table des passages qui le portait depuis
   `feature-016` est supprimée par `ADR-0029`, le diagramme de déroulé
@@ -487,6 +498,7 @@ que la politique de sécurité n'ait à se prononcer.
 | 2026-09-19 | §5 et §8 **mis en conformité avec la maquette de référence** par feature-020 : rayon, graduations et liseré des fichiers réalignés ([ADR-0026](adr/0026-trois-echelles-du-diagramme-alignees-sur-la-maquette.md), qui remplace `ADR-0025 §1` sur ces trois points) ; le pointillé du contour du cercle redevient le seul motif de l'état « sans clôture » (l'échec ne le porte plus) ; l'agent principal quitte les tirets et porte le sigle « AP » ; l'identité sur le contour de l'agent en cours est actée comme exception nommée à la règle de précédence identité/état |
 | 2026-09-19 | Mono-écran adopté par feature-021 ([ADR-0029](adr/0029-le-tableau-de-bord-revient-au-mono-ecran.md)) : §1 et la partie navigation de §2 d'ADR-0024 remplacés — navigation par onglets retirée, accordéon des cycles remplacé par la bande de sélection du §6, `role="tablist"` conservé pour les seuls cycles antérieurs ; table des passages d'agent supprimée, le diagramme de déroulé devenant seule représentation des enchaînements (§8) ; `three.js` autorisé puis écarté après mesure (2,02 Mo réels contre une estimation de ~600 Ko, ADR-0006 confirmé) ; §9 complété par la CSP mesurée en HTTP : Web Worker de même origine, `OffscreenCanvas`, WebGL et WebGL2 autorisés, `.woff2` bloqué par `_TYPES` et non par la CSP ; §4 étendu par le chronomètre vedette à 56 px |
 | 2026-09-20 | L'utilisateur fournit sa propre maquette Material 3 ; `feature-021` change d'objet (adoption fidèle, frontend seul). Cinq ADR neufs : [ADR-0030](adr/0030-material-design-3-ecrit-a-la-main-devient-le-systeme-visuel.md) — M3 écrit à la main, `ADR-0006` confirmé sans exception, §1/§4/§9 amendés, §3 et `ADR-0024 §4` révoqués (surfaces tonales en aplat de repos) ; [ADR-0031](adr/0031-la-grammaire-du-disque-d-agent-change.md) — nouvelle grammaire du disque d'agent, `ADR-0025 §1-§3` et `ADR-0026` révoqués, `ADR-0025 §4` maintenu en écart assumé, pertes nommées (appels d'outils, échelle des fichiers, échec, sans-clôture, agent principal, heure de départ), anneau d'activité sans progression chiffrée ; [ADR-0032](adr/0032-l-identite-coloree-des-agents-disparait-du-diagramme.md) — identité colorée par agent retirée, `ADR-0022 §1-§3` révoqués, §5 *sans objet* (pas faux), règle de précédence identité/état et son exception nommée révoquées (§8) ; [ADR-0033](adr/0033-le-theme-sombre-est-supprime.md) — thème sombre supprimé, `theme.js` et ses tests retirés, contraste à remesurer contre la palette M3 ; [ADR-0034](adr/0034-ce-que-le-depot-garde-des-references-de-conception.md) — le prototype HTML fait foi, les 12 PNG (18 Mo) ne sont pas versionnés, le prototype vit sous `control-center/maquettes/` pour rester lisible par le clone jetable. Deux règles corrigées, pas jetées : §5 et l'interdit n°7 du §9 affirmaient que les jetons ne sont mesurables nulle part — c'était vrai du seul journal d'événements, faux comme fait général (225 transcripts de sous-agent, 223/223 passages dessinés couverts), sous réserve d'un GATE de sécurité sur ces fichiers hors racine du projet (voir `feature-023`) |
+| 2026-09-21 | §5 et §8 **réécrits** : le lot 4 de `feature-021` livre le disque Material 3 (`ADR-0031`) — diamètre fonction de l'état (52/88 px), anneau d'activité sans progression chiffrée, 12 graduations fixes décoratives, 3 pastilles de fichiers binaires, centre au sigle seul (chiffre reporté à `feature-023`), trois représentations ajoutées (échec, sans clôture, agent principal) — et retire l'identité colorée par agent (`ADR-0032`), désormais appliquée au code. Kanban, feuille de détail peuplée et gardes runtime F3b/F4b/F5b restent au lot 5, non faits |
 
 ## Voir aussi
 

@@ -92,9 +92,10 @@ function nettoyerPriorite(brut) {
 /* ------------------------------------------------------- sigle d'agent ---
  * Deux lettres par rôle, déterministes et distinctes (feature-015 A7,
  * docs/DESIGN-SYSTEM.md §8). Livré par feature-015 SANS appelant ; feature-016
- * en est le premier — table des passages, désignation d'un cycle, et jetons
- * de couleur (`--a-<rôle>`/`--f-<rôle>`, app.css) appliqués au texte des
- * maillons (voir `construireIdentiteAgent`, `couleurIdentite` plus bas).
+ * en est le premier — table des passages, désignation d'un cycle et centre du
+ * disque d'agent (`.agent-code`, F8) le consomment. Plus de jeton de couleur
+ * par rôle (`--a-<rôle>`/`--f-<rôle>` retirés, ADR-0032) : seul le texte du
+ * sigle porte l'identité désormais (voir `construireIdentiteAgent`).
  *
  * Règle : les deux premières lettres du premier segment du nom, en
  * majuscules (« spec-reader » → SP, « security-reviewer » → SE). En cas de
@@ -232,9 +233,35 @@ function specCorrespond(spec, terme, divergencesSeules) {
   return champs.some((c) => c && String(c).toLowerCase().indexOf(terme) !== -1);
 }
 
+/* F10 (feature-021, cycle 2, lot 5) — grille M3 `kanban-grid`/`kanban-column`/
+ * `feature-card`, lue depuis `etat.colonnes` (ADR-0003) : jamais figée à
+ * Todo/Doing/Done, une configuration qui renomme ou réordonne ses colonnes
+ * change le rendu SANS toucher à ce fichier. `colonne.classe` (déclaré par
+ * `config.py`, PAS un nom choisi ici) porte le double rôle de sélecteur CSS
+ * (`kanban-column column-<classe>`) et de clé de filtrage des specs — c'est
+ * la MÊME donnée aux deux endroits, jamais recopiée.
+ *
+ * Remplace l'ancien rendu `.colonne`/`.carte` (feature-008) : les classes
+ * qu'il posait n'existent plus nulle part ailleurs dans ce fichier — les
+ * règles CSS correspondantes sont retirées d'`app.css` dans le même lot
+ * (sinon F3b, qui vérifie qu'aucune classe déclarée ne reste sans porteur,
+ * les trouverait orphelines). */
 function rendreKanban(etat) {
-  const kanban = $("kanban");
-  vider(kanban);
+  const grille = $("kanban");
+  vider(grille);
+  /* F12 : cas limite non traité par la maquette — aucune colonne déclarée
+   * (config absente ou vide). État vide explicite, jamais une grille
+   * silencieusement blanche. */
+  if (!etat.colonnes || !etat.colonnes.length) {
+    grille.appendChild(el("p", "vide",
+      "aucune colonne déclarée — vérifiez [colonnes] dans control-center.toml"));
+    $("compteur-specs").textContent = "0 spec";
+    const compteBacklogVide = $("backlog-count");
+    if (compteBacklogVide) compteBacklogVide.textContent = "0 spec";
+    const compteColonnesVide = $("backlog-column-count");
+    if (compteColonnesVide) compteColonnesVide.textContent = "0 colonne";
+    return;
+  }
   const terme = ($("filtre").value || "").trim().toLowerCase();
   const divergencesSeules = $("filtre-divergences").checked;
   let affichees = 0;
@@ -244,58 +271,73 @@ function rendreKanban(etat) {
     const specs = toutes.filter((s) => specCorrespond(s, terme, divergencesSeules));
     affichees += specs.length;
 
-    const bloc = el("div", "colonne");
-    const entete = el("div", "colonne-entete");
-    entete.appendChild(el("span", "", colonne.libelle));
+    const section = el("section", "kanban-column column-" + colonne.classe);
+    const titre = el("div", "column-title");
+    const label = el("span", "column-label");
+    label.appendChild(el("i"));
+    label.appendChild(document.createTextNode(colonne.libelle));
+    titre.appendChild(label);
     /* Quand un filtre est actif, on montre les DEUX nombres : cacher le total
      * ferait croire que la colonne a rétréci. */
-    entete.appendChild(el("span", "",
+    titre.appendChild(el("span", "",
       specs.length === toutes.length ? String(toutes.length)
                                      : specs.length + " / " + toutes.length));
-    bloc.appendChild(entete);
+    section.appendChild(titre);
 
-    const liste = el("div", "colonne-liste");
     specs.forEach((spec) => {
-      const carte = el("button", "carte" + (spec.divergence ? " divergente" : ""));
+      const carte = el("button", "feature-card");
       carte.type = "button";
-      carte.appendChild(el("div", "cid", spec.id));
+      const entete = el("h3", "", spec.id);
       if (spec.titre && spec.titre !== spec.id) {
-        carte.appendChild(el("div", "ctitre", spec.titre));
+        entete.appendChild(document.createTextNode(" · " + spec.titre));
       }
-      const bas = el("div", "cbas");
-      if (spec.divergence) {
-        const badge = el("span", "etiquette divergence", "≠ " + colonne.libelle);
-        /* Le statut brut est affiché TEL QUEL en infobulle, jamais réécrit :
-         * c'est une phrase écrite par un humain, pas un jeton. */
-        badge.title = "Le fichier annonce : " + (spec.statut_texte || "");
-        bas.appendChild(badge);
-      }
+      carte.appendChild(entete);
+      const bas = el("div", "card-footer");
       const priorite = nettoyerPriorite(spec.priorite);
       if (priorite) {
         const p = priorite.toLowerCase();
-        const classe = p.indexOf("critique") === 0 ? "priorite-critique"
-          : p.indexOf("haute") === 0 ? "priorite-haute" : "";
-        const etiquette = el("span", "etiquette " + classe, priorite);
+        const estHaute = p.indexOf("critique") === 0 || p.indexOf("haute") === 0;
+        const etiquette = el("span", estHaute ? "priority-high" : "", priorite);
         etiquette.title = "Priorité, telle qu'écrite : " + spec.priorite;
         bas.appendChild(etiquette);
+      } else {
+        bas.appendChild(el("span"));
       }
-      if (bas.childNodes.length) carte.appendChild(bas);
+      if (spec.divergence) {
+        /* Jamais la seule couleur (§8, docs/DESIGN-SYSTEM.md) : le glyphe
+         * « ≠ » et le texte portent le signal, `.divergence-flag` ne fait que
+         * l'accentuer. Le statut brut est en infobulle TEL QUEL, jamais
+         * réécrit : c'est une phrase écrite par un humain, pas un jeton. */
+        const badge = el("span", "divergence-flag", "≠ " + colonne.libelle);
+        badge.title = "Le fichier annonce : " + (spec.statut_texte || "");
+        bas.appendChild(badge);
+      }
+      carte.appendChild(bas);
       carte.addEventListener("click", () => ouvrirSpec(spec.id));
-      liste.appendChild(carte);
+      section.appendChild(carte);
     });
     if (!specs.length) {
-      liste.appendChild(el("div", "vide", toutes.length ? "aucune ne correspond" : "aucune"));
+      section.appendChild(el("p", "vide", toutes.length ? "aucune ne correspond" : "aucune"));
     }
-    bloc.appendChild(liste);
-    kanban.appendChild(bloc);
+    grille.appendChild(section);
   });
 
   const filtre_actif = terme || divergencesSeules;
-  $("compteur-specs").textContent =
-    (filtre_actif ? affichees + " sur " + etat.specs.length + " specs"
-                  : etat.specs.length + " specs") +
-    " · " + etat.divergences + " divergence" + (etat.divergences > 1 ? "s" : "") +
+  const resumeSpecs = filtre_actif ? affichees + " sur " + etat.specs.length + " specs"
+                                    : etat.specs.length + " specs";
+  const resumeDivergences = etat.divergences + " divergence" + (etat.divergences > 1 ? "s" : "") +
     " répertoire / champ Statut";
+  /* Une seule mesure (`resumeSpecs`/`resumeDivergences`), postée sur DEUX
+   * porteurs (`#compteur-specs`, existant, et `#backlog-count`, adopté F0
+   * mais laissé décoratif jusqu'ici) : pas une seconde source de vérité,
+   * la même phrase à deux endroits du DOM (§ « Pas de duplication d'état »). */
+  $("compteur-specs").textContent = resumeSpecs + " · " + resumeDivergences;
+  const compteBacklog = $("backlog-count");
+  if (compteBacklog) compteBacklog.textContent = resumeSpecs + " · " + resumeDivergences;
+  const compteColonnes = $("backlog-column-count");
+  if (compteColonnes) {
+    compteColonnes.textContent = etat.colonnes.length + " colonne" + (etat.colonnes.length > 1 ? "s" : "");
+  }
 }
 
 /* ------------------------------------------------------------- workflows -- */
@@ -322,28 +364,19 @@ function indicesRepris(segments) {
 }
 
 /* --------------------------------------------------------- identité d'agent
- * feature-016 : PREMIER appelant de `sigleAgent`/`siglesAgents` (ci-dessus) et
- * des jetons `--a-<rôle>`/`--f-<rôle>` (app.css, §2 du design system). Repli
- * achromatique (`neutre`) pour tout rôle sans teinte assignée — jamais une
- * teinte d'agent recyclée (ADR-0022). Précédence identité/état (§8) : cette
- * couleur ne va JAMAIS sur un contour ou une forme porteurs d'état, toujours
- * sur du texte ou un sigle qui porte une identité. */
-const ROLES_TEINTES = new Set([
-  "backend-developer", "security-reviewer", "test-engineer", "spec-reader",
-  "code-reviewer", "debugger", "doc-writer", "frontend-developer",
-]);
-function jetonIdentite(nomRole) { return ROLES_TEINTES.has(nomRole) ? nomRole : "neutre"; }
-function couleurIdentite(nomRole) { return "var(--a-" + jetonIdentite(nomRole) + ")"; }
-function remplissageIdentite(nomRole) { return "var(--f-" + jetonIdentite(nomRole) + ")"; }
-
+ * feature-016 : PREMIER appelant de `sigleAgent`/`siglesAgents` (ci-dessus).
+ * L'identité colorée par agent (`--a-<rôle>`/`--f-<rôle>`) est RETIRÉE
+ * (`ADR-0032`, feature-021 cycle 2 lot 4) : le disque Material 3 de la
+ * maquette n'emploie aucune couleur par rôle (`ADR-0031`), et l'ADR retire
+ * ce signal du tableau de bord ENTIER, pas seulement du diagramme — « le
+ * rôle d'un agent se communique par le TEXTE, jamais plus par une teinte
+ * qui lui serait propre » (ADR-0032 §2). `.agent-sigle`/`.agent-nom`
+ * gardent leur forme (chasse fixe, contour) mais plus de couleur inline. */
 function construireIdentiteAgent(nom, sigles) {
   const enveloppe = document.createDocumentFragment();
   const sigle = el("span", "agent-sigle", (sigles && sigles.get(nom)) || "??");
-  sigle.style.color = couleurIdentite(nom);
-  sigle.style.background = remplissageIdentite(nom);
   sigle.setAttribute("aria-hidden", "true");
   const nomSpan = el("span", "agent-nom", nom);
-  nomSpan.style.color = couleurIdentite(nom);
   enveloppe.appendChild(sigle);
   enveloppe.appendChild(nomSpan);
   return enveloppe;
@@ -603,9 +636,9 @@ function construireChaineEtNotes(wf) {
       if (reprisesChaine.has(index)) classe += " repris";
       const maillon = el("span", classe);
       const mnom = el("span", "mnom", segment.agent);
-      /* Identité (item H, §8) : jamais sur le segment principal, qui garde
-       * son propre registre visuel (`.principal .mnom`, fond creusé + italique). */
-      if (segment.type !== "principal") mnom.style.color = couleurIdentite(segment.agent);
+      /* Plus de couleur d'identité (ADR-0032, lot 4) : le segment principal
+       * garde son propre registre visuel (`.principal .mnom`, fond creusé +
+       * italique), les sous-agents restent au jeton de texte par défaut. */
       maillon.appendChild(mnom);
       if (sansCloture) {
         const ecoule = dureeDepuisIso(segment.derniere_activite);
@@ -750,28 +783,18 @@ function construireChaineEtNotes(wf) {
   return enveloppe;
 }
 
-/* ------------------------------------------------------------- diagramme --
- * feature-017, docs/DESIGN-SYSTEM.md §5. La GÉOMÉTRIE (positions, rayons,
- * graduations, créneaux, liens, arcs) est calculée par le module PUR
- * `diagramme.js` (`disposer()`, chargé en `<script>` avant celui-ci — voir
- * index.html ; AUCUN import, AUCUNE dépendance : CSP `default-src 'self'`,
- * ADR-0006). Ce bloc ne fait que TRADUIRE cette géométrie en SVG et y poser
- * les jetons de couleur — il n'invente aucun nombre, aucune position.
- *
- * Vocabulaire du cercle, RENDU RÉEL (feature-020 D1/D4 — ce commentaire a
- * déjà égaré une revue une fois en affirmant l'inverse, ne pas y revenir) :
- * le contour est PLEIN, sauf l'état « sans clôture » qui prend le seul
- * motif restant, le pointillé. L'échec ajoute une croix et un contour
- * `--alerte`, en plus du reste. L'IDENTITÉ (couleur d'agent) va sur le
- * remplissage du disque et sur le sigle, TOUJOURS — y compris pour l'agent
- * `principal`, qui n'a pas de teinte de remplissage (fond `--creux`) mais
- * garde un sigle « AP » en couleur d'identité et un contour plein, sans
- * tirets (il n'est plus une exception visuelle, trop fréquent pour l'être).
- * SEULE exception au principe « l'identité ne va jamais sur le contour »
- * (§8) : l'état « en cours », dont le contour prend la couleur d'identité —
- * ce n'est pas un signal ajouté par ce cycle mais un comportement de la
- * maquette de référence elle-même (défaut K, arbitrage D4), nommé ici pour
- * qu'une future revue ne le prenne pas pour une régression.
+/* ------------------------------------------------------ graphe d'agents --
+ * feature-021, cycle 2, lot 4 (F8/F9/F14/F15/F16), ADR-0031/ADR-0032.
+ * RÉÉCRITURE COMPLÈTE : l'ancien diagramme SVG (feature-017/020, cercles à
+ * graduations data-dépendantes, identité colorée par agent) est retiré avec
+ * le jeu de jetons transitoire qui le peignait. Le disque Material 3 du
+ * prototype est reproduit à l'identique — classes ET noms de `@keyframes`
+ * COPIÉS AU BIT PRÈS (F2, clé de jointure = le nom littéral). `disposer()`
+ * (`diagramme.js`) reste l'UNIQUE autorité de géométrie (`ADR-0031 §4`) :
+ * ce bloc ne calcule AUCUNE position, il TRADUIT son contrat en éléments
+ * HTML/SVG. Utilisé pour DEUX surfaces : le graphe principal (`#cycle-
+ * canvas`, `rendreGrapheCyclePrincipal`) et le détail de chaque cycle de
+ * l'accordéon (`construireDiagramme`, appelé par `construireDetailCycle`).
  */
 const NS_SVG = "http://www.w3.org/2000/svg";
 
@@ -786,393 +809,312 @@ function svgAttrs(noeud, attrs) {
   return noeud;
 }
 
-/* Contour : rôle CALCULÉ PAR `disposer()` (contourRole/contourLargeur,
- * priorité échec > sans clôture > en cours > nominal, feature-020 D1/D4).
- * Seule la COULEUR reste décidée ici (ce module ignore tout jeton de
- * couleur) — l'identité ne va JAMAIS sur le contour, SAUF l'état « en
- * cours » : la maquette elle-même colore le contour de l'agent actif avec
- * sa couleur d'identité (défaut K, arbitrage D4 : la maquette prime, ce
- * n'est pas un signal ajouté par ce cycle mais un comportement du modèle de
- * référence, hors du périmètre de D1 qui ne porte que sur l'agent terminé
- * sans échec). */
-const COULEUR_CONTOUR_ROLE = {
-  echec: "var(--alerte)",
-  sansCloture: "var(--contour-etat)",
-  nominal: "var(--trait)",
-};
-function couleurContourRole(agentGeo) {
-  if (agentGeo.contourRole === "enCours") return couleurIdentite(agentGeo.agent);
-  return COULEUR_CONTOUR_ROLE[agentGeo.contourRole] || "var(--trait)";
+/* Propriété personnalisée CSS (`--x`, `--y`, `--i`) : `style.setProperty`
+ * est la voie standard (seule fiable pour un nom qui commence par `--`),
+ * mais certains harnais de test (`test_app_bug012.js`, `test_app_
+ * accordeon.js`) posent un `style` en simple objet nu, sans CSSOM — repli
+ * sur une affectation directe plutôt que de faire échouer tout le rendu sur
+ * un `TypeError` dans un bac à sable qui ne vérifie de toute façon aucune
+ * position peinte. */
+function definirVariable(noeud, nom, valeur) {
+  if (noeud.style && typeof noeud.style.setProperty === "function") {
+    noeud.style.setProperty(nom, valeur);
+  } else if (noeud.style) {
+    noeud.style[nom] = valeur;
+  }
 }
 
-/* Ordre de peinture (feature-020, défaut H) : guide → graduations → barres
- * du zéro → DISQUE → LISERÉ → anneau en cours → croix → sigle. Le liseré
- * DOIT venir après le disque opaque, sinon il est invisible dessous — c'est
- * le défaut mesuré (l'ancien code le peignait avant). Toute la GÉOMÉTRIE
- * (positions, rayons, angles, points de graduation) vient de `agentGeo` —
- * cette fonction ne fait plus aucun `Math.*`. */
-function construireCercleAgent(agentGeo, sigles) {
-  const g = svgEl("g", "dg-agent");
-  const c = couleurIdentite(agentGeo.agent);
-
-  // Anneau guide (§E, correction de l'inversion : le plus clair)
-  const guide = svgEl("circle", "dg-guide");
-  svgAttrs(guide, { cx: agentGeo.cx, cy: agentGeo.cy, r: agentGeo.rayonGuide, fill: "none" });
-  guide.style.stroke = "var(--trait-fin)";
-  g.appendChild(guide);
-
-  // Graduations — coordonnées ENTIÈREMENT calculées par disposer()
-  agentGeo.graduations.forEach((grad) => {
-    const trait = svgEl("line", "dg-graduation");
-    svgAttrs(trait, { x1: grad.x1, y1: grad.y1, x2: grad.x2, y2: grad.y2 });
-    // §E : les graduations ÉTEINTES prennent --trait (le plus sombre),
-    // corrigeant l'inversion avec l'anneau guide ci-dessus.
-    trait.style.stroke = grad.allumee ? c : "var(--trait)";
-    trait.style.strokeWidth = grad.epaisseur;
-    g.appendChild(trait);
-  });
-
-  // Barres du zéro (marqueur de départ des graduations) — épaisseur posée
-  // en CSS (feature-020 C2 : ne sert qu'au trait, ne réserve rien), d'où les
-  // deux classes distinctes (aucune épaisseur commune à factoriser).
-  const bzb = agentGeo.barreZeroBlanche;
-  const barreBlanche = svgEl("line", "dg-barre-zero-blanche");
-  svgAttrs(barreBlanche, { x1: bzb.x1, y1: bzb.y1, x2: bzb.x2, y2: bzb.y2 });
-  barreBlanche.style.stroke = "var(--creux)";
-  g.appendChild(barreBlanche);
-
-  const bzg = agentGeo.barreZeroGrise;
-  const barreGrise = svgEl("line", "dg-barre-zero-grise");
-  svgAttrs(barreGrise, { x1: bzg.x1, y1: bzg.y1, x2: bzg.x2, y2: bzg.y2 });
-  // §E : la barre grise porte --texte-faible (t3), pas --texte-doux.
-  barreGrise.style.stroke = "var(--texte-faible)";
-  g.appendChild(barreGrise);
-
-  // Disque — contour plein sauf « sans clôture » (pointillé, seul motif
-  // restant : l'agent principal a quitté les tirets, D1).
-  const classeContour = agentGeo.contourRole === "sansCloture" ? "dg-contour-pointille" : "dg-contour-plein";
-  const cercle = svgEl("circle", "dg-cercle " + classeContour);
-  svgAttrs(cercle, { cx: agentGeo.cx, cy: agentGeo.cy, r: agentGeo.rayon });
-  cercle.style.fill = agentGeo.principal ? "var(--creux)" : remplissageIdentite(agentGeo.agent);
-  cercle.style.stroke = couleurContourRole(agentGeo);
-  cercle.style.strokeWidth = agentGeo.contourLargeur;
-  g.appendChild(cercle);
-
-  // Liseré des fichiers — APRÈS le disque (défaut H), encodé par OPACITÉ
-  // seule (D2), épaisseur constante posée en CSS (feature-020 C2 : ne sert
-  // qu'au trait, ne réserve rien — voir `.dg-liseret`).
-  if (agentGeo.fichiers > 0) {
-    const liseret = svgEl("circle", "dg-liseret");
-    svgAttrs(liseret, { cx: agentGeo.cx, cy: agentGeo.cy, r: agentGeo.liseretRayon, fill: "none" });
-    liseret.style.stroke = c;
-    liseret.style.opacity = agentGeo.liseretOpacite;
-    g.appendChild(liseret);
+/* 12 graduations FIXES, purement décoratives (`ADR-0031 §2`) — AUCUNE
+ * géométrie data-dépendante (voir `diagramme.js`, en-tête du contrat) :
+ * posées ici en boucle constante, exactement comme le prototype lui-même
+ * (`for (let index = 0; index < 12; index += 1) tick.style.setProperty
+ * ('--i', index)`). */
+const NB_GRADUATIONS = 12;
+function construireGraduations() {
+  const conteneur = el("span", "tool-ticks");
+  conteneur.setAttribute("aria-hidden", "true");
+  for (let i = 0; i < NB_GRADUATIONS; i++) {
+    const tick = el("i");
+    definirVariable(tick, "--i", i);
+    conteneur.appendChild(tick);
   }
+  return conteneur;
+}
 
-  if (agentGeo.enCours) {
-    const anneau = svgEl("circle", "dg-anneau-en-cours");
-    svgAttrs(anneau, { cx: agentGeo.cx, cy: agentGeo.cy, r: agentGeo.anneauEnCoursRayon, fill: "none" });
-    anneau.style.stroke = c;
-    anneau.style.opacity = agentGeo.anneauEnCoursOpacite;
-    g.appendChild(anneau);
-  }
+function libelleEtatDisque(etat) {
+  if (etat === "active") return "actif";
+  if (etat === "done") return "terminé";
+  return "non lancé";
+}
 
-  if (agentGeo.echec) {
-    const bras = agentGeo.croixBras;
-    const croix = svgEl("g", "dg-croix-echec");
-    [[-1, -1, 1, 1], [-1, 1, 1, -1]].forEach(([dx1, dy1, dx2, dy2]) => {
-      const trait = svgEl("line");
-      svgAttrs(trait, {
-        x1: agentGeo.cx + dx1 * bras, y1: agentGeo.cy + dy1 * bras,
-        x2: agentGeo.cx + dx2 * bras, y2: agentGeo.cy + dy2 * bras,
-      });
-      croix.appendChild(trait);
-    });
-    g.appendChild(croix);
-  }
+/* F11 (feature-021, cycle 2, lot 5) — la bottom sheet DIT ce que le chiffre
+ * compte : `#selected-task` porte une PHRASE, jamais un chiffre nu sans
+ * légende (§16 PIEGES). Un échec ne se lit jamais par-dessus « sans
+ * clôture » (même règle que le disque lui-même, `diagramme.js`). */
+function tacheDisque(agentGeo) {
+  if (agentGeo.principal) return "agent principal — orchestre le cycle";
+  if (agentGeo.sansCloture) return "sans clôture — aucune fin observée pour ce passage";
+  if (agentGeo.echec) return "en échec — au moins un appel d'outil a échoué";
+  return agentGeo.etat === "active" ? "en cours" : "terminé";
+}
 
-  // Sigle — couleur d'identité TOUJOURS (D1/B2), y compris l'agent principal.
-  const sigle = svgEl("text", "dg-sigle");
-  svgAttrs(sigle, { x: agentGeo.cx, y: agentGeo.sigleBaselineY, "text-anchor": "middle" });
-  sigle.style.fill = c;
-  // L'unité est explicite : `font-size: 11` sans unité est invalide en CSS.
-  // Chromium le coerce en `11px` (mesuré), un autre moteur a le droit de
-  // l'ignorer — et le texte retomberait alors sur la taille héritée.
-  sigle.style.fontSize = agentGeo.sigleTaillePx + "px";
-  sigle.textContent = (sigles && sigles.get(agentGeo.agent)) || "??";
-  g.appendChild(sigle);
+/* Sélection LOCALE, aucun appel réseau : toute la donnée affichée est déjà
+ * dans `agentGeo`, le même objet que `disposer()` a produit pour PEINDRE le
+ * disque cliqué — la bottom sheet ne recalcule rien, elle relit. Chaque
+ * `.metric` du gabarit (index.html) porte déjà le libellé qui dit ce que le
+ * chiffre compte (« Graduations · outils », « Points · fichiers »…) ; ce
+ * qu'on pose ici est la VALEUR, jamais un chiffre sans le libellé qui
+ * l'accompagne dans le DOM. */
+function selectionnerPassage(agentGeo, sigle) {
+  $("selected-code").textContent = sigle;
+  $("selected-title").textContent = agentGeo.agent;
+  $("selected-task").textContent = tacheDisque(agentGeo);
+  $("selected-state").textContent = libelleEtatDisque(agentGeo.etat)
+    + (agentGeo.echec ? " · échec" : "") + (agentGeo.sansCloture ? " · sans clôture" : "");
+  $("selected-tools").textContent =
+    agentGeo.outils + " appel" + (agentGeo.outils > 1 ? "s" : "") + " d'outil enregistré" + (agentGeo.outils > 1 ? "s" : "");
+  $("selected-files").textContent = agentGeo.fichiersTotal
+    ? agentGeo.fichiersAllumes + " sur 3 pastille(s) allumée(s) · " + agentGeo.fichiersTotal +
+      " fichier" + (agentGeo.fichiersTotal > 1 ? "s" : "") + " touché" + (agentGeo.fichiersTotal > 1 ? "s" : "") + " au total"
+    : "aucun fichier touché";
+  $("selected-duration").textContent = agentGeo.duree.texte;
+  const annonce = $("a11y-announcement");
+  if (annonce) annonce.textContent = "Détail affiché : " + agentGeo.agent + ", " + tacheDisque(agentGeo);
+}
 
-  const titre = svgEl("title");
-  titre.textContent = agentGeo.agent
-    + " — " + agentGeo.outils + " appel(s) d'outil, " + agentGeo.fichiers + " fichier(s) écrit(s)"
-    // `plafondAtteint` (§L1) : n'a plus de rendu visuel propre depuis le
-    // retrait du cran de plafond (défaut J) — exposé ici pour ne pas rester
-    // un champ mort.
-    + (agentGeo.plafondAtteint ? ", plafond d'appels d'outils atteint" : "")
+/* Traduit UN agent (`disposer().agents[i]`) en la structure DOM exacte du
+ * prototype (`.agent-wrap > .agent-node > … `, `.agent-name`, `.agent-
+ * duration` en frères directs — les sélecteurs `.state-active + .agent-name`
+ * et `.state-active ~ .agent-duration` du prototype en dépendent, F2). Les
+ * quatre représentations F16 (échec, sans clôture, agent principal) sont
+ * des AJOUTS de classe, jamais une variante des 3 états `state-*` — la
+ * grammaire du prototype n'a QUE ces 3 états (ADR-0031 §3). */
+function construireDisqueAgent(agentGeo, sigles) {
+  const wrap = el("div", "agent-wrap");
+  definirVariable(wrap, "--x", agentGeo.cx + "px");
+  definirVariable(wrap, "--y", agentGeo.cy + "px");
+
+  const classes = ["agent-node", "state-" + agentGeo.etat];
+  if (agentGeo.echec) classes.push("has-echec");
+  if (agentGeo.sansCloture) classes.push("state-sans-cloture");
+  if (agentGeo.principal) classes.push("role-principal");
+  const noeud = el("button", classes.join(" "));
+  noeud.type = "button";
+  const sigle = (sigles && sigles.get(agentGeo.agent)) || "??";
+  noeud.setAttribute("aria-label", agentGeo.agent + ", " + libelleEtatDisque(agentGeo.etat)
     + (agentGeo.echec ? ", en échec" : "")
     + (agentGeo.sansCloture ? ", sans clôture" : "")
-    + (agentGeo.enCours ? ", en cours" : "");
-  g.appendChild(titre);
+    + (agentGeo.principal ? ", agent principal" : ""));
+  /* F11 : cliquer le disque remplit la bottom sheet — voir
+   * `selectionnerPassage`, qui ne relit que `agentGeo`, déjà calculé. */
+  noeud.addEventListener("click", () => selectionnerPassage(agentGeo, sigle));
 
-  return g;
-}
-
-/* Classe posée par RÔLE (jamais par position, feature-020 §L) — trois rôles
- * pour un créneau simple (heure/durée/nom), deux pour un créneau empilé
- * (heureDuree/nom). C'est `.dg-socle-duree`/`.dg-socle-heure-duree` qui
- * portent la vedette (§8 : la DURÉE, pas le nom). */
-function classeSocleRole(role) {
-  if (role === "heure") return "dg-socle-heure";
-  if (role === "duree") return "dg-socle-duree";
-  if (role === "heureDuree") return "dg-socle-heure-duree";
-  return "dg-socle-nom";
-}
-
-/* Socle : cadre + libellé de groupe + lignes de texte — TOUTE la géométrie
- * (position du cadre, boîte du libellé, x/baselineY de chaque ligne) vient
- * de `disposer()` (feature-020 A5/A7) ; cette fonction ne calcule plus rien,
- * elle peint ce qu'on lui donne. */
-function construireSoclesCreneau(creneauGeo) {
-  const g = svgEl("g", "dg-socle");
-
-  // Le cadre est ajouté EN PREMIER (donc peint SOUS le reste). Rect PLEINE
-  // LARGEUR de créneau, `fill:none` (défaut O) — un filet suffit, ADR
-  // §9 : pas d'aplat là où un filet suffit.
-  if (creneauGeo.cadre) {
-    const cadre = svgEl("rect", "dg-cadre-simultane");
-    svgAttrs(cadre, {
-      x: creneauGeo.cadre.x, y: creneauGeo.cadre.y,
-      width: creneauGeo.cadre.largeur, height: creneauGeo.cadre.hauteur,
-      rx: creneauGeo.cadre.rx, fill: "none",
-    });
-    g.appendChild(cadre);
+  if (agentGeo.principal) {
+    const anneauRole = el("span", "role-ring");
+    anneauRole.setAttribute("aria-hidden", "true");
+    noeud.appendChild(anneauRole);
   }
-  if (creneauGeo.libelleCadre) {
-    const lc = creneauGeo.libelleCadre;
-    const masque = svgEl("rect", "dg-libelle-cadre-masque");
-    svgAttrs(masque, { x: lc.masque.x, y: lc.masque.y, width: lc.masque.largeur, height: lc.masque.hauteur });
-    masque.style.fill = "var(--creux)";
-    g.appendChild(masque);
-    const libelle = svgEl("text", "dg-libelle-cadre");
-    svgAttrs(libelle, { x: lc.texteX, y: lc.baselineY });
-    // `taillePx` participe à la réservation (`largeurTexte()`) : posé en
-    // `style`, jamais en attribut de présentation qu'une classe CSS pourrait
-    // écraser (feature-020, revue point 1).
-    libelle.style.fontSize = lc.taillePx + "px";
-    libelle.textContent = lc.texte;
-    g.appendChild(libelle);
+  const orbite = el("span", "work-orbit");
+  orbite.setAttribute("aria-hidden", "true");
+  noeud.appendChild(orbite);
+  const point = el("span", "work-dot");
+  point.setAttribute("aria-hidden", "true");
+  noeud.appendChild(point);
+  noeud.appendChild(construireGraduations());
+
+  const face = el("span", "agent-face");
+  face.appendChild(el("span", "agent-code", sigle));
+  /* F15 : le centre du disque ne porte AUCUN chiffre à ce cycle (0 token
+   * sur 14 372 événements mesurés — le lire suppose les transcripts de
+   * sous-agent, hors GATE de ce cycle, `feature-023`). `.agent-data` ne
+   * contient QUE les pastilles de fichiers, une donnée réellement mesurée
+   * (PIEGES §16) — la branche « chiffre au centre » n'est PAS écrite : le
+   * nœud n'existe pas (pas de `.token-value` posé), donc `F4b` peut
+   * assertionner son ABSENCE sans qu'aucune lecture ne confonde « pas de
+   * donnée » et « zéro » (règle 1, notes d'implémentation cycle 2 §5).
+   * Le disque reste DÉGRADABLE et JAMAIS à trous : `place-content:center`
+   * (`.agent-face`) recentre le seul sigle qui reste, aucun espace n'est
+   * réservé pour un chiffre absent. */
+  const donnees = el("span", "agent-data");
+  const points = el("span", "file-dots");
+  for (let i = 0; i < 3; i++) {
+    points.appendChild(el("i", i < agentGeo.fichiersAllumes ? "on" : ""));
+  }
+  donnees.appendChild(points);
+  face.appendChild(donnees);
+  noeud.appendChild(face);
+
+  /* F16 : drapeau glyphé, jamais la seule couleur (`--state-color` déjà
+   * recolorée par `.has-echec`/`.state-sans-cloture` ci-dessus porte la
+   * PREMIÈRE dimension, le glyphe du drapeau porte la SECONDE). */
+  if (agentGeo.echec || agentGeo.sansCloture) {
+    const drapeau = el("span", "agent-flag " + (agentGeo.echec ? "agent-flag--echec" : "agent-flag--sans-cloture"));
+    drapeau.setAttribute("aria-hidden", "true");
+    noeud.appendChild(drapeau);
   }
 
-  creneauGeo.agents.forEach((agentGeo) => {
-    agentGeo.socle.lignes.forEach((ligne) => {
-      // Vedette (§8, item L) : la ligne DURÉE (simple) ou HEURE·DURÉE
-      // (empilé) grossit et se colore quand l'agent est en cours — jamais
-      // le nom.
-      const vedetteActive = agentGeo.enCours && (ligne.role === "duree" || ligne.role === "heureDuree");
-      const texte = svgEl("text", classeSocleRole(ligne.role) + (vedetteActive ? " actif" : ""));
-      svgAttrs(texte, { x: ligne.x, y: ligne.baselineY, "text-anchor": ligne.ancrage });
-      // `taillePx` participe à la réservation (`largeurTexte()`) et diffère
-      // selon créneau simple/empilé pour un MÊME rôle (le nom : 10,5 vs 11) :
-      // posé en `style`, jamais en attribut, jamais redéclaré en CSS
-      // (feature-020, revue point 1 — PIEGES §25).
-      texte.style.fontSize = ligne.taillePx + "px";
-      if (vedetteActive) texte.style.fill = couleurIdentite(agentGeo.agent);
-      texte.textContent = ligne.texte;
-      g.appendChild(texte);
-    });
-  });
+  wrap.appendChild(noeud);
 
-  if (creneauGeo.repliLibelle) {
-    const rl = creneauGeo.repliLibelle;
-    const plus = svgEl("text", "dg-repli");
-    svgAttrs(plus, { x: rl.x, y: rl.baselineY, "text-anchor": rl.ancrage });
-    // Même règle : `taillePx` participe à la réservation, posé en `style`.
-    plus.style.fontSize = rl.taillePx + "px";
-    plus.textContent = rl.texte;
-    const titre = svgEl("title");
-    titre.textContent = creneauGeo.repli.masques + " agent(s) supplémentaire(s), repliés";
-    plus.appendChild(titre);
-    g.appendChild(plus);
-  }
-  return g;
+  /* Ordre du DOM = celui du prototype : `.agent-name` frère DIRECT de
+   * `.agent-node` (sélecteur `+`), `.agent-duration` ensuite (sélecteur
+   * `~`, général) — ne pas intervertir. */
+  const nom = el("span", "agent-name");
+  nom.appendChild(el("strong", "", agentGeo.agent));
+  wrap.appendChild(nom);
+  wrap.appendChild(el("span", "agent-duration", agentGeo.duree.texte));
+
+  return wrap;
 }
 
-/* Liens entre créneaux : extrémités RÉELLES (bords de créneau, défaut P) et
- * gabarit de pastille FIXE (correction de mesure, jamais mesuré au rendu) —
- * tout vient de `lien` (feature-020 A4/A8), aucune moyenne ni aucun rayon
- * recalculé ici. */
-function construireLiensDiagramme(geo) {
-  const g = svgEl("g", "dg-liens");
-  geo.liens.forEach((lien) => {
-    const trait = svgEl("line", "dg-lien");
-    svgAttrs(trait, { x1: lien.x1, y1: lien.y1, x2: lien.x2, y2: lien.y2 });
-    g.appendChild(trait);
-
-    const pts = lien.pointe.points;
-    const pointe = svgEl("path", "dg-lien-pointe");
-    svgAttrs(pointe, {
-      d: "M " + pts[0][0] + " " + pts[0][1]
-        + " L " + pts[1][0] + " " + pts[1][1]
-        + " L " + pts[2][0] + " " + pts[2][1],
-      fill: "none",
-    });
-    g.appendChild(pointe);
-
-    if (lien.pastille) {
-      const p = lien.pastille;
-      const pastille = svgEl("g", "dg-pastille-attente");
-      const fond = svgEl("rect");
-      svgAttrs(fond, {
-        x: p.x - p.largeur / 2, y: p.y - p.hauteur / 2,
-        width: p.largeur, height: p.hauteur, rx: p.rx,
-      });
-      pastille.appendChild(fond);
-      const texte = svgEl("text");
-      svgAttrs(texte, { x: p.texteX, y: p.baselineY, "text-anchor": "middle" });
-      texte.textContent = p.texte;
-      pastille.appendChild(texte);
-      g.appendChild(pastille);
-    }
-  });
-  return g;
+function classeConnecteur(etat) {
+  if (etat === "flowing") return "is-flowing";
+  if (etat === "complete") return "is-complete";
+  if (etat === "reprise") return "is-reprise";
+  return "";
 }
 
-/* Rebouclage : arc reliant une reprise à l'OCCURRENCE PRÉCÉDENTE du MÊME
- * agent (§5). Sommet ABSOLU (`arc.sommetY`, défaut R/bug-020) — plus de
- * recalcul de hauteur ici ; couleur FIXE (jeton `--rebouclage`, décision R —
- * plus de couleur d'identité) ; AUCUNE pointe (décision R). */
-function construireArcsDiagramme(geo) {
-  const g = svgEl("g", "dg-arcs");
-  geo.arcs.forEach((arc) => {
-    const chemin = svgEl("path", "dg-arc-rebouclage");
-    svgAttrs(chemin, {
-      d: "M " + arc.depart.x + " " + arc.depart.y
-        + " C " + arc.controle1.x + " " + arc.controle1.y
-        + ", " + arc.controle2.x + " " + arc.controle2.y
-        + ", " + arc.arrivee.x + " " + arc.arrivee.y,
-      fill: "none",
-    });
-    const titre = svgEl("title");
-    titre.textContent = "Rebouclage — reprise de " + arc.agent;
-    chemin.appendChild(titre);
-    g.appendChild(chemin);
-
-    const texte = svgEl("text", "dg-arc-libelle");
-    svgAttrs(texte, { x: arc.libelle.x, y: arc.libelle.baselineY, "text-anchor": "middle" });
-    // Même règle que le socle : `taillePx` vient du contrat et participe à la
-    // réservation, donc en `style` avec unité — la dernière taille encore
-    // posée en attribut, relevée en revue (feature-020).
-    texte.style.fontSize = arc.libelle.taillePx + "px";
-    texte.textContent = arc.libelle.texte;
-    g.appendChild(texte);
-  });
-  return g;
-}
-
-/* Légende (§8, item T) : DIX entrées, rien de plus, rien de moins que ce que
- * le code peut réellement produire — alignée sur `pose()`/`graphe()` et sur
- * les décisions D1/D2/D4/R de feature-020. */
-function construireLegendeDiagramme() {
-  const dl = el("dl", "diagramme-legende");
-  const ajouter = (forme, sens) => { dl.appendChild(el("dt", "", forme)); dl.appendChild(el("dd", "", sens)); };
-  ajouter("Diamètre du cercle", "durée de l'agent");
-  ajouter("Graduations", "appels d'outils (échelle de 70)");
-  ajouter("Liseré intérieur", "fichiers écrits");
-  ajouter("Pastille", "attente entre deux agents");
-  ajouter("Cadre", "agents simultanés");
-  ajouter("Contour pointillé", "sans clôture");
-  ajouter("Croix + contour d'alerte", "échec");
-  ajouter("Identité sur le contour et l'anneau", "en cours");
-  ajouter("Fond neutre + sigle dédié", "agent principal");
-  ajouter("Arc pointillé", "rebouclage vers l'occurrence précédente du même agent");
-  return dl;
-}
-
-/* Défilement au clavier (§6, §8) : `tabindex="0"` sur le conteneur, les
- * flèches gauche/droite (et Origine/Fin) le parcourent — la molette SEULE
- * fait défiler la PAGE (comportement natif, rien à faire ici) ; `Maj` +
- * molette ou le glissement font défiler la ZONE (comportement natif d'un
- * conteneur `overflow-x: auto`, également rien à coder). */
-function brancherDefilementClavier(conteneur) {
-  conteneur.setAttribute("tabindex", "0");
-  conteneur.setAttribute("role", "group");
-  conteneur.setAttribute("aria-label", "Diagramme du déroulé — parcourir avec les flèches");
-  conteneur.addEventListener("keydown", (evenement) => {
+/* Traduit le contrat COMPLET de `disposer()` (positions, connecteurs) en
+ * DOM — AUCUN calcul de position ici (`ADR-0031 §4`) : `geo.agents[].cx/cy`
+ * et `geo.connecteurs[].d` sont utilisés TELS QUELS. Le conteneur porte une
+ * taille EXPLICITE en pixels (`geo.largeur`×`geo.hauteur`) : contrairement
+ * au prototype (démo fixe à 388px), la largeur réelle dépend du nombre de
+ * créneaux — `.graphe-scroll` défile horizontalement plutôt que de tasser
+ * les disques (écart assumé, voir app.css). */
+function construireGrapheAgents(geo, sigles) {
+  const scroll = el("div", "graphe-scroll");
+  scroll.setAttribute("tabindex", "0");
+  scroll.setAttribute("role", "group");
+  scroll.setAttribute("aria-label", "Graphe d'agents — " + geo.agents.length + " agent(s)");
+  scroll.addEventListener("keydown", (evenement) => {
     const PAS = 80;
-    if (evenement.key === "ArrowRight") { conteneur.scrollLeft += PAS; evenement.preventDefault(); }
-    else if (evenement.key === "ArrowLeft") { conteneur.scrollLeft -= PAS; evenement.preventDefault(); }
-    else if (evenement.key === "Home") { conteneur.scrollLeft = 0; evenement.preventDefault(); }
-    else if (evenement.key === "End") { conteneur.scrollLeft = conteneur.scrollWidth; evenement.preventDefault(); }
+    if (evenement.key === "ArrowRight") { scroll.scrollLeft += PAS; evenement.preventDefault(); }
+    else if (evenement.key === "ArrowLeft") { scroll.scrollLeft -= PAS; evenement.preventDefault(); }
+    else if (evenement.key === "Home") { scroll.scrollLeft = 0; evenement.preventDefault(); }
+    else if (evenement.key === "End") { scroll.scrollLeft = scroll.scrollWidth; evenement.preventDefault(); }
   });
+
+  const plan = el("div");
+  plan.style.position = "relative";
+  plan.style.width = geo.largeur + "px";
+  plan.style.height = geo.hauteur + "px";
+
+  const svg = svgEl("svg", "connector-layer");
+  svg.setAttribute("aria-hidden", "true");
+  svgAttrs(svg, { viewBox: "0 0 " + geo.largeur + " " + geo.hauteur });
+  svg.style.width = geo.largeur + "px";
+  svg.style.height = geo.hauteur + "px";
+  geo.connecteurs.forEach((c) => {
+    const chemin = svgEl("path", classeConnecteur(c.etat));
+    svgAttrs(chemin, { d: c.d });
+    svg.appendChild(chemin);
+  });
+  plan.appendChild(svg);
+
+  geo.agents.forEach((a) => plan.appendChild(construireDisqueAgent(a, sigles)));
+  scroll.appendChild(plan);
+  return scroll;
 }
 
-/* Point d'entrée (branché dans `construireDetailCycle`, AVANT la table des
- * passages). `wf.segments` (agent principal compris) si disponible, repli
- * sur `wf.passages` sur un backend plus ancien — même convention que
- * `construireChaineEtNotes`. Un cycle sans aucun segment retombe sur `null`
- * : l'appelant garde alors le seul état vide déjà affiché par la table. */
+/* Point d'entrée pour l'accordéon « Cycles » (`construireDetailCycle`, plus
+ * bas) : `wf.segments` (agent principal compris) si disponible, repli sur
+ * `wf.passages` sur un backend plus ancien. Un cycle sans aucun segment
+ * retombe sur `null` : l'appelant garde alors le seul état vide déjà
+ * affiché par la table des passages. */
 function construireDiagramme(wf, sigles) {
   const segments = wf.segments || wf.passages || [];
   if (!segments.length) return null;
-  // Garde (bug-020) : `diagramme.js` est chargé en `<script>` séparé
-  // (index.html, AVANT ce fichier) — s'il est absent (404, cache, oubli de
-  // relancer le serveur après un fichier neuf — PIEGES.md §8), `disposer`
-  // n'existe pas et l'exception remonterait jusqu'au `catch` global de
-  // `rafraichir()`, qui l'afficherait à tort comme « serveur injoignable ».
-  // Se rabattre ici sur l'absence de diagramme, comme un cycle sans segment.
+  /* Garde (bug-020, conservée) : `diagramme.js` est chargé en `<script>`
+   * séparé (index.html, AVANT ce fichier) — s'il est absent (404, cache,
+   * oubli de relancer le serveur après un fichier neuf, PIEGES §8),
+   * `disposer` n'existe pas. Se rabattre sur l'absence de diagramme, comme
+   * un cycle sans segment, plutôt que de laisser l'exception remonter
+   * jusqu'au `catch` global de `rafraichir()` (qui l'afficherait à tort
+   * comme « serveur injoignable »). */
   if (typeof disposer !== "function") return null;
-
   const geo = disposer(segments);
   const enveloppe = document.createDocumentFragment();
-
-  // Titre de zone + phrase d'avertissement (item S/B15) : construits ici,
-  // PAS dans index.html — le bandeau vit dans le détail de cycle dynamique,
-  // pas dans un gabarit statique.
-  const entete = el("div", "dg-entete");
-  entete.appendChild(el("span", "dg-entete-titre", "Déroulé"));
-  entete.appendChild(el("span", "dg-entete-phrase",
-    "l'écart horizontal sert la lisibilité, il ne mesure pas le temps"));
-  enveloppe.appendChild(entete);
-
-  const conteneur = el("div", "diagramme-scroll");
-  brancherDefilementClavier(conteneur);
-
-  const svg = svgEl("svg", "dg-svg");
-  svgAttrs(svg, {
-    // `segments.length` est déjà garanti ≥ 1 ci-dessus : `disposer()` ne
-    // renvoie `largeur`/`hauteur` à 0 que pour une liste VIDE, jamais
-    // atteinte ici — pas de clamp défensif qui dupliquerait sa décision.
-    viewBox: "0 0 " + geo.largeur + " " + geo.hauteur,
-    width: geo.largeur, height: geo.hauteur, role: "img",
-    "aria-label": "Diagramme du déroulé — " + segments.length + " agent(s)",
-  });
-
-  // Ordre de dessin (peinture SVG = ordre d'apparition) : liens et arcs
-  // D'ABORD (toujours sous les cercles) ; puis le cadre des créneaux
-  // empilés AVEC leurs socles (le cadre, lui, doit rester SOUS les cercles
-  // qu'il entoure) ; les cercles en dernier — jamais masqués par un cadre
-  // ou un lien. Le socle et les cercles n'occupent de toute façon jamais le
-  // même point (texte à côté ou en dessous, jamais superposé au disque).
-  svg.appendChild(construireLiensDiagramme(geo));
-  svg.appendChild(construireArcsDiagramme(geo));
-  geo.creneaux.forEach((creneau) => {
-    svg.appendChild(construireSoclesCreneau(creneau));
-  });
-  geo.creneaux.forEach((creneau) => {
-    creneau.agents.forEach((agentGeo) => {
-      svg.appendChild(construireCercleAgent(agentGeo, sigles));
-    });
-  });
-
-  conteneur.appendChild(svg);
-  const piste = el("div", "dg-piste");
-  piste.appendChild(conteneur);
-  piste.appendChild(el("div", "dg-voile g"));
-  piste.appendChild(el("div", "dg-voile d"));
-  enveloppe.appendChild(piste);
-  enveloppe.appendChild(construireLegendeDiagramme());
+  enveloppe.appendChild(el("p", "note", "l'écart horizontal sert la lisibilité, il ne mesure pas le temps"));
+  enveloppe.appendChild(construireGrapheAgents(geo, sigles));
   return enveloppe;
 }
+
+/* ------------------------------------------------ graphe principal (F8/F9)
+ * `#cycle-canvas` (zone de travail, mono-écran) : reconstruit à CHAQUE
+ * rafraîchissement — pas de diff incrémental, `disposer()` est un module pur
+ * bon marché à rappeler et le nombre de passages par cycle reste modeste. */
+function choisirCycleAffiche(etat) {
+  const workflows = (etat.workflows || []).slice().reverse();   // le plus récent en tête
+  if (!workflows.length) return null;
+  return workflows.find((wf) => etatCycle(wf) === "en_cours") || workflows[0];
+}
+
+function formatEcoule(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  const mm = Math.floor(s / 60);
+  const ss = s % 60;
+  return String(mm).padStart(2, "0") + ":" + String(ss).padStart(2, "0");
+}
+
+function rendreGrapheCyclePrincipal(etat) {
+  const zone = $("cycle-canvas");
+  vider(zone);
+
+  /* Indicateur « vivant » (§16 des notes cycle 1, PIEGES §17) : branché sur
+   * `etat.agents[].actif_sur` (`instantane()`, backend/server.py), JAMAIS
+   * sur une absence de `SessionEnd` — ~85 % des cycles la portent, sans que
+   * cela signale une activité réelle. */
+  const nbActifs = (etat.agents || []).filter((a) => a.actif_sur).length;
+  /* `classList.className = ` plutôt que `.classList.toggle(...)` : le bac à
+   * sable de `test_app_bug012.js` n'implémente que `add`/`contains`
+   * (FakeNode), pas `toggle` — cette forme reste correcte dans un vrai
+   * navigateur ET dans ce bac à sable. */
+  $("status-dot").className = "status-dot" + (nbActifs > 0 ? " actif" : "");
+  $("summary-active").textContent = nbActifs + " agent" + (nbActifs > 1 ? "s" : "") + " actif" + (nbActifs > 1 ? "s" : "");
+
+  const repoTexte = $("repo-strip-texte");
+  const repoOk = $("repo-strip-ok");
+  if (etat.git && etat.git.depot) {
+    const touches = (etat.git.touches || []).length;
+    repoTexte.textContent = (etat.git.branche || "?") + " · " + touches + " fichier(s) modifié(s)";
+    repoOk.hidden = false;
+  } else {
+    repoTexte.textContent = "pas un dépôt git";
+    repoOk.hidden = true;
+  }
+
+  const wf = choisirCycleAffiche(etat);
+  if (!wf) {
+    $("cycle-status").textContent = "Aucun cycle sélectionné";
+    $("summary-step").textContent = "—";
+    $("summary-time").textContent = "00:00";
+    $("motion-note").textContent = "aucun passage à afficher pour l'instant — invoquez un agent depuis la section Développer";
+    $("cycle-indice").textContent = "—";
+    return;
+  }
+  /* ADR-0023 : « Cycle #N » (indice_cycle, additif) est légitime — le TITRE
+   * de spec ne l'est pas (corrélation cycle→spec, 2 cas sur 14 seulement). */
+  $("cycle-indice").textContent = typeof wf.indice_cycle === "number"
+    ? "Cycle #" + wf.indice_cycle : "—";
+
+  const segments = wf.segments || wf.passages || [];
+  const sigles = siglesAgents(Array.from(collecterRoles([wf])));
+  const cle = etatCycle(wf);
+  const info = descripteurEtat(cle);
+  $("cycle-status").textContent = info.libelle.charAt(0).toUpperCase() + info.libelle.slice(1);
+  const dernier = segments.length ? segments[segments.length - 1] : null;
+  $("summary-step").textContent = dernier ? dernier.agent : "—";
+  const finIso = cle === "en_cours" ? new Date().toISOString() : wf.fin_observee;
+  const ecouleMs = dureeIso(wf.debut, finIso);
+  $("summary-time").textContent = ecouleMs !== null ? formatEcoule(ecouleMs) : "00:00";
+  $("motion-note").textContent = cle === "en_cours"
+    ? "un agent est actif : son disque grandit et révèle ses données"
+    : "cycle " + info.libelle;
+
+  if (!segments.length || typeof disposer !== "function") return;
+  const geo = disposer(segments);
+  zone.appendChild(construireGrapheAgents(geo, sigles));
+}
+
 
 function construireDetailCycle(wf, sigles) {
   const detail = document.createDocumentFragment();
@@ -1529,6 +1471,19 @@ function ouvrirPorte(motif) {
 
   dernierFocusAvantPorte = (document.activeElement && document.activeElement !== document.body)
     ? document.activeElement : null;
+  /* ⚠️ Mesuré en écrivant F4b (feature-021, cycle 2, lot 5), Chromium
+   * 152.0.7977.75 : poser `inert` sur un ANCÊTRE d'un élément DÉJÀ actif ne
+   * lui retire PAS le focus — il reste `document.activeElement`, et reste
+   * même re-focalisable par un appel `.focus()` explicite ultérieur, bien
+   * qu'il soit désormais dans un sous-arbre inerte. Sans ce `blur()`
+   * explicite, un utilisateur qui a le focus dans la page au moment où la
+   * porte se rouvre (401 tardif via `sur401Lecture`, pas seulement au tout
+   * premier chargement où rien n'est encore focalisé) garderait un contrôle
+   * RÉELLEMENT atteignable sous la modale — exactement le défaut que
+   * bug-017 corrige. */
+  if (dernierFocusAvantPorte && typeof dernierFocusAvantPorte.blur === "function") {
+    dernierFocusAvantPorte.blur();
+  }
   fixerInerteAutourDeLaPorte(true);
   porte.hidden = false;
   requestAnimationFrame(() => { champ.focus(); });
@@ -2755,6 +2710,7 @@ async function rafraichir() {
     dernierEtat = etat;
     rendreAgents(etat.agents);
     rendreSysteme(etat);
+    rendreGrapheCyclePrincipal(etat);
     rendreKanban(etat);
     rendreCycles(etat);
     rendreFichiers(etat);
@@ -2812,6 +2768,15 @@ document.addEventListener("keydown", (evenement) => {
   if (evenement.key === "Escape") fermerTiroir();
 });
 $("tiroir-fermer").addEventListener("click", fermerTiroir);
+
+/* F11 : replier/déplier la bottom sheet — un état PUREMENT visuel (le
+ * détail reste dans le DOM, `aria-expanded` porte l'état pour qui n'y voit
+ * rien, le glyphe n'est jamais la seule information — §8). */
+$("sheet-toggle").addEventListener("click", () => {
+  const repliee = $("sheet-metrics").hidden = !$("sheet-metrics").hidden;
+  $("sheet-toggle").setAttribute("aria-expanded", repliee ? "false" : "true");
+  $("sheet-toggle").setAttribute("aria-label", repliee ? "Déplier le détail" : "Replier le détail");
+});
 
 /* Le premier `GET /api/etat` décide seul du mode d'authentification — voir
  * `verifierEtatAuth`. Tant qu'il n'a pas répondu `200`, aucun bloc n'est

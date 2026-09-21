@@ -105,22 +105,23 @@ active qu'il assurait depuis `feature-019` n'a plus d'objet, la page n'ayant
 plus de section à persister. Le fichier reste servi tel quel (hors périmètre
 du lot 3).
 
-## Identité de couleur par agent
+## Identité d'agent : le texte, plus la couleur
 
-Chaque agent affiché sur le diagramme et dans la liste des agents reçoit une
-couleur propre, dérivée de son rôle (`--a-<rôle>` pour le trait, le sigle et
-les graduations ; `--f-<rôle>` pour le remplissage). Deux rôles n'ont jamais
-la même couleur ni le même sigle à deux lettres. La méthode qui engendre ces
-couleurs — clarté et intensité constantes, seule la teinte varie — est
-documentée dans `docs/DESIGN-SYSTEM.md` (§2) et son verrouillage dans
-[ADR-0022](../adr/0022-deux-familles-de-jetons-couleur-plancher-perceptuel.md).
+Jusqu'au lot 3 de `feature-021`, chaque agent affiché recevait une couleur
+propre dérivée de son rôle (`--a-<rôle>` / `--f-<rôle>`). Le **lot 4**
+retire ces 19 jetons (plus `--rebouclage`, qui en dépendait) de
+`control-center/web/app.css` : ils ne sont pas déplacés, ils **disparaissent
+de toute la feuille**, vérifié par mutation
+([ADR-0032](../adr/0032-l-identite-coloree-des-agents-disparait-du-diagramme.md),
+note du 2026-09-21). Un agent se reconnaît désormais **uniquement par son
+sigle et son nom** — le sigle à deux lettres reste calculé sans collision
+(`sigleAgent`/`siglesAgents`, `control-center/web/app.js`), mais il n'a plus
+de couleur de fond dédiée. Le sigle « AP » reste réservé à l'agent principal.
 
-Un rôle sans teinte assignée (type d'agent inconnu du tableau des identités)
-reçoit le jeton neutre achromatique (`--a-neutre` / `--f-neutre`) plutôt
-qu'une couleur d'agent recyclée : le neutre signale l'absence d'identité, il
-n'en emprunte pas une.
-
-Le diagramme SVG lit ces jetons via `var()`, sans recopier de couleur en dur.
+La couleur redevient **exclusivement sémantique** : elle porte un état
+(actif, terminé, en échec, sans clôture) via un unique jeton `--state-color`
+par disque, jamais un rôle. Voir la section « Diagramme du déroulé »
+ci-dessous pour le détail des jetons d'état.
 
 ## Liste des cycles en accordéon
 
@@ -157,8 +158,9 @@ liste entière se font sans souris.
   lignes de la table qui suit.
 - **Table des passages d'agent** : agent, début, durée, outils, fichiers,
   état ; une reprise (rebouclage sur le même agent) est signalée sur la
-  ligne concernée. L'identité de couleur par agent (section ci-dessus) s'y
-  applique, ainsi que sur les pastilles d'état.
+  ligne concernée. Le sigle de l'agent (section ci-dessus) identifie chaque
+  ligne ; les pastilles d'état portent une couleur sémantique, jamais une
+  identité de rôle.
 
 Un cycle en cours se rafraîchit sans se refermer ni perdre la position de
 lecture. Un cycle sans agent typé affiche sa ligne normalement ; le détail le
@@ -191,81 +193,120 @@ dit plutôt que de disparaître en silence.
 
 ## Diagramme du déroulé
 
-Dans le détail d'un cycle déplié (voir plus haut), un diagramme SVG remplace
-les maillons textuels : un cercle par agent, relié en séquence, sous un socle
-de trois lignes (heure de départ au format `HH:MM`, durée, nom). La **durée
-est la vedette du socle** — elle seule est graissée et en couleur de texte
-pleine (`--texte`), l'heure et le nom restent en `--texte-faible`. Un agent
-en cours grossit sa durée et la colore de son identité (voir
-`docs/DESIGN-SYSTEM.md` §8, exception nommée à la règle de précédence
-identité/état). Le sigle de l'agent principal est **AP**, jamais « ?? » —
-même les cycles qui ne contiennent que lui.
+**Grammaire réécrite au lot 4 de `feature-021`** (`ADR-0031`) : ce qui suit
+remplace intégralement l'ancienne grammaire (diamètre fonction de la durée,
+graduations comptant les appels d'outils, liseré des fichiers en continu),
+révoquée dans son ensemble. Dans le détail d'un cycle déplié (voir plus
+haut), le diagramme SVG dessine un **disque par agent**, relié en séquence,
+fidèle au bit près au prototype Material 3
+(`control-center/maquettes/2026-09-20-maquette-materiel-3.html`). Au-dessus
+du disque : le **nom** de l'agent. En dessous : la **durée seule** — l'heure
+de départ, affichée jusqu'au lot 3, n'a plus d'emplacement. Le sigle de
+l'agent principal est **AP**, jamais « ?? » — même les cycles qui ne
+contiennent que lui.
 
-### Ce que chaque forme du cercle encode
+### Ce que le disque encode
 
-- le **diamètre** : la durée de l'agent (`11 + 0,80·√(durée_s)`, plafonné à
-  56 px) ;
-- les **graduations** autour du cercle : le nombre d'appels d'outils, en 24,
-  36 ou 52 graduations selon le rayon — une graduation allumée est plus
-  longue qu'une éteinte, et le zéro appel se marque par deux barres
-  superposées ;
-- le **liseré intérieur** : le nombre de fichiers écrits, à épaisseur fixe
-  (1 px) et **opacité croissante** avec leur nombre — désormais **visible**
-  (il était peint sous le disque opaque, un défaut corrigé par `feature-020`).
+- le **diamètre** : fonction de l'**état**, plus de la durée — 52 px non
+  lancé, **88 px actif ou terminé** ; deux agents de durées très différentes,
+  tous deux actifs, ont le même diamètre ;
+- l'**anneau d'activité** (`.work-orbit`) : éteint au repos, **animation
+  indéterminée en boucle** pendant que l'agent travaille, **complet et
+  stable** une fois terminé — il ne code jamais une proportion chiffrée
+  (aucun total final connu pour un passage en cours, `ADR-0031 §5`) ;
+- **12 graduations radiales**, fixes, purement décoratives — elles ne
+  comptent plus les appels d'outils ;
+- **3 pastilles de fichiers**, allumée/éteinte (binaire, plafonné à 3) — un
+  passage à 4 fichiers et un passage à 40 fichiers dessinent pareil ;
+- le **centre** ne porte que le **sigle** de l'agent. Aucun chiffre n'y est
+  affiché : la lecture des tokens par sous-agent est hors périmètre de ce
+  cycle (`feature-023`). Le disque est **dégradable** — il fonctionne sans
+  ce chiffre — et jamais *à trous* : rien n'est réservé à sa place.
 
-Aucun nombre de jetons n'est affiché : le journal ne les mesure pas. La
-saturation de l'échelle des appels d'outils (agent qui dépasse le nominal)
-n'a plus de signe visible dans le tracé — elle reste lisible dans l'infobulle
-du cercle. Voir
-[ADR-0026](../adr/0026-trois-echelles-du-diagramme-alignees-sur-la-maquette.md)
-(qui remplace [ADR-0025](../adr/0025-grammaire-du-diagramme-de-deroule.md) §1
-sur le rayon, les graduations, le liseré et le rendu du zéro/plafond) pour la
-grammaire complète et les alternatives écartées, et `docs/DESIGN-SYSTEM.md`
-§5 pour le détail visuel.
+Les appels d'outils et le compte exact de fichiers restent mesurés dans le
+journal ; ils ne sont simplement plus peints sur le disque. Leur affichage
+dans une feuille de détail par passage reste à faire (lot 5).
+
+### Trois états, plus trois représentations ajoutées
+
+Le prototype ne connaît que trois états — `state-pending`, `state-active`,
+`state-done` — colorés par un unique jeton `--state-color` par disque
+(actif = `--primary`, terminé = `--agent-state-done`, non lancé =
+`--agent-state-pending`). Quatre représentations que la maquette ne portait
+pas ont dû être inventées pour ce cycle, chacune **ajoutée** au disque et non
+une variante de ces trois états :
+
+- **l'échec** (`.has-echec`) — l'anneau se recolore en `--danger` **et** un
+  drapeau glyphé « ! » se pose en périphérie ; deux moyens redondants,
+  jamais la seule couleur ;
+- **le « sans clôture »** (`.state-sans-cloture`) — contour pointillé **et**
+  drapeau « ⋯ ». Cet état est dérivé du champ `etat === "sans_cloture"` du
+  journal, jamais d'une absence de `SessionEnd` observée (`SessionEnd` ne se
+  déclenche jamais sur une session longue — voir la mémoire de projet). Un
+  passage dont la fin n'a pas été observée **n'est pas un échec** : les deux
+  représentations ne se cumulent jamais sur le même disque ;
+- **l'agent principal** (`.role-principal`) — anneau pointillé secondaire en
+  périphérie (`.role-ring`) et sigle souligné ;
+- **le non-chevauchement des libellés** — chaque disque réserve, de chaque
+  côté, la moitié du plus exigeant entre son diamètre maximal possible
+  (88 px, jamais 52 — un agent qui s'active ne doit jamais chevaucher son
+  voisin) et son libellé (nom ou durée) le plus large. Calculé par
+  `disposer()`, jamais par la feuille de style.
 
 ### Lecture du déroulé
 
 La zone porte le titre « **Déroulé** » et une phrase d'avertissement :
-« l'écart horizontal sert la lisibilité, il ne mesure pas le temps ». **L'écart
-horizontal ne mesure pas le temps** — chaque agent réclame la demi-largeur du
-plus exigeant entre son cercle avec ses graduations et le plus long de ses
-trois libellés. Le temps se lit sous chaque cercle, il ne se mesure pas en
-distance. Une attente de plus de deux minutes entre deux agents s'affiche
-dans une pastille posée sur le lien. La piste du diagramme porte des
-**voiles latéraux** (dégradé sur fond `--creux`) qui signalent le contenu
-caché par le défilement horizontal.
+« l'écart horizontal sert la lisibilité, il ne mesure pas le temps ». Le
+temps se lit sous chaque disque, il ne se mesure pas en distance.
 
 **Les agents simultanés** (par exemple `code-reviewer` et `security-reviewer`
-qui tournent ensemble) occupent un seul créneau et s'empilent verticalement,
-dans un cadre **sans aplat** (filet seul, coins arrondis) portant le libellé
-« N agents en parallèle » ; le cycle avance d'un seul cran quel que soit leur
-nombre. Au-delà de quatre agents empilés, la pile se replie (« 4 + N »).
+qui tournent ensemble) occupent un seul créneau et s'empilent verticalement
+sur le même axe horizontal, reliés au créneau précédent et au créneau
+suivant. **Un rebouclage** (une reprise du même agent) est relié à sa
+précédente occurrence par un arc séparé, élevé au-dessus du rang, en trait
+pointillé corail animé (`.is-reprise`) — distinct du connecteur séquentiel
+(plein pour un lien déjà parcouru, pointillé teal animé pour un lien en train
+de se parcourir).
 
-**Un rebouclage** (une reprise du même agent) est relié à sa précédente
-occurrence par un arc pointillé de couleur fixe (`--rebouclage`), **sans
-pointe de direction**. **Un échec** se signale par deux moyens redondants :
-couleur et croix, sur un contour `--alerte` — le pointillé du contour est
-désormais **réservé** à l'état « sans clôture », seul motif qu'il porte.
+Une légende fixe, au-dessus de la zone, rappelle ce que chaque couleur
+signale (actif, travail en parallèle, reprise, non lancé).
 
-Une légende, sous le diagramme, rappelle ce que chaque forme et chaque trait
-encodent.
+### Accessibilité
+
+Chaque disque est un bouton, porteur d'un `aria-label` complet (agent, état,
+et le cas échéant « en échec », « sans clôture », « agent principal »). La
+zone de défilement prend le focus clavier (`role="group"`) et se parcourt
+aux flèches gauche/droite, `Home`/`End`.
+
+### Mouvement réduit (`prefers-reduced-motion`)
+
+Quand l'utilisateur ou le système demande une réduction du mouvement, toutes
+les animations et transitions du diagramme sont supprimées — anneau
+d'activité, graduations, connecteurs. **L'état final reste compréhensible
+sans elles** : un disque actif reste visuellement distinct d'un disque
+terminé par sa taille, sa couleur et ses pastilles, pas seulement par son
+mouvement.
 
 ### Défilement et accès clavier
 
 La zone défile **horizontalement** quand le tracé dépasse la largeur
 disponible ; elle ne se comprime jamais. Molette seule = la page ; `Maj` +
-molette ou glisser = la zone. La zone prend le focus clavier et se parcourt
-aux flèches gauche/droite.
+molette ou glisser = la zone.
 
 ### Séparation géométrie / rendu
 
 `control-center/web/diagramme.js` calcule la géométrie complète (un module
 pur, sans DOM ni couleur) ; `control-center/web/app.js`
-(`construireDiagramme`) la transforme en SVG et lit les jetons de couleur par
-agent (`var(--a-<rôle>)`). Aucune dimension n'est recalculée séparément dans
-les deux modules — un même calcul fait autorité sur la géométrie et sur la
-place qu'elle réserve. Voir [ADR-0025](../adr/0025-grammaire-du-diagramme-de-deroule.md)
-et [ADR-0026](../adr/0026-trois-echelles-du-diagramme-alignees-sur-la-maquette.md).
+(`construireDiagramme`, `construireGrapheAgents`, `construireDisqueAgent`) la
+transforme en HTML/SVG. Aucune dimension n'est recalculée séparément dans les
+deux modules — un même calcul fait autorité sur la géométrie et sur la place
+qu'elle réserve (`ADR-0031 §4`, qui maintient `ADR-0025 §4` malgré la
+révocation du reste de cet ADR). Voir
+[ADR-0031](../adr/0031-la-grammaire-du-disque-d-agent-change.md) pour la
+grammaire complète, les cinq pertes nommées et les alternatives écartées, et
+[ADR-0032](../adr/0032-l-identite-coloree-des-agents-disparait-du-diagramme.md)
+pour la disparition de la couleur d'identité par agent (section
+« Identité d'agent » ci-dessus).
 
 ## Voir aussi
 
@@ -283,7 +324,9 @@ et [ADR-0026](../adr/0026-trois-echelles-du-diagramme-alignees-sur-la-maquette.m
   — le critère d'absorption d'un bug dans le cycle qui livre la garde qu'il
   désarme, appliqué à `bug-017` (porte d'authentification rendue inerte)
 - [ADR-0022](../adr/0022-deux-familles-de-jetons-couleur-plancher-perceptuel.md)
-  — la décision derrière la séparation des deux familles de jetons
+  — la méthode de palette catégorielle par agent, §1-§3 révoqués par
+  `ADR-0032`, §5 sans objet, §6-§7 dormants (réutilisables sans réinvention
+  si une identité colorée revient)
 - [ADR-0033](../adr/0033-le-theme-sombre-est-supprime.md) — le thème sombre
   est retiré, la page devient mono-thème
 - [ADR-0023](../adr/0023-un-cycle-observe-ne-porte-pas-de-nom.md) — pourquoi
@@ -291,9 +334,15 @@ et [ADR-0026](../adr/0026-trois-echelles-du-diagramme-alignees-sur-la-maquette.m
 - [ADR-0014](../adr/0014-bornage-des-cycles-par-marqueur-declare.md) — le
   bornage des cycles, et ce que `[workflows] affiches` tronque
 - [ADR-0025](../adr/0025-grammaire-du-diagramme-de-deroule.md) — la grammaire
-  du diagramme de déroulé, et la séparation entre géométrie et rendu
+  d'origine du diagramme (cercle fonction de la durée) ; §1-§3 **révoqués**
+  par `ADR-0031`, §4 (séparation géométrie/rendu) **maintenu**
 - [ADR-0026](../adr/0026-trois-echelles-du-diagramme-alignees-sur-la-maquette.md)
-  — le rayon, les graduations, le liseré des fichiers et le rendu du zéro /
-  du plafond alignés sur la maquette de référence, remplaçant `ADR-0025 §1`
-  sur ces quatre points
+  — le rayon, les graduations et le liseré des fichiers alignés sur
+  l'ancienne maquette de référence ; **révoqué en entier** par `ADR-0031`
+- [ADR-0031](../adr/0031-la-grammaire-du-disque-d-agent-change.md) — la
+  grammaire actuelle du disque Material 3 (lot 4 de `feature-021`), les cinq
+  pertes nommées et l'anneau d'activité sans progression chiffrée
+- [ADR-0032](../adr/0032-l-identite-coloree-des-agents-disparait-du-diagramme.md)
+  — la disparition de l'identité colorée par agent, appliquée au code au
+  lot 4 (voir la note du 2026-09-21 dans l'ADR)
 - `control-center/README.md` — modèle de déploiement, jeton d'accès
