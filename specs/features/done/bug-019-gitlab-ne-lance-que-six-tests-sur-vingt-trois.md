@@ -169,3 +169,64 @@ les invocations `python3 <chemin>` de `.gitlab/ci/hygiene.yml`.
 GitLab découvre ses tests au lieu de les énumérer — 6 fichiers sur 23 lancés avant, 23 sur 23 après. `code-reviewer` **Approved** après deux reboucles ; `security-reviewer` **GO SOUS CONDITIONS** en P1 et en P2, toutes conditions tenues.
 
 ⚠️ **Ce qui n'est PAS prouvé, et qui est écrit plutôt que coché** : GitLab n'a pas été vue changer de couleur — cette forge ne tourne pas depuis ce poste, et la CI GitHub n'en dit rien. Le suivi passe par `bug-021`.
+
+---
+
+## ⚠️ RECTIFICATION du 2026-09-21 07:29 — il n'existe aucune pipeline GitLab
+
+Relevé par l'utilisateur après clôture. **Le corps de cette spec contient une
+erreur de fait, répétée dans son journal, dans ses critères d'acceptation et
+dans la description de la PR #1.**
+
+### Ce qui est faux
+
+`git remote -v` ne rend qu'un seul dépôt distant : **GitHub**
+(`https://github.com/niko34/agent-kit.git`). Il n'y a **aucun dépôt GitLab**, donc
+**aucune pipeline GitLab n'a jamais tourné sur ce dépôt**.
+
+Par conséquent :
+
+- ❌ « GitLab est verte **parce qu'elle** ne lance pas les tests qui échouent » —
+  elle n'était pas verte, elle **n'existait pas**.
+- ❌ « Sur le même commit, *la CI est rouge* et *la CI est verte* sont toutes deux
+  vraies selon la forge » — il n'y a jamais eu de **seconde mesure**. Un vert a
+  été inventé.
+- ❌ Le critère « GitLab est rouge tant que `bug-018` n'est pas corrigé, et verte
+  après » est **inatteignable par construction**, et non « non vérifiable depuis
+  ce poste » comme il était écrit.
+
+### Ce qui reste vrai, et pourquoi le correctif garde tout son sens
+
+`.gitlab/ci/hygiene.yml` **énumérait bien 6 fichiers de test sur 23** — mesuré,
+non contesté. Et `tools/update_kit.sh` le déclare en toutes lettres : « le kit
+fournit les deux variantes de pipeline d'hygiène ; un projet n'en garde qu'une ».
+
+Ce fichier est donc un **gabarit distribué aux projets consommateurs**. La
+gravité ne disparaît pas, elle **se déplace** : le défaut n'était pas « notre CI
+ment », mais **« le kit distribue une pipeline qui mentira chez tout projet
+GitLab qui l'adopte »** — et sans que ce projet ait le moindre moyen de s'en
+apercevoir, puisque sa pipeline serait verte.
+
+Le faux vert du `stdin` partagé, trouvé en revue, était lui aussi réel et reste
+corrigé.
+
+### Comment l'erreur s'est produite
+
+L'`architect` a écrit « GitLab est verte parce qu'elle ne lance pas ce qui
+échoue ». L'agent principal a vérifié **le contenu du fichier** — 6 sur 23,
+exact — et **jamais qu'une pipeline existe**. Raison sur la conclusion, tort sur
+la cause : le défaut de fichier était réel, l'histoire racontée autour était
+fausse.
+
+### Ce qu'il faut à la place
+
+Le critère inatteignable est remplacé par celui-ci, **vérifiable** :
+
+- [ ] Un projet consommateur qui reçoit `.gitlab/ci/hygiene.yml` par
+      `tools/update_kit.sh` obtient une pipeline qui **découvre** ses tests.
+      Se vérifie sans GitLab : en comparant le fichier distribué à celui du kit.
+
+Cette spec **reste en `done/`** — son correctif est livré et gardé par
+`test_ci_decouverte.py` (6 cas, deux gardes vues mourir). C'est son **récit**
+qui était faux, pas son code.
+
