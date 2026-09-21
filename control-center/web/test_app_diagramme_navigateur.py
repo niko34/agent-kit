@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
-"""E7 (feature-020) — capture headless du DIAGRAMME, dans les DEUX thèmes,
-comparée à la maquette de référence.
+"""E7 (feature-020) — capture headless du DIAGRAMME, comparée à la maquette
+de référence. Thème unique, clair (ADR-0033, feature-021 lot 1 : le thème
+sombre est retiré du produit — un seul rendu suffit désormais).
 
     python3 control-center/web/test_app_diagramme_navigateur.py
 
-Mesuré (feature-020, brief) : `test_app_theme_navigateur.py` (56 cas) ne rend
-JAMAIS le diagramme — ses pages ne chargent ni `diagramme.js` ni `app.js`,
-et ne posent aucun élément `dg-*`. Ce fichier comble ce trou : il charge les
-DEUX scripts RÉELS du kit (`file://`, jamais copiés ni modifiés — ADR-0006)
-dans une page minimale, appelle `construireDiagramme()` (la même fonction
-qu'`index.html` en production) sur une fixture littérale, et mesure le SVG
-RÉELLEMENT peint par Chromium — pas une reconstruction dans le bac à sable
-`vm` de `test_app_accordeon.js` (qui ne peut pas résoudre `oklch()`,
-PIEGES.md §11).
+Mesuré à l'origine (feature-020, brief) : un harnais théorique qui aurait
+rendu la page ne rend JAMAIS le diagramme si ses pages ne chargent ni
+`diagramme.js` ni `app.js`, et ne posent aucun élément `dg-*`. Ce fichier
+comble ce trou : il charge les DEUX scripts RÉELS du kit (`file://`, jamais
+copiés ni modifiés — ADR-0006) dans une page minimale, appelle
+`construireDiagramme()` (la même fonction qu'`index.html` en production) sur
+une fixture littérale, et mesure le SVG RÉELLEMENT peint par Chromium — pas
+une reconstruction dans le bac à sable `vm` de `test_app_accordeon.js` (qui
+ne peut pas résoudre `oklch()`, PIEGES.md §11).
 
 Pourquoi une page maison plutôt que le vrai `index.html` servi par
 `server.py` : `index.html` exige `/api/etat` (fetch + SSE) pour peupler
@@ -32,16 +33,18 @@ script `app.js`. Un script suivant s'exécute normalement même si le
 précédent a levé une exception non rattrapée (comportement standard des
 balises `<script>` séquentielles).
 
-Relation mesurée (défaut E, feature-020) : dans la maquette, l'anneau guide
-et le contour nominal se distinguent par un jeton *toujours plus subtil pour
-le guide* (`T.bd`, alpha .10 clair / .085 sombre) que pour le contour et les
+Relation mesurée (défaut E, feature-020) : dans la maquette de référence
+(`2026-09-15-diagramme-reference.html`, qui porte encore ses DEUX blocs de
+thème d'origine — hors périmètre de ce lot, non touchée), l'anneau guide et
+le contour nominal se distinguent par un jeton *toujours plus subtil pour le
+guide* (`T.bd`, alpha .10 clair / .085 sombre) que pour le contour et les
 graduations éteintes (`T.bd2`, alpha .19 clair / .16 sombre) — RECOPIÉ ICI
 depuis le texte brut de la maquette, jamais recalculé depuis le kit. On
 mesure que le kit respecte la MÊME direction (guide moins contrasté contre
 le fond que le contour/graduation), sur la couleur RÉELLEMENT peinte
 (canevas 2D, PIEGES.md §11 — `getComputedStyle` seul rendrait `oklch()` non
-résolu), dans LES DEUX thèmes, et qu'aucune des deux couleurs n'est figée
-(elles changent bien entre thème clair et thème sombre).
+résolu). Thème unique côté kit (ADR-0033) : plus de comparaison entre deux
+rendus du produit, un seul rendu clair est mesuré.
 
 Saute proprement si aucun binaire Chromium n'est trouvé.
 
@@ -69,8 +72,8 @@ import tempfile
 # comme lanceur de navigateur. Mesure : `*_navigateur.py` n'attrape que 2 des
 # 3 harnais qui lancent Chromium -- `test_app_navigation_http.py` n'a pas ce
 # suffixe et le lance quand meme. Le marqueur, lui, meurt AVEC le fichier :
-# quand `feature-021` supprimera `test_app_theme_navigateur.py`, sa ligne
-# HARNAIS_NAVIGATEUR partira avec lui, sans rien a editer ailleurs. Lu par
+# feature-021 lot 1 a supprimé `test_app_theme_navigateur.py`, et sa ligne
+# HARNAIS_NAVIGATEUR est partie avec lui, sans rien a editer ailleurs. Lu par
 # `control-center/backend/test_ci_partition_navigateur.py` et par le job
 # `centre-de-controle-matrice` (`.github/workflows/hygiene-specs.yml`), qui
 # l'exclut de la matrice Python -- ce fichier vaut un rendu Chromium, pas une
@@ -130,7 +133,7 @@ def _lancer_navigateur(commande):
         return subprocess.run(commande, capture_output=True, text=True, timeout=30)
 
 
-_PAGE = """<!doctype html><html data-theme="%(theme)s"><head><meta charset="utf-8">
+_PAGE = """<!doctype html><html><head><meta charset="utf-8">
 <link rel="stylesheet" href="file://%(css)s">
 </head><body>
 <div class="bloc" id="conteneur" style="width:640px"></div>
@@ -222,12 +225,12 @@ _PAGE = """<!doctype html><html data-theme="%(theme)s"><head><meta charset="utf-
 _RE_SALIDA_JSON = re.compile(r'<pre id="salida">(\{.*?\})</pre>', re.S)
 
 
-def rendre_diagramme(navigateur, dossier, theme):
+def rendre_diagramme(navigateur, dossier):
     page = _PAGE % {
-        "theme": theme, "css": _APP_CSS,
+        "css": _APP_CSS,
         "diagramme_js": _DIAGRAMME_JS, "app_js": _APP_JS,
     }
-    chemin = os.path.join(dossier, "page_diagramme_%s.html" % theme)
+    chemin = os.path.join(dossier, "page_diagramme.html")
     with open(chemin, "w", encoding="utf-8") as f:
         f.write(page)
     commande = [
@@ -254,11 +257,10 @@ def _luminance_relative(hexcolor):
 
 
 def contraste(hex1, hex2):
-    """Formule WCAG 2.1 — même calcul, reproduit indépendamment, que dans
-    `test_app_theme_navigateur.py` et `test_app_theme.js`."""
+    """Formule WCAG 2.1 — reproduite indépendamment de `test_conformite_contrastes.js`."""
     l1, l2 = _luminance_relative(hex1), _luminance_relative(hex2)
-    clair, sombre = (l1, l2) if l1 > l2 else (l2, l1)
-    return (clair + 0.05) / (sombre + 0.05)
+    plus_clair, plus_sombre = (l1, l2) if l1 > l2 else (l2, l1)
+    return (plus_clair + 0.05) / (plus_sombre + 0.05)
 
 
 def alphas_bd_bd2_maquette():
@@ -300,89 +302,71 @@ def main():
               "bd=%r bd2=%r" % (alphas_bd, alphas_bd2))
 
     with tempfile.TemporaryDirectory(prefix="cc-test-diagramme-navigateur-") as dossier:
-        mesures = {}
-        for theme in ("clair", "sombre"):
-            m = rendre_diagramme(navigateur, dossier, theme)
-            check("E7_%s_rendu_disponible" % theme, m is not None,
-                  "--dump-dom n'a rien renvoyé")
-            if m is None:
-                continue
-            check("E7_%s_aucune_erreur_js" % theme, m.get("erreur") is None,
+        m = rendre_diagramme(navigateur, dossier)
+        check("E7_rendu_disponible", m is not None, "--dump-dom n'a rien renvoyé")
+
+        if m is not None:
+            check("E7_aucune_erreur_js", m.get("erreur") is None,
                   "erreur : %r" % m.get("erreur"))
-            mesures[theme] = m
 
-        for theme, m in mesures.items():
-            if m.get("erreur"):
-                continue
-            surface = m["surface"]
+            if not m.get("erreur"):
+                surface = m["surface"]
 
-            # -- défaut E, sur la couleur RÉELLEMENT peinte : le guide doit
-            # rester moins contrasté contre le fond que le contour nominal
-            # ET que la graduation éteinte (les deux portent --trait, comme
-            # le contour nominal de la maquette et sa graduation éteinte
-            # portent tous deux T.bd2). --
-            c_guide = contraste(m["guideStroke"], surface)
-            c_graduation = contraste(m["graduationStroke"], surface)
-            c_cercle = contraste(m["cercleStroke"], surface)
-            check("E7_%s_guide_moins_contraste_que_graduation_eteinte" % theme,
-                  c_guide < c_graduation,
-                  "guide=%.3f:1 (%s) graduation=%.3f:1 (%s) sur fond %s"
-                  % (c_guide, m["guideStroke"], c_graduation, m["graduationStroke"], surface))
-            check("E7_%s_guide_moins_contraste_que_contour_nominal" % theme,
-                  c_guide < c_cercle,
-                  "guide=%.3f:1 (%s) contour=%.3f:1 (%s) sur fond %s"
-                  % (c_guide, m["guideStroke"], c_cercle, m["cercleStroke"], surface))
-            check("E7_%s_contour_nominal_et_graduation_eteinte_meme_jeton" % theme,
-                  m["cercleStroke"] == m["graduationStroke"],
-                  "contour=%s graduation=%s — les deux portent --trait, comme "
-                  "T.bd2 dans la maquette" % (m["cercleStroke"], m["graduationStroke"]))
+                # -- défaut E, sur la couleur RÉELLEMENT peinte : le guide doit
+                # rester moins contrasté contre le fond que le contour nominal
+                # ET que la graduation éteinte (les deux portent --trait, comme
+                # le contour nominal de la maquette et sa graduation éteinte
+                # portent tous deux T.bd2). --
+                c_guide = contraste(m["guideStroke"], surface)
+                c_graduation = contraste(m["graduationStroke"], surface)
+                c_cercle = contraste(m["cercleStroke"], surface)
+                check("E7_guide_moins_contraste_que_graduation_eteinte",
+                      c_guide < c_graduation,
+                      "guide=%.3f:1 (%s) graduation=%.3f:1 (%s) sur fond %s"
+                      % (c_guide, m["guideStroke"], c_graduation, m["graduationStroke"], surface))
+                check("E7_guide_moins_contraste_que_contour_nominal",
+                      c_guide < c_cercle,
+                      "guide=%.3f:1 (%s) contour=%.3f:1 (%s) sur fond %s"
+                      % (c_guide, m["guideStroke"], c_cercle, m["cercleStroke"], surface))
+                check("E7_contour_nominal_et_graduation_eteinte_meme_jeton",
+                      m["cercleStroke"] == m["graduationStroke"],
+                      "contour=%s graduation=%s — les deux portent --trait, comme "
+                      "T.bd2 dans la maquette" % (m["cercleStroke"], m["graduationStroke"]))
 
-            check("E7_%s_cadre_simultane_present" % theme, m["cadrePresent"] is True)
-            check("E7_%s_cadre_sans_aplat" % theme, m["cadreFillAttr"] == "none",
-                  "obtenu fill=%r" % m["cadreFillAttr"])
-            check("E7_%s_cadre_rx_9" % theme, m["cadreRx"] == "9",
-                  "obtenu rx=%r" % m["cadreRx"])
+                check("E7_cadre_simultane_present", m["cadrePresent"] is True)
+                check("E7_cadre_sans_aplat", m["cadreFillAttr"] == "none",
+                      "obtenu fill=%r" % m["cadreFillAttr"])
+                check("E7_cadre_rx_9", m["cadreRx"] == "9",
+                      "obtenu rx=%r" % m["cadreRx"])
 
-            # -- G1 (revue code-reviewer, feature-020) : la taille de police
-            # RÉELLEMENT CALCULÉE par Chromium (`getComputedStyle`), jamais
-            # l'attribut de présentation ni une règle CSS recopiée — c'est le
-            # défaut trouvé (`.dg-socle-nom { font-size: 10.5px }` écrasait
-            # l'attribut posé depuis `taillePx`, y compris pour le nom
-            # EMPILÉ qui doit valoir 11px). Valeurs recopiées À LA MAIN
-            # depuis la maquette (l.188 nom simple, l.203 nom empilé),
-            # jamais relues du contrat `disposer()`.
-            check("G1_%s_nb_lignes_dg_socle_nom_attendu" % theme, m["nomsSocleCount"] == 3,
-                  "obtenu " + str(m["nomsSocleCount"]) + " — la fixture doit porter 2 agents "
-                  "empilés + 1 agent simple pour distinguer les deux tailles du même rôle")
-            check("G1_%s_heure_simple_10_5px" % theme, m["fontSizeHeureSimple"] == "10.5px",
-                  "obtenu " + repr(m["fontSizeHeureSimple"]))
-            check("G1_%s_duree_simple_12_5px" % theme, m["fontSizeDureeSimple"] == "12.5px",
-                  "obtenu " + repr(m["fontSizeDureeSimple"]))
-            check("G1_%s_nom_simple_10_5px" % theme, m["fontSizeNomSimple"] == "10.5px",
-                  "obtenu " + repr(m["fontSizeNomSimple"]))
-            check("G1_%s_heure_duree_empile_11_5px" % theme, m["fontSizeHeureDureeEmpile"] == "11.5px",
-                  "obtenu " + repr(m["fontSizeHeureDureeEmpile"]))
-            check("G1_%s_nom_empile_11px" % theme, m["fontSizeNomEmpile"] == "11px",
-                  "obtenu " + repr(m["fontSizeNomEmpile"]))
-            # Le point précis du défaut : même RÔLE (nom), même CLASSE CSS
-            # (`.dg-socle-nom`), taille RÉELLEMENT calculée différente selon
-            # la forme du créneau — épinglé nommément, pas juste "différent".
-            check("G1_%s_nom_simple_et_nom_empile_reellement_distincts" % theme,
-                  m["fontSizeNomSimple"] != m["fontSizeNomEmpile"]
-                  and m["fontSizeNomSimple"] == "10.5px" and m["fontSizeNomEmpile"] == "11px",
-                  "simple=%r empilé=%r" % (m["fontSizeNomSimple"], m["fontSizeNomEmpile"]))
-
-        # -- aucune couleur figée : le passage clair -> sombre doit changer
-        # les quatre couleurs mesurées (sinon un littéral aurait remplacé
-        # une variable, feature-020 §C4/plan de test manuel item 5). --
-        if "clair" in mesures and "sombre" in mesures:
-            mc, ms = mesures["clair"], mesures["sombre"]
-            if not mc.get("erreur") and not ms.get("erreur"):
-                for cle in ("guideStroke", "graduationStroke", "cercleStroke", "sigleFill", "lienStroke"):
-                    check("E7_%s_change_entre_les_deux_themes" % cle,
-                          mc[cle] != ms[cle],
-                          "clair=%s sombre=%s — identique d'un thème à l'autre : "
-                          "couleur probablement figée" % (mc[cle], ms[cle]))
+                # -- G1 (revue code-reviewer, feature-020) : la taille de police
+                # RÉELLEMENT CALCULÉE par Chromium (`getComputedStyle`), jamais
+                # l'attribut de présentation ni une règle CSS recopiée — c'est le
+                # défaut trouvé (`.dg-socle-nom { font-size: 10.5px }` écrasait
+                # l'attribut posé depuis `taillePx`, y compris pour le nom
+                # EMPILÉ qui doit valoir 11px). Valeurs recopiées À LA MAIN
+                # depuis la maquette (l.188 nom simple, l.203 nom empilé),
+                # jamais relues du contrat `disposer()`.
+                check("G1_nb_lignes_dg_socle_nom_attendu", m["nomsSocleCount"] == 3,
+                      "obtenu " + str(m["nomsSocleCount"]) + " — la fixture doit porter 2 agents "
+                      "empilés + 1 agent simple pour distinguer les deux tailles du même rôle")
+                check("G1_heure_simple_10_5px", m["fontSizeHeureSimple"] == "10.5px",
+                      "obtenu " + repr(m["fontSizeHeureSimple"]))
+                check("G1_duree_simple_12_5px", m["fontSizeDureeSimple"] == "12.5px",
+                      "obtenu " + repr(m["fontSizeDureeSimple"]))
+                check("G1_nom_simple_10_5px", m["fontSizeNomSimple"] == "10.5px",
+                      "obtenu " + repr(m["fontSizeNomSimple"]))
+                check("G1_heure_duree_empile_11_5px", m["fontSizeHeureDureeEmpile"] == "11.5px",
+                      "obtenu " + repr(m["fontSizeHeureDureeEmpile"]))
+                check("G1_nom_empile_11px", m["fontSizeNomEmpile"] == "11px",
+                      "obtenu " + repr(m["fontSizeNomEmpile"]))
+                # Le point précis du défaut : même RÔLE (nom), même CLASSE CSS
+                # (`.dg-socle-nom`), taille RÉELLEMENT calculée différente selon
+                # la forme du créneau — épinglé nommément, pas juste "différent".
+                check("G1_nom_simple_et_nom_empile_reellement_distincts",
+                      m["fontSizeNomSimple"] != m["fontSizeNomEmpile"]
+                      and m["fontSizeNomSimple"] == "10.5px" and m["fontSizeNomEmpile"] == "11px",
+                      "simple=%r empilé=%r" % (m["fontSizeNomSimple"], m["fontSizeNomEmpile"]))
 
     print("\n%d cas, %d echec(s)" % (_tests, len(_echecs)))
     for e in _echecs:

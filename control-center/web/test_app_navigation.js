@@ -6,9 +6,8 @@
  *     node control-center/web/test_app_navigation.js
  *
  * Zéro dépendance installée (ADR-0006) : uniquement `fs`, `path`, `vm` de la
- * bibliothèque standard Node — bac à sable dupliqué depuis
- * `test_app_theme.js` (section 7 : `creerBacApp`), qui modélise déjà
- * `document.documentElement` — nécessaire ici pour vérifier l'amorçage
+ * bibliothèque standard Node — bac à sable qui modélise
+ * `document.documentElement`, nécessaire ici pour vérifier l'amorçage
  * `data-section`. Convention du projet : sortie « N cas, M echec(s) », code
  * de sortie 1 à l'échec. Invoqué depuis `test_app_navigation.py`, qui se
  * saute proprement si `node` est absent.
@@ -61,9 +60,8 @@ const APP_JS_PATH = path.join(ICI, "app.js");
 const DIAGRAMME_JS_PATH = path.join(ICI, "diagramme.js");
 
 /* ===================================================================== *
- * Bac à sable — dupliqué depuis `test_app_theme.js` (section 7), étendu
- * avec les identifiants de navigation (nav-sections, onglet-*, section-*,
- * titre-section-*).
+ * Bac à sable — porte les identifiants de navigation (nav-sections,
+ * onglet-*, section-*, titre-section-*).
  * ===================================================================== */
 
 class FakeNode {
@@ -97,15 +95,15 @@ const SECTIONS = ["agents", "systeme", "developper", "cycles", "fichiers", "even
 
 const IDS_APP = [
   "agents", "bandeau-hote", "bandeau-hote-bouton", "bandeau-hote-texte",
-  "bascule-theme", "bouton-generer-brouillon", "compteur-prompt",
+  "bouton-generer-brouillon", "compteur-prompt",
   "compteur-specs", "derogation-minimale", "erreur-generer-brouillon",
   "fichiers", "filtre", "filtre-divergences", "horodatage",
-  "icone-systeme-clair", "icone-systeme-sombre", "jauge-flux", "jauge-git",
+  "jauge-flux", "jauge-git",
   "jauge-pilotage", "kanban", "legende-cycles", "note-agents", "pied-cycles",
   "pilotage-corps", "porte-aide", "porte-bouton", "porte-champ",
   "porte-corps", "porte-erreur", "porte-jeton", "porte-titre", "projet",
-  "prompt", "redaction-corps", "systeme", "theme-clair", "theme-sombre",
-  "theme-systeme", "timeline", "tiroir", "tiroir-contenu", "tiroir-fermer",
+  "prompt", "redaction-corps", "systeme",
+  "timeline", "tiroir", "tiroir-contenu", "tiroir-fermer",
   "tiroir-titre", "titre-besoin", "titre-cycles", "titre-demande", "titre-pilotage",
   "workflows", "nav-sections",
 ].concat(SECTIONS.map((s) => "onglet-" + s))
@@ -113,7 +111,7 @@ const IDS_APP = [
   .concat(SECTIONS.map((s) => "titre-section-" + s));
 
 const CACHES_PAR_DEFAUT = new Set([
-  "bandeau-hote", "tiroir", "porte-jeton", "porte-erreur", "icone-systeme-sombre",
+  "bandeau-hote", "tiroir", "porte-jeton", "porte-erreur",
   "erreur-generer-brouillon",
   // Reflète le HTML servi : seule « agents » est visible par défaut.
   "section-systeme", "section-developper", "section-cycles",
@@ -626,14 +624,13 @@ function analyserReglesCSS(css) {
   const compte = (CSS_SANS_COMMENTAIRES.match(/var\(--surface-2\)/g) || []).length;
   // Trois des cinq usages D'ENTRÉE étaient des aplats de repos sur des blocs
   // déjà délimités par un filet (violation du §3) : migrés vers
-  // `var(--surface)`. Les deux usages D'ENTRÉE restants sont des teintes
-  // D'INTERACTION (survol, sélection), pas des niveaux structurels — plus UN
-  // troisième, nouveau, introduit par la navigation elle-même (`.nav-onglet`
-  // au survol) : même registre, même justification.
-  check("C_surface_2_final_trois_usages_interaction", compte === 3, "obtenu " + compte);
-  check("C_surface_2_theme_bouton_selectionne_conserve",
-    CSS_SANS_COMMENTAIRES.indexOf('.theme-bouton[aria-checked="true"]') !== -1
-    && /\.theme-bouton\[aria-checked="true"\]\s*\{[^}]*var\(--surface-2\)/.test(CSS_SANS_COMMENTAIRES));
+  // `var(--surface)`. Des deux usages D'ENTRÉE restants — teintes
+  // D'INTERACTION (survol, sélection), pas des niveaux structurels — un
+  // troisième avait été introduit par la navigation (`.nav-onglet` au
+  // survol) ; le quatrième (`.theme-bouton[aria-checked="true"]`) a disparu
+  // avec la bascule de thème (ADR-0033, feature-021 lot 1) : deux usages
+  // restent.
+  check("C_surface_2_deux_usages_interaction", compte === 2, "obtenu " + compte);
   check("C_surface_2_cycle_bouton_survol_conserve",
     /\.cycle-bouton:hover\s*\{[^}]*var\(--surface-2\)/.test(CSS_SANS_COMMENTAIRES));
   check("C_surface_2_nav_onglet_survol_conserve",

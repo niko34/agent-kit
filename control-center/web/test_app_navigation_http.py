@@ -4,9 +4,9 @@ JavaScript » (E8), vérifiées EN HTTP, pas en `file://`.
 
     python3 control-center/web/test_app_navigation_http.py
 
-§10 de `control-center/PIEGES.md` : `test_app_theme_navigateur.py` charge la
-page en `file://`, où la CSP ne s'applique pas — il y exécute d'ailleurs un
-script inline et passe au vert. Toute vérification qui porte sur ce que le
+§10 de `control-center/PIEGES.md` : un harnais qui charge la page en
+`file://` mesure une page où la CSP ne s'applique pas — un script inline y
+passerait au vert à tort. Toute vérification qui porte sur ce que le
 serveur SERT (l'attribut `hidden` réellement transmis, la feuille réellement
 transmise) doit donc passer par une vraie requête HTTP contre un vrai
 serveur — c'est ce que ce fichier fait, en réutilisant le motif de

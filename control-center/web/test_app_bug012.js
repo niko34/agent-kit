@@ -147,15 +147,15 @@ class FakeNode {
 // `grep -oE 'id="[a-zA-Z0-9-]+"' index.html`, pas recopié à l'œil.
 const IDS = [
   "agents", "bandeau-hote", "bandeau-hote-bouton", "bandeau-hote-texte",
-  "barre", "bascule-theme", "bouton-generer-brouillon", "compteur-prompt",
+  "barre", "bouton-generer-brouillon", "compteur-prompt",
   "compteur-specs", "derogation-minimale", "erreur-generer-brouillon",
   "fichiers", "filtre", "filtre-divergences", "horodatage",
-  "icone-systeme-clair", "icone-systeme-sombre", "jauge-flux", "jauge-git",
+  "jauge-flux", "jauge-git",
   "jauge-pilotage", "kanban", "legende-cycles", "nav-sections", "note-agents",
   "pied-cycles", "pilotage-corps", "porte-aide", "porte-bouton",
   "porte-champ", "porte-corps", "porte-erreur", "porte-jeton", "porte-titre",
-  "projet", "prompt", "redaction-corps", "systeme", "theme-clair",
-  "theme-sombre", "theme-systeme", "timeline", "tiroir", "tiroir-contenu",
+  "projet", "prompt", "redaction-corps", "systeme",
+  "timeline", "tiroir", "tiroir-contenu",
   "tiroir-fermer", "tiroir-titre", "titre-besoin", "titre-cycles", "titre-demande",
   "titre-pilotage", "workflows",
 ].concat(["agents", "systeme", "developper", "cycles", "fichiers", "evenements"]
@@ -163,7 +163,7 @@ const IDS = [
 // Cachés par défaut dans le HTML (attribut `hidden` présent sur le balisage
 // d'origine) — voir index.html.
 const CACHES_PAR_DEFAUT = new Set([
-  "bandeau-hote", "tiroir", "porte-jeton", "porte-erreur", "icone-systeme-sombre",
+  "bandeau-hote", "tiroir", "porte-jeton", "porte-erreur",
   "section-systeme", "section-developper", "section-cycles", "section-fichiers",
   "section-evenements", "erreur-generer-brouillon",
 ]);
@@ -707,69 +707,6 @@ async function testReconnexionSeulementSiEventSource() {
     "obtenu : " + JSON.stringify(bac.$("jauge-flux").textContent));
 }
 
-/* feature-015 (revue code-reviewer) : le groupe `role="radiogroup"` de la
- * bascule de thème doit honorer le motif WAI-ARIA complet — pas seulement
- * gauche/droite. On vérifie la cible du focus (le vrai signal de « quel
- * bouton la touche a sélectionné »), pas `aria-checked` : le faux DOM ne
- * modélise pas `document.documentElement`, donc `positionActiveTheme()` y
- * retombe toujours sur « système » — c'est une limite du harnais, pas du
- * code (voir le commentaire de `attributeThemeActuel` dans app.js). */
-function espionnerFocus(bouton) {
-  bouton._focusAppels = 0;
-  bouton.focus = () => { bouton._focusAppels += 1; };
-}
-
-function declencherKeydown(bouton, touche) {
-  let empeche = false;
-  const evenement = { key: touche, preventDefault: () => { empeche = true; } };
-  (bouton._listeners.keydown || []).forEach((gestionnaire) => gestionnaire(evenement));
-  return empeche;
-}
-
-async function testBasculeThemeClavierMotifComplet() {
-  const bac = creerBac();
-  chargerAppJS(bac);
-
-  const clair = bac.$("theme-clair");
-  const systeme = bac.$("theme-systeme");
-  const sombre = bac.$("theme-sombre");
-  [clair, systeme, sombre].forEach(espionnerFocus);
-
-  declencherKeydown(clair, "ArrowDown");
-  check("clavier_ArrowDown_deplace_vers_systeme",
-    systeme._focusAppels === 1 && clair._focusAppels === 0 && sombre._focusAppels === 0);
-
-  declencherKeydown(systeme, "ArrowUp");
-  check("clavier_ArrowUp_revient_a_clair", clair._focusAppels === 1);
-
-  declencherKeydown(clair, "End");
-  check("clavier_End_va_au_dernier_sombre", sombre._focusAppels === 1);
-
-  declencherKeydown(sombre, "Home");
-  check("clavier_Home_revient_au_premier_clair", clair._focusAppels === 2);
-
-  declencherKeydown(clair, "ArrowRight");
-  check("clavier_ArrowRight_deplace_vers_systeme", systeme._focusAppels === 2);
-
-  declencherKeydown(systeme, "ArrowLeft");
-  check("clavier_ArrowLeft_revient_a_clair", clair._focusAppels === 3);
-
-  // Rebouclage aux extrémités : ArrowDown/ArrowRight depuis le dernier
-  // bouton revient au premier, ArrowUp/ArrowLeft depuis le premier va au
-  // dernier — un `role="radiogroup"` ne s'arrête jamais en bout de liste.
-  declencherKeydown(sombre, "ArrowDown");
-  check("clavier_ArrowDown_reboucle_du_dernier_au_premier", clair._focusAppels === 4);
-  declencherKeydown(clair, "ArrowUp");
-  check("clavier_ArrowUp_reboucle_du_premier_au_dernier", sombre._focusAppels === 2);
-
-  check("clavier_preventDefault_sur_touche_geree", declencherKeydown(clair, "Home"));
-  const focusAvant = { c: clair._focusAppels, s: systeme._focusAppels, d: sombre._focusAppels };
-  const empeche = declencherKeydown(clair, "Enter");
-  check("clavier_touche_non_geree_ignoree",
-    !empeche && clair._focusAppels === focusAvant.c
-    && systeme._focusAppels === focusAvant.s && sombre._focusAppels === focusAvant.d);
-}
-
 async function main() {
   await testAucunRenduAvantUn200();
   await testPorteMotifPremierAcces();
@@ -781,7 +718,6 @@ async function main() {
   await testRebouclageAncreDansLaChaine();
   await testBandeauNommeSeulementLesAgentsAncres();
   await testReconnexionSeulementSiEventSource();
-  await testBasculeThemeClavierMotifComplet();
 
   console.log("\n" + _tests + " cas, " + _echecs.length + " echec(s)");
   for (const e of _echecs) console.log("  - " + e);

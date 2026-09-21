@@ -72,52 +72,14 @@ tiroir ni menu escamotable (ce qui aurait ajouté un état ouvert/fermé et une
 gestion de focus supplémentaires). Aucune section ne devient inatteignable à
 cette largeur.
 
-## Commande de thème
-
-Un contrôle à trois positions, en haut à droite de la barre (`role="radiogroup"`,
-navigation aux flèches, un seul arrêt de tabulation) :
-
-- **Clair**
-- **Système** — position par défaut
-- **Sombre**
-
-Le choix explicite pose `data-theme="clair"` ou `data-theme="sombre"` sur
-`<html>` ; la position « système » ne pose rien et suit
-`prefers-color-scheme`.
-
-### « Système » annonce sa résolution
-
-Les positions « clair » et « système » rendent le même écran tant que l'OS est
-en clair — deux positions indiscernables à l'usage si rien ne les distingue.
-La position « système » affiche donc l'apparence à laquelle elle aboutit à cet
-instant : son icône suit le thème résolu, et son libellé accessible le
-nomme — « Suivre le système (actuellement sombre) ». Les deux autres positions
-gardent un libellé fixe.
-
-### Persistance et premier rendu
-
-Le choix persiste dans `localStorage` (clé `theme`) et son application se fait
-**avant le premier rendu** : `control-center/web/theme.js`, chargé de façon
-synchrone dans `<head>`, pose l'attribut `data-theme` sur `<html>` dès que le
-script s'exécute, avant que le reste de la page ne se peigne. Sans cela, la
-page clignoterait dans le mauvais thème le temps que le script principal
-s'exécute.
-
-- `localStorage` indisponible ou en échec (fenêtre privée, données bloquées) :
-  la page s'affiche correctement, en position « système », sans exception.
-- Une valeur inconnue stockée sous la clé `theme` est traitée comme
-  « système », et la clé est nettoyée.
-
-### Suivi de l'OS sans rechargement
-
-En position « système », un changement de préférence de l'OS pendant que la
-page reste ouverte est suivi en direct (écoute de
-`matchMedia("(prefers-color-scheme: dark)")`), sans rechargement. Un choix
-explicite (« clair » ou « sombre ») n'est jamais annulé par ce changement —
-il gagne dans les deux sens contre la préférence système.
-
-`prefers-reduced-motion` est respecté : la bascule ne produit aucune
-transition animée.
+Depuis `feature-021` (lot 1, [ADR-0033](../adr/0033-le-theme-sombre-est-supprime.md)),
+la page n'a plus qu'un **thème unique, clair** : le contrôle à trois positions
+(clair / système / sombre) qui figurait en haut à droite de la barre est
+retiré, ainsi que la persistance de choix de thème et le suivi de
+`prefers-color-scheme` qui l'accompagnaient. `control-center/web/theme.js`
+subsiste mais change de rôle : il ne pose plus `data-theme`, et ne reste
+responsable que de la persistance de la section active (voir ci-dessus,
+`feature-019`).
 
 ## Identité de couleur par agent
 
@@ -134,9 +96,7 @@ reçoit le jeton neutre achromatique (`--a-neutre` / `--f-neutre`) plutôt
 qu'une couleur d'agent recyclée : le neutre signale l'absence d'identité, il
 n'en emprunte pas une.
 
-Les deux thèmes partagent les mêmes teintes ; seules la clarté et l'intensité
-diffèrent, ce qui permet au même diagramme SVG de servir les deux sans
-recopier de couleur (il lit les jetons via `var()`).
+Le diagramme SVG lit ces jetons via `var()`, sans recopier de couleur en dur.
 
 ## Liste des cycles en accordéon
 
@@ -293,6 +253,8 @@ et [ADR-0026](../adr/0026-trois-echelles-du-diagramme-alignees-sur-la-maquette.m
   `bug-016`
 - [ADR-0022](../adr/0022-deux-familles-de-jetons-couleur-plancher-perceptuel.md)
   — la décision derrière la séparation des deux familles de jetons
+- [ADR-0033](../adr/0033-le-theme-sombre-est-supprime.md) — le thème sombre
+  est retiré, la page devient mono-thème
 - [ADR-0023](../adr/0023-un-cycle-observe-ne-porte-pas-de-nom.md) — pourquoi
   un cycle n'est jamais désigné par un nom de spec
 - [ADR-0014](../adr/0014-bornage-des-cycles-par-marqueur-declare.md) — le

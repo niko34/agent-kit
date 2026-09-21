@@ -63,6 +63,12 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
   cycle et la ligne `$ …` du journal d'événements peuvent donc changer
   d'apparence sur des cycles déjà observés, sans qu'aucune donnée ne soit
   supprimée du journal réel.
+- **Le thème sombre disparaît du centre de contrôle.** Le contrôle à trois
+  positions (clair / système / sombre), en haut à droite de la barre,
+  n'est plus affiché : l'interface n'a désormais plus qu'un seul thème,
+  clair. Le choix de thème mémorisé n'a plus d'effet visible. Voir
+  [ADR-0033](docs/adr/0033-le-theme-sombre-est-supprime.md) (lot 1 de
+  `feature-021`).
 
 ### Exploitation
 
@@ -96,6 +102,13 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 
 ### Documentation
 
+- `docs/features/page-centre-de-controle.md` : la section « Commande de
+  thème » est retirée — le contrôle qu'elle décrivait n'existe plus dans
+  l'écran servi.
+- `docs/adr/0033-le-theme-sombre-est-supprime.md` : note d'implémentation
+  datée ajoutée — `theme.js` survit avec un rôle réduit (`data-section`
+  seul) au lieu d'être supprimé en entier comme l'ADR l'annonçait avant
+  implémentation.
 - `control-center/README.md` : section « La rédaction, et ce que le code
   fait maintenant » réécrite — trois formes admises pour le second jeton,
   et les deux résidus assumés (option longue à valeur collée, chemin après

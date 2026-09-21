@@ -114,20 +114,20 @@ class FakeNode {
 // tenus à jour à la main (même liste que `test_app_bug012.js`, ADR-0006).
 const IDS = [
   "agents", "bandeau-hote", "bandeau-hote-bouton", "bandeau-hote-texte",
-  "bascule-theme", "bouton-generer-brouillon", "compteur-prompt",
+  "bouton-generer-brouillon", "compteur-prompt",
   "compteur-specs", "derogation-minimale", "erreur-generer-brouillon",
   "fichiers", "filtre", "filtre-divergences", "horodatage",
-  "icone-systeme-clair", "icone-systeme-sombre", "jauge-flux", "jauge-git",
+  "jauge-flux", "jauge-git",
   "jauge-pilotage", "kanban", "legende-cycles", "note-agents", "pied-cycles",
   "pilotage-corps", "porte-aide", "porte-bouton", "porte-champ",
   "porte-corps", "porte-erreur", "porte-jeton", "porte-titre", "projet",
-  "prompt", "redaction-corps", "systeme", "theme-clair", "theme-sombre",
-  "theme-systeme", "timeline", "tiroir", "tiroir-contenu", "tiroir-fermer",
+  "prompt", "redaction-corps", "systeme",
+  "timeline", "tiroir", "tiroir-contenu", "tiroir-fermer",
   "tiroir-titre", "titre-besoin", "titre-cycles", "titre-demande", "titre-pilotage",
   "workflows",
 ];
 const CACHES_PAR_DEFAUT = new Set([
-  "bandeau-hote", "tiroir", "porte-jeton", "porte-erreur", "icone-systeme-sombre",
+  "bandeau-hote", "tiroir", "porte-jeton", "porte-erreur",
   "erreur-generer-brouillon",
 ]);
 

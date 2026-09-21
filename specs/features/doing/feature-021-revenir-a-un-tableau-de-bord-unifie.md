@@ -196,26 +196,72 @@ conforme à `feature-020`, thème clair/sombre (`feature-015`), contraste corrig
 ## Livrables — check-list
 
 ### Conformité mesurable
+- [ ] F0 — **partition du prototype** : chaque élément affecté à sa spec
+      (`feature-022`, `feature-023`, `feature-025`, ou ce cycle) — il est la
+      maquette de **quatre** specs. Sans F0, F3 et F4 n'ont pas de cible
+      définissable `[complété par le plan du cycle 2]`
 - [ ] F1 — garde de **table des jetons** : noms et valeurs hex, égalité stricte avec le prototype
 - [ ] F2 — garde de **table des durées** : animations et transitions, durée, délai, courbe
-- [ ] F3 — garde de **parité des classes**, dans les deux sens
-- [ ] F4 — garde de **contrat d'accessibilité** : `id`, `role`, `aria-*`, comptes de `<dialog>`
-- [ ] F5 — garde de **contrastes** : matrice jeton × surface complète, seuil 4,65 texte / 3,0 trait
+- [ ] F3a — garde de **parité des classes**, volet statique (DOM initial ↔ feuille de
+      style), calculable au **lot 0** `[complété par le plan du cycle 2]`
+- [ ] F3b — garde de **parité des classes**, volet runtime (classes posées
+      dynamiquement par `app.js` en cours d'exécution), au **lot 5**
+      `[complété par le plan du cycle 2]`
+- [ ] F4a — garde de **contrat d'accessibilité**, volet statique : `id`, `role`,
+      `aria-*` déclarés dans le DOM initial, au **lot 0**
+      `[complété par le plan du cycle 2]`
+- [ ] F4b — garde de **contrat d'accessibilité**, volet runtime : comptes de
+      `<dialog>`/`showModal()` réellement ouverts, focus posé, `aria-*` posés
+      dynamiquement, au **lot 5** `[complété par le plan du cycle 2]`
+- [ ] F5a — garde de **contrastes**, phase matrice : table des **couples interdits**
+      dérivée de la matrice complète jeton × surface, seuil 4,65 texte / 3,0 trait
+      — calculable sans code, au **lot 0** (décision du 2026-09-21)
+      `[complété par le plan du cycle 2]`
+- [ ] F5b — garde de **contrastes**, phase peinte : aucun couple interdit n'est
+      **réellement peint** (`getComputedStyle`, le prototype n'utilise aucun
+      `oklch`), au **lot 5** `[complété par le plan du cycle 2]`
 
 ### Implémentation
 - [ ] F6 — système visuel M3 : `:root`, surfaces tonales, élévations, typographie, focus 3 px, cibles 48 px
-- [ ] F7 — structure mono-écran ; **0** `role="tab"` de navigation
+- [ ] F7 — structure mono-écran ; **0** `role="tab"` de navigation — sortie du lot 3,
+      point d'arrêt humain obligatoire (structure = point de non-retour visuel)
 - [ ] F8 — graphe d'agents : disques, anneau d'activité, 12 graduations, 3 pastilles, durée
 - [ ] F9 — animations d'enchaînement, aux durées et courbes exactes
 - [ ] F10 — kanban 3 colonnes **lues depuis `/api/etat.colonnes`**, défilement vertical commun
 - [ ] F11 — bottom sheet de détail d'un passage, qui **dit ce que le chiffre compte**
 - [ ] F12 — cas limites non traités par la maquette : dépôt vide, serveur injoignable, écriture désactivée, bornage déclaré
-- [ ] F13 — thème sombre retiré : `theme.js`, tests et règles CSS associés
+- [x] F13 — thème sombre retiré : `theme.js`, tests et règles CSS associés — **lot 1**
+      `[livré 2026-09-21, 1 seul bloc :root, trou de garde signalé (voir journal)]`
 - [ ] F14 — `prefers-reduced-motion` : animations continues supprimées, état final compréhensible
+- [ ] F15 — centre du disque **sans chiffre** : livré *dégradable* (l'anneau et le
+      reste du disque fonctionnent sans lui), jamais *à trous* (aucun espace vide
+      qui signale un chiffre manquant) — la lecture des tokens est sortie vers
+      `feature-023` avec son propre GATE `[complété par le plan du cycle 2]`
+- [ ] F16 — les **quatre représentations absentes du prototype** qu'`ADR-0031 §3`
+      exige d'inventer : l'échec, le « sans clôture », l'agent principal, et la
+      règle de non-chevauchement des libellés — mandat principal d'`ux-ui-designer`
+      `[complété par le plan du cycle 2]`
+- [ ] F17 — registre `ATTENDU_ROUGE` : témoins délibérément rouges pour F1→F5, qui
+      opérationnalisent le critère d'acceptation « une garde jamais vue rouge ne
+      prouve rien » en artefact concret plutôt qu'en seule discipline de test —
+      ⚠️ **terme reçu du plan, contenu exact non retrouvé ailleurs dans le dépôt** ;
+      à confirmer avec l'`orchestrator`/`architect` avant le lot 0
+      `[complété par le plan du cycle 2]`
+- [ ] F18 — la garde CI de partition (`test_ci_partition_navigateur.py`) continue de
+      passer, **vérifié par exécution** (46→44 cas, 0 échec, mesuré le 2026-09-21
+      dans un clone jetable), une fois `test_app_theme_navigateur.py` supprimé — sa
+      liste est dérivée du marqueur `HARNAIS_NAVIGATEUR`, pas tenue à la main
+      (`PIEGES §50`, §54) `[complété par le plan du cycle 2]`
 
 ### Tests et docs
 - [ ] D1 — suites JS réécrites ; ⚠️ la liste `IDS` de `test_app_bug012.js` gagne tout identifiant neuf (`PIEGES §7`, sinon vert à tort)
 - [ ] D2 — tests neufs validés **par mutation**
+- [x] D3 — la baisse du compte de cas au **lot 1** est **déclarée légitime** dans le
+      journal, pas laissée pour une lecture qui la prendrait pour une régression
+      (`PIEGES §32`). ⚠️ **Mesure réelle -406, pas -373** : -373 pour les deux fichiers
+      supprimés eux-mêmes (`test_app_theme.js` 317 + `test_app_theme_navigateur.py` 56)
+      **+ -33 de couplages réels et d'un effet de bord automatique**, tous nommés et
+      expliqués dans le journal du 2026-09-21 (lot 1) — 1981 → 1575, tous verts
 - [ ] C1 — `docs/features/page-*.md` et `CHANGELOG.md`
 
 ## Sécurité & données
@@ -1176,3 +1222,781 @@ n'affiche jamais une proportion qu'il ne sait pas mesurer. À tracer dans l'ADR 
 Conséquence favorable : cela **supprime la dépendance de l'anneau aux tokens**, donc le
 diagramme reste lisible même si la lecture des transcripts est refusée par le GATE ou
 indisponible. Le chiffre central dégrade alors sans casser l'anneau.
+
+---
+
+## Cycle 2 — décisions humaines du 2026-09-21 11:17
+
+### 1. Contraste : la fidélité gagne, l'usage se restreint
+
+**Le conflit, mesuré.** Matrice complète 10 jetons d'encre × 5 surfaces tonales du
+prototype : **12 couples sur 50** tombent sous le seuil nominal **4,65**
+(`ADR-0024 §5`), dont **7** sous le seuil dur 4,5 ; `--line-strong` tombe sous
+**3,0** sur 3 surfaces sur 5. L'audit fourni par l'utilisateur en signalait **3** —
+il mesurait un jeton contre **une seule** surface. `F1` (égalité stricte des hex) et
+`F5` (seuil 4,65) ne peuvent donc pas être vrais en même temps.
+
+**Décidé** : les hex restent **identiques au bit près** (`F1` strict). Une **table
+des couples interdits** est dérivée de la matrice, et `F5` vérifie qu'aucun couple
+interdit n'est **réellement peint**. C'est le régime Material 3 normal — turquoise,
+corail et ambre sont des couleurs d'accent et de pictogramme, pas du texte courant
+sur surface tonale haute.
+
+**Conséquence** : `F5` devient **à deux temps** — phase A, la matrice, calculable
+sans code ; phase B, les couples effectivement peints, mesurable par
+`getComputedStyle` (le prototype n'utilise **aucun** `oklch`, donc `PIEGES §11` ne
+mord pas).
+
+⚠️ **Option refusée** : baisser le seuil. `ADR-0024 §5` reste en vigueur, aucun ADR
+de 0030 à 0037 ne l'a révoqué, et la marge de 2,5 bits existe précisément parce
+qu'un seuil au ras se franchit au premier ajustement.
+
+### 2. Ampleur : un seul cycle, sept lots
+
+**Décidé** : pas de scission en `feature-026`. Trois raisons, dans l'ordre où elles
+pèsent :
+
+- Les cinq gardes sont **globales**. `F3` (parité des classes) et `F5` (couples
+  peints) n'ont de verdict que sur la feuille et le DOM **entiers** ; scindées,
+  elles ne prouvent chacune que leur morceau et la conformité d'ensemble n'est
+  jamais mesurée — on retomberait sur le « jugé à l'œil » que cette spec écarte.
+- **Livrer `F8` sans `F11`, ce serait livrer les pertes sans leur compensation.**
+  `ADR-0031 §3` gage la disparition des appels d'outils et de la granularité des
+  fichiers sur leur présence dans la feuille de détail. C'est la logique d'`ADR-0017`
+  appliquée à l'information plutôt qu'à la garde.
+- Scinder multiplierait les allers-retours de `doing/` et exigerait une ligne de
+  base verte entre chaque.
+
+**Ce qui porte le risque, ce sont les lots, pas les specs.** Sept lots, chacun
+commitable, vert et journalisé. **Deux points d'arrêt humains obligatoires** :
+après le **lot 0** (validation de la partition du prototype) et à la sortie du
+**lot 3** (la structure est le point de non-retour visuel).
+
+**Ampleur assumée** : 30 à 36 invocations, ~4 000 lignes de production réécrites,
+~7 000 lignes de tests, 21 livrables — trois à cinq fois le plus gros cycle mené
+par ce dépôt.
+
+### 3. Livrables neufs identifiés par le plan, à ajouter à la check-list
+
+- **F0** — la **partition du prototype** : il est la maquette de **quatre** specs.
+  Les trois `<dialog>`, le menu contextuel et `data-launchable` appartiennent à
+  `feature-025` ; le panneau de conversation à `feature-022` ; les tokens à
+  `feature-023` ; la barre de progression `70 %` **à aucune donnée** (interdit du
+  dépôt). Sans F0, `F3` et `F4` n'ont pas de cible définissable.
+- **F15** — le centre du disque **sans chiffre**, livré *dégradable* et non *à
+  trous* : la lecture des transcripts est sortie vers `feature-023` avec son GATE.
+- **F16** — les **quatre représentations absentes du prototype** et que `ADR-0031 §3`
+  exige d'inventer : l'échec, le « sans clôture », l'agent principal, et la règle de
+  non-chevauchement des libellés. C'est le mandat principal d'`ux-ui-designer`.
+- **F17, F18, D3** — voir le plan d'exécution.
+
+---
+## Journal de bord — cycle 2
+
+<!-- Distincte du « Journal de bord » du cycle 1 ci-dessus, qui reste intact.
+     UNE ligne par étape du workflow, écrite QUAND L'ÉTAPE TOMBE. -->
+
+- [2026-09-21 11:17] Étape 0 — orchestrator — plan d'exécution rendu : cycle unique
+  à **sept lots** (0 gardes statiques, 1 retrait thème sombre, 2 système visuel M3,
+  3 structure mono-écran — point d'arrêt humain, 4 graphe d'agents + animations, 5
+  gardes runtime + kanban/bottom sheet/cas limites, 6 tests/mutation/docs), livrables
+  neufs F0, F15-F18, D3, split F3/F4/F5 en volets a (lot 0) / b (lot 5) ; **5 constats
+  mesurés par spec-reader qui confirment ou corrigent le plan** : (1) `F5` à deux
+  temps confirmé nécessaire — matrice complète 10 jetons × 5 surfaces : **12/50**
+  couples sous 4,65 (dont 7 sous le seuil dur 4,5), contre 3 signalés par l'audit
+  fourni qui ne mesurait qu'une surface ; (2) `test_ci_partition_navigateur.py`
+  continue de passer après suppression de `test_app_theme_navigateur.py` — mesuré
+  dans un clone jetable (`.github/` inclus, sinon 0 cas — `PIEGES §1`) : **46 → 44**
+  cas, 0 échec dans les deux cas, la liste est bien dérivée du marqueur
+  `HARNAIS_NAVIGATEUR`, pas tenue à la main ; (3) la baisse de compte de cas au lot 1
+  est exactement **-373** : `test_app_theme.js` **317** cas (node) et
+  `test_app_theme_navigateur.py` **56** cas (chromium), mesurés dans le dépôt réel,
+  pas dans le clone (`PIEGES §32`) ; (4) `/api/etat.colonnes` rend
+  `[{repertoire, classe, libelle}]` **sans aucune modification backend**, vérifié en
+  HTTP réel (`server.py:398-399`, clone jetable, port 8825) — `ADR-0003` tient tel
+  quel ; (5) `security-reviewer` rôle GATE **confirmé sans objet en P1** pour ce
+  cycle : aucune donnée nouvelle, aucune route nouvelle, aucun tiers — le backend
+  n'est touché par aucun des sept lots. ⚠️ F17 (« registre `ATTENDU_ROUGE` ») reçu du
+  plan sans définition retrouvée ailleurs dans le dépôt — interprété comme un
+  registre de témoins délibérément rouges pour F1→F5, à confirmer avant le lot 0.
+- [2026-09-21 11:17] Décisions humaines — cycle 2 — (1) **contraste** : les hex
+  restent identiques au bit près (`F1` strict, non renégocié) ; `F5` devient à deux
+  temps — la table des couples interdits est dérivée de la matrice, puis vérifiée
+  **réellement peinte** ; option « baisser le seuil » refusée, `ADR-0024 §5` reste en
+  vigueur. (2) **ampleur** : un seul cycle, **sept lots**, pas de scission en
+  `feature-026` — les cinq gardes de conformité ne prouvent qu'entières, et livrer
+  `F8` sans `F11` livrerait les pertes d'`ADR-0031 §3` sans leur compensation ; deux
+  points d'arrêt humains obligatoires, après le lot 0 et à la sortie du lot 3.
+- [2026-09-21 14:32] Lot 0 — frontend-developer — **six artefacts de vérification livrés,
+  zéro ligne de production** (`git status` sur `index.html`/`app.css`/`app.js`/`diagramme.js`
+  vide, vérifié par l'agent principal). F0 carte de périmètre : **64 id et 135 classes**
+  partitionnés en adopté / différé-022 / différé-023 / différé-025 / écarté, dérivés du
+  prototype, clause miroir dans les deux sens — 13 cas. F1 : **24 propriétés `:root`**
+  (20 hex), **10 occurrences hex hors `:root`, 9 distinctes**, `#000` écarté par contexte
+  de propriété (`mask`, pas une couleur peinte) → **8 promouvables, soit les 28 jetons**
+  annoncés. F2 : 4 `@keyframes`, 6 `animation:`, 9 `transition:`, 2 `animation-delay:
+  calc(…)`, indexés par (sélecteur, propriété) — noms normatifs. F3a : **71 classes
+  adoptées** requises. F4a : **25 id adoptés** + l'écart déclaré `#porte-jeton` (porte
+  d'authentification, absente du prototype, **déjà verte aujourd'hui** — aucune réécriture
+  ne doit la perdre). F5a : **15 encres × 5 surfaces = 75 couples, 24 interdits**, recalculés
+  et jamais récités. Les six vertes, rouge quarantiné sous `ATTENDU_ROUGE` avec lot de
+  clôture nommé pour chacune. ⚠️ Deux réductions de périmètre **assumées et déclarées** :
+  (a) le sens CSS→HTML de la parité interne F3a est **retiré** — appliqué au seul DOM
+  statique il rend **96 faux positifs** (classes posées par `app.js` via `classList.add`),
+  c'est du ressort de F3b au lot 5 ; (b) un défaut **préexistant hors périmètre** débusqué
+  au passage — `class="bloc pilotage"` posée sans règle `.pilotage` déclarée — inscrit au
+  registre, clôture lot 3 par disparition à la réécriture.
+- [2026-09-21 14:58] Lot 0 — agent principal — **CAMPAGNE DE MUTATION : 6 tués / 7, un
+  survivant, REBOUCLE**. Tués : prototype absent → 6/6 rouges ; prototype vidé → 6/6
+  rouges (`ATTEIGNABILITE : … est VIDE`) ; `role="tab"` retiré d'`index.html` → la
+  **clause 2** de F4a tire et nomme l'entrée (`l'assertion est VERTE mais l'entrée est
+  encore dans ATTENDU_ROUGE`) ; id `a11y-announcement` retiré de la table F0 → `1 non
+  classé(s) : a11y-announcement` ; `--muted` passé à `#111111` dans le prototype → la
+  matrice F5a passe de **24 à 23** couples interdits, **donc dérivée et non récitée**.
+  **Survivant — et il produit un faux vert, pas un faux rouge** : `declarationsRoot()`
+  fait `regles.find(r => r.selecteur === ":root")`, soit **le premier bloc seulement**,
+  quand `app.css` en porte déjà trois occurrences (l. 26, 223, 271). CSS fabriqué sur
+  clone = les 24 jetons conformes **puis** `:root { --bg: #ff0000; }` → `ok
+  F1_inclusion_stricte_des_24_jetons_root`, `2 cas, 0 echec(s)`, EXIT=0, **alors que le
+  navigateur peint `#ff0000` là où le prototype exige `#f7f5fb`**. F1 certifie donc une
+  identité au bit près que le rendu contredit ; la direction inverse compte aussi (jetons
+  M3 écrits dans un second `:root`, CSS valide → « 23 manquants » à tort, et le réflexe
+  serait de déplacer le code pour faire taire la garde). Reboucle : repli de **tous** les
+  `:root` de premier niveau dans l'ordre de la cascade (valeur **effective**), assertion
+  neuve sur le jeton déclaré deux fois avec des valeurs divergentes, cas de non-régression
+  qui fige le défaut, et revue de la même hypothèse « un seul bloc » sur F2/F3a/F4a/F5a.
+  ⚠️ **Limite à déclarer, pas un défaut** : tant que toute la table F2 est quarantinée
+  (clôture lot 4), une mutation du prototype se propage bien à l'attendu mais **ne peut
+  pas rendre F2 rouge** — sa sensibilité n'est démontrable qu'au lot 4.
+- [2026-09-21 15:26] Lot 0 — agent principal — **reboucle VÉRIFIÉE, lot 0 CLOS**. Correctif :
+  `declarationsRoot` replie **tous** les `:root` de premier niveau dans l'ordre du document,
+  dernière déclaration gagnante — la valeur comparée devient la valeur **effective**, celle
+  que le navigateur résout ; `reglesCss` porte une `profondeur` pour distinguer un `:root`
+  nu d'un `:root` sous `@media`. Périmètre écrit en en-tête : `:root[data-theme=…]`,
+  `:root:not(…)` et les `:root` conditionnels restent **hors repli**, avec leur raison.
+  Assertion neuve `F1_aucun_jeton_du_prototype_redeclare_avec_valeur_divergente` : un jeton
+  posé puis écrasé échoue **même si la valeur effective est bonne** — il dépend de l'ordre
+  des blocs, déplacer une règle suffirait à changer le rendu. Le même trou existait dans
+  **F4a** (`baliseParId` inspectait la **première** balise, donc un id dupliqué cachait un
+  porteur non conforme derrière un conforme) — corrigé, et deux effets de bord dans
+  `hexHorsRoot`, qui bornait « après la fin du premier bloc ». Contre-vérifié par l'agent
+  principal sur clone neuf, 4 mutations : (R1) 24 jetons conformes + `:root{--bg:#ff0000}`
+  → **double rouge**, `--bg : attendu #f7f5fb, obtenu #ff0000` ET `--bg déclaré 2 fois` ;
+  (R2) retour au `.find()` → `F1_NONREGRESSION_second_root_ecrasant_est_vu : valeur effective
+  lue #f7f5fb` ; (R3) id dupliqué dans `index.html` → `aucun_id_duplique_dans_index_html :
+  bandeau-hote x2` ; (R4) `:root` sous `@media` → **non replié**, comme déclaré. **40 cas**
+  contre 33 avant reboucle, six gardes vertes, production intacte.
+- [2026-09-21 15:31] **POINT D'ARRÊT HUMAIN n°1 — carte de périmètre F0 VALIDÉE**. Partition
+  soumise telle quelle et acceptée : **64 id** (25 adopté · 4 `feature-022` · 2 `023` · 32
+  `025` · 1 écarté) et **135 classes** (71 adopté · 12 `022` · 1 `023` · 44 `025` · 7
+  écartés). Quatre arbitrages explicitement portés à l'arbitrage humain plutôt que signés
+  par l'agent : (a) **la moitié du prototype part en `feature-025`** — le cockpit livré sera
+  visiblement moins peuplé que la maquette produite ; (b) `progress-track` **écarté**
+  (`PIEGES §16`, pourcentage qu'aucune donnée ne mesure) — c'est un retrait, pas un report,
+  conforme à la décision du 2026-09-20 « juste une animation quand le sous-agent travaille » ;
+  (c) `icon-button` sert **5 éléments dont aucun n'est adopté**, rangée sous `025` **par
+  convention** — bucket sans effet sur aucune garde, arbitraire assumé ; (d) barre supérieure
+  amputée par `ADR-0020` (`project-switcher`, `notification-*`, `account-button`, `avatar`,
+  `user-name`) et `cycle-title` écarté par `ADR-0023`. Le lot 1 peut partir.
+- [2026-09-21 16:05] Lot 1 — frontend-developer — **thème sombre retiré, F13 livré, D3
+  rectifié**. `test_app_theme.js`, `test_app_theme.py`, `test_app_theme_navigateur.py`
+  supprimés (`git rm`) ; `theme.js` **modifié, PAS supprimé** (`git status` dit `M`) — gardé comme fichier (rôle réduit à l'amorçage
+  `data-section` de feature-019, dual-rôle avec le thème découvert en lisant le fichier —
+  sa suppression totale aurait cassé la persistance de section, hors périmètre de ce lot) ;
+  `index.html` perd le `<script src="/theme.js">` remplacé par un commentaire à jour et le
+  bloc `.bascule-theme` (3 boutons + 2 icônes) ; `app.js` perd 133 lignes (bascule 3
+  positions, `matchMedia`, roving tabindex) ; `app.css` : les 3 blocs `:root` deviennent
+  **1** (vérifié `grep -c '^:root' app.css` → 1), `--voile` devient un littéral direct
+  (`--clair-voile`), `.bascule-theme`/`.theme-bouton` retirés. **Couplages réels trouvés en
+  exécutant, pas en relisant** (3, tous corrigés, aucun neutralisé) : (1) `test_app_bug012.js`
+  portait `testBasculeThemeClavierMotifComplet` (10 cas testant le roving tabindex du
+  radiogroup de thème) — supprimée avec sa fonction, IDS list nettoyée des id de thème dans
+  4 fichiers (`test_app_bug012.js`, `test_app_navigation.js`, `test_app_accordeon.js`,
+  `test_app_feature008.js`) ; (2) `test_app_navigation.js` comptait 3 usages de
+  `var(--surface-2)` dont un sur `.theme-bouton[aria-checked="true"]` — assertion réécrite à
+  2 usages, l'assertion dédiée au bouton de thème retirée ; (3) `test_app_diagramme_navigateur.py`
+  (harnais Chromium, HARNAIS_NAVIGATEUR) rendait le diagramme dans **les deux thèmes** et
+  vérifiait explicitement que 5 couleurs **changent** entre `data-theme="clair"` et `="sombre"`
+  — ces 5 assertions échouaient nécessairement une fois le thème retiré (couleurs identiques
+  par construction) ; réécrit en un seul rendu, 37 → 17 cas, 0 échec. Commentaires obsolètes
+  purgés dans `index.html`, `app.js`, `test_app_navigation.js`, `test_app_diagramme_navigateur.py`,
+  `test_app_navigation_http.py` (références à des fichiers/UI supprimés).
+  **Compte total (dépôt réel, hors clone)** : 1981 → **1575**, tous verts — **pas 1608**.
+  Écart de **-33** entièrement expliqué : -373 (les deux fichiers supprimés) - 10
+  (`test_app_bug012.js`, couplage 1) - 1 (`test_app_navigation.js`, couplage 2) - 20
+  (`test_app_diagramme_navigateur.py`, couplage 3) - 2 (`test_ci_partition_navigateur.py`,
+  effet de bord automatique de la suppression des 2 fichiers marqués — dérivé, non édité à
+  la main). `test_ci_partition_navigateur.py` : **46 → 44** confirmé en clone jetable
+  reconstruit depuis `git archive HEAD` (`.github/` inclus) + application du seul diff de ce
+  lot, 0 échec des deux côtés — le compte mesuré dans le dépôt réel (52 → 50) diffère de 6
+  côté clone à cause des 6 fichiers `test_conformite_*.py` du lot 0, non commités donc absents
+  d'un `git archive HEAD` mais présents dans le dépôt réel et dans tout `cp -a` du répertoire
+  de travail (PIEGES §32, variante). Les six gardes du lot 0 restent vertes (40 cas, 0 échec),
+  aucun `ATTENDU_ROUGE` ne cite un compte périmé. **Deux mutations** : (a) `grep -rni
+  "sombre\|data-theme" control-center/web/` → 27 lignes, aucune fonctionnelle (déclarations du
+  retrait, adjectif générique « le plus sombre », littéraux WCAG `plus_clair`/`plus_sombre`,
+  et la maquette de référence `2026-09-15-diagramme-reference.html` — hors périmètre, non
+  touchée, qui porte encore légitimement ses 2 blocs de thème d'origine) ; (b) réintroduction
+  de `:root[data-theme="sombre"] { --bg: #000; }` dans `app.css` — **AUCUNE des six gardes du
+  lot 0 ne le voit** (0 échec dans les six, byte-identique en sortie hors le compte d'octets
+  affiché). Investigation : `test_conformite_lib.js` exclut EXPRÈS `:root[data-theme="…"]` du
+  repli de cascade (documenté §"Périmètre déclaré, pas oubli") — le mécanisme de
+  redéclaration divergente ne s'applique qu'aux `:root` NUS inconditionnels, vérifié en
+  mutant `:root { --surface: #000000; }` à la place, qui lui **est** vu (`F1_aucun_jeton_du_
+  prototype_redeclare_avec_valeur_divergente` passe au rouge). ⚠️ **Trou confirmé, pas
+  supposé** : le thème sombre peut revenir en silence sous sa syntaxe D'ORIGINE exacte
+  (`:root[data-theme="sombre"] {...}`) sans qu'aucune garde actuelle ne le remarque — F1 est
+  scopé lot 2 (les deux ECHEC actuels sont déjà en `ATTENDU_ROUGE`) et aucune garde
+  n'implémente encore le critère d'acceptation « aucun hexadécimal hors du bloc :root »
+  appliqué à `app.css` lui-même (seul le prototype en bénéficie aujourd'hui, comme donnée
+  dérivée pour le lot 2). À fermer au lot 2 ou par une garde structurelle dédiée — signalé
+  pour ne pas être un acquis silencieux.
+- [2026-09-21 16:44] Lot 1 — agent principal — **compte CONTRE-VÉRIFIÉ, et le trou est PLUS
+  LARGE que rapporté ; REBOUCLE**. Recompté indépendamment dans le dépôt réel : **1575 cas,
+  0 fichier en échec**, `grep -nE '^\s*:root' app.css` → **une seule** occurrence (l. 26),
+  et les 7 « sombre » d'`app.css` + les `data-theme` d'`index.html` et `theme.js` sont
+  **tous en commentaire**, vérifié ligne à ligne. Décomposition du −406 refaite et exacte
+  (373+10+1+20+2). Le lot 1 lui-même est bon. ⚠️ **Mais la conclusion du sous-agent sur la
+  mutation (b) est trop favorable d'un cran.** Il conclut que la forme NON conditionnelle
+  `:root { … }` « est vue ». Mesuré sur clone neuf, au **code de sortie du fichier** :
+
+      app.css + :root[data-theme="sombre"]{--bg:#000000;…}  →  6 gardes EXIT=0
+      app.css + :root { --bg: #000000; }                    →  6 gardes EXIT=0
+                                                               F1 : « 7 cas, 0 echec(s) »
+
+  Les deux assertions de F1 qui lisent `app.css` sont **intégralement quarantinées sous
+  `ATTENDU_ROUGE` jusqu'au lot 2**, et les cas `F1_NONREGRESSION_*` sont construits **en
+  mémoire**, donc verts quel que soit le contenu d'`app.css`. **Aucune réintroduction du
+  thème sombre, sous AUCUNE syntaxe, ne fait échouer quoi que ce soit aujourd'hui.** Le lot 1
+  livrerait donc « le thème sombre est retiré » avec **zéro garde sur `app.css`** — une
+  protection annoncée comme acquise dont on sait déjà qu'elle ne s'applique pas
+  (`CLAUDE.md`, exception du cycle ; esprit d'`ADR-0017`). **Refusé de reporter au lot 2** :
+  le retrait est le livrable de CE lot, il se garde ici. Reboucle : garde dédiée
+  `test_conformite_theme_unique.{js,py}`, **verte dès aujourd'hui** (non quarantinée,
+  puisque le retrait est fait), échouant sur (1) tout sélecteur de la famille `:root` autre
+  que l'unique `:root` nu déclarant des propriétés personnalisées, `@media` compris,
+  (2) plus d'un `:root` nu de premier niveau, (3) `data-theme` réapparu **fonctionnellement**
+  — la détection devant distinguer le commentaire du code **sans liste d'exceptions figée**,
+  que le premier commentaire neuf rendrait fausse —, (4) tout `@media (prefers-color-scheme:
+  dark)`. Preuve exigée : **4 mutations tuantes** (conditionnel, second bloc nu, `dataset.theme`
+  en JS, `prefers-color-scheme`) **et 1 contre-mutation qui ne doit PAS tuer** (le mot
+  `data-theme` dans un commentaire).
+- [2026-09-21 17:02] Lot 1 — frontend-developer — **reboucle livrée** : garde
+  `control-center/web/test_conformite_theme_unique.{js,py}`, **10 cas, VERTE sans
+  `ATTENDU_ROUGE`** — il n'y a rien à quarantiner, le retrait est fait. Quatre critères :
+  (1) aucun sélecteur conditionnel de la famille `:root` ne déclare de jeton, `@media`
+  compris — le critère porte la **profondeur**, donc un `:root` nu écrit SOUS `@media`
+  (la forme qu'avait le thème sombre avant retrait) tombe aussi ; (2) un seul bloc `:root`
+  nu de premier niveau ; (3) `data-theme` absent du **code servi**, la frontière
+  code/commentaire tenue **par analyse et non par liste d'exceptions** ; (4) aucun
+  `@media (prefers-color-scheme: dark)`. La liste des 5 fichiers servis est dérivée du
+  répertoire. Limite déclarée en en-tête : le retrait des commentaires JS suit les chaînes
+  mais pas les littéraux d'expression régulière — le sens de l'erreur est **prudent**
+  (faux rouge possible, jamais faux vert).
+- [2026-09-21 17:09] Lot 1 — agent principal — **REBOUCLE VÉRIFIÉE, lot 1 CLOS**. Cinq
+  mutations rejouées par l'agent principal sur clone neuf, sorties relevées :
+
+      (a) :root[data-theme="sombre"]          EXIT=1  `:root[data-theme="sombre"]` (profondeur 0) déclare 1 jeton(s)
+                                                   + data_theme_absent_du_code_servi : app.css
+      (b) second :root nu                     EXIT=1  un_seul_bloc_root_nu : 2 bloc(s)
+      (c) dataset.theme posé dans app.js      EXIT=1  data_theme_absent_du_code_servi : app.js
+      (d) @media (prefers-color-scheme: dark) EXIT=1  `:root` (profondeur 1) + aucun_media_prefers_color_scheme
+      (e) CONTRE-MUTATION, `data-theme` en commentaire CSS
+                                              EXIT=0  « 4 occurrence(s) en COMMENTAIRE (légitimes), 0 dans le CODE »
+
+  Le compte de commentaires passe de **3 à 4** sous (e) : la frontière est **dérivée**, pas
+  récitée. **Suite recomptée : 30 fichiers, 1586 cas, 0 en échec.** Le `+1` sur 1585 est
+  `test_ci_partition_navigateur.py` (50 → 51) : il dérive un cas par fichier de test
+  découvert et vient d'en voir un de plus — **la même dérivation** qui l'avait fait tomber
+  de 46 à 44 au retrait des deux fichiers. Compte expliqué, pas arrondi. Les six gardes du
+  lot 0 restent vertes. Le thème sombre ne peut plus revenir en silence. **Étape 9 —
+  doc-writer lancé sur le tour** (changement visible : le bascule de thème disparaît de
+  l'interface).
+- [2026-09-21 17:21] Étape 9 — doc-writer — **doc du lot 1 livrée et contre-vérifiée**.
+  Trois fichiers : `CHANGELOG.md` (entrée utilisateur « Le thème sombre disparaît du centre
+  de contrôle » — décrit ce qui quitte l'écran, pas la liste des fichiers) ;
+  `docs/features/page-centre-de-controle.md` (−49/+11 : la section « Commande de thème »,
+  44 lignes décrivant les 3 positions, la persistance `localStorage` et le suivi
+  `matchMedia`, est retirée ; la phrase « les deux thèmes partagent les mêmes teintes »
+  corrigée) ; `docs/adr/0033` (**note additive datée, corps de l'ADR intact**). **Aucun ADR
+  neuf** — la décision était déjà actée. L'écart traité par la note : l'ADR annonçait
+  `theme.js` « retiré en entier », le lot l'a **modifié** (75 → 57 lignes), `data-section`
+  de `feature-019` n'ayant jamais dépendu du thème. Un ADR est immuable sur sa décision,
+  pas sur le constat de ce qui a été livré. `./tools/check_doc_links.sh` → **186 lien(s)
+  relatif(s), toutes les cibles existent**, relancé par l'agent principal. ⚠️ **Constat
+  hors périmètre, à ne pas perdre** : `docs/subsystems/` ne contient qu'un `.gitkeep`,
+  alors que `CLAUDE.md` déclare « une fiche par module backend (auth, facturation…) ».
+  Dette documentaire réelle, sans rapport avec `feature-021` — à traiter dans une spec
+  propre, pas ici.
+- [2026-09-21 17:21] **LOT 1 CLOS** — livrables F13 et D3. Suite 1981 → **1586 cas,
+  0 échec**. Reste : lots 2 à 6.
+### 4. F17 — le registre `ATTENDU_ROUGE`, défini (l'agent principal avait transmis le terme sans sa définition)
+
+**Le problème qu'il résout.** Écrire les cinq gardes au lot 0 et les voir échouer,
+c'est cinq gardes rouges commitées pendant cinq lots — ce qui contredit « le dépôt
+est vert à la sortie de chaque lot ».
+
+**La forme.** Chaque fichier de garde porte une table `ATTENDU_ROUGE = {…}` : **une
+entrée par assertion encore fausse**, avec **le lot qui la ferme** et **la date**.
+La garde échoue dans deux cas, et le second est celui qui compte :
+
+1. toute régression **hors** registre ;
+2. **toute entrée du registre qui se met à passer sans avoir été retirée**.
+
+C'est la clause (2) qui empêche le registre de devenir une amnistie. Même patron que
+`test_ci_partition_navigateur.py` (`ADR-0037 §3`) : trois ensembles qui doivent
+coïncider, pas une liste qu'on allonge.
+
+⚠️ Le registre est une **énumération tenue à la main** (`PIEGES §21`) — la clause (2)
+est exactement ce qui la rend non périmable.
+
+**Bénéfice non prévu** : le registre **est** l'état d'avancement du cycle, versionné.
+C'est la réponse directe à la leçon de `feature-020` — 59 cases à `[ ]` pour une
+quarantaine de livrables faits, après une interruption de session.
+
+**Options écartées** : une branche à fenêtre rouge déclarée (perd la trace datée et
+rend la reprise aveugle) ; garder les gardes en arbre de travail jusqu'au lot qui les
+verdit — **refusée**, c'est l'invitation à ajuster la garde au code, le vice exact
+de `bug-022`.
+
+### 5. Deux corrections de fond à ma consigne de séquencement
+
+L'orchestrateur confirme l'ordre, et le corrige sur deux points que j'avais manqués :
+
+- **« Vu rouge » ne tue qu'un cas sur deux.** Il tue la garde qui n'atteint pas son
+  artefact ou qui n'assertionne rien. Il ne tue pas **rouge pour la mauvaise
+  raison** — une garde qui échoue parce que le prototype est introuvable, ou parce
+  que *tout* diffère, est aussi peu informative qu'une garde verte à vide. D'où deux
+  exigences par fichier : une **assertion d'atteignabilité bruyante** (artefacts lus,
+  non vides, grandeurs **dérivées** et non récitées) et **chaque assertion nomme sa
+  raison d'échec attendue**, la sortie rouge du lot 0 étant **recopiée dans le
+  journal**.
+- **« Vu rouge » ne remplace pas la mutation.** `D2` reste dû, **y compris sur les
+  gardes elles-mêmes** (`PIEGES §37` : muter la garde, pas ce qu'elle appelle ;
+  `PIEGES §25` : une mutation CSS neutralisée par la spécificité est un faux positif).
+
+**F3 et F5 sont irréductiblement à deux temps**, et leur second temps ne peut pas
+être vu rouge avant — il est validé par **mutation**, pas par antériorité.
+
+### 6. Point d'arrêt ajouté entre les lots 4 et 5
+
+Sur remarque de `spec-reader`, et elle est juste : `F15` et `F16` (lot 4) sont le
+mandat principal d'`ux-ui-designer` — les **quatre représentations qui n'existent
+dans aucune référence**. Les faire relire **avant** que le lot 5 ne bâtisse ses
+gardes runtime dessus évite de garder une invention qu'on rejettera ensuite.
+Le cycle porte donc **trois** points d'arrêt humains : après le lot 0, à la sortie du
+lot 3, et à la sortie du lot 4.
+
+---
+# Notes d'implémentation — cycle 2
+
+## Plan (architect) — 2026-09-21
+
+**Approche en une ligne** — Tout ce que le cycle garde se **dérive** du prototype
+(`control-center/maquettes/2026-09-20-maquette-materiel-3.html`) par lecture d'artefact,
+jamais par recopie ; les noms du prototype sont la clé de jointure de toutes les gardes ;
+`bug-017` entre au lot 3 parce que sans lui le registre `ATTENDU_ROUGE` n'a pas de lot de
+clôture à opposer à sa clause (2).
+
+### Étapes (≤ 10)
+
+1. **Lot 0 — `control-center/web/test_conformite_jetons.js`** [neuf, F1] : extrait le bloc
+   `:root` du prototype par **analyse du texte de la règle**, pas par `grep` (`PIEGES §26`),
+   et assertionne l'**inclusion** dans `app.css` au bit près + une liste déclarée
+   `JETONS_AJOUTES` pour tout ajout. *(Mesuré : 24 propriétés personnalisées dans `:root`,
+   dont **20 hex**, 2 ombres, 2 courbes — `sed -n '8,33p'`. La spec annonçait « 22 jetons de
+   couleur » : non reproduit, l'écart est le classement des 2 ombres.)*
+2. **Lot 0 — `test_conformite_animations.js`** [neuf, F2] : table des durées **et des noms**.
+   Mesuré : **4** `@keyframes` (`work-orbit`, `dot-orbit`, `tick-work`, `link-flow`),
+   **6** raccourcis `animation:`, **9** déclarations `transition:`, **2** `animation-delay:
+   calc(var(--i) * …)` (120 ms / 95 ms), **1** bloc `@media (prefers-reduced-motion: reduce)`
+   à la ligne 640 — `grep -nE '(animation|transition)[-a-z]*\s*:'` → 17 lignes.
+3. **Lot 0 — `test_conformite_classes.js`** [neuf, F3a] et `test_conformite_a11y.js`
+   [neuf, F4a] : parité DOM statique ↔ feuille, sur un **parseur CSS/HTML**, jamais
+   `grep` (`PIEGES §26`, §27 ; mesuré : `grep -oE '\.[a-zA-Z…]'` rend **249** « classes »,
+   compte faux car il capture `.2s`, `.textContent`…).
+4. **Lot 0 — `test_conformite_contrastes.js`** [neuf, F5a] : matrice **dérivée** (voir §1
+   ci-dessous), pas énumérée (`PIEGES §21`).
+5. **Lot 0 — chaque fichier de garde** porte `ATTENDU_ROUGE`, une assertion
+   d'atteignabilité bruyante, et la raison d'échec nommée par assertion. Point d'arrêt humain.
+6. **Lot 1** `theme.js` + 2 suites supprimés (D3 : **-373** cas, repris de l'étape 0, non
+   remesuré). **Lot 2** `app.css` (F6). **Lot 3** `index.html` réécrit (F7) **+ `bug-017`**
+   (porte enfant direct de `<body>`, `inert` sur ses frères) — point d'arrêt humain.
+7. **Lot 4** `diagramme.js` + `app.js` (F8, F9, F15, F16) ; `disposer()` reste l'unique
+   autorité de géométrie (`ADR-0031 §4`) — point d'arrêt humain.
+8. **Lot 5** volets runtime F3b/F4b/F5b + F10/F11/F12 ; F4b **compte** les contrôles
+   atteignables hors modale et exige **0** (critère de `bug-017`).
+9. **Lot 6** mutation (`D2`, y compris **sur les gardes elles-mêmes** — `PIEGES §37`, §25),
+   docs, `CHANGELOG.md`, ADR-0038.
+10. `docs/adr/0038-*.md` : ADR unique du cycle, portant **§ ATTENDU_ROUGE** et
+    **§ absorption de `bug-017` au titre d'ADR-0017** (motif de forme : voir point 3).
+
+---
+
+## 1. La table des couples interdits — comment elle se dérive, comment F5b mesure
+
+**Arbitrage humain non rouvert** : hex identiques au bit près, `F5` vérifie qu'aucun couple
+interdit n'est **réellement peint**.
+
+### Phase A — dérivation, jamais énumération (`PIEGES §21`)
+
+La table n'est **pas une liste de couples écrite dans un fichier**. C'est une fonction :
+
+```
+COUPLES_INTERDITS = { (encre, fond) ∈ JETONS × JETONS |
+                        contraste(hex[encre], hex[fond]) < seuil(rôle(encre)) }
+```
+
+Les trois entrées se lisent **depuis l'artefact** à chaque exécution :
+- `JETONS` et `hex[]` : extraits du bloc `:root` **du prototype**, même extracteur que F1 —
+  donc si le prototype change, la table change, et si `app.css` diverge, F1 tombe d'abord.
+- `rôle(encre)` : **une seule énumération tenue à la main est tolérable ici**, celle du rôle
+  (`texte` / `trait` / `fond`), parce qu'aucun artefact ne la porte. Elle est donc soumise à
+  la clause miroir : la garde échoue si un jeton du prototype **n'a pas** de rôle déclaré —
+  c'est ce qui la rend non périmable, le même patron que la clause (2) d'`ATTENDU_ROUGE`.
+- `seuil` : **4,65** pour `texte` (nominal `ADR-0024 §5`, marge de 2,5 bits au-dessus du seuil
+  dur 4,5), **3,0** pour `trait`.
+
+### Ce que j'ai mesuré, et qui ne reproduit pas le chiffre de la spec
+
+Matrice 10 encres × 5 surfaces, calculée sur les hex du prototype (WCAG 2.x relative
+luminance, Python, aucun arrondi intermédiaire) :
+
+| grandeur | mesuré 2026-09-21 | annoncé en « Décisions humaines » |
+|---|---|---|
+| couples sous 4,65, **50 couples bruts** | **21** | — |
+| couples sous 4,65, **hors `--line` et `--line-strong`** (8 encres × 5) | **11** | **12** |
+| couples sous 4,50, hors les 2 jetons de trait | **7** | **7** ✅ |
+| `--line-strong` sous 3,0 | **3 surfaces sur 5** (2,976 · 2,787 · 2,609) | 3 sur 5 ✅ |
+
+⚠️ **Le « 12 sur 50 » n'est pas reproductible** ; je mesure **11** sous la même exclusion qui
+reproduit exactement le 7 et le 3/5. Je **ne corrige pas** la décision humaine — elle ne
+dépend pas du compte — mais **aucun chiffre de couples interdits ne doit être écrit en dur
+nulle part** : c'est précisément pourquoi la phase A est une dérivation. Le compte est une
+**sortie** de la garde, pas une entrée.
+
+**Borne au ras, nommée** : `--muted` sur `--surface-highest` vaut **4,5099**. À 4,50 il passe
+de 0,0099 ; à 4,65 il est interdit. C'est le cas d'école d'`ADR-0024 §5` — la marge de
+2,5 bits est ce qui décide, pas le jeton.
+
+### ⚠️ Défaut trouvé : 9 hexadécimaux vivent **hors** du bloc `:root` du prototype
+
+`awk 'NR>32' … | grep -oE '#[0-9a-fA-F]{3,8}'` → **9 occurrences, 8 valeurs distinctes** :
+`#aaa6b0` (×2), `#fff0c8`, `#eea52a`, `#777385`, `#690005`, `#654b00`, `#4e1d12`, `#3b8f35`,
+`#000` — plus un `color: white` (ligne 540).
+
+Conséquences, toutes bloquantes pour le lot 0 :
+- le critère d'acceptation « **aucun hexadécimal hors du bloc `:root`** » et la fidélité
+  au prototype sont **contradictoires en l'état** ;
+- ces 8 valeurs **échappent entièrement à F1**, qui ne lit que `:root` ;
+- la matrice de F5a est **incomplète** tant qu'elles n'y entrent pas : `#690005` sur
+  `--danger-soft` et `#654b00` sur `--amber-soft` sont des couples texte/fond réels.
+
+**Tranché** : les 8 valeurs sont **promues en jetons `:root`** dans `app.css`, inscrites dans
+la liste déclarée `JETONS_AJOUTES` avec, pour raison, **le sélecteur et la ligne du prototype
+dont elles proviennent**. F1 devient donc une **inclusion stricte au bit près** (les 24
+propriétés du prototype existent, identiques) **plus** une liste déclarée pour tout ajout —
+pas une égalité d'ensembles, qui serait invalidée par le premier ajout légitime. La matrice
+de F5a porte alors sur **28** jetons, pas 20 ; son compte est recalculé par la garde.
+
+### Phase B — « réellement peint », mesuré en HTTP
+
+`PIEGES §11` **ne mord pas** : `grep -c oklch` sur le prototype → **0**. `getComputedStyle`
+rend donc des `rgb()` résolus, et le détour par `getImageData` n'est pas nécessaire.
+
+Protocole de `test_app_contrastes_navigateur.py` (lot 5), déclaré `HARNAIS_NAVIGATEUR`
+(`ADR-0037`, `PIEGES §50`, §54) :
+1. clone jetable `cp -a` incluant `.github/` (`PIEGES §1`), serveur sur un port **> 8800**
+   (`PIEGES §2`), **relancé** après dépôt des fichiers (`PIEGES §8`), page chargée en
+   **HTTP** — un harnais `file://` ne prouve rien (`PIEGES §10`) ;
+2. parcours de **tout nœud portant du texte non vide** : `color` calculée, puis remontée des
+   ancêtres jusqu'au premier `background-color` dont l'alpha ≠ 0 — le **fond effectivement
+   peint**, jamais la règle qui le déclare (`PIEGES §24`) ;
+3. chaque couple `rgb` est **réapparié à ses noms de jetons** via la table `:root` lue au
+   runtime ; un couple peint qui ne correspond à **aucun** jeton est un **échec** (c'est ce
+   qui attrape un hex codé en dur réintroduit) ;
+4. assertion : `COUPLES_INTERDITS ∩ couples_peints = ∅`, et **le compte de nœuds visités est
+   assertionné non nul** — sans quoi la garde est verte à vide.
+5. Les traits (`border-color`, `stroke`) sont parcourus séparément au seuil 3,0.
+
+**Mutation qui doit la tuer** (`PIEGES §25`, §37) : poser `color: var(--teal)` sur un texte
+de `--surface-high` (couple mesuré **4,09**, interdit). Vérifier d'abord la **spécificité**
+de la règle mutée, sinon le mutant ne se propage jamais jusqu'au rendu et la revue conclut
+à tort.
+
+**Par où on atteint cette garde, et ce qui l'en empêcherait** : elle n'est atteignable qu'en
+HTTP sur un serveur **relancé**, et seulement si `app.css` est servi (extension dans
+`_TYPES`, nom hors `test_`). Elle serait livrée **morte** si elle lisait le prototype depuis
+`docs/` — que le clone ne copie pas (`PIEGES §32`) : elle lit
+`control-center/maquettes/2026-09-20-maquette-materiel-3.html`, et **échoue bruyamment** si
+le fichier est absent ou vide, au lieu de se sauter.
+
+---
+
+## 2. Verdict ADR — le registre `ATTENDU_ROUGE`
+
+**ADR REQUIS — oui. Quatre critères sur quatre, et un seul suffit.**
+
+| Critère | Rempli ? | Établissement |
+|---|---|---|
+| 1. Contrainte structurante imposée ailleurs | **oui** | Le registre s'impose à **tout fichier de garde** des 7 lots, et à la règle de sortie de lot (« le dépôt est vert à la sortie de chaque lot ») qu'il **redéfinit** : vert veut désormais dire « aucune régression hors registre **et** aucune entrée périmée ». Tout cycle ultérieur qui écrit une garde avant son code hérite de ce régime. |
+| 2. Décision invisible dans le code | **oui** | La table `ATTENDU_ROUGE = {…}` est visible ; ce qui ne l'est pas, c'est que ce régime est **borné à une refonte multi-lots** et n'est pas une licence générale à committer du rouge. Sans ADR, la première lecture d'un `ATTENDU_ROUGE` par un cycle futur en fait un patron d'amnistie — exactement ce que la clause (2) combat. |
+| 3. Alternatives crédibles | **oui** | Deux, déjà nommées et écartées par l'humain : une **branche à fenêtre rouge déclarée** (perd la trace datée, rend la reprise aveugle) ; **garder les gardes en arbre de travail** jusqu'au lot qui les verdit — refusée, c'est l'invitation à ajuster la garde au code, le vice mesuré de `bug-022` (`PIEGES §50` : quatre reboucles). |
+| 4. Verrouillage long terme | **oui** | Il inverse la charge : la garde se commite **avant** le code qu'elle garde. C'est un engagement de méthode qui survit au cycle, et la réponse directe à la leçon de `feature-020` (59 cases à `[ ]` pour ~40 livrables faits). |
+
+**Forme** : **section d'ADR-0038**, pas un ADR séparé — même geste, même cycle, mêmes
+mesures que l'absorption de `bug-017` (voir point 3). Précédent du dépôt :
+`ADR-0024 §3`, `ADR-0021`, `ADR-0035`, `ADR-0018` portent tous une décision de régime **en
+section** de l'ADR substantiel de leur cycle.
+
+⚠️ **Ce que l'ADR doit graver et qui manque à la définition actuelle** : le registre est
+**borné dans le temps**. Une entrée sans **lot de clôture nommé** est un échec de la garde
+au même titre qu'une entrée périmée — sinon « le lot qui la ferme » redevient déclaratif.
+C'est le point qui rend le verdict 3 ci-dessous mécanique.
+
+---
+
+## 3. `bug-017` — ABSORBÉE, au titre d'ADR-0017
+
+**Verdict : absorbée dans ce cycle, traitée au lot 3, avant la sortie du point d'arrêt
+humain.** Le critère d'`ADR-0017` est **mécanique**, pas prudentiel, et il est rempli :
+
+**État mesuré du défaut, aujourd'hui** : `grep -rn "inert" control-center/web/*.{js,html,css}`
+(hors `test_`) → **1 seule occurrence**, et c'est un **commentaire** d'`app.js:2216` qui dit
+que le défaut *n'est pas corrigé* : « *inerte au clavier) n'est pas corrigé — rebâtir une
+modale ici exposerait* ». Aucun mécanisme d'inertie n'existe dans le module.
+*(Le chiffre « jusqu'à **6** contrôles atteignables » est repris de `bug-017` — **non
+remesuré ici**, il exige un harnais HTTP + Chromium.)*
+
+**Pourquoi ce n'est pas reportable** — l'argument décisif est le registre du point 2 :
+
+1. `F4b` est la garde de contrat d'accessibilité au runtime. Son assertion exacte, imposée
+   par `bug-017`, est « **0** contrôle atteignable hors modale ». Avec le défaut ouvert,
+   cette assertion est **fausse au lot 5**.
+2. Elle doit donc entrer au registre `ATTENDU_ROUGE` — et une entrée du registre exige
+   **le lot qui la ferme**. Si `bug-017` est hors cycle, **aucun lot ne la ferme** : l'entrée
+   est inexpirable, la clause (2) ne peut jamais se déclencher sur elle, et le registre
+   devient l'amnistie qu'il est conçu pour empêcher. La garde n'est pas contournée : elle est
+   **désarmée par construction**.
+3. Aggravant, structurel : le correctif exige que la porte soit **enfant direct de `<body>`
+   et au-dessus de toute section**. Cette structure est décidée au **lot 3**, qui est un
+   **point de non-retour visuel** validé par l'humain. La reporter, c'est soit rouvrir
+   `index.html` après le point de non-retour, soit livrer une porte à laquelle l'inertie
+   n'est plus attachable sans refaire le lot 3.
+4. `feature-021` a **déclaré** le mécanisme en `U5` sans le livrer (journal 2026-09-19 21:44).
+   Livrer un second cycle qui réécrit le même fichier en laissant U5 déclaré et non livré,
+   c'est le cas nominal d'« une protection annoncée qui ne s'applique pas » d'`ADR-0017`.
+
+**`ADR-0017` suffit-il ? — Oui comme règle, non comme trace.** Mesuré : sur les **4**
+absorptions déjà pratiquées par ce dépôt (`bug-008`/`bug-009` → `ADR-0018` ;
+`bug-016` → `ADR-0024 §3` ; `bug-013` → `ADR-0023`/`ADR-0021` ; `bug-019` → `ADR-0035 §`),
+**aucune n'a reçu d'ADR dédié** : chacune est une **section datée de l'ADR substantiel du
+cycle**, et `CLAUDE.md` exige seulement que la décision soit « écrite dans un ADR — pas
+subie ». Donc : **pas d'ADR pour « un cycle à deux specs »** ; une **section
+« Absorption de `bug-017` au titre d'ADR-0017 » dans ADR-0038**, portant les 4 points
+ci-dessus et l'état mesuré du défaut.
+
+**Conséquences de procédure** : `git mv specs/features/todo/bug-017-*.md specs/features/doing/`
+(déplacement, jamais copie) ; deux specs dans `doing/`, ce que `check_specs.sh`
+**n'interdit pas** (`ADR-0017`, Conséquences) ; **une seule** phase de test / revue / doc.
+Les critères d'acceptation de `bug-017` s'ajoutent à ceux de `feature-021`, dont
+« le focus revient à un endroit **nommé** » et la validation par mutation du mécanisme
+d'inertie (retirer `inert` doit tuer le test — `PIEGES §37` : muter **la garde**, pas
+`showModal()` qu'elle appelle).
+
+---
+
+## 4. Le contrat de `F2` — les noms du prototype sont normatifs
+
+**Tranché : OUI. L'implémentation reprend les noms de classes ET les noms de `@keyframes`
+du prototype, à l'identique.** C'est la décision la plus structurante du lot 0.
+
+**Raison mécanique** : `F2` compare des tables `(nom → durée, délai, courbe)` et `F3` des
+ensembles de classes. Deux tables ne se comparent que par une **clé**. Sans identité des
+noms, la seule comparaison possible est « le multi-ensemble des durées est le même », qui
+est vrai pour n'importe quelle permutation — une garde verte à vide. `F3` dégénère
+symétriquement en « le nombre de classes est le même ».
+
+**Ce qui est normatif, mesuré** :
+- **4** noms de `@keyframes` : `work-orbit`, `dot-orbit`, `tick-work`, `link-flow` ;
+- les noms de classes du sous-arbre du disque : `agent-node`, `agent-wrap`, `agent-face`,
+  `agent-code`, `agent-data`, `agent-meta`, `agent-name`, `agent-duration`, `work-orbit`,
+  `work-dot`, `tool-ticks`, `file-dots`, et les liens `link-flow`, `link-front`,
+  `link-front-sec`, `link-front-tests`, `link-reprise`, `link-sec-front`, `link-spec-front`,
+  `link-tests-front` ;
+- les **3** classes d'état : `state-pending` (8 occ.), `state-active` (17), `state-done` (7) ;
+- les 2 courbes nommées `--spatial` / `--effects`, qui sont déjà des jetons (F1 les couvre).
+
+**Ce que ça impose au `frontend-developer`** — à écrire tel quel dans son brief :
+1. **Interdiction de renommer**, y compris pour se conformer au préfixe `dg-` hérité de
+   `diagramme.js`. Le préfixe `dg-` disparaît **avec** le diagramme qu'il nommait
+   (`ADR-0031 §1` révoque `ADR-0025 §1-§3` et `ADR-0026`). Le contrat `disposer()` maintenu
+   par `ADR-0031 §4` continue de **calculer** la géométrie ; il **émet désormais les noms du
+   prototype**. C'est un changement de sortie de `disposer()`, à traiter au lot 4, pas une
+   liberté de nommage.
+2. **Toute classe et tout `@keyframes` en plus** — et il y en aura, `F16` en exige quatre —
+   figure dans une **liste déclarée** (`CLASSES_AJOUTEES`, `KEYFRAMES_AJOUTES`) **avec sa
+   raison**, exactement comme `JETONS_AJOUTES` pour F1. La garde échoue sur tout nom hors
+   prototype **et** hors liste : c'est la clause miroir, encore.
+3. **La parité se mesure par parseur, pas par `grep`** (`PIEGES §26`) : mesuré,
+   `grep -oE '\.[a-zA-Z…]'` rend **249** « classes » sur le prototype, chiffre faux — il
+   capture `.2s`, `.textContent`, `.34`. `F3a` qui utiliserait ce compte serait rouge pour
+   la mauvaise raison, ce qu'interdit le point 5 des décisions humaines.
+4. **Une règle CSS vide ne protège rien** (`PIEGES §33`) : déclarer `.agent-face{}` pour
+   « faire la parité » ne fait échouer aucune mutation. `F3` doit exiger que la classe porte
+   **au moins une déclaration**, sinon elle garde une intention.
+
+---
+
+## 5. `F15` — le centre du disque sans jetons
+
+**Rappel du texte qui autorise la dégradation** : `ADR-0031 §5` conclut « *cela supprime la
+dépendance de l'anneau aux tokens […] seul le chiffre du centre dégrade alors, pas
+l'anneau* ». Livrer le centre sans chiffre n'est donc **pas** un écart à `ADR-0031 §2`,
+c'est le cas que son §5 a explicitement prévu. Aucun ADR à rouvrir.
+
+**Contrainte mesurée qui commande la conception** : `0 token sur 14 372 événements` du
+journal (repris de la refondation du 2026-09-20, non remesuré). Au lot 4, l'absence n'est
+donc **pas un cas limite : c'est le cas nominal, et le seul atteignable**.
+
+**Conception retenue — deux variantes de centre, pas un emplacement vide** :
+
+| | variante livrée par ce cycle | variante livrée par `feature-023` |
+|---|---|---|
+| contenu | **sigle seul**, centré sur les deux axes du disque | sigle + `input+output` sur deux lignes |
+| DOM | le nœud du chiffre **n'existe pas** | le nœud existe |
+| sélection | classe déclarée `agent-face--sigle-seul` | classe du prototype |
+
+Trois règles, chacune avec la garde qui la tient :
+1. **Jamais de zéro faux** : l'absence de donnée et la valeur zéro sont deux états
+   distincts. Le nœud du chiffre étant **absent du DOM** (et non vide, ni `—`, ni `0`),
+   aucune lecture ne peut les confondre. `F4b` assertionne l'**absence du nœud**, pas son
+   contenu — une assertion sur le texte passerait à tort (`PIEGES §27`).
+2. **Jamais de trou** : l'espace du chiffre n'est **pas réservé**. Le centrage est une
+   variante de mise en page calculée par `disposer()` (`ADR-0031 §4`), pas un
+   `visibility:hidden` — qui laisserait le trou (`PIEGES §15`).
+3. **La branche « présence » n'est PAS écrite dans ce cycle.** Elle serait **livrée morte** :
+   aucune donnée ne peut l'atteindre avant `feature-023` et son GATE. L'écrire, ce serait
+   livrer du code non exercé et une garde verte à vide. Elle appartient à `feature-023`,
+   qui porte déjà la migration `agent-face--sigle-seul` → variante à deux lignes.
+4. **Le diamètre ne change pas** : 52/88 px selon l'état (`ADR-0031 §2`) — l'absence du
+   chiffre ne rétrécit rien, donc rien ne signale visuellement le manque.
+5. **La bottom sheet (`F11`) dit ce qui manque et pourquoi**, en une phrase : c'est le
+   pendant de la réserve déjà écrite (« ce chiffre mesure le travail, pas le coût »).
+
+**Mutation qui doit tuer la garde** : faire émettre `0` par le centre. Si `F4b` reste verte,
+elle n'assertionne pas l'absence mais une chaîne — le défaut de `PIEGES §27`.
+
+---
+
+## 6. `F16` — ce qui contraint les quatre représentations à inventer
+
+Je **ne dessine rien** : c'est le mandat d'`ux-ui-designer`. Voici le cadre, mesuré, à
+mettre dans son brief. Les quatre manques sont ceux d'`ADR-0031 §3` : **l'échec**, le
+**« sans clôture »**, **l'agent principal**, la **règle de non-chevauchement des libellés**.
+
+### Grammaire disponible (mesurée sur le prototype, rien d'autre n'existe)
+
+- **3** classes d'état seulement : `state-pending`, `state-active`, `state-done` — aucune
+  quatrième. Le prototype n'a **jamais eu** à représenter un échec.
+- **4** `@keyframes`, **2** courbes (`--spatial`, `--effects`), **1** bloc
+  `prefers-reduced-motion` (ligne 640) qui devra couvrir tout mouvement neuf (`F14`).
+- Formes occupées et **non disponibles** : le diamètre (état, `ADR-0031 §2`), les **12**
+  graduations (fixes, ne dénombrent plus rien), les **3** pastilles (binaires), l'anneau
+  (activité, **jamais** une progression — `ADR-0031 §5`), le centre (sigle, cf. point 5),
+  le nom au-dessus, la durée en dessous.
+- Formes **libres** : le contour du disque, le fond du disque, le halo (`box-shadow`),
+  le motif de trait des liaisons, et l'espace **autour** du nom.
+
+### Jetons utilisables sans en ajouter un seul
+
+Mesuré (`grep -o 'var(--X)' | wc -l`) : **`--amber` a 0 usage** dans tout le prototype, alors
+qu'il est déclaré — c'est le jeton **libre**, disponible sans rien ajouter.
+`--danger` (4 usages) et `--danger-soft` (1) sont déjà pris par la priorité haute, le menu et
+le bouton de confirmation ; `--coral` 4 ; `--teal` 11 ; `--line-strong` 2 ; `--primary-ink` 7.
+
+**Règle imposée par `F1`** : tout jeton supplémentaire figure dans `JETONS_AJOUTES` **avec sa
+raison**, et ses contrastes entrent automatiquement dans la matrice de `F5a` — un jeton neuf
+peut donc **rendre la garde rouge par sa seule déclaration**. C'est voulu.
+
+### Refusé d'avance — à écrire dans le brief, pas à découvrir en revue
+
+1. **Toute information portée par la seule couleur.** Mesuré à l'étape A : 3 informations
+   dans ce cas, à **1,370:1** — exactement le contraste de `--line` que je remesure
+   (1,37 sur `--bg`). Chaque représentation neuve porte **une seconde dimension** (forme,
+   motif, glyphe, texte).
+2. **Tout hexadécimal hors `:root`.** Critère d'acceptation déjà écrit ; et le prototype
+   lui-même le viole **9 fois** (voir point 1) — ce n'est donc pas une licence héritée.
+3. **Tout couple de la table du point 1.** Une croix `--coral` sur `--surface-high` vaut
+   **4,32** : interdite avant même d'être dessinée.
+4. **Toute réutilisation des graduations pour compter quoi que ce soit** — `ADR-0031 §2`
+   les grave fixes ; y remettre les appels d'outils rouvre la révocation.
+5. **Tout retour d'une progression sur l'anneau** (`ADR-0031 §5`).
+6. **Tout indicateur « sans clôture » dérivé d'une fin non observée.** `PIEGES §17` :
+   `SessionEnd` ne part jamais sur une session longue, ~85 % des cycles portent
+   « fin non observée » ; une représentation fondée là-dessus serait **livrée morte**. Elle
+   se dérive du seuil **additif et déclaré** d'`ADR-0021`, pas de l'absence d'événement.
+7. **Toute `@keyframes` neuve sans entrée dans `KEYFRAMES_AJOUTES`** et sans repli
+   `prefers-reduced-motion`.
+8. **Toute règle CSS vide « pour la parité »** (`PIEGES §33`).
+
+### La quatrième — le non-chevauchement — n'est pas un dessin, c'est un contrat
+
+Elle appartient à `disposer()` (`ADR-0031 §4`), pas à la feuille. Deux pièges **mesurés** la
+gouvernent, à citer au `test-engineer` :
+- `PIEGES §31` : un attribut de présentation SVG **perd** contre toute règle de classe. La
+  garde lit `getComputedStyle`, **jamais** l'attribut posé par le code.
+- `PIEGES §30` : la garde **recopie la formule de mesure de texte à la main** ; si elle
+  appelle `disposer.texteDuree()`, elle s'accorde avec la fonction sous test quoi qu'il
+  arrive et reste verte quand le texte peint diverge.
+
+---
+
+## 7. Verdict ADR global
+
+**ADR REQUIS — oui. Quatre critères sur quatre.** Un **ADR unique**, `ADR-0038`, portant
+l'ensemble du cycle 2 ; **prochain numéro libre mesuré** : `ls docs/adr/ | tail -1` →
+`0037-un-harnais-navigateur-se-declare-et-ne-tourne-qu-une-fois.md`, donc **0038**.
+
+| Critère | Rempli ? | Établissement |
+|---|---|---|
+| 1. Contrainte structurante imposée ailleurs | **oui** | Le régime « les noms du prototype sont la clé de jointure » (point 4) et « toute liste se dérive, tout ajout se déclare » s'imposent à `feature-022`, `023`, `025`, qui bâtissent sur **la même** maquette (F0 la partitionne). Un de ces cycles qui renommerait une classe casserait F2/F3 du cockpit. |
+| 2. Décision invisible dans le code | **oui** | Trois décisions ne laissent **aucune trace** dans le code livré : que les hex restent identiques **malgré** 11 couples sous 4,65 (le code montre les hex, pas le conflit arbitré) ; que la branche « centre avec chiffre » est **délibérément non écrite** (point 5) ; que le registre est **borné à cette refonte** (point 2). |
+| 3. Alternatives crédibles | **oui** | Baisser le seuil à 4,5 (**refusée**, `ADR-0024 §5`) ; scinder en `feature-026` (**refusée**, les gardes ne prouvent qu'entières) ; reporter `bug-017` (**refusée**, point 3) ; garder les gardes hors dépôt jusqu'à leur lot (**refusée**, vice de `bug-022`). Chacune était défendable ; leur refus se justifie par une mesure, pas par un goût. |
+| 4. Verrouillage long terme | **oui** | La conformité au prototype devient **mesurée, plus jugée** : tout cycle futur touchant le cockpit doit soit passer les 5 gardes, soit réviser cet ADR. Et la garde se commite désormais **avant** le code qu'elle garde. |
+
+**Sections obligatoires d'`ADR-0038`** :
+`§1` la fidélité prime, l'usage se restreint (table dérivée, 9 hex hors `:root` promus) ·
+`§2` le registre `ATTENDU_ROUGE`, borné, avec sa clause (2) et le lot de clôture obligatoire ·
+`§3` **absorption de `bug-017` au titre d'ADR-0017** ·
+`§4` les noms du prototype comme clé de jointure ·
+`§5` ce que le cycle **ne livre pas** (branche « centre avec chiffre ») et pourquoi.
+
+**ADR non touchés, confirmés** : `ADR-0006` (0 dépendance), `ADR-0003` (colonnes),
+`ADR-0017`, `ADR-0031` (le point 5 est son §5, pas un écart), `ADR-0024 §5` (le seuil 4,65
+n'est pas renégocié), `ADR-0037`.
+
+## Points d'attention
+
+- ⚠️ **Le « 12 sur 50 » de la section « Cycle 2 — décisions humaines » n'est pas
+  reproductible** : je mesure **11** (et **21** bruts). L'arbitrage humain n'en dépend pas ;
+  **aucune garde ne doit citer ce nombre** — il est une sortie, pas une entrée.
+- ⚠️ **« 22 jetons de couleur »** (Grandeurs mesurées) n'est pas reproductible non plus :
+  **24** propriétés personnalisées dans `:root`, dont **20** hex.
+- `PIEGES §7` : tout identifiant neuf entre dans la liste `IDS` de `test_app_bug012.js`,
+  sinon la suite mesure autre chose **en silence**.
+- `PIEGES §38` : une sonde `vm` ne voit que les ids du HTML **statique**. Les gardes runtime
+  (F3b, F4b, F5b) sont des **harnais navigateur**, pas des sondes `vm`.
+- `PIEGES §32` : la baisse de **-373** cas au lot 1 est déclarée légitime (D3), et tout
+  compte mesuré en clone se compare à `docs/` près.
+- `PIEGES §29` : ne pas cloner pendant la campagne de mutation d'un autre agent.
+
+## Tests à prévoir
+
+- F1 : inclusion bit-à-bit des 24 propriétés `:root` + `JETONS_AJOUTES` non vide justifié.
+- F2 : 4 `@keyframes`, 6 `animation:`, 9 `transition:`, 2 `animation-delay`, par nom.
+- F3a/F3b : parité par parseur, dans les deux sens, règle vide = échec (`PIEGES §33`).
+- F4b : **compte** de contrôles atteignables hors modale = **0** (`bug-017`), en HTTP.
+- F5a : matrice dérivée, rôle manquant = échec. F5b : couples peints, en HTTP, `rgb` résolus.
+- D2 : mutation **des gardes elles-mêmes** (`PIEGES §37`), spécificité vérifiée avant toute
+  mutation CSS (`PIEGES §25`), un mutant par invocation (`PIEGES §35`).

@@ -144,22 +144,22 @@ class FakeNode {
 // re-synchronisée pour cette feature.
 const IDS = [
   "agents", "bandeau-hote", "bandeau-hote-bouton", "bandeau-hote-texte",
-  "barre", "bascule-theme", "bouton-generer-brouillon", "compteur-prompt",
+  "barre", "bouton-generer-brouillon", "compteur-prompt",
   "compteur-specs", "derogation-minimale", "erreur-generer-brouillon",
   "fichiers", "filtre", "filtre-divergences", "horodatage",
-  "icone-systeme-clair", "icone-systeme-sombre", "jauge-flux", "jauge-git",
+  "jauge-flux", "jauge-git",
   "jauge-pilotage", "kanban", "legende-cycles", "nav-sections", "note-agents",
   "pied-cycles", "pilotage-corps", "porte-aide", "porte-bouton",
   "porte-champ", "porte-corps", "porte-erreur", "porte-jeton", "porte-titre",
-  "projet", "prompt", "redaction-corps", "systeme", "theme-clair",
-  "theme-sombre", "theme-systeme", "timeline", "tiroir", "tiroir-contenu",
+  "projet", "prompt", "redaction-corps", "systeme",
+  "timeline", "tiroir", "tiroir-contenu",
   "tiroir-fermer", "tiroir-titre", "titre-besoin", "titre-cycles", "titre-demande",
   "titre-pilotage", "workflows",
 ].concat(["agents", "systeme", "developper", "cycles", "fichiers", "evenements"]
   .flatMap((s) => ["onglet-" + s, "section-" + s, "titre-section-" + s]));
 
 const CACHES_PAR_DEFAUT = new Set([
-  "bandeau-hote", "tiroir", "porte-jeton", "porte-erreur", "icone-systeme-sombre",
+  "bandeau-hote", "tiroir", "porte-jeton", "porte-erreur",
   "erreur-generer-brouillon",
   "section-systeme", "section-developper", "section-cycles",
   "section-fichiers", "section-evenements",
