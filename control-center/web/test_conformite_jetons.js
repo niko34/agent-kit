@@ -217,6 +217,27 @@ const horsTout = [...appNoms].filter((n) =>
 check("F1_aucune_propriete_root_hors_de_tout_registre", horsTout.length === 0,
   horsTout.length + " propriété(s) non couverte(s) : " + horsTout.slice(0, 8).join(", "));
 
+// -- Critère d'acceptation LITTÉRAL de la spec : « Aucun hexadécimal hors du
+// bloc :root ». Jusqu'ici AUCUNE garde du dépôt ne l'appliquait à `app.css`
+// lui-même : `hexHorsRoot`/`hexHorsRootAvecContexte` ne servaient qu'au
+// PROTOTYPE (dérivation pour F1/F5a), jamais à l'implémentation livrée —
+// trouvé par mutation (un hex tout neuf hors `:root`, `.marque{color:
+// #123456}`, traverse les 33 fichiers/1330 cas SANS échec). Seuls les hex
+// dont la valeur est déjà EXPLICITEMENT tracée (un `JETONS_AJOUTES.valeur`,
+// ou l'unique exception de contexte non peignant `#000`, arrêt de
+// `mask: radial-gradient(...)` — pas une couleur rendue, déjà relevée au
+// lot 0) sont tolérés — tout AUTRE hex, peignant
+// ou non, hors `:root`, est un échec DUR : une nouvelle valeur qui échappe à
+// toute table de jetons est exactement ce que F1 existe pour interdire.
+const EXCEPTIONS_HEX_HORS_ROOT_CONTEXTE_NON_PEIGNANT = ["mask"]; // arrêt de dégradé, pas une couleur rendue
+const valeursAjouteesConnues = new Set(JETONS_AJOUTES.map((j) => j.valeur));
+const hexHorsRootApp = lib.hexHorsRootAvecContexte(cssApp);
+const hexNonTraces = hexHorsRootApp.filter((o) =>
+  !EXCEPTIONS_HEX_HORS_ROOT_CONTEXTE_NON_PEIGNANT.includes(o.prop) && !valeursAjouteesConnues.has(o.hex));
+check("F1_aucun_hexadecimal_hors_root_non_trace_dans_app_css", hexNonTraces.length === 0,
+  hexNonTraces.length + " hex non tracé(s) (ni contexte non-peignant déclaré, ni JETONS_AJOUTES) : " +
+  hexNonTraces.slice(0, 10).map((o) => o.hex + " @ " + o.selecteur + " (" + o.prop + ")").join(" | "));
+
 // -- clause miroir des DEUX listes transitoires : une entrée déclarée qui
 // n'existe plus dans app.css est une liste PÉRIMÉE, pas une liste à jour —
 // même défaut que les jetons de rôle en F5a (rolesPerimes).

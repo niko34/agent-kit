@@ -168,6 +168,42 @@
       </section>
     </div>
 
+    <!-- Kanban M3 câblé (F10, feature-021 cycle 2, lot 5) : `#kanban`
+         (`.kanban-grid`) est peuplé par `rendreKanban`, lu depuis
+         `etat.colonnes` (ADR-0003, jamais figé à Todo/Doing/Done) — une
+         colonne par entrée, `column-<classe>` pour l'accroche visuelle.
+         `#backlog-count`/`#backlog-column-count` (id adoptés, F4a) restent
+         `.visually-hidden` (discrets, `#compteur-specs` reste le compteur
+         visible) mais portent désormais la MÊME mesure que lui, jamais une
+         seconde source de vérité.
+         Remonté directement sous la feuille de détail (feature-021, cycle 2,
+         lot 6, reboucle de fidélité, F18) : le prototype place le Backlog en
+         second élément visible, juste après le graphe — cette section vivait
+         jusque-là enterrée sous Agents/Système/demande, que le prototype ne
+         positionne pas du tout (sections préexistantes du centre, conservées
+         mais reléguées APRÈS le kanban, feature-021 cycle 2 notes §2). -->
+    <section class="backlog" aria-labelledby="backlog-title">
+      <div class="kanban-heading">
+        <div class="kanban-title-row entete-bloc">
+          <h2 id="backlog-title">Spécifications</h2>
+          <span class="compteur" id="compteur-specs"></span>
+          <span class="backlog-count visually-hidden" id="backlog-count">—</span>
+        </div>
+        <div class="kanban-actions filtres">
+          <input type="search" id="filtre" placeholder="Filtrer par identifiant, titre ou statut…"
+                 autocomplete="off" spellcheck="false">
+          <label class="bascule">
+            <input type="checkbox" id="filtre-divergences">
+            <span>divergences seulement</span>
+          </label>
+        </div>
+      </div>
+      <div class="kanban-viewport" tabindex="0" role="region" aria-label="Backlog, défilement vertical commun aux colonnes">
+        <div class="kanban-grid" id="kanban"></div>
+      </div>
+      <span id="backlog-column-count" class="visually-hidden">—</span>
+    </section>
+
     <section class="bloc" aria-labelledby="titre-agents">
       <h2 id="titre-agents">Agents</h2>
       <p class="note" id="note-agents">découverts dans le dépôt</p>
@@ -206,36 +242,6 @@
         <button type="button" id="bouton-generer-brouillon" class="pilotage-secondaire">Générer le brouillon</button>
       </div>
       <div id="redaction-corps"></div>
-    </section>
-
-    <!-- Kanban M3 câblé (F10, feature-021 cycle 2, lot 5) : `#kanban`
-         (`.kanban-grid`) est peuplé par `rendreKanban`, lu depuis
-         `etat.colonnes` (ADR-0003, jamais figé à Todo/Doing/Done) — une
-         colonne par entrée, `column-<classe>` pour l'accroche visuelle.
-         `#backlog-count`/`#backlog-column-count` (id adoptés, F4a) restent
-         `.visually-hidden` (discrets, `#compteur-specs` reste le compteur
-         visible) mais portent désormais la MÊME mesure que lui, jamais une
-         seconde source de vérité. -->
-    <section class="backlog" aria-labelledby="backlog-title">
-      <div class="kanban-heading">
-        <div class="kanban-title-row entete-bloc">
-          <h2 id="backlog-title">Spécifications</h2>
-          <span class="compteur" id="compteur-specs"></span>
-          <span class="backlog-count visually-hidden" id="backlog-count">—</span>
-        </div>
-        <div class="kanban-actions filtres">
-          <input type="search" id="filtre" placeholder="Filtrer par identifiant, titre ou statut…"
-                 autocomplete="off" spellcheck="false">
-          <label class="bascule">
-            <input type="checkbox" id="filtre-divergences">
-            <span>divergences seulement</span>
-          </label>
-        </div>
-      </div>
-      <div class="kanban-viewport" tabindex="0" role="region" aria-label="Backlog, défilement vertical commun aux colonnes">
-        <div class="kanban-grid" id="kanban"></div>
-      </div>
-      <span id="backlog-column-count" class="visually-hidden">—</span>
     </section>
 
     <section class="bloc" aria-labelledby="titre-pilotage">

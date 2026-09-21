@@ -611,6 +611,7 @@ def main():
 
     couples_interdits_peints = []
     couples_sans_jeton = []
+    encres_inconnues_sous_seuil = []
     for c in mesures["couplesPeints"]:
         rgb_c = rgb_texte_vers_tuple(c["couleur"])
         rgb_f = rgb_texte_vers_tuple(c["fond"])
@@ -620,6 +621,24 @@ def main():
         nom_f = rgb_vers_nom.get(rgb_f)
         if nom_c is None:
             couples_sans_jeton.append(("encre-inconnue", c["couleur"], c["fond"]))
+            # Une encre qui ne se rattache à AUCUN jeton connu (hex codé en
+            # dur réintroduit, par exemple) ÉCHAPPAIT jusqu'ici entièrement à
+            # la vérification : ni la table des interdits (indexée par NOM de
+            # jeton) ni aucune autre assertion ne la regardait — seul son
+            # compte était imprimé. Trouvé par mutation (`.marque { color:
+            # #fefefe }` sur fond quasi identique, contraste ~1.03:1) : la
+            # suite restait à 12 cas, 0 échec. On calcule ici le contraste
+            # BRUT (peu importe l'identité du jeton) contre le seuil de son
+            # rôle — ce qui referme le trou sans introduire de faux positif
+            # sur un fond légitimement hors palette (blanc pur des traits
+            # SVG), puisqu'on ne juge que l'ENCRE inconnue, jamais le fond.
+            seuil_role = matrice["SEUIL"].get(c["role"], matrice["SEUIL"].get("texte"))
+            contraste_brut = contraste_rgb(rgb_c, rgb_f)
+            if contraste_brut < seuil_role:
+                encres_inconnues_sous_seuil.append({
+                    "role": c["role"], "couleur": c["couleur"], "fond": c["fond"],
+                    "contraste": round(contraste_brut, 2), "seuil": seuil_role,
+                })
             continue
         if nom_f is None:
             # Le fond peut être blanc pur (traits SVG, hors palette) — pas
@@ -635,6 +654,9 @@ def main():
     check("F5b_couples_interdits_jamais_peints", len(couples_interdits_peints) == 0,
           "%d couple(s) interdit(s) réellement peint(s) : %s" % (len(couples_interdits_peints),
                                                                    couples_interdits_peints[:5]))
+    check("F5b_encre_inconnue_respecte_le_seuil_de_son_role", len(encres_inconnues_sous_seuil) == 0,
+          "%d encre(s) sans jeton connu SOUS le seuil de son rôle : %s" %
+          (len(encres_inconnues_sous_seuil), encres_inconnues_sous_seuil[:5]))
 
     # ================================================================== #
     # Les APLATS — le rôle appartient à l'usage, pas au jeton
