@@ -274,16 +274,36 @@ def _locale(adresse_ip):
     bug-012) se prend PAR REQUÊTE, jamais sur `[serveur].hote` : `0.0.0.0` sert
     les deux catégories sur le même socket.
 
-    Vérifié par exécution : `127.0.0.1`, `127.0.0.5`, `::1`,
-    `::ffff:127.0.0.1` → True ; `192.168.1.55`, `0.0.0.0` → False. Une adresse
-    imprononçable (ne devrait jamais arriver depuis `client_address`, mais on
-    ne suppose rien) est traitée comme NON locale — défaut sûr : mieux vaut
-    exiger un jeton à tort que l'omettre à tort.
+    Vérifié par exécution SUR PYTHON 3.13.5 SEULEMENT (bug-018) :
+    `127.0.0.1`, `127.0.0.5`, `::1`, `::ffff:127.0.0.1` → True ;
+    `192.168.1.55`, `0.0.0.0` → False. Une adresse imprononçable (ne devrait
+    jamais arriver depuis `client_address`, mais on ne suppose rien) est
+    traitée comme NON locale — défaut sûr : mieux vaut exiger un jeton à tort
+    que l'omettre à tort.
+
+    ⚠️ `IPv6Address.is_loopback` seul ne suffit pas sur toute version : avant
+    le correctif CPython gh-117566 (absent de 3.12.3, présent à partir de
+    3.12.4 et de toute la série 3.13), une adresse IPv4 mappée en IPv6 comme
+    `::ffff:127.0.0.1` n'était PAS reconnue comme boucle locale — c'est ce qui
+    rendait `bug-018` rouge en CI (Python système d'`ubuntu-24.04` = 3.12.3)
+    et vert sur ce poste (3.13.5). On extrait donc l'adresse IPv4 mappée
+    NOUS-MÊMES, via `ipv4_mapped` (présent sur toute version considérée), et
+    on repose la question sur elle — jamais une reconnaissance par PRÉFIXE de
+    chaîne, qui traiterait à tort `::ffff:192.168.1.55` (mappée NON locale)
+    comme locale et ouvrirait l'écriture sans jeton au réseau (l'inverse de
+    ce que `bug-012` a corrigé). Aucune opération de chaîne ici : seulement
+    des objets `ipaddress`.
     """
     try:
-        return ipaddress.ip_address(adresse_ip).is_loopback
+        ip = ipaddress.ip_address(adresse_ip)
     except (ValueError, TypeError):
         return False
+    # `ipv4_mapped` n'existe que sur `IPv6Address` : `getattr` avec défaut
+    # `None`, jamais d'accès direct (`IPv4Address.ipv4_mapped` lève
+    # `AttributeError`, qu'aucun `except` ci-dessus n'attrape — mesuré,
+    # condition GATE P1 n°4 de bug-018).
+    mappee = getattr(ip, "ipv4_mapped", None)
+    return (mappee if mappee is not None else ip).is_loopback
 
 
 def _raison_publique(jeton, config):

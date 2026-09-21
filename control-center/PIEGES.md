@@ -35,6 +35,14 @@ partiel écrit dans le vrai journal.**
 > Coûté une fois : un test a échoué pour une mauvaise raison, et le diagnostic a
 > porté sur le mauvais défaut.
 
+⚠️ **Le script `tools/lancer_suite_control_center_non_root.sh` (§43) est un
+clone partiel assumé, pas une exception à cette règle** : il ne copie que
+`control-center/` et trois chemins déclarés, **jamais `.gitlab/` ni
+`.github/`**. Tout test qui lit les fichiers de CI des deux forges
+(`test_ci_decouverte.py`, `bug-018`/`bug-019`) s'y **saute donc toujours** —
+proprement, 0 cas, pas un échec, mais un angle mort à connaître avant de
+comparer un compte de cas obtenu en non-root à un compte obtenu en root.
+
 ## 2. Le port 8788 appartient à l'utilisateur
 
 Son serveur y tourne. **Ne pas le prendre, ne pas le tuer.** Prendre un port
@@ -500,6 +508,111 @@ quand le code ne gère rien**, si l'agent qui mesure tourne en root.
 la chaîne des répertoires parents** (scratchpad compris) — sans quoi
 `nobody` ne peut pas non plus traverser jusqu'au fichier, pour une raison
 différente mais tout aussi fausse.
+
+## 44. Un `<canvas>` ne garde qu'un seul type de contexte
+
+Sonder plusieurs `getContext()` sur le **même** `<canvas>` (par exemple
+`getContext("2d")` puis `getContext("webgl")`, ou l'inverse, pour tester la
+disponibilité de plusieurs rendus) rend `null` au second appel — pas parce
+que le second type de contexte est indisponible, mais parce que le premier
+appel a déjà **figé** le type de ce canevas. Un tel enchaînement conclut à
+tort qu'une capacité est absente.
+
+**Une sonde de disponibilité de contexte se fait sur un `<canvas>` neuf par
+type sondé, jamais en réutilisant le même élément.**
+
+## 45. Après `nohup … &`, `$!` désigne le shell enveloppant, pas le processus qui écoute
+
+`nohup python3 serveur.py &` (ou toute forme équivalente passant par un
+sous-shell) fait que `$!` capture le PID du **shell** lancé par `nohup`, pas
+celui de l'interpréteur Python qui tient effectivement le port. `kill $!`
+tue alors ce shell — le processus qui écoute reste vivant, le port reste
+pris, et un fichier neuf déposé ensuite semble **ne jamais devenir
+servable**, alors que le vrai serveur tourne encore sur l'ancien code.
+Variante de §3 (« tout arrêt de processus vise un PID capturé, jamais un
+motif ») : §3 dit de ne pas viser un motif, mais ne dit pas que `$!`
+peut lui-même désigner le **mauvais** processus dans ce cas précis.
+
+**Parade** : vérifier ce qui tient réellement le port avant de conclure —
+`ss -ltnp | grep ':<port>'` — plutôt que de faire confiance à `$!` après un
+`nohup … &`.
+
+## 46. Le serveur relit `web/` à chaque requête mais fige ses routes au démarrage
+
+Distinct de §8 (qui ne parle que d'un **fichier neuf** sous `web/`, 404
+jusqu'à relance) : ici, une route **existante** du backend (`do_GET`/`do_POST`)
+peut rendre 404 alors que le fichier qu'elle est censée servir existe bel et
+bien. Cause : les fichiers statiques sont relus sur disque à chaque requête,
+mais la table de routage elle-même est calculée une fois, au démarrage
+(`server.py`, `demarrer()`). Un commit qui ajoute une route dans `server.py`
+laisse donc le frontend en avance sur le backend tant que le serveur n'a pas
+été relancé — le symptôme (404 sur une route qu'on vient d'écrire) ressemble
+à une faute côté frontend, alors que c'est le serveur en mémoire qui est
+périmé.
+
+**Après tout commit touchant `server.py`, relancer le serveur avant de
+mesurer quoi que ce soit contre lui** — la même discipline que §8, mais pour
+les routes, pas seulement pour les fichiers statiques.
+
+## 47. Mesurer en root ne mesure pas la CI
+
+Root lit un fichier dont le mode interdit la lecture à son propriétaire :
+`open()` franchit les permissions de fichier pour lui, pas pour un compte
+normal ni pour la CI. Une suite lancée en root peut donc rendre un verdict
+**vert** sur un comportement que tout autre exécutant verrait **rouge**, sans
+qu'aucun message ne le signale — ni l'un ni l'autre des deux verdicts n'est
+faux en soi, ils mesurent simplement des choses différentes.
+
+**Coûté sept runs de CI d'affilée** (`bug-018`) : la suite était verte en
+local à chaque cycle, rouge en intégration continue depuis le commit qui a
+introduit `jeton.py`, et trois lots ont été livrés dans cet intervalle sans
+que personne ne le voie.
+
+**Tout compte de cas produit pour ce module doit dire sous quelle identité il
+a été obtenu.** « 1887 cas, 0 échec » ne veut rien dire seul ; « 1887 cas,
+0 échec, en root » et « 1883 cas, 0 échec, sous `nobody` » sont deux mesures
+distinctes, et c'est l'écart entre les deux (ou son absence) qui est
+l'information. Lancer sous les deux identités : voir §43 et
+`tools/lancer_suite_control_center_non_root.sh`.
+
+## 48. `while … done < fichier` partage son `stdin` avec ce qu'il lance
+
+Une boucle shell qui lit la liste des fichiers à traiter depuis son entrée
+standard (`while read f; do … done < liste.txt`) partage cette même entrée
+standard avec **tout ce qu'elle lance à l'intérieur**. Si un test invoqué
+dans la boucle lit `stdin` — même sans en avoir l'air, même sans y toucher
+explicitement — il avale le reste de la liste, et les fichiers suivants ne
+sont **jamais exécutés**. Rien ne le signale : la boucle se termine
+normalement, le job annonce le nombre de fichiers **découverts**, pas le
+nombre réellement **exécuté**, et sort en code 0.
+
+**Coûté une fois** (correctif de `bug-019`, dans le correctif lui-même) :
+4 fichiers découverts, 2 seulement exécutés, sortie « ✅ 4 fichier(s) …
+tous verts », code 0 — un faux vert produit par le code écrit pour corriger
+un faux vert.
+
+**Parade double** : rediriger l'entrée standard de chaque invocation vers
+`/dev/null` (`python3 "$fichier" < /dev/null`), **et** comparer le nombre de
+fichiers réellement exécutés au nombre découvert — faire échouer le job s'ils
+diffèrent. Annoncer un compte qu'on n'a pas réellement lancé est exactement
+le défaut qu'une découverte automatique est censée fermer ; la boucle qui la
+met en œuvre peut le reproduire sous une forme différente si son `stdin`
+n'est pas isolé.
+
+## 49. Le README de l'image runner GitHub porte deux listes Python distinctes
+
+`ubuntu-latest` (image `ubuntu-24.04` au moment de `bug-018`) documente à la
+fois le **logiciel système** (la version de `python3` réellement invoquée
+sans configuration explicite) et un **cache d'outils** pré-téléchargé mais
+**inactif tant qu'aucun `actions/setup-python` ne l'active**. Les deux listes
+citent des versions différentes, et confondre l'une avec l'autre donne la
+mauvaise version de Python — donc un diagnostic inversé sur tout défaut dont
+la cause dépend de la version exécutée.
+
+**Coûté une fois** (`bug-018`, défaut B) : sans le job de matrice qui active
+`setup-python`, la CI exécute le Python **système**, pas la dernière entrée
+du cache d'outils. Établir la version réellement en jeu exige de lire la
+bonne liste, jamais l'autre par défaut.
 
 ## Voir aussi
 

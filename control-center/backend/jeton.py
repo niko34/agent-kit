@@ -75,6 +75,16 @@ _MASQUE_INTERDIT = 0o077
 # Statué en GATE P1.
 _TAILLE_MIN = 16
 
+# Un jeton que son PROPRIÉTAIRE ne peut pas lire est une configuration cassée,
+# jamais un jeton actif (bug-018) : `open()` échoue déjà pour un utilisateur
+# normal, mais root franchit les permissions de fichier — ce qui rendait le
+# verdict dépendant de l'IDENTITÉ de l'exécutant, pas du fichier. La garde se
+# décide sur ce BIT de mode dans `info.st_mode`, JAMAIS sur ce que rendrait un
+# appel de vérification d'accès du système (mesuré en root : un tel appel
+# rend un accès en lecture VRAI sur `0200` ET sur `0000`, ce qui reconduirait
+# exactement le défaut — voir PIEGES.md et le journal de bug-018).
+_MASQUE_LECTURE_PROPRIETAIRE = 0o400
+
 
 class Jeton:
     """Résultat du chargement : soit un jeton actif, soit un refus motivé et
@@ -173,6 +183,15 @@ def charger(chemin, racine_projet):
     if permissions & _MASQUE_INTERDIT:
         return Jeton(refus="fichier_jeton trop permissif (mode %04o, attendu "
                             "au plus 0600)" % permissions)
+
+    # bug-018 : distinct du refus « absent ou illisible » ci-dessous (qui
+    # constate un ÉCHEC d'ouverture) — ici le fichier EST accessible à
+    # `os.stat`, son mode passe le masque groupe/autres, mais son propriétaire
+    # lui-même n'a pas le bit de lecture. Aucun chemin dans le motif : il
+    # traverse `_raison_publique()` jusqu'à `/api/etat` (server.py).
+    if not (permissions & _MASQUE_LECTURE_PROPRIETAIRE):
+        return Jeton(refus="fichier_jeton sans bit de lecture propriétaire "
+                            "(mode %04o) — corrigez avec chmod 600" % permissions)
 
     try:
         with open(chemin, "rb") as fichier:

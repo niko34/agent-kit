@@ -80,6 +80,17 @@ def main():
         chemin_640 = ecrire(hors_depot, "groupe.token", b"secret-normal-valide", mode=0o640)
         j = J.charger(chemin_640, depot)
         check("test_mode_640_refuse_aussi", not j.actif())
+        # bug-018, condition GATE P1 n°2 : la garde de mode (_MASQUE_INTERDIT)
+        # doit rester DEVANT la garde de lecture propriétaire — 0640 pose le
+        # bit de lecture propriétaire (0o400), donc SEUL un ordre correct le
+        # refuse par « trop permissif ». Une garde neuve placée AVANT
+        # _MASQUE_INTERDIT ne changerait rien pour 0640 (bit présent, elle ne
+        # se déclenche pas) : ce cas seul ne peut donc PAS détecter une
+        # inversion d'ordre — voir le motif épinglé sur `mode_interdit`
+        # ci-dessous, qui lui le peut.
+        check("test_mode_640_motif_est_trop_permissif_jamais_lecture",
+              "permissif" in (j.refus or "") and "lecture propriétaire" not in (j.refus or ""),
+              "motif obtenu : %r" % j.refus)
 
         chemin_600 = ecrire(hors_depot, "correct.token", b"secret-normal-valide", mode=0o600)
         j = J.charger(chemin_600, depot)
@@ -105,13 +116,51 @@ def main():
                   not j.actif(),
                   "bits groupe/autres posés (mode %04o < 0600 en valeur "
                   "mais lisible hors propriétaire)" % mode_interdit)
+            # bug-018, condition GATE P1 n°2 : chacun de ces modes a le bit
+            # propriétaire de LECTURE à zéro (aucun n'a 0o400 posé) — c'est
+            # exactement le cas qui distingue les deux ordres possibles des
+            # deux gardes. Si la garde de lecture propriétaire passait AVANT
+            # _MASQUE_INTERDIT, ces fichiers seraient refusés par le motif
+            # NEUF (« lecture propriétaire ») au lieu de « trop permissif » —
+            # un changement de motif qu'aucune assertion sur `actif()` seul
+            # ne peut détecter.
+            motif = j.refus or ""
+            check("test_mode_%04o_motif_est_trop_permissif_jamais_lecture"
+                  % mode_interdit,
+                  "permissif" in motif and "lecture propriétaire" not in motif,
+                  "motif obtenu : %r" % motif)
 
-        for mode_permis in (0o600, 0o400, 0o500, 0o200, 0o300, 0o100):
+        # bug-018 : parmi les six modes ci-dessus, `0200`, `0300` et `0100`
+        # n'ont PAS le bit de lecture propriétaire — un utilisateur normal ne
+        # peut jamais les lire (`open()` échoue), root les lit quand même. Le
+        # verdict dépendait donc de l'IDENTITÉ de l'exécutant. Décidé
+        # désormais sur le bit `0o400` : seuls les modes qui le posent restent
+        # actifs, les autres sont refusés avec un motif NOMMÉ, identique dans
+        # les deux identités.
+        for mode_permis in (0o600, 0o400, 0o500, 0o700):
             chemin_bits = ecrire(hors_depot, "ok-%04o.token" % mode_permis,
                                   b"secret-normal-valide", mode=mode_permis)
             j = J.charger(chemin_bits, depot)
             check("test_mode_%04o_actif_bits_proprietaire_seuls" % mode_permis,
                   j.actif(), j.refus or "")
+
+        # ⚠️ Piège (bug-018, PIEGES §43-like) : sous un exécutant NON-root,
+        # `0200` rend déjà `actif() == False` par le seul échec d'`open()` —
+        # un test qui n'assertait que `not j.actif()` resterait VERT même si
+        # la garde neuve disparaissait, et ne mourrait qu'en root. L'assertion
+        # porte donc sur le MOTIF : textuellement distinct de « fichier_jeton
+        # absent ou illisible », et sans le chemin du fichier.
+        for mode_refuse in (0o200, 0o300, 0o100, 0o000):
+            chemin_bits = ecrire(hors_depot, "non-lisible-%04o.token" % mode_refuse,
+                                  b"secret-normal-valide", mode=mode_refuse)
+            j = J.charger(chemin_bits, depot)
+            motif = j.refus or ""
+            check("test_mode_%04o_refuse_sans_bit_de_lecture" % mode_refuse,
+                  not j.actif() and "lecture propriétaire" in motif
+                  and "absent ou illisible" not in motif,
+                  "motif obtenu : %r" % motif)
+            check("test_mode_%04o_motif_sans_chemin_de_fichier" % mode_refuse,
+                  chemin_bits not in motif, "motif obtenu : %r" % motif)
 
         # --- hors dépôt, statué en GATE P1 --------------------------------------
         chemin_dans_le_depot = ecrire(depot, ".token-dans-le-depot", b"secret-normal-valide")

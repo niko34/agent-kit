@@ -124,55 +124,87 @@ hygiene:tests:
         echo "ℹ️  tests/test_sync_copilot_agents.py absent — rien à lancer."
       fi
 
-# Job 5 (bug-004) : suite du centre de contrôle. Même base `.tests_base`
-# (git n'y sert à rien mais python3 oui ; on ne crée pas une troisième base
-# pour un besoin qui recouvre déjà celui-ci). Même patron que `hygiene:tests`
-# ci-dessus : `control-center/` est aussi un chemin CONDITIONNEL du kit.
+# Job 5 (bug-004, corrigé par bug-019) : suite du centre de contrôle. Même base
+# `.tests_base` (git n'y sert à rien mais python3 oui). Même patron que
+# `hygiene:tests` ci-dessus : `control-center/` est aussi un chemin CONDITIONNEL
+# du kit.
 #
-# ⚠️ Différence structurante avec `hygiene:tests` : ces six fichiers ne sont
-# PAS des suites `unittest` — ce sont des scripts AUTONOMES qui sortent en
-# code 1 à l'échec. D'où un appel direct `python3 <fichier>`, jamais
-# `unittest discover` (qui ne les collecterait pas : ils ne dérivent d'aucun
-# `TestCase`).
+# ⚠️ Différence structurante avec `hygiene:tests` : ces fichiers ne sont PAS des
+# suites `unittest` — ce sont des scripts AUTONOMES qui sortent en code 1 à
+# l'échec. D'où un appel direct `python3 <fichier>`, jamais `unittest discover`
+# (qui ne les collecterait pas : ils ne dérivent d'aucun `TestCase`).
+#
+# ⚠️ La liste est DÉCOUVERTE, jamais énumérée à la main — corrigé par `bug-019`.
+# Ce job a énuméré SIX fichiers pendant que le dépôt en comptait VINGT-TROIS :
+# les dix-sept manquants incluaient `test_jeton.py` et `test_server_bug012.py`,
+# précisément les deux qui échouaient, et `test_agents.py`, que le workflow
+# GitHub signale comme déjà oublié une fois par une énumération manuelle. La
+# pipeline était donc verte PARCE QU'ELLE NE LANÇAIT PAS ce qui échouait, et
+# « la CI est rouge » et « la CI est verte » étaient vraies simultanément sur le
+# même commit, selon la forge.
+#
+# ⚠️ Écrit en POSIX, pas en bash : l'image est `alpine:3.20` et le `script:` de
+# GitLab tourne en `sh`. Le `mapfile` employé par le workflow GitHub est une
+# primitive bash et ne passerait pas ici. La boucle lit depuis un fichier plutôt
+# que depuis un tube, pour qu'un échec reste visible hors du sous-shell.
+#
+# La découverte ÉCHOUE si elle ne trouve aucun fichier alors que
+# `control-center/` existe : une liste vide ne doit jamais se lire comme « tout
+# est vert ». Ne pas citer ici de compte de fichiers : il périme aussitôt.
 hygiene:centre-de-controle:
   extends: .tests_base
   script:
     - |
-      if [ -f control-center/hooks/test_record_event.py ]; then
-        python3 control-center/hooks/test_record_event.py
-      else
-        echo "ℹ️  control-center/hooks/test_record_event.py absent — rien à lancer."
+      if [ ! -d control-center ]; then
+        echo "ℹ️  control-center/ absent — rien à lancer."
+        exit 0
       fi
-    - |
-      if [ -f control-center/backend/test_specs.py ]; then
-        python3 control-center/backend/test_specs.py
-      else
-        echo "ℹ️  control-center/backend/test_specs.py absent — rien à lancer."
+
+      liste=$(mktemp)
+      find control-center -type f -name 'test_*.py' | sort > "$liste"
+      nombre=$(wc -l < "$liste" | tr -d ' ')
+
+      if [ "$nombre" -eq 0 ]; then
+        echo "❌ control-center/ existe mais aucun fichier test_*.py n'a été découvert." >&2
+        echo "   Une liste vide ne doit jamais se lire comme « tout est vert »." >&2
+        exit 1
       fi
-    - |
-      if [ -f control-center/backend/test_events.py ]; then
-        python3 control-center/backend/test_events.py
-      else
-        echo "ℹ️  control-center/backend/test_events.py absent — rien à lancer."
+
+      echo "Fichiers de test découverts ($nombre) :"
+      sed 's/^/  - /' "$liste"
+      echo
+
+      echecs=$(mktemp)
+      lances=$(mktemp)
+      while IFS= read -r fichier; do
+        echo "=== $fichier ==="
+        # ⚠️ `< /dev/null` : sans lui, `python3` hérite du `stdin` de la boucle,
+        # qui EST la liste des fichiers. Un test qui lit `stdin` avale le reste
+        # de la liste, les fichiers suivants ne sont jamais lancés, et le job
+        # annonce le nombre DÉCOUVERT en concluant « tous verts ».
+        # Mesuré pendant la revue de bug-019 : 4 découverts, 2 exécutés,
+        # « ✅ 4 fichier(s) … tous verts », code 0. Un faux vert dans le code
+        # écrit pour corriger un faux vert.
+        python3 "$fichier" < /dev/null || echo "$fichier" >> "$echecs"
+        echo "$fichier" >> "$lances"
+        echo
+      done < "$liste"
+
+      # On compare EXÉCUTÉS à DÉCOUVERTS : annoncer un compte qu'on n'a pas
+      # lancé est le défaut que ce job existe pour fermer.
+      executes=$(wc -l < "$lances" | tr -d ' ')
+      if [ "$executes" -ne "$nombre" ]; then
+        echo "❌ $nombre fichier(s) découvert(s) mais $executes exécuté(s)." >&2
+        echo "   La boucle a été interrompue — ne jamais lire ce cas comme un succès." >&2
+        exit 1
       fi
-    - |
-      if [ -f control-center/backend/test_config.py ]; then
-        python3 control-center/backend/test_config.py
-      else
-        echo "ℹ️  control-center/backend/test_config.py absent — rien à lancer."
+
+      if [ -s "$echecs" ]; then
+        echo "❌ Fichiers de test en échec :" >&2
+        sed 's/^/  - /' "$echecs" >&2
+        exit 1
       fi
-    - |
-      if [ -f control-center/backend/test_vcs.py ]; then
-        python3 control-center/backend/test_vcs.py
-      else
-        echo "ℹ️  control-center/backend/test_vcs.py absent — rien à lancer."
-      fi
-    - |
-      if [ -f control-center/backend/test_server.py ]; then
-        python3 control-center/backend/test_server.py
-      else
-        echo "ℹ️  control-center/backend/test_server.py absent — rien à lancer."
-      fi
+      echo "✅ $nombre fichier(s) de test découverts, $executes exécuté(s), tous verts."
 
 # Parité avec le job GitHub `agents-copilot` : `python3` seul suffit, le
 # script ne fait aucun appel git. Base indépendante de `.tests_base` (qui
