@@ -1,0 +1,807 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maquette — mono-écran unifié (feature-021)</title>
+<!--
+  MAQUETTE DE VALIDATION — feature-021, U2/U3 (second passage ux-ui-designer).
+  Ce fichier est HORS de `control-center/web/` : il ne représente PAS ce qui
+  est servi, et s'ouvre en `file://`. Contraintes tenues malgré ça (voir
+  `control-center/maquettes/2026-09-19-mono-ecran.js` pour le détail) :
+
+  - AUCUNE ressource distante, AUCUNE dépendance tierce (ADR-0006) : deux
+    fichiers, cette page et son script, rien d'autre.
+  - AUCUN `<script>` inline, nulle part : la CSP réelle du serveur
+    (`default-src 'self'`, `script-src` hérité) le refuse, même si `file://`
+    ne l'applique pas ici — reproduire l'erreur du 2026-09-15 (2 scripts
+    inline dans la maquette de référence) ferait échouer le cycle 2 à la
+    première vérification HTTP.
+  - Un seul `<style>` dans le head : AUTORISÉ (`style-src 'unsafe-inline'`).
+  - Pas de `type="module"` : les modules ES sont refusés en `file://`.
+  - Tous les hexadécimaux sont dans le bloc `:root` ci-dessous, recopiés tels
+    quels depuis `control-center/web/app.css` (lignes 26-312) — aucun jeton
+    inventé, aucune couleur ailleurs dans cette feuille.
+
+  U1 (ce qui disparaît) est déjà exécuté ICI, pas seulement écrit dans la
+  spec : pas de colonne de navigation, pas d'onglets de section, pas
+  d'accordéon, pas de `.table-passages`, pas de liste de commits, pas de
+  panneau Événements permanent, pas de `#compteur-prompt`.
+-->
+<style>
+/* ============================== :root — jetons ==========================
+ * Recopié VERBATIM depuis control-center/web/app.css (lignes 26-312, commit
+ * d1838ed). Rien n'est modifié, rien n'est ajouté : c'est la même palette,
+ * les deux mêmes thèmes, les mêmes identités d'agent. Voir app.css pour les
+ * commentaires de méthode (mappage de gamut, marge de contraste, etc.) —
+ * non reproduits ici pour ne pas laisser deux versions d'un même
+ * raisonnement diverger avec le temps. */
+:root {
+  /* -- littéraux clairs -- */
+  --clair-fond:        #f5f7f9;
+  --clair-surface:     #ffffff;
+  --clair-surface-2:   #eef0f4;
+  --clair-creux:       #ebedf1;
+  --clair-trait:       #c4c7ce;
+  --clair-trait-fin:   #d3d6db;
+  --clair-contour-etat: #777777;
+  --clair-texte:       #1d1f23;
+  --clair-texte-doux:  #52555c;
+  --clair-texte-faible:#60636a;
+  --clair-accent:      #282012;
+  --clair-actif:       #142f28;
+  --clair-alerte:      #3f260e;
+  --clair-echec:       #560b03;
+  --clair-ombre: rgba(29, 31, 35, 0.16);
+  --clair-a-backend-developer: #005568;
+  --clair-f-backend-developer: #9ae6ff;
+  --clair-a-security-reviewer: #00594b;
+  --clair-f-security-reviewer: #9debd8;
+  --clair-a-test-engineer:     #5a3090;
+  --clair-f-test-engineer:     #dfd0ff;
+  --clair-a-spec-reader:       #1f439d;
+  --clair-f-spec-reader:       #c7daff;
+  --clair-a-code-reviewer:     #8c190a;
+  --clair-f-code-reviewer:     #ffcbc1;
+  --clair-a-debugger:          #644500;
+  --clair-f-debugger:          #f6d49b;
+  --clair-a-doc-writer:        #7a1e6a;
+  --clair-f-doc-writer:        #fdc5ee;
+  --clair-a-frontend-developer:#375700;
+  --clair-f-frontend-developer:#c7e5ab;
+  --clair-a-neutre:            #4c4c4c;
+  --clair-f-neutre:            #d9d9d9;
+
+  /* -- littéraux sombres -- */
+  --sombre-fond:        #14171a;
+  --sombre-surface:     #1b1f23;
+  --sombre-surface-2:   #22272c;
+  --sombre-creux:       #101315;
+  --sombre-trait:       #2e343a;
+  --sombre-trait-fin:   #262b30;
+  --sombre-contour-etat: #828282;
+  --sombre-texte:       #e8e6e1;
+  --sombre-texte-doux:  #a8b0b7;
+  --sombre-texte-faible:#8a9299;
+  --sombre-accent:      #f1dfbf;
+  --sombre-actif:       #7df0d6;
+  --sombre-alerte:      #f6cba5;
+  --sombre-echec:       #fdc5ba;
+  --sombre-ombre: rgba(0, 0, 0, 0.45);
+  --sombre-voile: rgba(29, 31, 35, 0.45);
+  --sombre-a-backend-developer: #25c0e6;
+  --sombre-f-backend-developer: #001f27;
+  --sombre-a-security-reviewer: #2dc8ac;
+  --sombre-f-security-reviewer: #00211a;
+  --sombre-a-test-engineer:     #bb9af4;
+  --sombre-f-test-engineer:     #250047;
+  --sombre-a-spec-reader:       #84acff;
+  --sombre-f-spec-reader:       #000c54;
+  --sombre-a-code-reviewer:     #f58d7b;
+  --sombre-f-code-reviewer:     #390200;
+  --sombre-a-debugger:          #d9a440;
+  --sombre-f-debugger:          #261800;
+  --sombre-a-doc-writer:        #e18dcd;
+  --sombre-f-doc-writer:        #33002b;
+  --sombre-a-frontend-developer:#92be62;
+  --sombre-f-frontend-developer:#112000;
+  --sombre-a-neutre:            #aeaeae;
+  --sombre-f-neutre:            #1b1b1b;
+
+  /* ---- jetons servis (clair, défaut) ---- */
+  --fond:        var(--clair-fond);
+  --surface:     var(--clair-surface);
+  --surface-2:   var(--clair-surface-2);
+  --creux:       var(--clair-creux);
+  --trait:       var(--clair-trait);
+  --trait-fin:   var(--clair-trait-fin);
+  --contour-etat:var(--clair-contour-etat);
+  --texte:       var(--clair-texte);
+  --texte-doux:  var(--clair-texte-doux);
+  --texte-faible:var(--clair-texte-faible);
+  --accent:      var(--clair-accent);
+  --actif:       var(--clair-actif);
+  --alerte:      var(--clair-alerte);
+  --echec:       var(--clair-echec);
+  --ombre: var(--clair-ombre);
+  --voile: var(--sombre-voile);
+  --a-backend-developer: var(--clair-a-backend-developer);
+  --f-backend-developer: var(--clair-f-backend-developer);
+  --a-security-reviewer: var(--clair-a-security-reviewer);
+  --f-security-reviewer: var(--clair-f-security-reviewer);
+  --a-test-engineer:     var(--clair-a-test-engineer);
+  --f-test-engineer:     var(--clair-f-test-engineer);
+  --a-spec-reader:       var(--clair-a-spec-reader);
+  --f-spec-reader:       var(--clair-f-spec-reader);
+  --a-code-reviewer:     var(--clair-a-code-reviewer);
+  --f-code-reviewer:     var(--clair-f-code-reviewer);
+  --a-debugger:          var(--clair-a-debugger);
+  --f-debugger:          var(--clair-f-debugger);
+  --a-doc-writer:        var(--clair-a-doc-writer);
+  --f-doc-writer:        var(--clair-f-doc-writer);
+  --a-frontend-developer:var(--clair-a-frontend-developer);
+  --f-frontend-developer:var(--clair-f-frontend-developer);
+  --a-neutre:            var(--clair-a-neutre);
+  --f-neutre:            var(--clair-f-neutre);
+  --rebouclage: var(--a-debugger);
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --hauteur-barre: 62px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="clair"]) {
+    --fond:        var(--sombre-fond);
+    --surface:     var(--sombre-surface);
+    --surface-2:   var(--sombre-surface-2);
+    --creux:       var(--sombre-creux);
+    --trait:       var(--sombre-trait);
+    --trait-fin:   var(--sombre-trait-fin);
+    --contour-etat:var(--sombre-contour-etat);
+    --texte:       var(--sombre-texte);
+    --texte-doux:  var(--sombre-texte-doux);
+    --texte-faible:var(--sombre-texte-faible);
+    --accent:      var(--sombre-accent);
+    --actif:       var(--sombre-actif);
+    --alerte:      var(--sombre-alerte);
+    --echec:       var(--sombre-echec);
+    --ombre: var(--sombre-ombre);
+    --voile: var(--sombre-voile);
+    --a-backend-developer: var(--sombre-a-backend-developer);
+    --f-backend-developer: var(--sombre-f-backend-developer);
+    --a-security-reviewer: var(--sombre-a-security-reviewer);
+    --f-security-reviewer: var(--sombre-f-security-reviewer);
+    --a-test-engineer:     var(--sombre-a-test-engineer);
+    --f-test-engineer:     var(--sombre-f-test-engineer);
+    --a-spec-reader:       var(--sombre-a-spec-reader);
+    --f-spec-reader:       var(--sombre-f-spec-reader);
+    --a-code-reviewer:     var(--sombre-a-code-reviewer);
+    --f-code-reviewer:     var(--sombre-f-code-reviewer);
+    --a-debugger:          var(--sombre-a-debugger);
+    --f-debugger:          var(--sombre-f-debugger);
+    --a-doc-writer:        var(--sombre-a-doc-writer);
+    --f-doc-writer:        var(--sombre-f-doc-writer);
+    --a-frontend-developer:var(--sombre-a-frontend-developer);
+    --f-frontend-developer:var(--sombre-f-frontend-developer);
+    --a-neutre:            var(--sombre-a-neutre);
+    --f-neutre:            var(--sombre-f-neutre);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="sombre"] {
+  --fond:        var(--sombre-fond);
+  --surface:     var(--sombre-surface);
+  --surface-2:   var(--sombre-surface-2);
+  --creux:       var(--sombre-creux);
+  --trait:       var(--sombre-trait);
+  --trait-fin:   var(--sombre-trait-fin);
+  --contour-etat:var(--sombre-contour-etat);
+  --texte:       var(--sombre-texte);
+  --texte-doux:  var(--sombre-texte-doux);
+  --texte-faible:var(--sombre-texte-faible);
+  --accent:      var(--sombre-accent);
+  --actif:       var(--sombre-actif);
+  --alerte:      var(--sombre-alerte);
+  --echec:       var(--sombre-echec);
+  --ombre: var(--sombre-ombre);
+  --voile: var(--sombre-voile);
+  --a-backend-developer: var(--sombre-a-backend-developer);
+  --f-backend-developer: var(--sombre-f-backend-developer);
+  --a-security-reviewer: var(--sombre-a-security-reviewer);
+  --f-security-reviewer: var(--sombre-f-security-reviewer);
+  --a-test-engineer:     var(--sombre-a-test-engineer);
+  --f-test-engineer:     var(--sombre-f-test-engineer);
+  --a-spec-reader:       var(--sombre-a-spec-reader);
+  --f-spec-reader:       var(--sombre-f-spec-reader);
+  --a-code-reviewer:     var(--sombre-a-code-reviewer);
+  --f-code-reviewer:     var(--sombre-f-code-reviewer);
+  --a-debugger:          var(--sombre-a-debugger);
+  --f-debugger:          var(--sombre-f-debugger);
+  --a-doc-writer:        var(--sombre-a-doc-writer);
+  --f-doc-writer:        var(--sombre-f-doc-writer);
+  --a-frontend-developer:var(--sombre-a-frontend-developer);
+  --f-frontend-developer:var(--sombre-f-frontend-developer);
+  --a-neutre:            var(--sombre-a-neutre);
+  --f-neutre:            var(--sombre-f-neutre);
+  color-scheme: dark;
+}
+
+/* ============================ style de la maquette ======================
+ * Sous ce point : AUCUN hexadécimal, AUCUNE rgba() littérale — uniquement
+ * des var(--jeton) résolus depuis le bloc ci-dessus. Vérifié par grep avant
+ * de rendre (voir le rapport). */
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--fond);
+  color: var(--texte);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.45;
+}
+h1, h2, h3 { font-family: var(--sans); }
+
+/* ---------------- bandeau hôte (repris de app.css) ---------------- */
+.bandeau-hote {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 25;
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  flex-wrap: wrap; padding: 10px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid color-mix(in srgb, var(--echec) 50%, var(--trait));
+}
+.bandeau-hote[hidden] { display: none; }
+.bandeau-hote p { margin: 0; font-size: 12.5px; color: var(--texte-doux); }
+
+/* ---------------- barre (reprise de app.css) ---------------- */
+.barre {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap; padding: 10px 18px;
+  background: var(--surface); border-bottom: 1px solid var(--trait);
+  position: sticky; top: 0; z-index: 10;
+}
+.titre { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.marque { font-weight: 600; letter-spacing: -0.01em; }
+.projet { font-family: var(--mono); font-size: 12px; color: var(--texte-faible); }
+.etat-barre { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.jauge {
+  font-family: var(--sans); font-size: 11px; padding: 2px 8px;
+  border: 1px solid var(--trait); border-radius: 2px; color: var(--texte-doux);
+  white-space: nowrap;
+}
+.jauge.ok { color: var(--actif); border-color: color-mix(in srgb, var(--actif) 40%, var(--trait)); }
+.jauge.ko { color: var(--echec); border-color: color-mix(in srgb, var(--echec) 40%, var(--trait)); }
+.jauge.lecture-seule { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--trait)); }
+.horodatage { font-family: var(--sans); font-size: 11px; color: var(--texte-faible); font-variant-numeric: tabular-nums; }
+
+.bascule-theme {
+  display: inline-flex; align-items: center; gap: 2px;
+  border: 1px solid var(--trait); border-radius: 2px; padding: 2px;
+}
+.theme-bouton {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0;
+  background: none; border: none; border-radius: 2px;
+  color: var(--texte-faible); cursor: pointer;
+}
+.theme-bouton:hover { color: var(--texte); }
+.theme-bouton:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.theme-bouton[aria-checked="true"] { background: var(--surface-2); color: var(--accent); }
+
+/* ---------------- panneau de démonstration (n'existe pas dans le produit) ----
+ * Sert UNIQUEMENT à faire basculer la maquette dans les états déclarés par
+ * U4, pour qu'un humain les VOIE plutôt que de les lire en prose. Distingué
+ * visuellement (filet tireté) pour qu'il ne soit jamais confondu avec de
+ * l'UI réelle. */
+.demo-barre {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  padding: 8px 18px; border-bottom: 1px dashed var(--trait);
+  background: var(--surface-2);
+  font-size: 12px; color: var(--texte-doux);
+}
+.demo-barre strong { color: var(--texte); font-weight: 600; }
+.demo-bouton {
+  min-height: 32px; padding: 4px 10px; background: none;
+  border: 1px solid var(--trait); border-radius: 2px; color: var(--texte-doux);
+  font: inherit; font-size: 12px; cursor: pointer;
+}
+.demo-bouton:hover { color: var(--texte); border-color: var(--texte-faible); }
+.demo-bouton:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.demo-bouton[aria-pressed="true"] { background: var(--surface); color: var(--accent); border-color: var(--accent); }
+
+/* ============================ grille mono-écran (U2) =====================
+ * main#tableau remplace .mise-en-page + .nav-sections + .contenu. Aucun
+ * `hidden` statique : les cinq panneaux sont visibles au chargement — c'est
+ * la condition centrale de cette spec (« l'état du projet se lit sans
+ * interaction »). Ordre du DOM ci-dessous = ordre de lecture = ordre de
+ * tabulation = ordre d'empilement mobile : cycle → piloter → specs → depot
+ * → demande (U2, second passage). */
+#tableau {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-areas:
+    "cycle   piloter"
+    "cycle   depot"
+    "specs   depot"
+    "demande demande";
+  gap: 16px;
+  padding: 18px;
+  max-width: 1360px;
+  margin: 0 auto;
+}
+@media (max-width: 1024px) {
+  /* Petit écran (cas limite déclaré) : empilement STRICT dans l'ordre du
+   * DOM, jamais un défilement horizontal de page — seuls le diagramme, le
+   * kanban et la bande de cycles gardent leur propre défilement interne. */
+  #tableau { display: flex; flex-direction: column; }
+}
+
+.panneau {
+  background: var(--surface);
+  border: 1px solid var(--trait);
+  border-radius: 3px;
+  padding: 14px 16px;
+  min-width: 0;
+}
+.panneau > h2:first-child, .panneau > .panneau-entete:first-child { margin-top: 0; }
+
+/* S3 — le puits et le bureau : SEUL le panneau Cycle en cours est creusé.
+ * Les quatre autres restent strictement plats (`--surface`, filet
+ * `--trait`, aucune ombre) — règle appliquée nulle part ailleurs, à
+ * vérifier par grep (PIEGES §22 : une correction qui s'arrête au premier
+ * endroit signalé). */
+.panneau-cycle {
+  grid-area: cycle;
+  background: var(--creux);
+  box-shadow: inset 0 6px 14px var(--ombre);
+}
+.panneau-piloter { grid-area: piloter; }
+.panneau-depot   { grid-area: depot; }
+.panneau-specs   { grid-area: specs; }
+.panneau-demande { grid-area: demande; }
+
+.panneau h2 { margin: 0 0 10px; font-size: 15px; font-weight: 600; }
+.panneau-entete { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.note { margin: 0 0 8px; font-size: 12px; color: var(--texte-faible); }
+.note.avert { color: var(--texte-doux); border-left: 2px solid var(--accent); padding-left: 10px; }
+.vide { color: var(--texte-faible); font-size: 12px; font-style: italic; }
+
+/* ---------------- bande de sélection des cycles (tablist) ---------------
+ * Amendement accepté le 2026-09-19 : SEUL `role="tablist"` qui subsiste —
+ * il ne navigue plus ENTRE DES SECTIONS, il choisit quel cycle ANTÉRIEUR
+ * s'affiche dans ce panneau. Le cycle le plus récent est déjà affiché sans
+ * aucun clic (premier onglet, sélectionné par défaut). */
+.bande-cycles {
+  display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 10px;
+}
+.cycle-onglet {
+  min-height: 44px; flex: none; display: flex; flex-direction: column; align-items: flex-start;
+  gap: 2px; padding: 6px 12px; background: var(--surface); border: 1px solid var(--trait);
+  border-radius: 3px; color: var(--texte-doux); font: inherit; font-size: 12.5px; cursor: pointer;
+  white-space: nowrap;
+}
+.cycle-onglet:hover { color: var(--texte); border-color: var(--texte-faible); }
+.cycle-onglet:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cycle-onglet[aria-selected="true"] {
+  color: var(--accent); font-weight: 600; border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+.cycle-onglet .cycle-onglet-etat { font-size: 10.5px; color: var(--texte-faible); font-weight: 400; }
+
+.cycle-vedette {
+  display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  padding: 6px 4px 14px;
+}
+.cycle-vedette-info { flex: 1 1 220px; min-width: 0; }
+.cycle-nom { margin: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.cycle-agent-actuel { margin: 4px 0 0; font-size: 12.5px; color: var(--texte-doux); display: flex; align-items: center; gap: 8px; }
+
+/* S2 — le chronomètre vedette. 56px, graisse 300, tabular-nums : EXTENSION
+ * ASSUMÉE de l'échelle typographique (docs/DESIGN-SYSTEM.md §4, qui
+ * plafonnait à 17px) — un seul jeton de couleur, `--texte`, aucune couleur
+ * neuve. `data-fige="vrai"` bascule vers `--texte-faible` : c'est le
+ * comportement le plus important à donner à voir dans cette maquette (« ne
+ * pas figer un état périmé en le faisant passer pour frais »). */
+.chrono {
+  font-family: var(--mono); font-weight: 300; font-size: 56px; line-height: 1;
+  font-variant-numeric: tabular-nums; color: var(--texte);
+  flex: none;
+}
+.chrono[data-fige="vrai"] { color: var(--texte-faible); }
+.chrono-legende { margin: 2px 0 0; font-size: 10.5px; color: var(--texte-faible); }
+
+/* ---------------- champ de particules (S1) + diagramme ------------------
+ * `.diagramme-cadre` est le conteneur NON scrollable : c'est LUI qui porte
+ * `position: relative` et reçoit le canevas en `position: absolute; inset:
+ * 0`. `.diagramme-scroll`, À L'INTÉRIEUR, est seul à défiler horizontalement
+ * — le canevas ne doit jamais être son enfant, sinon il défilerait avec le
+ * SVG et cesserait de couvrir tout le panneau. */
+.diagramme-cadre {
+  position: relative;
+  background: var(--surface); border: 1px solid var(--trait); border-radius: 6px;
+  margin-bottom: 10px; overflow: hidden;
+}
+.diagramme-scroll { position: relative; z-index: 1; overflow-x: auto; overflow-y: hidden; padding: 8px 0 2px; }
+.diagramme-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.dg-svg { display: block; }
+.particules {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  width: 100%; height: 100%;
+}
+.dg-voile { position: absolute; top: 1px; bottom: 11px; width: 34px; pointer-events: none; z-index: 2; }
+.dg-voile.g { left: 1px; background: linear-gradient(90deg, var(--creux), transparent); }
+.dg-voile.d { right: 1px; background: linear-gradient(270deg, var(--creux), transparent); }
+
+/* -- grammaire du diagramme, reprise à l'identique de app.css (feature-020)
+ * -- mêmes classes, mêmes jetons ; voir 2026-09-15-diagramme-reference.html
+ * pour l'origine de la grammaire visuelle (anneau de graduations, liseret,
+ * socle, arcs de rebouclage). Le diagramme n'est PAS redessiné. */
+.dg-guide { fill: none; }
+.dg-graduation { }
+.dg-liseret { stroke-width: 1px; }
+.dg-cercle { }
+.dg-contour-plein { stroke-dasharray: none; }
+.dg-contour-pointille { stroke-dasharray: 2 3; }
+.dg-anneau-en-cours { stroke-width: 1; }
+.dg-sigle { font-family: var(--mono); font-weight: 600; pointer-events: none; }
+.dg-barre-zero-blanche { stroke-width: 2.6px; }
+.dg-barre-zero-grise { stroke-width: 1px; }
+.dg-socle-heure, .dg-socle-nom { font-family: var(--sans); fill: var(--texte-faible); font-variant-numeric: tabular-nums; }
+.dg-socle-duree { font-family: var(--mono); fill: var(--texte); font-variant-numeric: tabular-nums; }
+.dg-socle-duree.actif { font-weight: 700; }
+.dg-cadre-simultane { stroke: var(--trait); stroke-width: 1; fill: none; }
+.dg-libelle-cadre { font-family: var(--sans); fill: var(--texte-faible); }
+.dg-lien { stroke: var(--trait); stroke-width: 1.2; }
+.dg-lien-pointe { stroke: var(--texte-faible); stroke-width: 1; stroke-linejoin: round; }
+.dg-pastille-attente rect { fill: var(--creux); stroke: var(--trait-fin); stroke-width: 1; }
+.dg-pastille-attente text { font-family: var(--sans); font-size: 10.5px; fill: var(--texte-faible); }
+.dg-arc-rebouclage { stroke: var(--rebouclage); stroke-width: 1.3; stroke-dasharray: 3 3; opacity: .75; fill: none; }
+.dg-arc-libelle { font-family: var(--sans); fill: var(--rebouclage); }
+
+.diagramme-legende {
+  margin: 0; display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 11px; color: var(--texte-faible);
+}
+.diagramme-legende u { text-decoration: none; color: var(--texte-doux); }
+
+.cycle-stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px; margin: 12px 0 0; padding-top: 10px; border-top: 1px solid var(--trait-fin);
+}
+.cycle-stats div { display: flex; flex-direction: column; gap: 2px; }
+.cycle-stats dt { margin: 0; font-size: 10.5px; color: var(--texte-faible); }
+.cycle-stats dd { margin: 0; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* pastille d'attente (S3, complément) — pulsation CSS PURE : couverte par
+ * la règle globale @media (prefers-reduced-motion: reduce) en bas de
+ * fichier, PAS de JS nécessaire ici (contrairement à S1/S2). */
+.pastille-etat { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; }
+.pastille-etat .point {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--actif); flex: none;
+}
+.pastille-etat.en-attente .point { animation: pulse-attente 2.4s ease-in-out infinite; }
+@keyframes pulse-attente { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+
+/* ---------------- pilotage ---------------- */
+.pilotage-select { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; max-width: 320px; }
+.pilotage-select label { font-size: 12px; color: var(--texte-doux); }
+.pilotage-select select {
+  background: var(--creux); border: 1px solid var(--trait); border-radius: 2px;
+  color: var(--texte); font-family: var(--mono); font-size: 12.5px; padding: 6px 8px; min-height: 44px;
+}
+.pilotage-select select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pilotage-boutons { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+.action-ecriture {
+  min-height: 44px; min-width: 44px; padding: 8px 18px;
+  background: var(--accent); color: var(--fond); border: none; border-radius: 2px;
+  font-weight: 600; font: inherit; cursor: pointer;
+}
+.action-ecriture:hover { background: color-mix(in srgb, var(--accent) 88%, var(--texte)); }
+.action-ecriture:focus-visible { outline: 2px solid var(--texte); outline-offset: 2px; }
+.action-ecriture:disabled { opacity: 0.55; cursor: not-allowed; }
+.pilotage-secondaire {
+  min-height: 44px; min-width: 44px; padding: 8px 16px; background: none;
+  border: 1px solid var(--trait); color: var(--texte-doux); border-radius: 2px; font: inherit; cursor: pointer;
+}
+.pilotage-secondaire:hover { color: var(--texte); border-color: var(--texte-faible); }
+.pilotage-secondaire:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pilotage-secondaire:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* ---------------- spécifications (kanban, repris de app.css) ---------------- */
+.filtres { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.filtres input[type="search"] {
+  flex: 1 1 200px; min-height: 36px; background: var(--creux); border: 1px solid var(--trait);
+  border-radius: 2px; color: var(--texte); font: inherit; font-size: 12.5px; padding: 6px 10px;
+}
+.filtres input[type="search"]:focus-visible { outline: 1px solid var(--accent); border-color: var(--accent); }
+.compteur { font-family: var(--sans); font-size: 11px; color: var(--texte-faible); font-variant-numeric: tabular-nums; }
+.kanban { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; align-items: start; }
+.colonne { flex: 1 1 0; min-width: 190px; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.colonne-entete {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-family: var(--sans); font-size: 11px; color: var(--texte-faible); font-variant-numeric: tabular-nums;
+  border-bottom: 1px solid var(--trait); padding-bottom: 5px;
+  position: sticky; top: 0; background: var(--surface); z-index: 1;
+}
+.colonne-liste { display: flex; flex-direction: column; gap: 6px; max-height: 46vh; overflow-y: auto; padding-right: 4px; }
+.carte {
+  background: var(--surface); border: 1px solid var(--trait-fin); border-left: 2px solid var(--trait);
+  border-radius: 2px; padding: 7px 9px; cursor: pointer; font: inherit; color: inherit;
+  text-align: left; width: 100%; display: block;
+}
+.carte:hover { border-color: var(--texte-faible); }
+.carte:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.carte.divergente { border-left-color: var(--alerte); }
+.carte-titre { display: block; font-size: 12.5px; margin-bottom: 2px; }
+.carte-meta { display: block; font-size: 10.5px; color: var(--texte-faible); }
+
+/* ---------------- état du dépôt ---------------- */
+.depot-pastilles {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin: 0 0 12px;
+}
+.depot-pastilles div { display: flex; flex-direction: column; gap: 2px; }
+.depot-pastilles dt { margin: 0; font-size: 10.5px; color: var(--texte-faible); }
+.depot-pastilles dd { margin: 0; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.depot-pastilles dd.ok { color: var(--actif); }
+.depot-pastilles dd.alerte { color: var(--alerte); }
+.fichiers-liste { list-style: none; margin: 0; padding: 0; max-height: 180px; overflow-y: auto; }
+.fichiers-liste li {
+  display: grid; grid-template-columns: 22px 1fr; gap: 8px; padding: 3px 0; font-size: 12px;
+  border-bottom: 1px solid var(--trait-fin);
+}
+.fichiers-liste .fcode { font-family: var(--mono); font-size: 10.5px; color: var(--texte-faible); }
+.fichiers-liste .fchemin { font-family: var(--mono); font-size: 11.5px; overflow-wrap: anywhere; }
+.fichiers-liste h3 { margin: 4px 0 6px; font-size: 12.5px; font-weight: 600; color: var(--texte-doux); }
+
+/* ---------------- développer (formulaire) ---------------- */
+.champ-titre { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.champ-titre label { font-size: 12px; color: var(--texte-doux); }
+.champ-titre input, #maquette-prompt {
+  background: var(--creux); border: 1px solid var(--trait); border-radius: 2px;
+  color: var(--texte); font: inherit; font-size: 13px; padding: 8px 10px; min-height: 44px;
+  width: 100%; font-family: var(--sans);
+}
+#maquette-prompt { min-height: 88px; resize: vertical; margin-bottom: 8px; }
+.champ-titre input:focus-visible, #maquette-prompt:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.bascule { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--texte-doux); cursor: pointer; margin: 8px 0; }
+.bascule input { accent-color: var(--alerte); }
+
+footer.notes {
+  max-width: 1360px; margin: 0 auto; padding: 8px 18px 40px; color: var(--texte-faible); font-size: 12px;
+}
+footer.notes details { margin-bottom: 6px; border: 1px solid var(--trait-fin); border-radius: 3px; padding: 8px 10px; background: var(--surface); }
+footer.notes summary { cursor: pointer; color: var(--texte-doux); font-weight: 600; }
+footer.notes p { margin: 6px 0 0; }
+
+/* ---------------- réduction de mouvement (obligatoire) --------------------
+ * Couvre toute transition/animation CSS déclarative (donc la pulsation de
+ * `.pastille-etat`). NE couvre PAS le rendu `requestAnimationFrame` du
+ * canevas (S1) ni le `setInterval` du chronomètre (S2) — ceux-là sont gérés
+ * en JavaScript via `matchMedia`, voir 2026-09-19-mono-ecran.js. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+</style>
+</head>
+<body>
+
+<div class="bandeau-hote" id="bandeau-hote" role="alert" hidden>
+  <p id="bandeau-hote-texte"></p>
+  <button type="button" id="bandeau-hote-bouton" class="action-ecriture">Réessayer</button>
+</div>
+
+<header class="barre">
+  <div class="titre">
+    <span class="marque">Centre de contrôle</span>
+    <span class="projet">agent-kit</span>
+  </div>
+  <div class="etat-barre">
+    <span class="jauge ok" id="jauge-flux" title="connexion au flux d'événements">flux connecté</span>
+    <span class="jauge" id="jauge-git">main · 0 divergence</span>
+    <span class="jauge pilotage-actif jauge-pilotage-demo" id="jauge-pilotage">écriture activée</span>
+    <span class="horodatage" id="horodatage">19:5x</span>
+
+    <div class="bascule-theme" id="bascule-theme" role="radiogroup" aria-label="Thème d'affichage">
+      <button type="button" id="theme-clair" class="theme-bouton" role="radio"
+              aria-checked="false" tabindex="-1" aria-label="Clair" title="Clair">
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false">
+          <circle cx="8" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <g stroke="currentColor" stroke-width="1.3" stroke-linecap="round">
+            <line x1="8" y1="0.6" x2="8" y2="2.4"/><line x1="8" y1="13.6" x2="8" y2="15.4"/>
+            <line x1="0.6" y1="8" x2="2.4" y2="8"/><line x1="13.6" y1="8" x2="15.4" y2="8"/>
+            <line x1="2.5" y1="2.5" x2="3.8" y2="3.8"/><line x1="12.2" y1="12.2" x2="13.5" y2="13.5"/>
+            <line x1="2.5" y1="13.5" x2="3.8" y2="12.2"/><line x1="12.2" y1="3.8" x2="13.5" y2="2.5"/>
+          </g>
+        </svg>
+      </button>
+      <button type="button" id="theme-systeme" class="theme-bouton" role="radio"
+              aria-checked="true" tabindex="0" aria-label="Suivre le système" title="Suivre le système">
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false">
+          <circle cx="8" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <path d="M8 4.8 A3.2 3.2 0 0 1 8 11.2 Z" fill="currentColor"/>
+        </svg>
+      </button>
+      <button type="button" id="theme-sombre" class="theme-bouton" role="radio"
+              aria-checked="false" tabindex="-1" aria-label="Sombre" title="Sombre">
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false">
+          <path d="M13.2 10.1A6 6 0 1 1 5.9 2.8 4.7 4.7 0 0 0 13.2 10.1Z" fill="currentColor"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- Panneau de démonstration : ne fait pas partie du produit. Rend les cas
+     limites de U4 VÉRIFIABLES plutôt que seulement déclarés en prose. -->
+<div class="demo-barre">
+  <strong>Démonstration —</strong>
+  <button type="button" class="demo-bouton" id="demo-vide" aria-pressed="false">Dépôt vide</button>
+  <button type="button" class="demo-bouton" id="demo-lecture-seule" aria-pressed="false">Écriture désactivée</button>
+  <button type="button" class="demo-bouton" id="demo-injoignable" aria-pressed="false">Serveur injoignable</button>
+  <button type="button" class="demo-bouton" id="demo-reduit" aria-pressed="false">Aperçu sans animation</button>
+</div>
+
+<main id="tableau">
+
+  <!-- ================= Cycle en cours — creusé (S3) ================= -->
+  <section class="panneau panneau-cycle" aria-labelledby="titre-cycle">
+    <div class="panneau-entete">
+      <h2 id="titre-cycle">Cycle en cours</h2>
+    </div>
+
+    <div class="bande-cycles" role="tablist" aria-label="Cycles récents" id="bande-cycles">
+      <button type="button" role="tab" id="cycle-tab-0" aria-selected="true" tabindex="0"
+              class="cycle-onglet" aria-controls="cycle-panneau">
+        feature-021 <span class="cycle-onglet-etat">en cours</span>
+      </button>
+      <button type="button" role="tab" id="cycle-tab-1" aria-selected="false" tabindex="-1"
+              class="cycle-onglet" aria-controls="cycle-panneau">
+        bug-018 <span class="cycle-onglet-etat">terminé</span>
+      </button>
+      <button type="button" role="tab" id="cycle-tab-2" aria-selected="false" tabindex="-1"
+              class="cycle-onglet" aria-controls="cycle-panneau">
+        feature-020 <span class="cycle-onglet-etat">terminé</span>
+      </button>
+      <button type="button" role="tab" id="cycle-tab-3" aria-selected="false" tabindex="-1"
+              class="cycle-onglet" aria-controls="cycle-panneau">
+        bug-017 <span class="cycle-onglet-etat">terminé</span>
+      </button>
+    </div>
+    <p class="note" id="legende-cycles">4 cycles affichés sur 13 (fenêtre configurée, réglage — pas une mesure) — un cycle va de la promotion d'une spec dans <code style="font-family:var(--mono)">doing/</code> à sa clôture.</p>
+
+    <div id="cycle-panneau" role="tabpanel" aria-labelledby="cycle-tab-0">
+      <div class="cycle-vedette">
+        <div class="chrono" id="chrono" data-fige="faux"><span id="chrono-texte">00:00:00</span></div>
+        <div class="cycle-vedette-info">
+          <p class="cycle-nom" id="cycle-nom">feature-021 — revenir à un tableau de bord unifié</p>
+          <p class="cycle-agent-actuel">
+            <span id="cycle-agent-actuel-nom">frontend-developer</span>
+            <span class="pastille-etat en-attente" id="pastille-attente"><span class="point"></span><span id="pastille-attente-texte">en cours</span></span>
+          </p>
+        </div>
+        <button type="button" class="pilotage-secondaire" id="bouton-simuler-chute">Simuler la chute du flux</button>
+      </div>
+
+      <div class="diagramme-cadre" id="diagramme-cadre">
+        <div class="diagramme-scroll" id="diagramme-scroll" tabindex="0" role="img"
+             aria-label="Déroulé du cycle : enchaînement des agents dans le temps">
+          <svg class="dg-svg" id="dg-svg"></svg>
+        </div>
+        <canvas class="particules" id="particules" aria-hidden="true"></canvas>
+        <div class="dg-voile g" aria-hidden="true"></div>
+        <div class="dg-voile d" aria-hidden="true"></div>
+      </div>
+      <p class="diagramme-legende">
+        <span><u>diamètre</u> durée</span>
+        <span><u>graduations</u> appels d'outils</span>
+        <span><u>liseré</u> fichiers écrits</span>
+        <span><u>pastille</u> attente entre deux agents</span>
+        <span><u>semis de points</u> débit réel d'appels d'outils</span>
+      </p>
+
+      <dl class="cycle-stats">
+        <div><dt>Durée</dt><dd id="stat-duree">7 min 42</dd></div>
+        <div><dt>Appels d'outils</dt><dd id="stat-outils">214</dd></div>
+        <div><dt>Fichiers écrits</dt><dd id="stat-fichiers">6</dd></div>
+        <div><dt>Rebouclages</dt><dd id="stat-rebouclages">1</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <!-- ================= Piloter — plat ================= -->
+  <section class="panneau panneau-piloter" aria-labelledby="titre-piloter">
+    <h2 id="titre-piloter">Piloter</h2>
+    <div class="pilotage-select">
+      <label for="piloter-agent">Agent à lancer</label>
+      <select id="piloter-agent">
+        <option>frontend-developer</option>
+        <option>test-engineer</option>
+        <option>code-reviewer</option>
+        <option>doc-writer</option>
+        <option>debugger</option>
+      </select>
+    </div>
+    <div class="pilotage-boutons">
+      <button type="button" class="action-ecriture" id="bouton-lancer">Lancer</button>
+      <button type="button" class="pilotage-secondaire" id="bouton-interrompre">Interrompre</button>
+    </div>
+    <p class="note" id="note-pilotage" style="margin-top:10px">
+      Le jeton de pilotage sert à consulter et à lancer.
+    </p>
+  </section>
+
+  <!-- ================= Spécifications — plat ================= -->
+  <section class="panneau panneau-specs" aria-labelledby="titre-specs">
+    <div class="panneau-entete">
+      <h2 id="titre-specs">Spécifications</h2>
+      <span class="compteur" id="compteur-specs">40 specs</span>
+    </div>
+    <div class="filtres">
+      <input type="search" id="filtre-specs" placeholder="Filtrer par identifiant, titre ou statut…" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="kanban" id="kanban"></div>
+  </section>
+
+  <!-- ================= État du dépôt — plat ================= -->
+  <section class="panneau panneau-depot" aria-labelledby="titre-depot">
+    <h2 id="titre-depot">État du dépôt</h2>
+    <dl class="depot-pastilles">
+      <div><dt>Dépôt / branche</dt><dd>agent-kit · main</dd></div>
+      <div><dt>Divergences</dt><dd class="ok" id="depot-divergences">0</dd></div>
+      <div><dt>Budget max</dt><dd>14 cycles</dd></div>
+      <div><dt>Écrivains</dt><dd>2 actifs</dd></div>
+    </dl>
+    <div id="fichiers-touches">
+      <h3>Fichiers touchés</h3>
+      <ul class="fichiers-liste" id="fichiers-liste"></ul>
+    </div>
+  </section>
+
+  <!-- ================= Développer — plat, pleine largeur ================= -->
+  <section class="panneau panneau-demande" aria-labelledby="titre-demande">
+    <h2 id="titre-demande">Que souhaitez-vous développer&nbsp;?</h2>
+    <div class="champ-titre">
+      <label for="maquette-titre">Titre du besoin (résumé en une phrase — nomme le fichier)</label>
+      <input type="text" id="maquette-titre" maxlength="200" autocomplete="off"
+             placeholder="Ex. : Ajouter un export CSV des specs affichées">
+    </div>
+    <textarea id="maquette-prompt" placeholder="Décrire le besoin en détail…"></textarea>
+    <p class="note avert">
+      Ce texte finit dans un fichier versionné&nbsp;: n'y collez ni secret ni mot de passe.
+      Il ne quitte pas ce poste — aucun appel de modèle.
+    </p>
+    <label class="bascule">
+      <input type="checkbox" id="maquette-derogation">
+      <span>Traiter comme bug simple / refactor ponctuel (template minimal)</span>
+    </label>
+    <div class="pilotage-boutons">
+      <button type="button" class="pilotage-secondaire" id="bouton-generer-brouillon">Générer le brouillon</button>
+    </div>
+  </section>
+
+</main>
+
+<footer class="notes">
+  <details>
+    <summary>Cas limites déclarés (U4) — non tous démontrés ci-dessus</summary>
+    <p><strong>Dépôt vide</strong> : bouton de démonstration ci-dessus — le panneau Cycle, Spécifications et État du dépôt affichent chacun un état vide explicite (<code style="font-family:var(--mono)">.vide</code>), jamais une scène figée sans explication.</p>
+    <p><strong>Écriture désactivée</strong> (pas de jeton, ou 403) : bouton de démonstration ci-dessus — les commandes de Piloter et de Développer restent visibles mais <code style="font-family:var(--mono)">disabled</code>, avec la raison écrite à côté, jamais masquées.</p>
+    <p><strong>Serveur injoignable</strong> : bouton de démonstration ci-dessus — le bandeau hôte apparaît, le chronomètre se fige (<code style="font-family:var(--mono)">data-fige="vrai"</code>) et la jauge de flux passe en état d'échec : l'écran dit qu'il ne sait plus, il ne fait pas passer un état périmé pour frais.</p>
+    <p><strong>Absence de WebGL / <code style="font-family:var(--mono)">getContext</code> refusé</strong> : le script tente <code style="font-family:var(--mono)">canvas.getContext("2d")</code> dans un <code style="font-family:var(--mono)">try/catch</code> ; en échec, le canevas de particules est retiré du DOM et seul le SVG du diagramme reste — jamais un écran blanc (voir le commentaire au-dessus de <code style="font-family:var(--mono)">initParticules</code> dans le script).</p>
+    <p><strong>Petit écran</strong> : voir la démonstration en resserrant la fenêtre — bascule en colonne unique sous 1024px, ordre du DOM conservé, aucun défilement horizontal de page.</p>
+    <p><strong>Porte d'authentification (U5, portée par <code style="font-family:var(--mono)">bug-017</code>, pas par ce cycle)</strong> : le mécanisme déclaré est <code style="font-family:var(--mono)">inert</code> posé sur tous les frères de la modale tant qu'elle est ouverte, en complément de la contention de focus — non modélisé ici pour ne pas détourner l'attention des cinq panneaux, qui sont l'objet de cette maquette.</p>
+  </details>
+  <details>
+    <summary>Ce qui a disparu ici, et pourquoi (U1, rappel)</summary>
+    <p>Section « Agents » : supprimée entière — la légende du diagramme porte déjà l'identité couleur/sigle, le choix d'agent reste dans le <code style="font-family:var(--mono)">&lt;select&gt;</code> de Piloter.</p>
+    <p><code style="font-family:var(--mono)">.table-passages</code> : supprimée — c'est nommément « l'ancienne représentation des enchaînements » que la description de la spec cite ; le diagramme la remplace.</p>
+    <p>Liste des commits, <code style="font-family:var(--mono)">#compteur-prompt</code>, note de plafond, panneau Événements permanent : supprimés — détail des coûts assumés dans la spec, section U1.</p>
+  </details>
+</footer>
+
+<!-- Script CLASSIQUE, jamais `type="module"` (refusé en file://). Aucun
+     <script> inline : tout le comportement vit dans le fichier voisin. -->
+<script src="2026-09-19-mono-ecran.js"></script>
+</body>
+</html>
