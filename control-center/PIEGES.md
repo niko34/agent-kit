@@ -614,6 +614,100 @@ la cause dépend de la version exécutée.
 du cache d'outils. Établir la version réellement en jeu exige de lire la
 bonne liste, jamais l'autre par défaut.
 
+## 50. Une garde de CI qui lit un fichier YAML se contourne par un élément de plus
+
+Chercher un texte dans le YAML d'un workflow (`re.search`, `grep`) prouve
+qu'un texte y est présent ou absent — jamais ce que le job **fait**
+réellement une fois lancé. Sur `bug-022`, une garde de partitionnement
+(« le job système exécute tout, le job matrice filtre les harnais
+navigateur ») a survécu à **quatre versions successives**, chacune tuée par
+un mutant mesuré : un motif de ligne (`re.search("grep -qx …") is None`,
+tué par une découverte réécrite en `xargs grep -Lx` — les trois harnais
+tombaient à **zéro exécution**, garde verte) ; puis deux checks de
+« propriété » qui n'étaient qu'une énumération de syntaxes d'exclusion
+supplémentaires (`if`/`else` sans `continue`, second `mapfile`) — même
+conséquence, même garde verte.
+
+**Coûté quatre reboucles** avant que la méthode change : la garde
+**exécute** désormais le bloc `run:` réel du job (`bash -c`, `cwd` sur une
+arborescence factice de témoins) et compare ce qui a **effectivement**
+tourné, plutôt que de lire une syntaxe particulière d'exclusion. Toute garde
+de CI qui vérifie « ce script exclut-il X » doit comparer un résultat
+d'exécution, jamais une forme de texte — une énumération de motifs se
+contourne toujours par un motif de plus qu'elle ne connaît pas encore.
+
+## 51. Un oracle comportemental ne vaut que le jeu de témoins qui le traverse
+
+Remplacer une garde par motif par une garde qui **exécute** ne suffit pas :
+l'oracle neuf de `bug-022` (§50) comparait ce qui tourne réellement, mais
+avec 4 témoins il restait aveugle à une exclusion par **nom de fichier**
+(le seul témoin marqué s'appelait `test_marque.py` — aucun témoin ne
+croisait la dimension « nom ») : deux harnais sur trois tombaient à zéro
+exécution, garde verte 46/46. Un 5ᵉ témoin a ensuite fermé une exclusion
+par **contenu** (`grep -q chromium`), également invisible aux 4 premiers.
+
+**Coûté deux mutants qui ont survécu chacun à une version antérieure de
+l'oracle avant d'être trouvés.** Les témoins d'un oracle comportemental
+doivent croiser **toutes les dimensions que le critère retenu distingue de
+ses alternatives explicitement écartées** — ici le critère est le marqueur,
+les alternatives écartées en conception étaient le nom de fichier et le
+contenu, et ce sont exactement les deux dimensions par lesquelles l'oracle
+a été contourné avant correction.
+
+## 52. PIEGES §48 (partage de `stdin`) ne concerne que `while read … done < fichier`
+
+§48 documente qu'une boucle shell lisant sa liste de fichiers depuis
+`stdin` (`while read f; do … done < liste.txt`) partage cette entrée avec
+tout ce qu'elle lance, et peut donc sauter des fichiers en silence. **Cette
+forme précise est seule concernée.** Un `for … in "${tableau[@]}"` itérant
+sur un tableau rempli par `mapfile` (`mapfile -t fichiers < <(find …)`,
+`for f in "${fichiers[@]}"`) est immunisé **par construction** — mesuré
+3/3 : rien dans cette boucle ne lit `stdin`, donc rien ne peut le partager.
+
+**Coûté une transposition de parade sans vérifier que le défaut existe dans
+la forme cible** (`bug-022`, étape 8) : la parade `< /dev/null` et la
+comparaison exécutés/découverts de §48 ont été ajoutées au job GitHub « là
+où elles manquaient », sur la conviction que toute boucle de découverte de
+tests méritait la même parade. Le `< /dev/null` reste une défense en
+profondeur utile, mais dans cette forme la comparaison exécutés/découverts
+qui l'accompagnait était **tautologique** — rien ne pouvait la faire
+échouer. **Avant de transposer une parade d'un piège à un autre endroit,
+vérifier que la forme syntaxique qui cause le défaut original est bien
+celle du code cible**, pas seulement que le symptôme final (« des fichiers
+non exécutés en silence ») semble analogue.
+
+## 53. Un bloc `run:` de workflow GitHub s'exécute tel quel, hors CI
+
+Un job GitHub Actions n'a pas besoin de tourner en CI pour être observé :
+son bloc `run:` est un script shell ordinaire, lançable avec
+`subprocess.run(["bash", "-c", bloc], cwd=<arborescence factice>)`. C'est ce
+qui a permis, sur `bug-022`, de remplacer une garde par motif de texte (§50)
+par une garde comportementale d'une vingtaine de lignes, déterministe, sans
+réseau et sans dépendance CI — en déposant quelques fichiers témoins sous un
+répertoire temporaire imitant `control-center/web/` et en lisant ce que le
+job a réellement imprimé.
+
+**Su plus tôt, cette possibilité aurait évité les deux reboucles qui ont
+précédé le changement de méthode** (§50) : le bloc `run:` n'a pas besoin
+d'être *lu* pour être vérifié, il peut être *lancé*. Vérifier un job GitHub
+par exécution locale de son `run:`, avant de se rabattre sur une lecture de
+motif, dès qu'un désaccord entre « ce que le YAML dit » et « ce que le job
+fait » est envisageable.
+
+## 54. Un oracle AST qui cherche un littéral peut se détecter lui-même
+
+`test_ci_partition_navigateur.py` détecte un harnais navigateur par AST en
+cherchant, entre autres, la constante de chaîne `"--headless"` — et ce
+fichier de garde doit lui-même contenir ce littéral pour l'implémenter.
+Appliqué à lui-même sans précaution, l'oracle se classerait comme un
+lanceur de navigateur, alors qu'il n'en lance aucun : un faux positif de sa
+propre lecture de son propre source, pas un fait sur ce que la CI exécute.
+
+**Tout module de garde qui recherche par AST ou par motif un littéral
+associé au défaut qu'il surveille doit explicitement s'exclure de sa propre
+analyse**, plutôt que de compter sur le hasard de son organisation interne
+(ordre des définitions, nom de variable) pour ne pas se détecter lui-même.
+
 ## Voir aussi
 
 - `docs/DESIGN-SYSTEM.md` — règles de couleur, de surface et de typographie

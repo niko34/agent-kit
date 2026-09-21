@@ -45,6 +45,17 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
   désormais par la même règle que le collecteur : une entrée locale de
   `control-center.toml` (fichier non versionné) portant un secret ne fuit
   plus non plus.
+- **Instabilité de CI corrigée** : les harnais qui lancent un navigateur
+  (Chromium headless) ne s'exécutent désormais **qu'une fois** par run de
+  CI, au lieu de trois depuis l'introduction de la matrice de versions
+  Python (`bug-018`). Auparavant, deux occasions supplémentaires et
+  indépendantes de croiser une VM de CI lente au démarrage pouvaient faire
+  échouer la suite avec `TimeoutExpired` sur un lancement de Chromium, sans
+  qu'aucune ligne de code n'ait changé entre un run rouge et le run vert
+  suivant (`bug-022`). Le délai de 30 s par lancement est conservé — les
+  mesures locales montrent une marge de 6,5× même sous charge — et complété
+  d'une **reprise unique** en cas de dépassement, avec avertissement
+  imprimé dans les journaux du job.
 - **Effet visible sur l'existant** : les têtes de commande à deux jetons déjà
   journalisées avant ce correctif (par exemple `./ota_update.sh firmware`,
   `curl -u admin`) ne correspondent plus systématiquement à la liste des
@@ -111,6 +122,19 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
   root ne mesure pas la CI, le partage de `stdin` dans une boucle
   `while … done`, les deux listes Python du README de l'image runner
   GitHub), et un complément à §1 sur les chemins hors du clone jetable.
+- `docs/adr/0037-un-harnais-navigateur-se-declare-et-ne-tourne-qu-une-fois.md`
+  [nouveau] : rectification de la cause de `bug-022` (exposition, pas
+  contention — confirmé par régions Azure distinctes et marge locale de
+  6,5×), marqueur `HARNAIS_NAVIGATEUR = True`, seuil de 30 s conservé avec
+  reprise unique, et la leçon de méthode des quatre reboucles de mutation
+  (« une garde qui énumère se contourne par un élément de plus »). Amende
+  [ADR-0035](docs/adr/0035-ce-qu-une-suite-verte-prouve-identite-et-intervalle-de-versions.md)
+  sans le révoquer.
+- `control-center/PIEGES.md` : cinq entrées ajoutées (§50-§54 — une garde
+  qui énumère se contourne par un élément de plus, un oracle comportemental
+  ne vaut que ses témoins, portée réelle de §48 limitée à `while read …
+  done < fichier`, un bloc `run:` de workflow GitHub s'exécute tel quel, un
+  oracle AST peut se détecter lui-même).
 - `.claude/memory/ou-vivent-les-deux-depots.md` : nouvelle section « Relève
   après OOM, et reprise d'une conversation à distance » — incident du
   21/09/2026, plafonds mesurés, procédure de reprise via

@@ -2,7 +2,11 @@
 
 ## Statut
 
-Accepté
+Accepté (amendé par [ADR-0037](0037-un-harnais-navigateur-se-declare-et-ne-tourne-qu-une-fois.md)
+— la couverture par intervalle de versions Python ne s'applique qu'à ce dont
+le résultat dépend réellement de la version interprète ; un rendu Chromium
+n'en fait pas partie, et un harnais navigateur ne tourne plus qu'une fois
+par run au lieu de trois)
 
 ## Date
 

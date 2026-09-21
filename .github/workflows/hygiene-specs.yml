@@ -166,6 +166,33 @@ jobs:
       # rien ne le signale. Si `control-center/` existe mais qu'AUCUN
       # `test_*.py` n'est trouvé, le job ÉCHOUE — une liste vide n'est jamais
       # un succès silencieux.
+      #
+      # bug-022 — ce job est le job SYSTÈME : il ne filtre AUCUN fichier, y
+      # compris les harnais navigateur (`HARNAIS_NAVIGATEUR = True`), à la
+      # différence du job `centre-de-controle-matrice` ci-dessous. C'est lui
+      # qui garantit qu'un harnais navigateur s'exécute encore au moins une
+      # fois — une copie du filtre de la matrice ICI le ferait tomber à ZÉRO
+      # exécution, en silence. Gardé par
+      # `control-center/backend/test_ci_partition_navigateur.py`.
+      #
+      # `python3 "$fichier" < /dev/null` isole le `stdin` de chaque script —
+      # utile en soi (un test qui lirait `stdin` sans s'y attendre tombe sur
+      # /dev/null plutôt que sur un flux hérité imprévisible), et on le
+      # garde. ⚠️ CE N'EST PAS la parade PIEGES §48 ICI, contrairement à ce
+      # qu'une rédaction antérieure de ce commentaire affirmait (corrigé en
+      # revue, bug-022) : §48 décrit un `while read … done < liste.txt` qui
+      # PARTAGE son `stdin` avec ce qu'il lance à l'intérieur — CETTE boucle
+      # est un `for … in "${fichiers[@]}"` sur un TABLEAU déjà rempli par
+      # `mapfile` en amont, donc immunisée PAR CONSTRUCTION contre ce
+      # partage (mesuré en revue : un test qui lit `stdin` ici n'en tronque
+      # aucun, 3/3 exécutés). La comparaison `exécutés == découverts`
+      # ci-dessous est donc, EN L'ÉTAT ACTUEL DU CODE, tautologique — rien
+      # dans cette boucle ne peut aujourd'hui sauter un fichier. Elle reste
+      # utile comme FIL-PIÈGE : si une future modification y introduit un
+      # `continue` ou toute autre sortie anticipée, c'est cette comparaison
+      # (et la garde `control-center/backend/
+      # test_ci_partition_navigateur.py`, qui exige l'ABSENCE de `continue`
+      # ici) qui le détecteraient — pas une protection agissante aujourd'hui.
       - name: Suite de tests du centre de contrôle (découverte)
         run: |
           if [ ! -d control-center ]; then
@@ -186,13 +213,23 @@ jobs:
           echo
 
           echec_global=0
+          executes=()
           for fichier in "${fichiers[@]}"; do
             echo "=== $fichier ==="
-            if ! python3 "$fichier"; then
+            if ! python3 "$fichier" < /dev/null; then
               echec_global=1
             fi
+            executes+=("$fichier")
             echo
           done
+
+          echo "Découverts: ${#fichiers[@]} · Exclus (harnais navigateur): 0 · Exécutés: ${#executes[@]}"
+
+          if [ "${#executes[@]}" -ne "${#fichiers[@]}" ]; then
+            echo "❌ ${#fichiers[@]} fichier(s) découvert(s) mais ${#executes[@]} exécuté(s)." >&2
+            echo "   La boucle a été interrompue — ne jamais lire ce cas comme un succès." >&2
+            exit 1
+          fi
 
           exit "$echec_global"
 
@@ -242,6 +279,18 @@ jobs:
       # ce job-ci ne change QUE la version de Python, jamais la découverte ni
       # la façon de lancer les suites (§6 : scripts autonomes, jamais
       # `unittest discover`).
+      #
+      # bug-022 — ce job N'EST PAS le job système : ce que la matrice vérifie,
+      # c'est le comportement du PYTHON (3.11 · 3.13), pas le rendu d'une page
+      # dans Chromium. Exécuter un harnais navigateur trois fois (ici + le job
+      # système) ne prouve rien de plus qu'une fois, et coûte l'exposition
+      # (bug-022 RECTIFICATION : 3 occasions indépendantes de croiser une VM
+      # lente au lieu d'1) qui a fait échouer deux jobs sur le même commit
+      # sans changement de code. On EXCLUT donc tout fichier qui se déclare
+      # `HARNAIS_NAVIGATEUR = True` — le job système, lui, ne filtre RIEN et
+      # continue de les exécuter (une fois chacun). Gardé par
+      # `control-center/backend/test_ci_partition_navigateur.py`, qui exige
+      # ce filtre présent ICI et absent côté job système.
       - name: Suite de tests du centre de contrôle (découverte)
         run: |
           if [ ! -d control-center ]; then
@@ -262,12 +311,33 @@ jobs:
           echo
 
           echec_global=0
+          exclus=()
+          executes=()
           for fichier in "${fichiers[@]}"; do
+            # bug-022 : motif de filtrage — un harnais navigateur porte la
+            # ligne de module EXACTE `HARNAIS_NAVIGATEUR = True`. Le job
+            # système (ci-dessus) ne porte pas ce test.
+            if grep -qx 'HARNAIS_NAVIGATEUR = True' "$fichier"; then
+              exclus+=("$fichier")
+              echo "=== $fichier === EXCLU (harnais navigateur, bug-022)"
+              echo
+              continue
+            fi
             echo "=== $fichier ==="
-            if ! python3 "$fichier"; then
+            if ! python3 "$fichier" < /dev/null; then
               echec_global=1
             fi
+            executes+=("$fichier")
             echo
           done
+
+          echo "Découverts: ${#fichiers[@]} · Exclus (harnais navigateur): ${#exclus[@]} · Exécutés: ${#executes[@]}"
+
+          attendu=$(( ${#fichiers[@]} - ${#exclus[@]} ))
+          if [ "${#executes[@]}" -ne "$attendu" ]; then
+            echo "❌ ${#fichiers[@]} découvert(s), ${#exclus[@]} exclu(s), mais ${#executes[@]} exécuté(s) (attendu $attendu)." >&2
+            echo "   La boucle a été interrompue — ne jamais lire ce cas comme un succès." >&2
+            exit 1
+          fi
 
           exit "$echec_global"

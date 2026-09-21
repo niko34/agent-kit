@@ -56,6 +56,17 @@ import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
 
+# bug-022 : marqueur de MODULE (pas le nom du fichier) declarant ce harnais
+# comme lanceur de navigateur. Mesure : `*_navigateur.py` n'attrape que 2 des
+# 3 harnais qui lancent Chromium -- CE fichier lance Chromium (condition 1,
+# focalisabilite) sans porter ce suffixe. Le marqueur, lui, meurt AVEC le
+# fichier plutot qu'avec une convention de nommage. Lu par
+# `control-center/backend/test_ci_partition_navigateur.py` et par le job
+# `centre-de-controle-matrice` (`.github/workflows/hygiene-specs.yml`), qui
+# l'exclut de la matrice Python -- ce fichier vaut un rendu Chromium, pas une
+# version de l'interpreteur.
+HARNAIS_NAVIGATEUR = True
+
 _ICI = os.path.dirname(os.path.abspath(__file__))
 _BACKEND = os.path.join(os.path.dirname(_ICI), "backend")
 sys.path.insert(0, _BACKEND)
@@ -82,6 +93,30 @@ def trouver_navigateur():
         if chemin:
             return chemin
     return None
+
+
+def _lancer_navigateur(commande):
+    """Lance `commande` (un appel Chromium), avec une seule reprise si la
+    premiere tentative expire (bug-022).
+
+    Le seuil de 30 s reste inchange : marge mesuree de 6,5x au pire cas local
+    (3 lancements concurrents brides a 2 vCPU, 4,6 s), donc un depassement
+    implique une VM anormalement lente (incident de provisionnement), pas un
+    seuil trop juste. Cette reprise absorbe ce residu d'exposition SANS
+    masquer une vraie regression : elle ne rattrape QUE
+    `subprocess.TimeoutExpired`, jamais un echec d'assertion ni un code de
+    retour non nul, et elle est UNIQUE (pas de boucle). L'avertissement est
+    imprime bruyamment : c'est le critere longitudinal du correctif -- s'il
+    apparait dans un journal de CI, bug-022 doit etre rouvert."""
+    try:
+        return subprocess.run(commande, capture_output=True, text=True, timeout=30)
+    except subprocess.TimeoutExpired:
+        print("!" * 70, file=sys.stderr)
+        print("AVERTISSEMENT bug-022 : lancement Chromium expire apres 30 s, "
+              "nouvelle tentative unique. Si ceci apparait en CI, rouvrir "
+              "bug-022 (voir control-center/PIEGES.md).", file=sys.stderr)
+        print("!" * 70, file=sys.stderr)
+        return subprocess.run(commande, capture_output=True, text=True, timeout=30)
 
 
 def appeler(base, chemin):
@@ -131,7 +166,7 @@ def mesurer_focalisabilite(navigateur, dossier):
         navigateur, "--headless", "--disable-gpu", "--no-sandbox",
         "--dump-dom", "file://" + chemin,
     ]
-    resultat = subprocess.run(commande, capture_output=True, text=True, timeout=30)
+    resultat = _lancer_navigateur(commande)
     m = _RE_SALIDA_JSON.search(resultat.stdout)
     if not m:
         return None
