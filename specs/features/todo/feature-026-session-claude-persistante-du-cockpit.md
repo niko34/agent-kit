@@ -98,9 +98,10 @@ Toutes relevées le **2026-09-22** sur ce conteneur, `claude` **2.1.278**.
 - [x] orchestrator
 - [x] spec-reader
 - [x] architect
-- [x] security-reviewer, rôle GATE — **obligatoire, et plus lourd qu'avant** : le porteur du
-      jeton peut désormais **taper dans une session qui a un shell et l'identité git du
-      développeur**. Voir « Sécurité & données ».
+- [x] security-reviewer, rôle GATE — **obligatoire**, mais sur un mandat **recadré par la
+      décision humaine du 2026-09-22** : la question n'est plus « le cockpit a-t-il le droit »
+      (il tourne sur l'environnement du développeur et y a déjà les droits), mais
+      « **est-ce traçable et réversible** ». Voir « Sécurité & données ».
 - [x] ux-ui-designer — le panneau de conversation change de sémantique
 - [x] backend-developer
 - [x] frontend-developer
@@ -245,12 +246,30 @@ chemin hors racine : c'est le modèle de menace d'`ADR-0041`, pas celui d'`ADR-0
 ## Sécurité & données
 
 - **Authentification touchée** : non directement — la session est **déjà** authentifiée.
-- **Permissions / rôles touchés** : **oui, et c'est une escalade**. Le jeton du cockpit
-  achetait « lancer une commande **déclarée** » ; il achèterait désormais « **taper une
-  instruction arbitraire** dans une session qui a un shell, l'identité git du développeur, et
-  le mode `auto` actif ». La liste fermée des commandes (`ADR-0005`) **cesse de borner** ce
-  qu'un porteur du jeton peut faire faire à l'agent. ⚠️ **Le GATE doit statuer sur ce point
-  précis avant toute ligne de code.**
+- **Permissions / rôles touchés** : **oui — et la question « est-ce une escalade ? » est
+  TRANCHÉE, pas ouverte.** L'agent principal l'avait posée au GATE comme un point bloquant :
+  le jeton achetait « lancer une commande **déclarée** » (liste fermée, `ADR-0005`), il
+  achèterait « **taper une instruction arbitraire** dans une session qui a un shell,
+  l'identité git du développeur et le mode `auto` actif ».
+
+  **Décision humaine du 2026-09-22, mot pour mot :**
+
+  > « Le centre de contrôle est conçu pour fonctionner sur l'environnement du développeur.
+  > Il a déjà les droits sur cet environnement. »
+
+  Ce qu'elle établit, et qui vaut **prémisse pour le GATE** plutôt que question à lui poser :
+  le cockpit **n'acquiert aucun droit nouveau** en tapant dans la session. Il tourne en
+  `root` sur la machine du développeur, sert déjà `/api/lancer` et les routes d'écriture de
+  spec, et pourrait de toute façon écrire n'importe quel fichier du dépôt. La liste fermée
+  des commandes n'a **jamais** été une frontière de privilège — c'est une frontière
+  d'**ergonomie et de traçabilité**, et c'est à ce titre qu'elle doit être jugée ici.
+
+  ⚠️ **Ce que le GATE garde donc à statuer** (déplacé, pas supprimé) : non pas « a-t-il le
+  droit », mais « **ce qu'il fait reste-t-il traçable et réversible** ». Un message tapé dans
+  un pty ne laisse, par lui-même, **aucune trace côté cockpit** — d'où la journalisation
+  **avant** envoi (A3), et la question ouverte de ce qu'on journalise d'un texte libre
+  (`PIEGES §16` : ne pas fabriquer ce qu'on ne mesure pas). C'est le même déplacement que
+  `ADR-0020` a déjà fait une fois : la garde utile n'est pas l'interdiction, c'est le journal.
 - **Données personnelles** : **oui** — le fil d'une conversation réelle, rendu par une route
   HTTP en clair sur le réseau local. Finalité : afficher au propriétaire du centre la
   conversation qu'il mène déjà.
