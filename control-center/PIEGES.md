@@ -751,6 +751,57 @@ Vaut pour toute commande lancée par le centre de contrôle : un lancement qui
 « réussit » sans agent connecté consomme le verrou d'écrivain et journalise
 une fin propre pour un cycle qui n'a rien produit.
 
+## 57. `git rm` supprime en CASCADE tout répertoire parent devenu vide
+
+Retirer le dernier fichier d'un répertoire ne supprime pas seulement ce
+répertoire : git remonte et efface **tout parent qui devient vide à son tour**.
+
+Mesuré dans un dépôt jetable — une seule spec, une seule commande :
+
+```
+avant   specs/  specs/features/  specs/features/todo/
+git rm specs/features/todo/feature-900-seule.md
+après   (plus rien)
+```
+
+`specs/` **entier** a disparu, pas seulement `todo/`.
+
+**Pourquoi ça compte ici.** Le cockpit sait supprimer une spec. Supprimer la
+dernière d'une colonne fait perdre la colonne au kanban ; supprimer la dernière
+du dépôt fait perdre **l'arbre que `check_specs.sh`, `lister_specs` et le kanban
+tiennent pour acquis**. Le retour arrière (`git checkout <sha> -- <chemin>`)
+recrée le chemin, donc l'état est récupérable — mais entre les deux, des
+composants lisent un dépôt dont le socle n'existe plus.
+
+**Et aucun test ne le voit par construction** : chaque groupe de test garde
+d'autres specs dans `todo/`, donc le répertoire ne devient jamais vide. Il faut
+un cas qui supprime **la dernière**, sinon le comportement reste invisible.
+
+## 58. Mesurer un arbre pendant qu'un autre agent y écrit produit un faux « flaky »
+
+Deux agents lancés en parallèle sur le **même arbre de travail** produisent des
+signaux qui ressemblent à de l'instabilité et n'en sont pas. Constaté deux fois
+dans le même cycle, avec deux symptômes différents :
+
+- un clone `cp -a` pris à 19:51:13 **a manqué deux fichiers** créés à 19:51 et
+  19:52 par un pair — le compte annoncé était un minorant, découvert seulement
+  en comparant la liste du clone à celle du dépôt ;
+- une suite lancée pendant qu'un pair réécrivait `web/` a rendu **2 échecs**
+  qualifiés de « flaky d'un run à l'autre ». Rejoués une fois le pair terminé :
+  **8 exécutions, 8 vertes**. Il n'y avait aucune instabilité — l'arbre bougeait
+  sous la mesure.
+
+**La parade n'est pas de relancer jusqu'à obtenir du vert**, c'est de savoir qui
+écrit. Avant de conclure à une régression ou à une instabilité, établir qu'aucun
+pair ne travaille dans le même arbre. Et **séquencer** les lots qui touchent les
+mêmes fichiers plutôt que de les paralléliser : `backend/` et `web/` sont
+disjoints, deux lots qui réécrivent tous deux `app.css` ne le sont pas.
+
+⚠️ Corollaire : un total de suite mesuré pendant un travail concurrent **n'est
+pas reproductible**, et toute comparaison ultérieure à ce chiffre conclura à
+tort. Un écart inexpliqué se vérifie d'abord contre *qui écrivait*, avant d'être
+imputé au code.
+
 ## Voir aussi
 
 - `docs/DESIGN-SYSTEM.md` — règles de couleur, de surface et de typographie

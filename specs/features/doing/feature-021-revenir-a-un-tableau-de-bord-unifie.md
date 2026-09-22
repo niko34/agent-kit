@@ -2421,6 +2421,111 @@ par ce dépôt.
   `<button>` **fait réapparaître le fond par défaut du navigateur** — ce qui a rendu
   `.agent-flag` faussement « peint » pour la garde de contrastes (196 → 200 aplats).
   Correctif : `background-color: transparent` explicite.
+- [2026-09-22 16:40] Lot 9 — backend-developer — **`feature-025` backend livré**.
+  `_ROUTES_ECRITURE` 4 → 7, **aucun verbe `do_*` neuf** ; `POST /api/spec/{lancer,modifier,
+  supprimer}`, et `GET /api/spec` porte désormais une `empreinte` sha256. **Les 20
+  conditions du GATE devenues assertions**, chacune nommée avec son numéro. La plus
+  importante tient : **S2.7, retour arrière EXÉCUTÉ** — le test lance l'`argv` tel que la
+  réponse JSON le rend, puis vérifie le contenu bit pour bit et `git status --porcelain`
+  vide. **S2.6** reproduit le fait mesuré par le GATE : une spec **non suivie par git** est
+  refusée (409) en le disant, plutôt que supprimée sans retour possible. `K4` respecté :
+  **aucune grandeur de progression exposée**.
+  ✔️ Deux honnêtetés de son rapport : la mutation du confinement **ne tue que côté test
+  unitaire**, jamais en HTTP — un `spec_id` forgé ne correspond à aucun id réel et n'atteint
+  donc jamais la seconde garde ; et le harnais non-root **partage `sys.modules` entre clones
+  successifs**, sans effet aujourd'hui mais avec un diagnostic faux à la clé si un test
+  futur faisait tourner deux groupes en parallèle.
+  **Suite : 1452 → 1557 cas, 39 fichiers, 0 échec** ; non-root 39 lancés / 39 verdicts.
+- [2026-09-22 17:05] **« FLAKY » REFUSÉ — et le diagnostic de l'agent principal était FAUX
+  sur le mécanisme.** Le lot 9 signalait un échec de G3 « une fois sur trois », qualifié de
+  « flaky de rendu Chromium ». Mesuré : **1 échec sur 6**, toujours sur
+  `B_box_shadow_peint_par_le_cockpit_appartient_a_la_signature_du_prototype`, valeur
+  `color(srgb 0.309804 0.27451 0.847059 / 0.08) 0px 0px 0px 6px` — le halo `--primary` à
+  8 %. **Sur une CI, une build rouge une fois sur six sans défaut réel : la forme exacte de
+  `bug-022`, qui a coûté sept runs rouges avant qu'on cesse de croire au hasard.**
+  ⚠️ **Ma cause était fausse.** J'avais conclu « le prototype est une démo qui se joue
+  toute seule (`setInterval` l. 1037 et 1251), donc sa signature bouge ». Mesuré par le
+  sous-agent : sondée **6 fois à vide, la signature du prototype est STABLE** — la démo ne
+  déplace pas l'histogramme au repos. Ce qui varie sous charge, c'est **si un agent a
+  atteint `state-active` au moment du relevé**, le halo n'entrant dans la référence qu'à
+  cette étape.
+  ⚠️ **Et mon correctif, seul, aurait été pire que le défaut** : sous
+  `--force-prefers-reduced-motion`, `playing = !reducedMotion` fige bien la démo — mais le
+  cockpit peint l'état actif **par construction** (`termine: false`) tandis que le prototype
+  figé ne l'atteint plus. G3 aurait échoué **à tous les coups**. Mesuré : sans drapeau
+  6 valeurs, avec drapeau 5 — le figeage retire `--primary`@8 % et `#aaa6b0`@8 %, ajoute
+  `#777385`@8 %. Correctif réel : **rendre les deux scènes comparables** — la scène du
+  prototype pose explicitement `state-active`/`state-done`/`state-pending` sur trois
+  `.agent-node`, noms du prototype donc clé de jointure préservée. Ce qui sort du périmètre
+  est ce qui dépend d'une **animation en cours**, jamais d'un **état** — déclaré en en-tête.
+  ✔️ **Et la garde se défend désormais elle-même** : elle échantillonne la référence **deux
+  fois** et `REFERENCE_stable_entre_deux_releves_*` (l. 589) échoue en nommant l'écart si
+  elle a bougé. Une entrée d'`AJOUTS_HISTOGRAMME_DECLARES` devenue périmée a été signalée
+  par la clause miroir et retirée.
+  **Vérifié par l'agent principal : 8 exécutions consécutives, 8 vertes, 14 cas.** Suite
+  **39 fichiers, 1559 cas, 0 échec**. Le sous-agent signale aussi que sa première mutation
+  de l'auto-vérification **plantait** (`histogramme` est un dict, pas une liste) — rouge
+  pour la mauvaise raison, refaite.
+- [2026-09-22 19:30] Étape 6 — security-reviewer — **GATE P2 sur le diff du lot 9 : GO
+  SOUS CONDITIONS (5)**. 14 mutants posés, **12 tués, 2 survivants nommés**. Trois
+  trouvailles, et c'est trois fois la même maladie — *la garde est juste, sa preuve est du
+  mauvais côté* :
+  **(1) Une garde livrée MORTE sous une configuration supportée.** `lancement_courant()`
+  (`server.py:737`) ne rend que le **dernier** écrivain. Mesuré avec
+  `ecrivains_simultanes = 2` : modifier une spec **pendant qu'un agent y travaille** →
+  **200, fichier écrasé**, `lancement_spec_id = None`. Motif d'`ADR-0017`.
+  **(2) Un oracle qui s'accorde avec lui-même.** `test_supprimer_nominal_argv_forme_attendue`
+  comparait **deux champs de la même réponse** ; un mutant altérant les deux de la même
+  façon survit (M12 : chemins rendus absolus → **52/52 verts**). L'assertion « jamais la
+  racine » ne couvrait **qu'un seul 404**. `PIEGES §30` côté HTTP.
+  **(3) La seconde garde de confinement n'avait jamais vu son cas réel.** Le lot l'avait
+  cherchée côté `spec_id` forgé — qui ne l'atteint jamais. Le cas est **côté disque**,
+  reproduit par l'agent principal : un **lien symbolique** planté dans `todo/` est listé
+  comme une spec et `chemin_sur` le résout **hors de la colonne**. Sans cette garde,
+  `modifier()` ferait un `os.replace` sur n'importe quel fichier du dépôt.
+- [2026-09-22 21:00] Reboucle P2 — backend-developer — **les 5 conditions levées**.
+  `lancements_actifs()` filtre **tous** les lancements en cours ; le mutant restaurant
+  l'ancien comportement tue **5 cas neufs** avec `ecrivains_simultanes = 2`. `requete()`
+  enveloppée : `racine_projet not in corps` sur **chaque** réponse, 2xx comme 4xx — M12
+  meurt sur 3 assertions. **Trois vrais liens symboliques** plantés dans `todo/` (hors
+  `specs/`, vers `doing/`, hors dépôt) : 404 et cible intacte dans les trois, le mutant
+  meurt désormais sur un cas de système de fichiers. `role != "premiere"` en fail-closed sur
+  la seule route destructive. M6 rendu **déterministe** (5/5 contre 2/5).
+  ⚠️ **`PIEGES §57` écrit** : `git rm` supprime **en CASCADE** tout parent devenu vide.
+  Mesuré par l'agent principal sur dépôt jetable — retirer la dernière spec fait disparaître
+  `todo/`, `features/` **et `specs/`**. Le retour arrière recrée le chemin, mais entre les
+  deux le cockpit lit un dépôt sans arbre de specs. Aucun test ne le voyait : chaque groupe
+  garde d'autres specs, donc le répertoire ne devient jamais vide.
+  ⚠️ Piège de méthode relevé : **un test de concurrence qui contamine l'état partagé masque
+  le défaut qu'il prouve** — tester `modifier` avant `supprimer` sur la même cible faisait
+  rendre 409 **pour une raison étrangère**. Tester d'abord l'opération dont l'échec ne
+  modifie rien.
+- [2026-09-22 21:40] Lot 10 — frontend-developer — **`feature-025` frontend livré**. Les 3
+  `<dialog>` et `#context-menu` **repris verbatim** du prototype. Le mécanisme de `bug-017`
+  est **réutilisé, pas dupliqué** : la sémantique modale native de `<dialog>` rend le reste
+  inerte, vérifié par un harnais neuf (8 cas) plutôt que supposé — mutation `showModal()` →
+  `hidden = false` : **20 contrôles atteignables**, `F4b` les nomme. `.progress-track`
+  livrée **sans aucun pourcentage** : `aria-valuenow="42"` injecté → 4 instances en échec.
+  `#cycle-title` câblé sur ses **trois** états. `IDS` : +39. Cibles 48 px partout (un écart
+  à 44 px corrigé sur `.more-button`).
+  **Trois écarts déclarés** : `#add-item-dialog` présent mais **inerte avec motif affiché**
+  (créer une spec relève de `feature-024`, hors cycle) ; `#delete-dialog` **diverge du
+  prototype** en ajoutant un champ de saisie du nom — la maquette n'a qu'un Oui/Non, mais le
+  GATE exige une confirmation exacte, donc la fidélité cède devant la sécurité, et c'est
+  écrit ; la modification réutilise le tiroir existant, le prototype ne montrant pas cet
+  écran.
+- [2026-09-22 21:55] **« FLAKY » REFUSÉ UNE SECONDE FOIS, et c'était encore faux.** La
+  reboucle P2 signalait 2 échecs dans `web/` « flaky d'un run à l'autre ». L'agent principal
+  a refusé de conclure **pendant que le lot 10 écrivait** dans ce répertoire, puis a rejoué
+  une fois l'arbre stable : `test_app_classes_navigateur` **4/4 vertes**,
+  `test_app_contrastes_navigateur` **4/4 vertes**. Aucune instabilité : **l'arbre bougeait
+  sous la mesure**.
+  ⚠️ **`PIEGES §58` écrit** : mesurer un arbre pendant qu'un pair y écrit produit un faux
+  « flaky ». Deux symptômes dans ce seul cycle — un clone `cp -a` qui **manque des fichiers**
+  créés une minute plus tard, et une suite qui rend des échecs irreproductibles. **La parade
+  n'est pas de relancer jusqu'au vert, c'est de savoir qui écrit**, et de **séquencer** les
+  lots qui touchent les mêmes fichiers.
+  **Suite : 40 fichiers, 1658 cas, 0 échec.** 50 specs, 191 liens.
 ### 4. F17 — le registre `ATTENDU_ROUGE`, défini (l'agent principal avait transmis le terme sans sa définition)
 
 **Le problème qu'il résout.** Écrire les cinq gardes au lot 0 et les voir échouer,
