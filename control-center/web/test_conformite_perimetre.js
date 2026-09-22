@@ -145,13 +145,31 @@ check("icon_button_nest_plus_declaree_morte",
 
 const RACINE = path.join(__dirname, "..", "..");
 
+// Une spec absorbée CHANGE DE COLONNE pendant le cycle qui la porte
+// (`todo/` → `doing/` → `done/`, par `git mv`, jamais par copie). Chercher
+// dans la seule colonne `doing/` faisait échouer cette garde à la CLÔTURE du
+// cycle — trouvé en exécutant, au moment du `git mv` vers `done/`. On
+// résout donc la spec par son NOM DE FICHIER, dans les trois colonnes, et on
+// exige qu'elle soit trouvée dans EXACTEMENT UNE : zéro, c'est une spec
+// disparue ; deux, c'est le doublon que `tools/check_specs.sh` interdit, et
+// une garde qui prendrait la première trouvée lirait une version périmée
+// sans le dire.
+const COLONNES_DU_CYCLE = ["todo", "doing", "done"];
+
 function lireSpec(nomFichier) {
-  const chemin = path.join(RACINE, "specs", "features", "doing", nomFichier);
-  if (!fs.existsSync(chemin)) {
-    throw new Error("ATTEIGNABILITE : spec absorbée introuvable à " + chemin);
+  const trouves = COLONNES_DU_CYCLE
+    .map((colonne) => path.join(RACINE, "specs", "features", colonne, nomFichier))
+    .filter((chemin) => fs.existsSync(chemin));
+  if (trouves.length === 0) {
+    throw new Error("ATTEIGNABILITE : spec absorbée introuvable dans " +
+      COLONNES_DU_CYCLE.map((c) => "specs/features/" + c + "/").join(", ") + " : " + nomFichier);
   }
-  const texte = fs.readFileSync(chemin, "utf8");
-  if (texte.trim().length === 0) throw new Error("ATTEIGNABILITE : spec vide à " + chemin);
+  if (trouves.length > 1) {
+    throw new Error("ATTEIGNABILITE : " + nomFichier + " présente dans " + trouves.length +
+      " colonnes à la fois (" + trouves.join(", ") + ") — doublon interdit par check_specs.sh");
+  }
+  const texte = fs.readFileSync(trouves[0], "utf8");
+  if (texte.trim().length === 0) throw new Error("ATTEIGNABILITE : spec vide à " + trouves[0]);
   return texte;
 }
 

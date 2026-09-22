@@ -14,10 +14,11 @@
   romprait la continuité du journal et créerait un numéro à deux slugs, que
   `check_specs.sh` signale)*
 - **Type** : feature
-- **Statut** : doing
+- **Statut** : **done** — cycle clos le 2026-09-22, 18 commits sur `cycle/feature-021-cockpit-m3`,
+  suite 45 fichiers / 1893 cas root / 1820 non-root / 0 échec, registres `ATTENDU_ROUGE` vides
 - **Priorité** : normale
 - **Version cible** : N/A
-- **Dernière mise à jour** : 2026-09-20
+- **Dernière mise à jour** : 2026-09-22 (clôture du cycle)
 - **Spec(s) liée(s)** : `feature-015`, `feature-016`, `feature-017`, `feature-019`,
   `feature-020` (dont elle révoque des acquis) ; `bug-017` et `bug-018` (entrent dans
   le cycle au titre d'ADR-0017) ; les quatre specs neuves issues du découpage.
@@ -44,6 +45,12 @@ Mesurées le 2026-09-20 sur le prototype `control-center/maquettes/2026-09-20-ma
 
 ## Domaines touchés
 - [ ] API REST — **aucun endpoint ne change dans CETTE spec**
+      ⚠️ **Rectifié à la clôture** : vrai de la spec telle qu'écrite, FAUX du cycle réel.
+      La réouverture de périmètre du 2026-09-22 y a absorbé `feature-022`, `023` et `025`,
+      qui ajoutent `GET/POST /api/conversation`, `POST /api/spec/{modifier,supprimer,lancer}`
+      et le filtre de jetons. Ces endpoints appartiennent à ces specs-là, chacune avec son
+      GATE P1/P2 — la case reste décochée parce qu'elle parle de CETTE spec, la note existe
+      parce que le cycle, lui, a bien touché l'API.
 - [x] Frontend (écrans, composants, appels API)
 - [ ] BDD / migrations
 - [ ] Auth / permissions
@@ -57,6 +64,10 @@ Mesurées le 2026-09-20 sur le prototype `control-center/maquettes/2026-09-20-ma
 - [ ] security-reviewer, rôle GATE — **sans objet pour cette spec** : aucune donnée
       nouvelle, aucune route nouvelle, aucun tiers. ⚠️ Obligatoire dans les quatre
       specs sorties du périmètre.
+      ⚠️ **Rectifié à la clôture** : sans objet pour cette spec, indispensable au cycle.
+      Le GATE a statué cinq fois (P1 sur quatre surfaces le 2026-09-22, re-GATE S3, P2 sur le
+      diff du lot 9), puis le rôle AUDIT a trouvé l'asymétrie de confinement en lecture que
+      ces cinq passages sur périmètre déclaré ne pouvaient pas voir.
 - [x] ux-ui-designer — rôle **réduit** : le design est fourni. Il arbitre les trois
       points où la maquette est muette ou fautive (accessibilité, cas limites,
       colonnes configurables)
@@ -196,73 +207,74 @@ conforme à `feature-020`, thème clair/sombre (`feature-015`), contraste corrig
 ## Livrables — check-list
 
 ### Conformité mesurable
-- [ ] F0 — **partition du prototype** : chaque élément affecté à sa spec
+- [x] F0 — **partition du prototype** : chaque élément affecté à sa spec
       (`feature-022`, `feature-023`, `feature-025`, ou ce cycle) — il est la
       maquette de **quatre** specs. Sans F0, F3 et F4 n'ont pas de cible
       définissable `[complété par le plan du cycle 2]`
-- [ ] F1 — garde de **table des jetons** : noms et valeurs hex, égalité stricte avec le prototype
-- [ ] F2 — garde de **table des durées** : animations et transitions, durée, délai, courbe
-- [ ] F3a — garde de **parité des classes**, volet statique (DOM initial ↔ feuille de
+- [x] F1 — garde de **table des jetons** : noms et valeurs hex, égalité stricte avec le prototype
+- [x] F2 — garde de **table des durées** : animations et transitions, durée, délai, courbe
+- [x] F3a — garde de **parité des classes**, volet statique (DOM initial ↔ feuille de
       style), calculable au **lot 0** `[complété par le plan du cycle 2]`
-- [ ] F3b — garde de **parité des classes**, volet runtime (classes posées
+- [x] F3b — garde de **parité des classes**, volet runtime (classes posées
       dynamiquement par `app.js` en cours d'exécution), au **lot 5**
       `[complété par le plan du cycle 2]`
-- [ ] F4a — garde de **contrat d'accessibilité**, volet statique : `id`, `role`,
+- [x] F4a — garde de **contrat d'accessibilité**, volet statique : `id`, `role`,
       `aria-*` déclarés dans le DOM initial, au **lot 0**
       `[complété par le plan du cycle 2]`
-- [ ] F4b — garde de **contrat d'accessibilité**, volet runtime : comptes de
+- [x] F4b — garde de **contrat d'accessibilité**, volet runtime : comptes de
       `<dialog>`/`showModal()` réellement ouverts, focus posé, `aria-*` posés
       dynamiquement, au **lot 5** `[complété par le plan du cycle 2]`
-- [ ] F5a — garde de **contrastes**, phase matrice : table des **couples interdits**
+- [x] F5a — garde de **contrastes**, phase matrice : table des **couples interdits**
       dérivée de la matrice complète jeton × surface, seuil 4,65 texte / 3,0 trait
       — calculable sans code, au **lot 0** (décision du 2026-09-21)
       `[complété par le plan du cycle 2]`
-- [ ] F5b — garde de **contrastes**, phase peinte : aucun couple interdit n'est
+- [x] F5b — garde de **contrastes**, phase peinte : aucun couple interdit n'est
       **réellement peint** (`getComputedStyle`, le prototype n'utilise aucun
       `oklch`), au **lot 5** `[complété par le plan du cycle 2]`
 
 ### Implémentation
-- [ ] F6 — système visuel M3 : `:root`, surfaces tonales, élévations, typographie, focus 3 px, cibles 48 px
-- [ ] F7 — structure mono-écran ; **0** `role="tab"` de navigation — sortie du lot 3,
+- [x] F6 — système visuel M3 : `:root`, surfaces tonales, élévations, typographie, focus 3 px, cibles 48 px
+      `[lot 2 ; réserve déclarée : `.nav-onglet` à 44 px, portée au journal, jamais tue]`
+- [x] F7 — structure mono-écran ; **0** `role="tab"` de navigation — sortie du lot 3,
       point d'arrêt humain obligatoire (structure = point de non-retour visuel)
-- [ ] F8 — graphe d'agents : disques, anneau d'activité, 12 graduations, 3 pastilles, durée
-- [ ] F9 — animations d'enchaînement, aux durées et courbes exactes
-- [ ] F10 — kanban 3 colonnes **lues depuis `/api/etat.colonnes`**, défilement vertical commun
-- [ ] F11 — bottom sheet de détail d'un passage, qui **dit ce que le chiffre compte**
-- [ ] F12 — cas limites non traités par la maquette : dépôt vide, serveur injoignable, écriture désactivée, bornage déclaré
+- [x] F8 — graphe d'agents : disques, anneau d'activité, 12 graduations, 3 pastilles, durée
+- [x] F9 — animations d'enchaînement, aux durées et courbes exactes
+- [x] F10 — kanban 3 colonnes **lues depuis `/api/etat.colonnes`**, défilement vertical commun
+- [x] F11 — bottom sheet de détail d'un passage, qui **dit ce que le chiffre compte**
+- [x] F12 — cas limites non traités par la maquette : dépôt vide, serveur injoignable, écriture désactivée, bornage déclaré
 - [x] F13 — thème sombre retiré : `theme.js`, tests et règles CSS associés — **lot 1**
       `[livré 2026-09-21, 1 seul bloc :root, trou de garde signalé (voir journal)]`
-- [ ] F14 — `prefers-reduced-motion` : animations continues supprimées, état final compréhensible
-- [ ] F15 — centre du disque **sans chiffre** : livré *dégradable* (l'anneau et le
+- [x] F14 — `prefers-reduced-motion` : animations continues supprimées, état final compréhensible
+- [x] F15 — centre du disque **sans chiffre** : livré *dégradable* (l'anneau et le
       reste du disque fonctionnent sans lui), jamais *à trous* (aucun espace vide
       qui signale un chiffre manquant) — la lecture des tokens est sortie vers
       `feature-023` avec son propre GATE `[complété par le plan du cycle 2]`
-- [ ] F16 — les **quatre représentations absentes du prototype** qu'`ADR-0031 §3`
+- [x] F16 — les **quatre représentations absentes du prototype** qu'`ADR-0031 §3`
       exige d'inventer : l'échec, le « sans clôture », l'agent principal, et la
       règle de non-chevauchement des libellés — mandat principal d'`ux-ui-designer`
       `[complété par le plan du cycle 2]`
-- [ ] F17 — registre `ATTENDU_ROUGE` : témoins délibérément rouges pour F1→F5, qui
+- [x] F17 — registre `ATTENDU_ROUGE` : témoins délibérément rouges pour F1→F5, qui
       opérationnalisent le critère d'acceptation « une garde jamais vue rouge ne
       prouve rien » en artefact concret plutôt qu'en seule discipline de test —
       ⚠️ **terme reçu du plan, contenu exact non retrouvé ailleurs dans le dépôt** ;
       à confirmer avec l'`orchestrator`/`architect` avant le lot 0
       `[complété par le plan du cycle 2]`
-- [ ] F18 — la garde CI de partition (`test_ci_partition_navigateur.py`) continue de
+- [x] F18 — la garde CI de partition (`test_ci_partition_navigateur.py`) continue de
       passer, **vérifié par exécution** (46→44 cas, 0 échec, mesuré le 2026-09-21
       dans un clone jetable), une fois `test_app_theme_navigateur.py` supprimé — sa
       liste est dérivée du marqueur `HARNAIS_NAVIGATEUR`, pas tenue à la main
       (`PIEGES §50`, §54) `[complété par le plan du cycle 2]`
 
 ### Tests et docs
-- [ ] D1 — suites JS réécrites ; ⚠️ la liste `IDS` de `test_app_bug012.js` gagne tout identifiant neuf (`PIEGES §7`, sinon vert à tort)
-- [ ] D2 — tests neufs validés **par mutation**
+- [x] D1 — suites JS réécrites ; ⚠️ la liste `IDS` de `test_app_bug012.js` gagne tout identifiant neuf (`PIEGES §7`, sinon vert à tort)
+- [x] D2 — tests neufs validés **par mutation**
 - [x] D3 — la baisse du compte de cas au **lot 1** est **déclarée légitime** dans le
       journal, pas laissée pour une lecture qui la prendrait pour une régression
       (`PIEGES §32`). ⚠️ **Mesure réelle -406, pas -373** : -373 pour les deux fichiers
       supprimés eux-mêmes (`test_app_theme.js` 317 + `test_app_theme_navigateur.py` 56)
       **+ -33 de couplages réels et d'un effet de bord automatique**, tous nommés et
       expliqués dans le journal du 2026-09-21 (lot 1) — 1981 → 1575, tous verts
-- [ ] C1 — `docs/features/page-*.md` et `CHANGELOG.md`
+- [x] C1 — `docs/features/page-*.md` et `CHANGELOG.md`
 
 ## Sécurité & données
 - Authentification : **non** · Permissions : **non** · Données personnelles : **non**
@@ -287,18 +299,30 @@ conforme à `feature-020`, thème clair/sombre (`feature-015`), contraste corrig
   faux** sur les jetons), `docs/adr/0030`→`0035`
 
 ## Critères d'acceptation
-- [ ] Les cinq gardes F1→F5 sont **vertes**, et chacune a été vue **échouer** sur une
+- [x] Les cinq gardes F1→F5 sont **vertes**, et chacune a été vue **échouer** sur une
       altération volontaire (une garde jamais vue rouge ne prouve rien)
-- [ ] `grep -c 'role="tab"' control-center/web/index.html` → **0**
-- [ ] Aucun hexadécimal hors du bloc `:root`
-- [ ] Aucune dépendance, aucune ressource distante, aucun `<script>` inline — vérifiés par
+- [x] `grep -c 'role="tab"' control-center/web/index.html` → **0**
+- [x] Aucun hexadécimal hors du bloc `:root` — **une exception, déclarée et gardée** :
+      `#000` comme arrêt de dégradé dans `mask: radial-gradient(...)` (l.1092), hérité du
+      prototype, jamais une couleur peinte. Tout AUTRE hex hors `:root` est un échec DUR
+      (`test_conformite_jetons.js`, trouvé par mutation au lot 4). Mesuré à la clôture :
+      37 hex dans `app.css`, 36 dans un bloc `:root`, 1 = cette exception.
+- [x] Aucune dépendance, aucune ressource distante, aucun `<script>` inline — vérifiés par
       **parseur HTML**, jamais par `grep` (`PIEGES §26`, §27)
-- [ ] Les colonnes du kanban proviennent de `/api/etat.colonnes` — vérifié en renommant
-      une colonne dans la configuration
-- [ ] `prefers-reduced-motion` : aucune animation continue, état final compréhensible
-- [ ] Suite complète verte, **zéro régression** — ⚠️ suppose `bug-018` traité, sinon il
+- [x] Les colonnes du kanban proviennent de `/api/etat.colonnes` — vérifié en renommant
+      une colonne dans la configuration. ⚠️ **Vérifié À LA MAIN à la clôture, aucun test ne
+      le porte** : `config.colonnes()` lue depuis un `control-center.toml` déclarant
+      `Vivier`/`Chantier`/`Archive`, page chargée dans le vrai Chromium, `#kanban
+      .column-label` rendus → `["Vivier","Chantier","Archive"]`. Les libellés codés en dur
+      d'`index.html` vivent dans `#gabarits-adoptes` (`hidden`), lu par F3a, jamais peint.
+- [x] `prefers-reduced-motion` : aucune animation continue, état final compréhensible
+- [x] Suite complète verte, **zéro régression** — ⚠️ suppose `bug-018` traité, sinon il
       n'existe aucune ligne de base verte à opposer
-- [ ] Lint propre
+- [ ] **Lint propre — NON VÉRIFIABLE, et c'est un constat, pas un oubli** : ce dépôt ne
+      porte aucun linter (ni `eslint`, ni `ruff`, ni `flake8`, ni `package.json`, ni
+      `pyproject.toml` — vérifié à la clôture). La ligne `lint` de `CLAUDE.md` est un
+      emplacement de gabarit, jamais rempli pour ce projet. Cocher cette case reviendrait
+      à déclarer verte une garde qui n'existe pas. À ouvrir en spec si le lint est voulu.
 
 ## Plan de test manuel
 1. Charger le cockpit sur un dépôt actif : l'état se lit sans aucun clic
@@ -2641,6 +2665,78 @@ par ce dépôt.
   **l'état de colonne**. Rectifié dans l'ADR **avant publication**.
   Critères cochés dans `bug-017` (clos), `feature-022`, `023`, `025` — **sauf deux**, non
   livrés faute de source de donnée, et **dits comme tels** plutôt que cochés (`PIEGES §16`).
+- [2026-09-23 10:20] Étape 3bis — **security-reviewer, rôle AUDIT — la surface entière, sans
+  diff ni spec**, et c'est le passage qui a trouvé le défaut le plus grave du cycle. Pendant
+  treize lots il n'avait vu que des **morceaux** : cinq périmètres déclarés et un diff.
+  **Le confinement était ASYMÉTRIQUE.** Les routes d'écriture refusaient bien un lien
+  symbolique planté dans une colonne (trois liens réels, trois 404, vérifiés au lot 9) — mais
+  `GET /api/spec` composait son chemin à la main, sans `chemin_sur` ni `resoudre_spec`, et
+  `lister_specs` n'avait **aucun filtre de lien**. Reproduit : le lien est listé comme une
+  spec, sa lecture rend le contenu de la cible, hors colonne. Le porteur du jeton lisait donc
+  tout fichier lisible par root pour lequel un lien `.md` existe dans une colonne — les
+  identifiants, les clés, **le jeton lui-même**. Et les liens sont **versionnés** : la
+  précondition n'exige pas un shell, un commit suffit.
+  ⚠️ **Chaque surface était juste ; leur composition ne l'était pas.** Aucun passage GATE sur
+  un périmètre déclaré ne pouvait le voir — c'est la justification mesurée du rôle AUDIT.
+  Second constat : `modifier` détruisait du contenu non commité **sans filet** alors que
+  `supprimer` refuse ce cas. Retenu : **sauvegarde** (`var/sauvegardes-specs/`) plutôt que 409,
+  parce qu'un refus symétrique aurait fermé la route sur son cas nominal — une spec de `doing/`
+  est sale pendant tout un cycle, son journal s'écrivant par modifications successives.
+  Corrigé et commité (`9eb4846`, 8 fichiers) : `lister_specs` ignore les liens, `_spec` passe
+  par `resoudre_spec`, `/api/diff` vérifié (il passait déjà par `chemin_sur`). `ADR-0040`
+  **amendé sur deux affirmations fausses**, corps intact. `PIEGES §61` — un chemin d'écriture
+  dérivé de `__file__` pollue le dépôt réel dès le premier test, et `git status` ne le signale
+  pas puisque `var/` est gitignoré (trois fichiers de sauvegarde y ont été trouvés).
+- [2026-09-23 11:30] **Étape 10 — CLÔTURE DU CYCLE** — agent principal. Autorisée par l'humain
+  (« oui, tu peux clôturer »). Mesures refaites à la clôture, pas recopiées :
+  **45 fichiers de test, 0 échec — et DEUX comptes, pas un** : **1893 cas en root**,
+  **1820 en non-root** (deux passages non-root identiques cas par cas, donc déterministe).
+  L'écart de **73 est attribué en entier**, jamais laissé flottant : `test_ci_partition_navigateur.py`
+  (66) et `test_ci_decouverte.py` (6) rendent **0 cas** dans le clone jetable, qui ne copie pas
+  `.github/` — les deux fichiers **le disent eux-mêmes en sortie** plutôt que de passer en
+  silence ; `test_transcripts.py` (1) **saute** `test_atteignabilite_disposition_mesuree`, faute
+  de transcript réel lisible par `nobody`. C'est la première fois du cycle que les deux comptes
+  sont posés côte à côte : les citer sans les distinguer, c'est fabriquer une régression ou la
+  cacher (`PIEGES §32`).
+  **Registres `ATTENDU_ROUGE` : les 10 fichiers porteurs ont une table VIDE.** Aucun témoin
+  rouge ne survit au cycle — c'est la clause (2) du registre qui l'exige, et c'est la preuve
+  la plus courte que le cycle est terminé et non abandonné.
+  **31 cases cochées à la clôture** (10 l'étaient), à partir du journal et de mesures refaites :
+  `role="tab"` → 0 ; aucun hex hors `:root` sauf l'exception `#000` de `mask` (36/37) ; 0 script
+  inline, 0 ressource distante ; colonnes du kanban **vérifiées à la main de la config au DOM
+  peint** (`Vivier`/`Chantier`/`Archive` rendus par le vrai Chromium) — aucun test ne portait
+  ce critère, et c'est dit dans la case plutôt que sous-entendu.
+  **Deux cases restent décochées, délibérément.** « Lint propre » : **ce dépôt n'a aucun
+  linter** — cocher aurait déclaré verte une garde inexistante. Et les marqueurs de domaine
+  « API REST » / « GATE sans objet » restent faux pour la spec, vrais pour le cycle : une note
+  datée le dit sous chacun, au lieu d'une case qui mentirait dans un sens ou dans l'autre.
+  `check_specs.sh` : 50 specs, 0 doublon. `check_doc_links.sh` : 240 liens, 0 mort.
+  Les **cinq specs** (`feature-021`, `bug-017`, `feature-022`, `feature-023`, `feature-025`)
+  passent en `done/` par `git mv`, jamais par copie.
+  ⚠️ **Deux choses que la clôture ne dit PAS acquises.** (1) Le serveur qui tourne sur le poste
+  de l'humain est celui du 2026-09-19 : **les dix-sept commits vérifiés ne protègent encore
+  rien en production**, et le redéploiement est le premier durcissement classé par l'AUDIT —
+  d'où l'unité systemd, travail séparé qui suit immédiatement. (2) Les chantiers ouverts par
+  l'AUDIT sont des **specs à écrire**, pas des trous dans le livré : `bug-010` (20 mauvais
+  jetons en 60 s verrouillent le bon), traçabilité du canal de conversation, TLS local,
+  `var/` en 0600 + rétention, et ce que `permissions_autorisees` **ne peut pas** voir
+  (`--allowedTools`, `--settings`).
+  ⚠️ **La clôture elle-même a trouvé un défaut, et c'est le `git mv` qui l'a trouvé.**
+  `test_conformite_perimetre.js` lisait les specs absorbées à un chemin de colonne FIGÉ
+  (`specs/features/doing/<nom>.md`) : vert pendant treize lots parce que les specs y étaient,
+  rouge à la seconde où elles passent en `done/` — `ATTEIGNABILITE : spec absorbée
+  introuvable`, et **25 cas disparus du total** (1893 → 1868). La garde a fait son travail :
+  elle a **crié** au lieu de sauter en silence. Corrigé en résolvant la spec par son NOM dans
+  les trois colonnes, avec `0 trouvé` et `2 trouvés` traités comme deux échecs distincts et
+  nommés. **Validé par deux mutations** : spec retirée → « introuvable dans todo/, doing/,
+  done/ » ; spec dupliquée en `todo/` → « présente dans 2 colonnes à la fois ». Le MÊME défaut
+  vivait dans `tools/lancer_suite_control_center_non_root.sh`, qui ne copiait que `doing/`
+  dans le clone jetable — corriger la garde seule l'aurait rendue **muette** en non-root.
+  `PIEGES §62` : la fin d'un cycle est un changement d'état du dépôt que les gardes du cycle
+  n'ont jamais traversé ; treize lots verts ne disent rien de ce qu'elles feront au `git mv`.
+  ℹ️ **Sur les horodatages de ce journal** : ils ont été portés à la main et **dérivent** de
+  l'horloge machine, qui dit `2026-09-22 12:24 UTC` au moment de cette ligne. L'**ordre** des
+  entrées fait foi ; l'heure absolue, non.
 ### 4. F17 — le registre `ATTENDU_ROUGE`, défini (l'agent principal avait transmis le terme sans sa définition)
 
 **Le problème qu'il résout.** Écrire les cinq gardes au lot 0 et les voir échouer,

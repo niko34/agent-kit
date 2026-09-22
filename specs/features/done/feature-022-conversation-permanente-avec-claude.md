@@ -4,10 +4,10 @@
 - **ID** : feature-022
 - **Slug** : conversation-permanente-avec-claude
 - **Type** : feature
-- **Statut** : doing — **absorbée dans le cycle `feature-021`** (lot 11), réouverture de périmètre
+- **Statut** : **done** (2026-09-22) — **absorbée dans le cycle `feature-021`** (lot 11), réouverture de périmètre
 - **Priorité** : normale
 - **Version cible** : N/A
-- **Dernière mise à jour** : 2026-09-20
+- **Dernière mise à jour** : 2026-09-22 (clôture du cycle)
 - **Spec(s) liée(s)** : `feature-021` (le cockpit qui l'accueille), **`feature-009`
   (discussion par spec)** — ⚠️ à lire AVANT de commencer : elle pose déjà la question
   décisive, « où vivent les messages », et annonce un ADR pour elle. Ne pas rejouer cet

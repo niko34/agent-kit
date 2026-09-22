@@ -878,6 +878,34 @@ chemin neuf, parce que celui qui l'introduit ne l'a pas encore payé.
 écrit, **lister `var/`** — l'absence de signal de `git status` sur un
 répertoire gitignoré n'est pas une preuve de propreté.
 
+## 62. Une garde qui lit une spec à une colonne FIGÉE casse le jour où le cycle se clôt
+
+`test_conformite_perimetre.js` lisait les specs absorbées à
+`specs/features/doing/<nom>.md` — chemin exact, colonne codée en dur. Il est
+resté vert pendant treize lots, parce que les specs étaient effectivement dans
+`doing/` pendant tout le cycle.
+
+Il a échoué à la **clôture**, au moment précis du `git mv` vers `done/` :
+`ATTEIGNABILITE : spec absorbée introuvable`. La garde n'a rien de faux — son
+assertion d'atteignabilité a fait exactement son travail, **bruyamment**, au
+lieu de sauter en silence. C'est le chemin qui supposait un état transitoire
+du cycle comme s'il était permanent.
+
+Le même défaut vivait dans `tools/lancer_suite_control_center_non_root.sh`,
+qui ne copiait que `doing/` dans le clone jetable : la correction de la garde
+l'aurait rendue muette là-bas.
+
+**Règle** : une donnée qui **traverse** les colonnes (`todo` → `doing` →
+`done`) se résout par son **nom**, dans les trois, avec `0 trouvé` ET
+`2 trouvés` traités comme des échecs distincts et nommés — jamais « prendre le
+premier », qui lirait une version périmée sans le dire. Le doublon est déjà
+interdit par `tools/check_specs.sh` ; la garde le redit pour ne pas dépendre
+d'un contrôle qu'elle n'appelle pas.
+
+**Plus général** : la fin d'un cycle est un **changement d'état du dépôt** que
+les gardes du cycle n'ont jamais traversé. Une suite verte pendant treize lots
+ne dit rien de ce qu'elle fera au `git mv` final.
+
 ## Voir aussi
 
 - `docs/DESIGN-SYSTEM.md` — règles de couleur, de surface et de typographie

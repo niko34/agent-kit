@@ -1,7 +1,7 @@
 # Bug — La porte d'authentification laisse la page atteignable au clavier
 
 - **Type** : bug
-- **Statut** : doing — **absorbé dans le cycle `feature-021`** (lot 3, correctif ;
+- **Statut** : **done** (2026-09-22) — **absorbé dans le cycle `feature-021`** (lot 3, correctif ;
   lot 5, mesure chiffrée F4b), au titre d'`ADR-0017`. Tous les critères
   d'acceptation sont cochés ; la clôture (déplacement vers `done/`) reste à
   l'agent principal, avec celle de `feature-021`.

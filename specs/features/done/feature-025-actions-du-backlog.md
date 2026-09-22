@@ -4,10 +4,10 @@
 - **ID** : feature-025
 - **Slug** : actions-du-backlog
 - **Type** : feature
-- **Statut** : doing — **absorbée dans le cycle `feature-021`** (lots 9-10), réouverture de périmètre
+- **Statut** : **done** (2026-09-22) — **absorbée dans le cycle `feature-021`** (lots 9-10), réouverture de périmètre
 - **Priorité** : normale
 - **Version cible** : N/A
-- **Dernière mise à jour** : 2026-09-20
+- **Dernière mise à jour** : 2026-09-22 (clôture du cycle)
 - **Spec(s) liée(s)** : `feature-021` (le kanban qui les porte), `feature-007`
   (pilotage et garde-fous), `feature-005` (synchronisation sélective)
 

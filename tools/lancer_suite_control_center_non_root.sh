@@ -39,12 +39,19 @@ mkdir -p "$CLONE/.claude" "$CLONE/specs/features"
 [ -d "$RACINE_DEPOT/.claude/agents" ] && cp -a "$RACINE_DEPOT/.claude/agents" "$CLONE/.claude/agents"
 [ -f "$RACINE_DEPOT/specs/features/_template.md" ] && cp -a "$RACINE_DEPOT/specs/features/_template.md" "$CLONE/specs/features/_template.md"
 [ -f "$RACINE_DEPOT/specs/modele.md" ] && cp -a "$RACINE_DEPOT/specs/modele.md" "$CLONE/specs/modele.md"
-# `doing/` est copié depuis feature-021 : la clause miroir du lot 6
-# (`test_conformite_perimetre.js`) lit les specs absorbées pour vérifier que
-# tout élément rangé dans un bucket y est NOMMÉ. Sans elles, la garde lève une
-# `Error` au lieu d'échouer proprement, et ce clone rendait un fichier MUET —
-# 35 comptes pour 36 fichiers, visible seulement au code de sortie.
-[ -d "$RACINE_DEPOT/specs/features/doing" ] && cp -a "$RACINE_DEPOT/specs/features/doing" "$CLONE/specs/features/doing"
+# Les TROIS colonnes sont copiées depuis feature-021 : la clause miroir du
+# lot 6 (`test_conformite_perimetre.js`) lit les specs absorbées pour vérifier
+# que tout élément rangé dans un bucket y est NOMMÉ. Sans elles, la garde lève
+# une `Error` au lieu d'échouer proprement, et ce clone rendait un fichier
+# MUET — 35 comptes pour 36 fichiers, visible seulement au code de sortie.
+# `doing/` seule ne suffit PAS : une spec absorbée traverse les colonnes
+# pendant son cycle (`git mv` todo → doing → done), et à la CLÔTURE elle n'est
+# plus dans `doing/`. Copier la colonne où elle se trouve AUJOURD'HUI, c'est
+# refaire demain le même clone incomplet.
+for _colonne in todo doing done; do
+  [ -d "$RACINE_DEPOT/specs/features/$_colonne" ] &&
+    cp -a "$RACINE_DEPOT/specs/features/$_colonne" "$CLONE/specs/features/$_colonne"
+done
 
 # Purge de tout .pyc avant de changer de propriétaire : un bytecode compilé
 # en root et relu par un autre compte peut masquer un fichier source déjà

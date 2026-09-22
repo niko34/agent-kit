@@ -4,10 +4,10 @@
 - **ID** : feature-023
 - **Slug** : tokens-par-passage-d-agent
 - **Type** : feature
-- **Statut** : doing — **absorbée dans le cycle `feature-021`** (lot 12), réouverture de périmètre
+- **Statut** : **done** (2026-09-22) — **absorbée dans le cycle `feature-021`** (lot 12), réouverture de périmètre
 - **Priorité** : normale
 - **Version cible** : N/A
-- **Dernière mise à jour** : 2026-09-20
+- **Dernière mise à jour** : 2026-09-22 (clôture du cycle)
 - **Spec(s) liée(s)** : `feature-021` (le disque qui affiche le chiffre), `feature-001`
   (observabilité des workflows), `bug-012` (confinement et lecture)
 
