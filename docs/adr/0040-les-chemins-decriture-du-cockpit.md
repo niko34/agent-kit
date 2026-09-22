@@ -328,6 +328,58 @@ périmètre.
   non bornée de `/api/flux`) reste ouvert, son périmètre inchangé par cet
   ADR.
 
+## Note d'implémentation — 2026-09-22, AUDIT feature-021 (surface d'attaque)
+
+Un `security-reviewer` en rôle **AUDIT** (hors diff, hors spec) a mesuré deux
+écarts entre ce que §2 et §3 affirment et ce que le code faisait
+**au moment de l'audit**. Un ADR est immuable sur sa **décision**, pas sur un
+**constat** qui s'avère faux — les deux corrections ci-dessous rectifient le
+constat, elles ne rouvrent aucun choix pris plus haut.
+
+1. **§2, point 3 : « trois liens réels l'éprouvent … `404` et cible intacte
+   dans les trois cas » — vrai en ÉCRITURE, faux en LECTURE.** La phrase
+   décrit `gestion_spec.resoudre_spec()`, qu'utilisent bien `/api/spec/
+   lancer`, `/api/spec/modifier` et `/api/spec/supprimer`. Elle ne décrivait
+   **pas** `GET /api/spec` : cette route composait son chemin directement
+   depuis `spec["colonne"]`/`spec["id"]`, sans passer par `resoudre_spec()`.
+   Un lien symbolique planté dans une colonne était donc **listé** comme une
+   spec (`specs.lister_specs()` ne filtrait pas les liens) **et suivi** par
+   `open()` à la lecture — la réponse portait le contenu de la **cible**,
+   pas celui du lien. Mesuré, corrigé : `lister_specs()` filtre désormais
+   les liens (`os.path.islink()`) et `GET /api/spec` (`server.py::_spec`)
+   passe par `GS.resoudre_spec()`, exactement comme les trois routes
+   d'écriture. L'asymétrie lecture/écriture était le défaut ; les gardes
+   décrites au point 3 n'ont jamais été fausses, seulement **absentes côté
+   lecture**.
+
+2. **§2 : « Supprimer est la seule route destructive du cockpit » — faux.**
+   `modifier()` peut détruire, sans aucun retour possible, du contenu
+   **jamais commité** : le compare-and-write (empreinte contre le disque)
+   protège contre une édition concurrente via l'API, pas contre le fait que
+   le contenu remplacé peut lui-même être introuvable dans `HEAD` — mesuré,
+   172 lignes d'un journal de bord non commité, remplacées en `200`,
+   `git checkout HEAD` ne rendant que la version d'avant ces lignes. Corrigé
+   par un choix **délibérément différent** de celui de `supprimer()`
+   (refuser, `409`) : `modifier()` **sauvegarde** hors git
+   (`var/sauvegardes-specs/`, horodatée) le contenu remplacé quand
+   `vcs.verifier_supprimable()` dit qu'il diverge de `HEAD`, et refuse
+   (`500`) si cette sauvegarde elle-même échoue. Un `409` systématique,
+   symétrique à `supprimer()`, a été écarté : une spec de `doing/` est
+   **presque toujours** sale au sens git pendant toute la durée d'un cycle
+   (son journal de bord s'écrit par `modifier()` successifs, jamais commités
+   entre eux — Règle absolue « rien n'est commité sans feu vert explicite »)
+   — un refus systématique aurait fermé la route précisément sur son cas
+   nominal. Voir la note de tête de `gestion_spec.py` pour le détail de ce
+   choix et ce qu'il coûte (la sauvegarde vit hors git : elle protège contre
+   la perte, pas contre une purge délibérée de `var/`).
+
+3. **§3 : le substrat de conversation s'appelle `var/conversations/<pid>.jsonl`
+   dans le texte — le code écrit `<pid>-<debut_ms>.jsonl`** (`server.py::
+   _chemin_conversation`, indexation composite `pid` + début du lancement,
+   pour ne jamais faire collision entre deux lancements qui réutiliseraient
+   le même `pid` système). Aucun comportement n'est affecté ; seul le texte
+   de l'ADR était en avance sur le nom réellement choisi.
+
 ## Références
 
 - Code : `control-center/backend/server.py` (`_ROUTES_ECRITURE`,

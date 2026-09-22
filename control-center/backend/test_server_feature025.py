@@ -856,6 +856,55 @@ def main():
     finally:
         g7.fermer()
 
+    # =========================================================================
+    # AUDIT feature-021 (A1) — confinement ASYMÉTRIQUE : `GET /api/spec`
+    # composait son chemin à la main (`racine/colonne/id.md`) SANS passer
+    # par `GS.resoudre_spec()`, contrairement aux routes d'ÉCRITURE. Un lien
+    # symbolique planté dans `todo/` était donc LISTÉ (`lister_specs()` ne
+    # filtrait pas les liens) ET SUIVI par `open()` à la lecture — la
+    # réponse portait le contenu de la CIBLE, pas celui du lien. Reproduit
+    # ICI EXACTEMENT comme mesuré par l'audit : un lien réel dans `todo/`
+    # pointant HORS de l'arborescence `specs/`.
+    # =========================================================================
+    g8 = GroupeGit(commandes={})
+    _surveiller_racine(g8.racine_projet)
+    try:
+        contenu_secret = "CONTENU-HORS-COLONNE-9f31a7\n"
+        chemin_cible = os.path.join(g8.racine_projet, "SECRET-HORS-COLONNE.md")
+        with open(chemin_cible, "w", encoding="utf-8") as fichier:
+            fichier.write(contenu_secret)
+        chemin_lien = _chemin_spec(g8.racine_projet, "todo", "feature-998-lien")
+        os.symlink(chemin_cible, chemin_lien)
+        auth8 = _autorisation(g8.jeton_valeur)
+
+        code, corps = requete(g8.port, "GET", "/api/etat", entetes=auth8)
+        etat8 = json.loads(corps) if code == 200 else {}
+        ids8 = {s["id"] for s in etat8.get("specs", [])}
+        check("test_A1_lien_absent_de_la_liste", "feature-998-lien" not in ids8,
+              "obtenu %r" % sorted(ids8))
+
+        code, corps = requete(g8.port, "GET", "/api/spec?id=feature-998-lien", entetes=auth8)
+        check("test_A1_lecture_par_id_refuse_404", code == 404, "obtenu %d : %s" % (code, corps))
+        check("test_A1_lecture_ne_fuite_jamais_la_cible",
+              contenu_secret.strip() not in corps,
+              "la réponse porte le contenu de la CIBLE hors colonne : %r" % corps)
+
+        # Preuve, INDÉPENDANTE de la garde, que le défaut mesuré par
+        # l'AUDIT était réel : `open()` sur le CHEMIN DE COLONNE (celui que
+        # l'ANCIEN `_spec()` composait directement) suit bel et bien le
+        # lien jusqu'à la cible. C'est CE fait qui rend `resoudre_spec()`
+        # nécessaire ici — sans lui, la route rendrait exactement ceci.
+        with open(chemin_lien, encoding="utf-8") as fichier:
+            contenu_suivi = fichier.read()
+        check("test_A1_MUTATION_preuve_open_suit_le_lien_jusqu_a_la_cible",
+              contenu_suivi == contenu_secret,
+              "si `open()` ne suivait pas le lien, l'ancienne composition "
+              "directe du chemin n'aurait rien pu fuiter — preuve que le "
+              "défaut mesuré par l'AUDIT (A1) était réel, contenu lu : %r"
+              % contenu_suivi)
+    finally:
+        g8.fermer()
+
     print("\n%d cas, %d echec(s)" % (_tests, len(_echecs)))
     for echec in _echecs:
         print("  - %s" % echec)

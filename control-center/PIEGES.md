@@ -857,6 +857,27 @@ indicateur, vérifier qu'elle isole les cases qui sont **réellement** des
 livrables (une section dédiée, un marqueur distinct) — jamais compter sur
 la structure entière d'un gabarit partagé par toutes les specs.
 
+## 61. Un chemin d'écriture dérivé de `__file__` pollue le dépôt réel dès le premier test
+
+Les constantes de ce module (`_CHEMIN_VERROU`, `_RACINE_VAR`, et désormais
+`_CHEMIN_SAUVEGARDES`) dérivent leur chemin de `__file__`. Un test qui appelle
+la fonction **sans** override écrit donc dans le `var/` du **dépôt réel**, pas
+dans un clone.
+
+Mesuré : le premier run d'un test de sauvegarde a déposé trois fichiers dans
+`control-center/var/sauvegardes-specs/` du dépôt courant. ⚠️ **`git status` ne
+le signale pas** — `var/` est gitignoré. Repéré seulement en listant `var/` par
+réflexe avant de conclure.
+
+**Règle** : tout **nouveau** chemin d'écriture dérivé de `__file__` reçoit un
+paramètre d'override testable **dès son premier appel de test**, jamais après
+coup. Le patron est connu pour les chemins existants ; il se re-perd à chaque
+chemin neuf, parce que celui qui l'introduit ne l'a pas encore payé.
+
+**Corollaire de vérification** : après une campagne de tests sur un module qui
+écrit, **lister `var/`** — l'absence de signal de `git status` sur un
+répertoire gitignoré n'est pas une preuve de propreté.
+
 ## Voir aussi
 
 - `docs/DESIGN-SYSTEM.md` — règles de couleur, de surface et de typographie

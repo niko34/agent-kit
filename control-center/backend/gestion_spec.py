@@ -37,6 +37,44 @@ n'écrit QUE si elle concorde — sinon `409`, fichier intact. L'écriture
 passe par un fichier temporaire du MÊME répertoire puis `os.replace()` :
 jamais de contenu partiel visible d'un lecteur concurrent.
 
+## Correctif AUDIT feature-021 (A2) — le compare-and-write ne protège PAS le
+## non-commité, et le choix retenu n'est PAS celui de `supprimer()`
+
+Le compare-and-write ci-dessus garantit que le contenu envoyé par
+l'appelant remplace bien ce qu'il a LU — jamais un écrasement à l'aveugle
+d'une édition CONCURRENTE via l'API. Il ne dit RIEN sur si ce contenu lu
+est lui-même RÉCUPÉRABLE : une ligne ajoutée localement à une spec de
+`doing/` (le journal de bord d'un cycle, jamais commité à chaque ligne —
+Règle absolue « rien n'est commité sans feu vert explicite ») peut être
+remplacée par `modifier()` avec l'empreinte COURANTE, en 200, et
+`git checkout HEAD -- <chemin>` ne rend alors que la version d'AVANT cette
+ligne : mesuré (AUDIT), 172 lignes, aucun retour possible au delà de `HEAD`.
+
+`supprimer()` répond à l'équivalent de ce problème en REFUSANT (`409`) tant
+que `vcs.verifier_supprimable()` ne garantit pas que le disque égale `HEAD`.
+**`modifier()` NE fait PAS le même choix** — et c'est délibéré, pas un
+oubli symétrique :
+
+- un `409` systématique tant que la spec n'est pas propre aurait rendu la
+  route inutilisable sur son cas NOMINAL — une spec de `doing/` est
+  PRESQUE TOUJOURS sale au sens git pendant toute la durée d'un cycle,
+  précisément parce que son journal de bord s'écrit par des `modifier()`
+  successifs, non commités entre eux ;
+- `modifier()` sauvegarde donc, au lieu de refuser : avant tout
+  `os.replace()`, si `vcs.verifier_supprimable()` dit que le contenu actuel
+  N'EST PAS strictement celui de `HEAD` (non suivi, modifié dans l'arbre,
+  ou indexé — les trois cas que cette fonction sait déjà distinguer), une
+  copie horodatée du contenu REMPLACÉ est écrite dans
+  `var/sauvegardes-specs/` AVANT l'écrasement. Si cette sauvegarde échoue,
+  l'écrasement est REFUSÉ (`500`) plutôt que silencieux.
+
+Ce que ce choix COÛTE, en face : la sauvegarde vit hors de git — un
+`rm -rf var/` la perd, là où un `git stash` ou un commit intermédiaire ne
+la perdrait pas. Elle protège contre LA PERTE, pas contre la DIVULGATION ni
+contre une purge délibérée de `var/`. C'est un filet moins solide que celui
+de `supprimer()`, choisi PARCE QUE la route doit rester utilisable pendant
+tout un cycle, pas seulement entre deux commits.
+
 ## Suppression : jamais sans retour, jamais sur ce que git ne peut pas rendre
 
 `POST /api/spec/ecrire` (`redaction_spec.py`) ne commite JAMAIS : toute spec
@@ -69,6 +107,12 @@ import vcs as V
 _RACINE_VAR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "var")
 _CHEMIN_VERROU = os.path.join(_RACINE_VAR, "specs.lock")
+
+# AUDIT feature-021 (A2) : où `modifier()` dépose une copie du contenu
+# REMPLACÉ quand git ne peut pas le rendre (voir `_sauvegarder_avant_ecrasement`
+# ci-dessous). Même convention que `_CHEMIN_VERROU` : relatif à CE module,
+# jamais au projet géré — `var/` appartient au cockpit, pas au dépôt cible.
+_CHEMIN_SAUVEGARDES = os.path.join(_RACINE_VAR, "sauvegardes-specs")
 
 # Même discipline que `redaction_spec._BUDGET_VERROU_S` (`numerotation.lock`) :
 # un verrou COURT, jamais tenu le temps d'une requête réseau.
@@ -190,6 +234,48 @@ def _lire_contenu(chemin_absolu):
         return None
 
 
+def _sauvegarder_avant_ecrasement(chemin_sauvegardes, spec_id, contenu_actuel):
+    """Écrit une copie horodatée de `contenu_actuel` — le contenu que
+    `modifier()` s'apprête à remplacer — AVANT tout `os.replace()` (AUDIT
+    feature-021, A2). Rend le NOM du fichier écrit (jamais un chemin absolu :
+    même règle que `supprimer()`, GATE P1 S2.11), ou `None` si l'écriture a
+    échoué. Une sauvegarde qui échoue en silence n'est pas une sauvegarde :
+    l'APPELANT doit refuser l'écrasement quand ce rend `None`.
+
+    Écriture par fichier temporaire du MÊME répertoire puis `os.replace()` —
+    même discipline que l'écriture de la spec elle-même : jamais de fichier
+    de sauvegarde partiel visible.
+    """
+    try:
+        os.makedirs(chemin_sauvegardes, exist_ok=True)
+        octets = contenu_actuel.encode("utf-8")
+    except (OSError, UnicodeEncodeError):
+        return None
+    # Horodatage EN NANOSECONDES : deux `modifier()` sur la MÊME spec dans la
+    # MÊME seconde (un double-clic, un client qui réessaie) ne doivent
+    # jamais partager un nom de fichier — la seconde sauvegarde écraserait
+    # la première, silencieusement.
+    nom = "%s-%d.md" % (spec_id, time.time_ns())
+    chemin_final = os.path.join(chemin_sauvegardes, nom)
+    try:
+        fd_tmp, chemin_tmp = tempfile.mkstemp(dir=chemin_sauvegardes, prefix=".tmp-sauvegarde-")
+    except OSError:
+        return None
+    try:
+        with os.fdopen(fd_tmp, "wb") as fichier_tmp:
+            fichier_tmp.write(octets)
+            fichier_tmp.flush()
+            os.fsync(fichier_tmp.fileno())
+        os.replace(chemin_tmp, chemin_final)
+    except OSError:
+        try:
+            os.unlink(chemin_tmp)
+        except OSError:
+            pass
+        return None
+    return nom
+
+
 # --- lancement -----------------------------------------------------------------
 
 def eligible_au_lancement(config, spec_id):
@@ -209,7 +295,7 @@ def eligible_au_lancement(config, spec_id):
 # --- modification ----------------------------------------------------------------
 
 def modifier(config, spec_id, empreinte_attendue, contenu, en_cours=False,
-             chemin_verrou=None):
+             chemin_verrou=None, chemin_sauvegardes=None):
     """Rend `(resultat, None)` ou `(None, (code, message))` — JAMAIS
     d'exception, y compris sur un échec d'écriture disque (`tempfile.mkstemp`,
     `os.replace`) : traduit en `(None, (500, …))`, comme `supprimer()` le
@@ -221,7 +307,16 @@ def modifier(config, spec_id, empreinte_attendue, contenu, en_cours=False,
 
     `en_cours` est calculé par l'APPELANT (`server.py`, seul détenteur de
     `Ecriture.lancement_courant()`) : vrai si un lancement encore actif
-    porte CE `spec_id` (GATE P1 S2.4/S1.7)."""
+    porte CE `spec_id` (GATE P1 S2.4/S1.7).
+
+    AUDIT feature-021 (A2) : avant tout `os.replace()`, si le contenu
+    ACTUELLEMENT sur disque n'est pas strictement celui de `HEAD`
+    (`vcs.verifier_supprimable()` — non suivi, modifié dans l'arbre, ou
+    indexé), une copie en est sauvegardée sous `chemin_sauvegardes`
+    (`var/sauvegardes-specs/` par défaut) AVANT l'écrasement. Si cette
+    sauvegarde échoue, l'écrasement est refusé (`500`), pas silencieux. Voir
+    la note de tête de module pour ce que ce choix retient et ce qu'il
+    coûte, en face du choix contraire fait par `supprimer()`."""
     spec, relatif = resoudre_spec(config, spec_id)
     if spec is None:
         return None, (404, "spec inconnue")
@@ -259,6 +354,23 @@ def modifier(config, spec_id, empreinte_attendue, contenu, en_cours=False,
         except UnicodeEncodeError:
             return None, (422, "contenu invalide : caractère non encodable en UTF-8")
 
+        # AUDIT feature-021 (A2) : `actuel` est ce que l'`os.replace()`
+        # ci-dessous va REMPLACER — évalué ICI, APRÈS que toutes les autres
+        # raisons de refus (empreinte, encodage) soient écartées, pour ne
+        # jamais sauvegarder un contenu qu'on n'allait de toute façon pas
+        # écraser. S'il diverge de `HEAD` (non suivi, modifié, ou indexé),
+        # git ne pourra JAMAIS le rendre après coup — on en dépose une copie
+        # AVANT d'écraser. `verifier_supprimable()` est réutilisé tel quel :
+        # c'est EXACTEMENT le test « git peut-il rendre ce contenu » que
+        # `supprimer()` fait déjà, pas un nouveau critère inventé pour
+        # l'occasion.
+        protege, _motif = V.verifier_supprimable(racine_projet, relatif)
+        if not protege:
+            nom_sauvegarde = _sauvegarder_avant_ecrasement(
+                chemin_sauvegardes or _CHEMIN_SAUVEGARDES, spec_id, actuel)
+            if nom_sauvegarde is None:
+                return None, (500, "sauvegarde impossible avant écrasement, écriture refusée")
+
         dossier = os.path.dirname(chemin_absolu)
         try:
             fd_tmp, chemin_tmp = tempfile.mkstemp(dir=dossier, prefix=".tmp-spec-")
@@ -277,7 +389,14 @@ def modifier(config, spec_id, empreinte_attendue, contenu, en_cours=False,
                 pass
             return None, (500, "écriture impossible")
 
-        return {"spec_id": spec_id, "empreinte": empreinte(contenu)}, None
+        resultat = {"spec_id": spec_id, "empreinte": empreinte(contenu)}
+        if not protege:
+            # Nom SEUL, jamais un chemin absolu (même règle que la réponse de
+            # `supprimer()`, GATE P1 S2.11) : l'appelant sait qu'une
+            # sauvegarde a été prise et sous quel nom, pas où `var/` vit sur
+            # ce serveur.
+            resultat["sauvegarde"] = nom_sauvegarde
+        return resultat, None
     finally:
         _rendre_flock(fd_verrou)
 

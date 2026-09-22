@@ -1439,28 +1439,39 @@ class Handler(BaseHTTPRequestHandler):
         L'identifiant demandé doit correspondre EXACTEMENT à une spec découverte.
         Aucun chemin n'est construit à partir de la requête : on cherche dans la
         liste, et on sert le fichier qu'elle désigne.
+
+        AUDIT feature-021 (A1) : le chemin passe désormais par
+        `GS.resoudre_spec()` — la MÊME résolution confinée à DOUBLE garde que
+        les routes d'ÉCRITURE (`vcs.chemin_sur()` puis égalité exacte contre
+        le chemin attendu). Avant ce correctif, `chemin` était composé à la
+        main à partir de `spec["colonne"]`/`spec["id"]` : un lien symbolique
+        planté dans une colonne (`todo/feature-998-lien.md -> <hors
+        colonne>/cible.md`) était listé comme une spec (`lister_specs`, non
+        filtré à l'époque) et `open()` LE SUIT — cette route rendait le
+        contenu de la CIBLE, pas celui du lien. Les routes d'écriture, elles,
+        refusaient déjà correctement (404) via `resoudre_spec()` : c'était
+        l'asymétrie lecture/écriture qui était le défaut, pas une garde
+        absente des deux côtés.
         """
         demande = (parametres.get("id") or [""])[0]
         if not demande:
             return self._erreur(400, "identifiant manquant")
-        reglages = self.server.etat.config.section("specs")
-        racine = os.path.join(self.server.etat.racine, reglages.get("racine", "specs/features"))
-        for spec in self.server.etat.specs():
-            if spec["id"] != demande:
-                continue
-            chemin = os.path.join(racine, spec["colonne"], spec["id"] + ".md")
-            try:
-                with open(chemin, encoding="utf-8") as fichier:
-                    contenu = fichier.read()
-            except (OSError, UnicodeDecodeError):
-                return self._erreur(404, "spec illisible")
-            # `empreinte` (feature-025, GATE P1 S2.3) : SHA-256 du contenu
-            # COMPLET, pas de la version tronquée à 400 000 caractères —
-            # c'est elle que `POST /api/spec/modifier` doit recevoir en
-            # retour pour que le compare-and-write porte sur le VRAI fichier.
-            return self._json(dict(spec, contenu=contenu[:400_000],
-                                   empreinte=GS.empreinte(contenu)))
-        return self._erreur(404, "spec inconnue")
+        config = self.server.etat.config
+        spec, relatif = GS.resoudre_spec(config, demande)
+        if spec is None:
+            return self._erreur(404, "spec inconnue")
+        chemin = os.path.join(self.server.etat.racine, relatif)
+        try:
+            with open(chemin, encoding="utf-8") as fichier:
+                contenu = fichier.read()
+        except (OSError, UnicodeDecodeError):
+            return self._erreur(404, "spec illisible")
+        # `empreinte` (feature-025, GATE P1 S2.3) : SHA-256 du contenu
+        # COMPLET, pas de la version tronquée à 400 000 caractères —
+        # c'est elle que `POST /api/spec/modifier` doit recevoir en
+        # retour pour que le compare-and-write porte sur le VRAI fichier.
+        return self._json(dict(spec, contenu=contenu[:400_000],
+                               empreinte=GS.empreinte(contenu)))
 
     def _diff(self, parametres):
         demande = (parametres.get("chemin") or [""])[0]

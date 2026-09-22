@@ -14,6 +14,7 @@ séparément de `vcs.chemin_sur()` qu'elle appelle — `PIEGES §37`), et
 
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 
@@ -242,58 +243,94 @@ def main():
     try:
         chemin = _ecrire(config5, "todo", "feature-020-modifiable", "contenu initial\n")
         chemin_verrou = os.path.join(tmp5, "var", "specs.lock")
+        # Isolé du `var/sauvegardes-specs` RÉEL de ce module (jamais le
+        # défaut `_CHEMIN_SAUVEGARDES`, qui vit à côté de `server.py`) —
+        # sinon chaque exécution de cette suite écrirait dans le `var/` du
+        # dépôt sous test, PIEGES.md §1 en filigrane.
+        chemin_sauvegardes = os.path.join(tmp5, "var", "sauvegardes-specs")
 
         # spec inconnue -> 404
         _, erreur = GS.modifier(config5, "feature-999-x", "peu importe", "y",
-                                chemin_verrou=chemin_verrou)
+                                chemin_verrou=chemin_verrou, chemin_sauvegardes=chemin_sauvegardes)
         check("test_modifier_inconnue_404", erreur == (404, "spec inconnue"))
 
         # empreinte fausse -> 409, fichier intact
         _, erreur = GS.modifier(config5, "feature-020-modifiable", "empreinte-fausse",
-                                "nouveau", chemin_verrou=chemin_verrou)
+                                "nouveau", chemin_verrou=chemin_verrou,
+                                chemin_sauvegardes=chemin_sauvegardes)
         check("test_modifier_empreinte_fausse_409",
               erreur is not None and erreur[0] == 409, "obtenu %r" % (erreur,))
         with open(chemin, encoding="utf-8") as fichier:
             check("test_modifier_empreinte_fausse_fichier_intact",
                   fichier.read() == "contenu initial\n")
 
-        # nominal
+        # nominal — AUCUN dépôt git ici : `verifier_supprimable()` rend donc
+        # `(False, …)` (« non suivie »), et `modifier()` prend une
+        # sauvegarde avant d'écraser (AUDIT feature-021, A2) — couvert en
+        # détail plus bas ; ici on ne vérifie que le comportement HISTORIQUE
+        # (écriture réussie, empreinte rendue).
         empreinte_actuelle = GS.empreinte("contenu initial\n")
         resultat, erreur = GS.modifier(config5, "feature-020-modifiable", empreinte_actuelle,
-                                       "contenu final\n", chemin_verrou=chemin_verrou)
+                                       "contenu final\n", chemin_verrou=chemin_verrou,
+                                       chemin_sauvegardes=chemin_sauvegardes)
         check("test_modifier_nominal_ok", erreur is None, "obtenu %r" % (erreur,))
         with open(chemin, encoding="utf-8") as fichier:
             check("test_modifier_nominal_fichier_ecrit", fichier.read() == "contenu final\n")
         check("test_modifier_nominal_empreinte_rendue",
               resultat["empreinte"] == GS.empreinte("contenu final\n"))
+        check("test_modifier_nominal_sauvegarde_hors_depot_git",
+              bool(resultat.get("sauvegarde")), "obtenu %r" % (resultat,))
 
         # en_cours=True -> 409, quelle que soit l'empreinte
         _, erreur = GS.modifier(config5, "feature-020-modifiable",
                                 GS.empreinte("contenu final\n"), "x",
-                                en_cours=True, chemin_verrou=chemin_verrou)
+                                en_cours=True, chemin_verrou=chemin_verrou,
+                                chemin_sauvegardes=chemin_sauvegardes)
         check("test_modifier_en_cours_409", erreur == (409, "un lancement est en cours sur cette spec"))
 
         # colonne `done` immuable
         _ecrire(config5, "done", "feature-021-close", "clos\n")
         _, erreur = GS.modifier(config5, "feature-021-close", GS.empreinte("clos\n"), "x",
-                                chemin_verrou=chemin_verrou)
+                                chemin_verrou=chemin_verrou, chemin_sauvegardes=chemin_sauvegardes)
         check("test_modifier_done_409", erreur is not None and erreur[0] == 409, "obtenu %r" % (erreur,))
 
-        # contenu non encodable -> 422, fichier intact
+        # contenu non encodable -> 422, fichier intact, AUCUNE sauvegarde
+        # prise (refusé avant même d'atteindre la précondition git — la
+        # sauvegarde ne doit jamais être créée pour une requête qui échoue
+        # de toute façon).
+        avant_listing = (set(os.listdir(chemin_sauvegardes))
+                         if os.path.isdir(chemin_sauvegardes) else set())
         _, erreur = GS.modifier(config5, "feature-020-modifiable",
                                 GS.empreinte("contenu final\n"), "\ud800",
-                                chemin_verrou=chemin_verrou)
+                                chemin_verrou=chemin_verrou, chemin_sauvegardes=chemin_sauvegardes)
         check("test_modifier_non_encodable_422",
               erreur is not None and erreur[0] == 422, "obtenu %r" % (erreur,))
         with open(chemin, encoding="utf-8") as fichier:
             check("test_modifier_non_encodable_fichier_intact",
                   fichier.read() == "contenu final\n")
+        apres_listing = (set(os.listdir(chemin_sauvegardes))
+                         if os.path.isdir(chemin_sauvegardes) else set())
+        check("test_modifier_non_encodable_aucune_sauvegarde_inutile",
+              apres_listing == avant_listing)
+
+        # --- dépôt git RÉEL, propre : plus de sauvegarde nécessaire ---------
+        # `verifier_supprimable()` doit pouvoir rendre `(True, None)` : on
+        # COMMIT l'état courant du fichier pour que disque == HEAD.
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp5, check=True)
+        subprocess.run(["git", "config", "user.email", "t@t"], cwd=tmp5, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp5, check=True)
+        subprocess.run(["git", "add", "specs/features/todo/feature-020-modifiable.md"],
+                       cwd=tmp5, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=tmp5, check=True)
 
         # --- revue de code (feature-021, point mineur) : un `os.replace()` qui
         # échoue (disque plein, permissions...) est traduit en `(None, (500,
         # …))` — JAMAIS une `OSError` qui s'échappe de `modifier()`. Le
         # contrat annoncé (« Rend (resultat, None) ou (None, (code,
-        # message)) ») doit tenir sur CE chemin aussi.
+        # message)) ») doit tenir sur CE chemin aussi. Le dépôt vient
+        # d'être commité PROPRE : `protege` vaut `True`, aucune sauvegarde
+        # n'est tentée, donc c'est bien l'`os.replace()` DE LA SPEC — pas
+        # celui de la sauvegarde — qui échoue ici.
         _replace_original = GS.os.replace
 
         def _replace_menteur(_src, _dst):
@@ -303,7 +340,8 @@ def main():
         try:
             resultat, erreur = GS.modifier(
                 config5, "feature-020-modifiable", GS.empreinte("contenu final\n"),
-                "tentative pendant panne disque", chemin_verrou=chemin_verrou)
+                "tentative pendant panne disque", chemin_verrou=chemin_verrou,
+                chemin_sauvegardes=chemin_sauvegardes)
         finally:
             GS.os.replace = _replace_original
         check("test_modifier_os_replace_echoue_rend_500_sans_lever",
@@ -312,6 +350,80 @@ def main():
         with open(chemin, encoding="utf-8") as fichier:
             check("test_modifier_os_replace_echoue_fichier_intact",
                   fichier.read() == "contenu final\n")
+
+        # --- AUDIT feature-021 (A2) : sauvegarde AVANT écrasement d'un
+        # contenu non commité --------------------------------------------------
+        # Le dépôt est PROPRE (commité ci-dessus). On introduit maintenant
+        # une modification LOCALE, jamais commitée — exactement le cas
+        # « ligne de journal de bord ajoutée en cours de cycle » cité par
+        # l'AUDIT.
+        with open(chemin, "a", encoding="utf-8") as fichier:
+            fichier.write("ligne locale jamais commitee\n")
+        contenu_avant_ecrasement = open(chemin, encoding="utf-8").read()
+        empreinte_locale = GS.empreinte(contenu_avant_ecrasement)
+
+        resultat, erreur = GS.modifier(
+            config5, "feature-020-modifiable", empreinte_locale,
+            "contenu remplace par le cockpit\n",
+            chemin_verrou=chemin_verrou, chemin_sauvegardes=chemin_sauvegardes)
+        check("test_modifier_A2_ecrasement_non_commite_200",
+              erreur is None and resultat is not None, "obtenu erreur=%r" % (erreur,))
+        check("test_modifier_A2_champ_sauvegarde_present",
+              resultat is not None and bool(resultat.get("sauvegarde")),
+              "obtenu %r" % (resultat,))
+        with open(chemin, encoding="utf-8") as fichier:
+            check("test_modifier_A2_fichier_reellement_ecrase",
+                  fichier.read() == "contenu remplace par le cockpit\n")
+
+        # La sauvegarde porte EXACTEMENT ce qui vient d'être remplacé — le
+        # contenu local jamais commité, que git seul ne peut pas rendre.
+        chemin_sauvegarde = os.path.join(chemin_sauvegardes, resultat["sauvegarde"])
+        check("test_modifier_A2_sauvegarde_existe", os.path.isfile(chemin_sauvegarde))
+        with open(chemin_sauvegarde, encoding="utf-8") as fichier:
+            check("test_modifier_A2_sauvegarde_contenu_exact",
+                  fichier.read() == contenu_avant_ecrasement)
+
+        # Preuve que git, LUI, ne peut PAS rendre ce contenu — c'est le fait
+        # mesuré par l'AUDIT, pas une supposition : seul `HEAD` est
+        # atteignable par `git checkout`, et `HEAD` ne porte jamais la
+        # ligne locale.
+        tete = subprocess.run(
+            ["git", "-C", tmp5, "show",
+             "HEAD:specs/features/todo/feature-020-modifiable.md"],
+            capture_output=True, text=True, check=False)
+        check("test_modifier_A2_git_head_ignore_la_ligne_locale",
+              "ligne locale jamais commitee" not in (tete.stdout or ""))
+
+        # --- MUTATION (PIEGES §37 : neutraliser la garde ELLE-MÊME) --------
+        # Si la précondition de `modifier()` est retirée (ici : la fonction
+        # qu'elle appelle rend toujours « propre »), le contenu local
+        # jamais commité doit être DÉTRUIT SANS AUCUNE sauvegarde — c'est
+        # exactement le symptôme mesuré par l'AUDIT (A2) avant correctif.
+        with open(chemin, "a", encoding="utf-8") as fichier:
+            fichier.write("deuxieme ligne locale jamais commitee\n")
+        contenu_avant_mutation = open(chemin, encoding="utf-8").read()
+        empreinte_mutation = GS.empreinte(contenu_avant_mutation)
+
+        avant_fichiers = set(os.listdir(chemin_sauvegardes))
+        _verifier_original = V.verifier_supprimable
+        V.verifier_supprimable = lambda racine, relatif: (True, None)  # garde neutralisée
+        try:
+            resultat_m, erreur_m = GS.modifier(
+                config5, "feature-020-modifiable", empreinte_mutation,
+                "ecrasement sans filet (garde neutralisee)\n",
+                chemin_verrou=chemin_verrou, chemin_sauvegardes=chemin_sauvegardes)
+        finally:
+            V.verifier_supprimable = _verifier_original
+        check("test_modifier_MUTATION_garde_neutralisee_ecrit_quand_meme",
+              erreur_m is None and resultat_m is not None, "obtenu erreur=%r" % (erreur_m,))
+        apres_fichiers = set(os.listdir(chemin_sauvegardes))
+        check("test_modifier_MUTATION_aucune_sauvegarde_sans_la_garde",
+              apres_fichiers == avant_fichiers,
+              "une sauvegarde a été prise malgré la garde neutralisée : %r" %
+              (apres_fichiers - avant_fichiers))
+        with open(chemin, encoding="utf-8") as fichier:
+            check("test_modifier_MUTATION_contenu_local_perdu_sans_filet",
+                  "deuxieme ligne locale jamais commitee" not in fichier.read())
     finally:
         shutil.rmtree(tmp5, ignore_errors=True)
 
