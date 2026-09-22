@@ -145,28 +145,39 @@ class FakeNode {
 // graphe) et les nouveaux titres de bloc (`titre-agents`, `titre-systeme`,
 // `titre-fichiers`, `titre-evenements`) entrent.
 const IDS = [
-  "a11y-announcement", "account-button", "agents", "avatar",
-  "backlog-column-count", "backlog-count",
-  "backlog-title", "bandeau-hote", "bandeau-hote-bouton",
-  "bandeau-hote-texte", "barre", "bouton-generer-brouillon",
-  "compteur-prompt", "compteur-specs", "cycle-canvas", "cycle-indice",
-  "cycle-status", "cycle-title", "derogation-minimale", "erreur-generer-brouillon",
-  "fichiers", "filtre", "filtre-divergences", "gabarits-adoptes",
-  "horodatage", "jauge-flux", "jauge-git",
-  "jauge-pilotage", "kanban", "legende-cycles", "link-front-sec",
-  "link-front-tests", "link-front2-review", "link-reprise",
-  "link-sec-front2", "link-spec-front", "link-tests-front2", "main-content",
-  "motion-note", "note-agents", "pied-cycles", "pilotage-corps",
+  "a11y-announcement", "account-button", "add-item-dialog", "add-item-form",
+  "add-item-intro", "add-item-title", "agents", "avatar",
+  "backlog-column-count", "backlog-count", "backlog-title", "bandeau-hote",
+  "bandeau-hote-bouton", "bandeau-hote-texte", "barre",
+  "bouton-generer-brouillon", "cancel-add-item", "cancel-delete",
+  "close-add-item", "close-feature", "compteur-prompt", "compteur-specs",
+  "context-menu", "cycle-canvas", "cycle-indice", "cycle-status",
+  "cycle-title", "delete-confirm-aide", "delete-confirm-bouton",
+  "delete-confirm-input", "delete-confirm-label", "delete-copy",
+  "delete-dialog", "delete-erreur", "delete-item", "delete-title",
+  "derogation-minimale", "edit-item", "erreur-generer-brouillon",
+  "feature-agent", "feature-criteria", "feature-dependency",
+  "feature-description", "feature-dialog", "feature-done", "feature-edit",
+  "feature-kind", "feature-priority", "feature-status", "feature-title",
+  "feature-updated", "fichiers", "filtre", "filtre-divergences",
+  "gabarits-adoptes", "horodatage", "item-description", "item-priority",
+  "jauge-flux", "jauge-git", "jauge-pilotage", "kanban", "launch-divider",
+  "legende-cycles", "link-front-sec", "link-front-tests",
+  "link-front2-review", "link-reprise", "link-sec-front2", "link-spec-front",
+  "link-tests-front2", "main-content", "menu-launch-cycle", "motion-note",
+  "note-agents", "open-add-item", "pied-cycles", "pilotage-corps",
   "porte-aide", "porte-bouton", "porte-champ", "porte-corps", "porte-erreur",
   "porte-jeton", "porte-titre", "projet", "prompt", "redaction-corps",
-  "repo-strip", "repo-strip-ok", "repo-strip-texte",
-  "selected-code", "selected-duration", "selected-files", "selected-state",
-  "selected-task", "selected-title", "selected-tools", "sheet-metrics", "sheet-toggle", "status-dot",
-  "summary-active", "summary-step", "summary-time", "systeme", "timeline",
-  "tiroir", "tiroir-contenu", "tiroir-fermer", "tiroir-titre", "titre-agents",
-  "titre-besoin", "titre-cycles", "titre-demande",
-  "titre-evenements", "titre-fichiers", "titre-pilotage", "titre-systeme",
-  "user-name", "workflows",
+  "repo-strip", "repo-strip-ok", "repo-strip-texte", "selected-code",
+  "selected-duration", "selected-files", "selected-state", "selected-task",
+  "selected-title", "selected-tools", "sheet-metrics", "sheet-toggle",
+  "status-dot", "summary-active", "summary-step", "summary-time", "systeme",
+  "timeline", "tiroir", "tiroir-contenu", "tiroir-edition",
+  "tiroir-edition-annuler", "tiroir-edition-enregistrer",
+  "tiroir-edition-erreur", "tiroir-edition-texte", "tiroir-fermer",
+  "tiroir-titre", "titre-agents", "titre-besoin", "titre-cycles",
+  "titre-demande", "titre-evenements", "titre-fichiers", "titre-pilotage",
+  "titre-systeme", "user-name", "view-details", "workflows",
 ];
 // Cachés par défaut dans le HTML (attribut `hidden` présent sur le balisage
 // d'origine) — voir index.html. `section-*` retirés avec la navigation à
@@ -174,6 +185,8 @@ const IDS = [
 const CACHES_PAR_DEFAUT = new Set([
   "bandeau-hote", "tiroir", "porte-jeton", "porte-erreur",
   "erreur-generer-brouillon", "gabarits-adoptes", "repo-strip-ok",
+  // feature-025 (lots 9-10) : `hidden` posé sur le balisage d'origine.
+  "context-menu", "delete-erreur", "tiroir-edition",
 ]);
 
 // Garde structurelle contre la RÉCURRENCE du piège ci-dessus (§7) : `IDS`
@@ -780,6 +793,52 @@ async function testIdentiteGateEtCycleTitle() {
     "obtenu : " + JSON.stringify(bacAvecCycle.$("cycle-title").textContent));
   check("cycle_title_egale_la_pastille_cycle_indice",
     bacAvecCycle.$("cycle-title").textContent === bacAvecCycle.$("cycle-indice").textContent);
+
+  // feature-025 (lots 9-10) : TROISIÈME état — titre de spec CONNU. Une
+  // garde écrite au lot 7 aurait été livrée morte (`etat.lancement_spec_id`
+  // n'existait pas encore côté serveur) ; elle s'écrit ICI, sur les TROIS
+  // états, pas seulement le nouveau — sinon une régression sur les deux
+  // premiers passerait inaperçue pendant qu'on prouve le troisième.
+  const bacAvecSpecConnue = await chargerAvecEtat({
+    workflows: [workflowAvecIndice],
+    lancement_spec_id: "feature-042-un-besoin",
+    specs: [{ id: "feature-042-un-besoin", titre: "Un besoin précis", colonne: "todo" }],
+  });
+  check("cycle_title_spec_connue_prime_sur_cycle_hash_n",
+    bacAvecSpecConnue.$("cycle-title").textContent === "feature-042-un-besoin · Un besoin précis",
+    "obtenu : " + JSON.stringify(bacAvecSpecConnue.$("cycle-title").textContent));
+
+  // `lancement_spec_id` non nul mais SANS titre distinct de l'id (spec sans
+  // `## Titre` H1, cf. `specs.py:_titre` — l'id sert de repli) : pas de
+  // « · » fabriqué pour rien.
+  const bacSpecSansTitreDistinct = await chargerAvecEtat({
+    workflows: [workflowAvecIndice],
+    lancement_spec_id: "feature-043-sans-titre",
+    specs: [{ id: "feature-043-sans-titre", titre: "feature-043-sans-titre", colonne: "todo" }],
+  });
+  check("cycle_title_spec_connue_sans_titre_distinct_pas_de_point_milieu_fabrique",
+    bacSpecSansTitreDistinct.$("cycle-title").textContent === "feature-043-sans-titre",
+    "obtenu : " + JSON.stringify(bacSpecSansTitreDistinct.$("cycle-title").textContent));
+
+  // `lancement_spec_id` renvoyé par le serveur mais absent d'`etat.specs`
+  // (course : la spec a été déplacée/supprimée entre le lancement et ce
+  // relevé) — DÉGRADE sur « Cycle #N », jamais un titre vide ni un crash.
+  const bacSpecIdSansCorrespondance = await chargerAvecEtat({
+    workflows: [workflowAvecIndice],
+    lancement_spec_id: "feature-999-introuvable",
+    specs: [],
+  });
+  check("cycle_title_spec_id_sans_correspondance_degrade_sur_cycle_hash_n",
+    bacSpecIdSansCorrespondance.$("cycle-title").textContent === "Cycle #42",
+    "obtenu : " + JSON.stringify(bacSpecIdSansCorrespondance.$("cycle-title").textContent));
+
+  // `lancement_spec_id` ABSENT (aucun lancement en cours, ou lancement
+  // terminé — `etat.lancement_spec_id` redevient `null` côté serveur dès
+  // que `toujours_en_cours()` est faux) : retombe sur l'état 2, jamais un
+  // titre périmé conservé côté client.
+  check("cycle_title_sans_lancement_spec_id_reste_a_l_etat_2",
+    bacAvecCycle.$("cycle-title").textContent === "Cycle #42",
+    "non-régression : le scénario SANS lancement_spec_id (ci-dessus) doit rester inchangé");
 }
 
 async function main() {

@@ -325,14 +325,58 @@ function rendreKanban(etat) {
                                      : specs.length + " / " + toutes.length));
     section.appendChild(titre);
 
+    /* feature-025 (lots 9-10) : la MÊME position que `gestion_spec.
+     * role_colonne()` (ADR-0003 — jamais un nom de colonne codé en dur)
+     * décide ce qu'une carte de CETTE colonne peut proposer : lancer et
+     * supprimer seulement en première colonne, modifier partout sauf la
+     * dernière (close/immuable, GATE P1 S2.2). */
+    const role = roleColonneClient(etat, colonne.classe);
+    const eligibleLancement = role === "premiere";
+    const eligibleModification = role !== "derniere";
+    const eligibleSuppression = role === "premiere";
+
     specs.forEach((spec) => {
-      const carte = el("button", "feature-card");
-      carte.type = "button";
-      const entete = el("h3", "", spec.id);
-      if (spec.titre && spec.titre !== spec.id) {
-        entete.appendChild(document.createTextNode(" · " + spec.titre));
-      }
+      const carte = el("article", "feature-card");
+      carte.setAttribute("data-feature-id", spec.id);
+
+      /* `.more-button` (⋮) — ouvre `#context-menu`, markup repris du
+       * prototype l.774. `data-*` posés par `setAttribute`, jamais
+       * `.dataset` (absent du bac à sable `vm` de ce module). */
+      const plus = el("button", "more-button");
+      plus.type = "button";
+      plus.setAttribute("aria-label", "Actions pour " + spec.id);
+      plus.setAttribute("aria-haspopup", "menu");
+      plus.setAttribute("aria-controls", "context-menu");
+      plus.setAttribute("aria-expanded", "false");
+      plus.setAttribute("data-menu-for", spec.id);
+      plus.setAttribute("data-launchable", eligibleLancement ? "true" : "false");
+      plus.setAttribute("data-editable", eligibleModification ? "true" : "false");
+      plus.setAttribute("data-supprimable", eligibleSuppression ? "true" : "false");
+      const plusIcone = el("span", "", "⋮");
+      plusIcone.setAttribute("aria-hidden", "true");
+      plus.appendChild(plusIcone);
+      plus.addEventListener("click", (evenement) => {
+        if (evenement && typeof evenement.stopPropagation === "function") evenement.stopPropagation();
+        ouvrirMenuContextuel(plus, spec.id);
+      });
+      carte.appendChild(plus);
+
+      const entete = el("h3");
+      const titreBouton = el("button", "card-title-button",
+        spec.titre && spec.titre !== spec.id ? spec.id + " · " + spec.titre : spec.id);
+      titreBouton.type = "button";
+      titreBouton.addEventListener("click", () => ouvrirDetailFeature(spec.id));
+      entete.appendChild(titreBouton);
       carte.appendChild(entete);
+
+      /* `.progress-track` — ADOPTÉE REDÉFINIE (K4, table F0) : PAS un
+       * pourcentage, l'ÉTAT DE COLONNE (voir app.css pour la justification
+       * complète). Décoratif : `aria-hidden`, aucun `aria-valuenow`. */
+      const piste = el("div", "progress-track etat-" + (role || "intermediaire"));
+      piste.setAttribute("aria-hidden", "true");
+      piste.appendChild(el("i"));
+      carte.appendChild(piste);
+
       const bas = el("div", "card-footer");
       const priorite = nettoyerPriorite(spec.priorite);
       if (priorite) {
@@ -354,7 +398,6 @@ function rendreKanban(etat) {
         bas.appendChild(badge);
       }
       carte.appendChild(bas);
-      carte.addEventListener("click", () => ouvrirSpec(spec.id));
       section.appendChild(carte);
     });
     if (!specs.length) {
@@ -1137,16 +1180,28 @@ function rendreGrapheCyclePrincipal(etat) {
     return;
   }
   /* ADR-0023 : « Cycle #N » (indice_cycle, additif) est légitime — le TITRE
-   * de spec ne l'est pas (corrélation cycle→spec, 2 cas sur 14 seulement). */
+   * de spec ne l'est pas EN GÉNÉRAL (corrélation cycle→spec après coup, 2 cas
+   * sur 14 seulement). Le lot 10 ouvre une troisième branche, mais PAS par
+   * corrélation : `etat.lancement_spec_id` (server.py, GATE P1 S1.7) est le
+   * `spec_id` que LE SERVEUR a lui-même mémorisé sur le `Lancement` au
+   * moment où CE lancement a été demandé via `/api/spec/lancer` — un fait
+   * causal, jamais une reconstitution après coup. Il ne vaut d'ailleurs
+   * QUE tant que ce lancement `toujours_en_cours()` (server.py) ; il
+   * redevient `null` dès la fin du cycle, et `#cycle-title` retombe alors
+   * sur « Cycle #N », jamais sur un titre périmé. */
   const libelleIndice = typeof wf.indice_cycle === "number"
     ? "Cycle #" + wf.indice_cycle : null;
   $("cycle-indice").textContent = libelleIndice || "—";
-  /* #cycle-title : TROIS états au total (F0) — ici, seuls les deux premiers
-   * sont câblés : « titre de spec connu » reste au lot 10 (la route qui le
-   * remplirait n'existe pas encore, une garde ici serait livrée morte) ;
-   * « pas de titre mais cycle observé » se lit sur la même donnée que la
-   * pastille `#cycle-indice` (`indice_cycle`), jamais fabriquée deux fois. */
-  $("cycle-title").textContent = libelleIndice || "Cycle en cours";
+  let titreSpecConnu = null;
+  if (etat.lancement_spec_id) {
+    const specCorrespondante = (etat.specs || []).find((s) => s.id === etat.lancement_spec_id);
+    if (specCorrespondante) {
+      titreSpecConnu = specCorrespondante.titre && specCorrespondante.titre !== specCorrespondante.id
+        ? specCorrespondante.id + " · " + specCorrespondante.titre
+        : specCorrespondante.id;
+    }
+  }
+  $("cycle-title").textContent = titreSpecConnu || libelleIndice || "Cycle en cours";
 
   const segments = wf.segments || wf.passages || [];
   const sigles = siglesAgents(Array.from(collecterRoles([wf])));
@@ -1324,38 +1379,20 @@ function rendreTimeline(etat) {
 
 /* ---------------------------------------------------------------- tiroir -- */
 function ouvrirTiroir(titre, contenu) {
+  /* feature-025 : le tiroir sert aussi de surface d'édition (B2) — l'ouvrir
+   * en mode LECTURE (diff, ou détail de secours) doit toujours quitter le
+   * mode édition, jamais laisser un formulaire orphelin affiché derrière un
+   * nouveau contenu. */
+  if (typeof fermerEditionTiroir === "function") fermerEditionTiroir();
   $("tiroir-titre").textContent = titre;
   $("tiroir-contenu").textContent = contenu;
   $("tiroir").hidden = false;
   $("tiroir-fermer").focus();
 }
 
-function fermerTiroir() { $("tiroir").hidden = true; }
-
-async function ouvrirSpec(identifiant) {
-  ouvrirTiroir(identifiant, "chargement…");
-  try {
-    const reponse = await fetch("/api/spec?id=" + encodeURIComponent(identifiant),
-      { headers: enTeteAuthPilotage() });
-    if (reponse.status === 401) {
-      sur401Lecture();
-      return ouvrirTiroir(identifiant, "Authentification requise — reconnectez-vous.");
-    }
-    const donnees = await reponse.json();
-    if (donnees.erreur) return ouvrirTiroir(identifiant, "Erreur : " + donnees.erreur);
-    const entete = [
-      "colonne   : " + donnees.colonne,
-      "statut    : " + (donnees.statut_texte || "(absent)"),
-      "classé    : " + donnees.statut_classe +
-        (donnees.divergence ? "   ⚠ DIVERGENCE avec le répertoire" : ""),
-      "priorité  : " + (donnees.priorite || "—"),
-      "".padEnd(60, "─"),
-      "",
-    ].join("\n");
-    ouvrirTiroir(identifiant, entete + donnees.contenu);
-  } catch (erreur) {
-    ouvrirTiroir(identifiant, "Erreur réseau : " + erreur.message);
-  }
+function fermerTiroir() {
+  $("tiroir").hidden = true;
+  if (typeof fermerEditionTiroir === "function") fermerEditionTiroir();
 }
 
 async function ouvrirDiff(chemin) {
@@ -1377,6 +1414,483 @@ async function ouvrirDiff(chemin) {
     ouvrirTiroir(chemin, "Erreur réseau : " + erreur.message);
   }
 }
+
+/* ---------------------------------------------------- backlog : actions -- *
+ * feature-025 (cycle 2, lots 9-10) : menu ⋮, dialogue de détail M3, lancer /
+ * modifier / supprimer une spec DÉSIGNÉE. Markup et classes REPRIS du
+ * prototype (`index.html`, voir son commentaire au-dessus de `#context-
+ * menu`) — ce bloc les branche à `GET /api/spec` et aux trois routes du
+ * lot 9 (`gestion_spec.py`).
+ *
+ * ⚠️ Contrainte du bac à sable : plusieurs harnais `test_app_*.js` chargent
+ * ce fichier ENTIER dans un `document` minimal qui ne connaît pas tous ces
+ * `id` et n'implémente ni `showModal`/`close`, ni `querySelector`, ni
+ * `getBoundingClientRect`, ni `.dataset`. En conséquence :
+ *   - AUCUN `document.querySelector*` — les collections nécessaires sont
+ *     tenues à la main, comme le reste du fichier ;
+ *   - tout `$("id")` susceptible d'être absent d'un harnais plus ancien est
+ *     GARDÉ (`if (élément) { … }`) avant tout appel de méthode : un accès
+ *     direct ferait tomber TOUS les harnais qui chargent `app.js`, pas
+ *     seulement ce fichier ;
+ *   - `showModal()`/`close()`/`getBoundingClientRect()` sont appelés
+ *     seulement si la méthode existe (`typeof … === "function"`), avec un
+ *     repli sur `.hidden` — le même degré de tolérance qu'un `<dialog>`
+ *     natif offre au navigateur réel et qu'un `FakeNode` générique n'offre
+ *     pas ;
+ *   - `data-*` est posé par `setAttribute`/lu par `getAttribute`, jamais
+ *     `.dataset` (absent du bac à sable).
+ */
+
+// -- éligibilité, dérivée de la MÊME position que le serveur
+// (`gestion_spec.role_colonne`) : jamais un nom de colonne codé en dur
+// (ADR-0003). `null` si la colonne n'est pas (ou plus) déclarée. --------
+function roleColonneClient(etat, classeColonne) {
+  const classes = ((etat && etat.colonnes) || []).map((c) => c.classe);
+  const index = classes.indexOf(classeColonne);
+  if (index === -1) return null;
+  if (index === 0) return "premiere";
+  if (index === classes.length - 1) return "derniere";
+  return "intermediaire";
+}
+
+function ouvrirDialogue(dialogue) {
+  if (!dialogue) return;
+  if (typeof dialogue.showModal === "function") dialogue.showModal();
+  else dialogue.hidden = false;
+}
+
+function fermerDialogue(dialogue) {
+  if (!dialogue) return;
+  if (typeof dialogue.close === "function") dialogue.close();
+  else dialogue.hidden = true;
+}
+
+// -- menu contextuel (⋮) ----------------------------------------------------
+let menuTargetSpec = null;
+let menuBoutonActif = null;
+
+function elementsMenuVisibles() {
+  const menu = $("context-menu");
+  if (!menu) return [];
+  return ["menu-launch-cycle", "view-details", "edit-item", "delete-item"]
+    .map((id) => $(id))
+    .filter((n) => n && !n.hidden);
+}
+
+function fermerMenuContextuel(rendreFocus) {
+  const menu = $("context-menu");
+  if (!menu || menu.hidden) return;
+  menu.hidden = true;
+  if (menuBoutonActif) {
+    menuBoutonActif.setAttribute("aria-expanded", "false");
+    if (rendreFocus && typeof menuBoutonActif.focus === "function") menuBoutonActif.focus();
+  }
+  menuBoutonActif = null;
+}
+
+function ouvrirMenuContextuel(bouton, specId) {
+  const menu = $("context-menu");
+  if (!menu) return;
+  const dejaOuvertPourCetteCarte = menuBoutonActif === bouton && !menu.hidden;
+  fermerMenuContextuel(false);
+  if (dejaOuvertPourCetteCarte) return;
+
+  menuBoutonActif = bouton;
+  menuTargetSpec = specId;
+
+  const launchable = bouton.getAttribute("data-launchable") === "true";
+  const editable = bouton.getAttribute("data-editable") === "true";
+  const supprimable = bouton.getAttribute("data-supprimable") === "true";
+  const lancer = $("menu-launch-cycle");
+  const separateur = $("launch-divider");
+  if (lancer) lancer.hidden = !launchable;
+  if (separateur) separateur.hidden = !launchable;
+  const modifier = $("edit-item");
+  if (modifier) modifier.hidden = !editable;
+  const supprimer = $("delete-item");
+  if (supprimer) supprimer.hidden = !supprimable;
+
+  menu.hidden = false;
+  if (typeof bouton.getBoundingClientRect === "function") {
+    const rect = bouton.getBoundingClientRect();
+    const largeurVue = (typeof window !== "undefined" && window.innerWidth) || 1024;
+    const hauteurVue = (typeof window !== "undefined" && window.innerHeight) || 768;
+    menu.style.left = Math.min(largeurVue - 202, Math.max(8, rect.right - 190)) + "px";
+    menu.style.top = Math.min(hauteurVue - (launchable ? 226 : 174), rect.bottom + 4) + "px";
+  }
+  bouton.setAttribute("aria-expanded", "true");
+  const items = elementsMenuVisibles();
+  const premier = items[0];
+  if (premier && typeof premier.focus === "function") premier.focus();
+}
+
+(function cablerMenuContextuelUneFois() {
+  const menu = $("context-menu");
+  if (!menu) return;
+  menu.addEventListener("keydown", (evenement) => {
+    const items = elementsMenuVisibles();
+    if (!items.length) return;
+    const indexActuel = items.indexOf(document.activeElement);
+    if (evenement.key === "Escape") {
+      evenement.preventDefault();
+      fermerMenuContextuel(true);
+    } else if (evenement.key === "ArrowDown" || evenement.key === "ArrowUp") {
+      evenement.preventDefault();
+      const direction = evenement.key === "ArrowDown" ? 1 : -1;
+      const suivant = items[(indexActuel + direction + items.length) % items.length];
+      if (suivant && typeof suivant.focus === "function") suivant.focus();
+    } else if (evenement.key === "Home") {
+      evenement.preventDefault();
+      if (typeof items[0].focus === "function") items[0].focus();
+    } else if (evenement.key === "End") {
+      evenement.preventDefault();
+      const dernier = items[items.length - 1];
+      if (typeof dernier.focus === "function") dernier.focus();
+    }
+  });
+  if (typeof document.addEventListener === "function") {
+    document.addEventListener("click", (evenement) => {
+      if (menu.hidden) return;
+      if (typeof menu.contains === "function" && menu.contains(evenement.target)) return;
+      if (evenement.target && typeof evenement.target.getAttribute === "function" &&
+          evenement.target.getAttribute("data-menu-for")) return; // le clic qui OUVRE ne doit pas la refermer aussitôt
+      fermerMenuContextuel(false);
+    });
+  }
+})();
+
+// -- dialogue de détail (feature-dialog) -------------------------------------
+// Extraction BORNÉE d'une section markdown (« ## Titre » jusqu'au prochain
+// « ## » ou fin de texte) : le contenu affiché reste ce que la spec PORTE
+// réellement, jamais une invention — dégradable (section absente → « — »),
+// jamais à trous (PIEGES §16, F15 du même cycle).
+function extraireSectionMarkdown(contenu, titre) {
+  if (!contenu) return null;
+  const motif = new RegExp("^##\\s+" + titre.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*$", "m");
+  const m = motif.exec(contenu);
+  if (!m) return null;
+  const debut = m.index + m[0].length;
+  const suite = contenu.indexOf("\n## ", debut);
+  const morceau = (suite === -1 ? contenu.slice(debut) : contenu.slice(debut, suite)).trim();
+  return morceau || null;
+}
+
+function extraireListeMarkdown(section) {
+  if (!section) return [];
+  return section.split("\n")
+    .map((l) => l.replace(/^\s*[-*]\s*\[[ xX]\]\s*/, "").replace(/^\s*[-*]\s+/, "").trim())
+    .filter(Boolean);
+}
+
+async function ouvrirDetailFeature(specId) {
+  const dialogue = $("feature-dialog");
+  if (!dialogue) return;
+  try {
+    const reponse = await fetch("/api/spec?id=" + encodeURIComponent(specId), { headers: enTeteAuthPilotage() });
+    if (reponse.status === 401) { sur401Lecture(); return; }
+    const donnees = await reponse.json();
+    if (donnees.erreur) {
+      if ($("feature-description")) $("feature-description").textContent = "Erreur : " + donnees.erreur;
+      return;
+    }
+    const genre = (donnees.type || "").toLowerCase();
+    if ($("feature-kind")) $("feature-kind").textContent = genre.indexOf("bug") === 0 ? "Bug" : "Feature";
+    if ($("feature-title")) $("feature-title").textContent = donnees.titre && donnees.titre !== donnees.id
+      ? donnees.id + " · " + donnees.titre : donnees.id;
+    const statut = $("feature-status");
+    if (statut) {
+      const estTodo = donnees.statut_classe === "todo" || (!donnees.statut_texte && !donnees.divergence);
+      statut.className = "feature-chip" + (estTodo ? " todo" : "");
+      statut.textContent = donnees.statut_texte || donnees.statut_classe || "—";
+    }
+    const priorite = $("feature-priority");
+    if (priorite) {
+      const p = nettoyerPriorite(donnees.priorite);
+      const estHaute = !!p && (p.toLowerCase().indexOf("haute") === 0 || p.toLowerCase().indexOf("critique") === 0);
+      priorite.className = "feature-chip" + (estHaute ? " high" : "");
+      priorite.textContent = p || "—";
+    }
+    // L'agent responsable N'EST PAS exposé par `specs.py` (B4, lot 9 :
+    // « aucune grandeur de progression exposée », et l'agent responsable
+    // n'a pas été défini/mesuré non plus) — DÉGRADABLE, jamais inventé.
+    if ($("feature-agent")) $("feature-agent").textContent = "Agent · non déterminé par le dépôt";
+    if ($("feature-description")) {
+      $("feature-description").textContent = extraireSectionMarkdown(donnees.contenu, "Description")
+        || "(aucune section « Description » dans cette spec)";
+    }
+    const criteres = $("feature-criteria");
+    if (criteres) {
+      vider(criteres);
+      const liste = extraireListeMarkdown(extraireSectionMarkdown(donnees.contenu, "Critères d.acceptation"));
+      if (!liste.length) criteres.appendChild(el("li", "vide", "aucun critère listé"));
+      else liste.forEach((item) => criteres.appendChild(el("li", "", item)));
+    }
+    if ($("feature-dependency")) {
+      $("feature-dependency").textContent = extraireSectionMarkdown(donnees.contenu, "Contexte") || "—";
+    }
+    if ($("feature-updated")) $("feature-updated").textContent = donnees.maj || "—";
+
+    const boutonModifier = $("feature-edit");
+    if (boutonModifier) boutonModifier.onclick = () => { fermerDialogue(dialogue); ouvrirEditionSpec(specId); };
+    ouvrirDialogue(dialogue);
+  } catch (erreur) {
+    if ($("feature-description")) $("feature-description").textContent = "Erreur réseau : " + erreur.message;
+  }
+}
+
+// -- modification (B2) : réutilise le tiroir existant en mode édition -------
+let editionCourante = null; // { specId, empreinte }
+
+function fermerEditionTiroir() {
+  const form = $("tiroir-edition");
+  if (form) form.hidden = true;
+  const contenu = $("tiroir-contenu");
+  if (contenu) contenu.hidden = false;
+  editionCourante = null;
+}
+
+async function ouvrirEditionSpec(specId) {
+  ouvrirTiroir(specId, "chargement…");
+  try {
+    const reponse = await fetch("/api/spec?id=" + encodeURIComponent(specId), { headers: enTeteAuthPilotage() });
+    if (reponse.status === 401) { sur401Lecture(); return ouvrirTiroir(specId, "Authentification requise — reconnectez-vous."); }
+    const donnees = await reponse.json();
+    if (donnees.erreur) return ouvrirTiroir(specId, "Erreur : " + donnees.erreur);
+    if (!donnees.empreinte) return ouvrirTiroir(specId, "Cette spec ne porte pas d'empreinte — modification impossible.");
+    editionCourante = { specId, empreinte: donnees.empreinte };
+    const contenu = $("tiroir-contenu");
+    if (contenu) contenu.hidden = true;
+    const texte = $("tiroir-edition-texte");
+    if (texte) texte.value = donnees.contenu || "";
+    const erreur = $("tiroir-edition-erreur");
+    if (erreur) { erreur.hidden = true; erreur.textContent = ""; }
+    const form = $("tiroir-edition");
+    if (form) { form.hidden = false; }
+    if (texte && typeof texte.focus === "function") texte.focus();
+  } catch (erreur) {
+    ouvrirTiroir(specId, "Erreur réseau : " + erreur.message);
+  }
+}
+
+async function surSoumissionEditionSpec(evenement) {
+  if (evenement && typeof evenement.preventDefault === "function") evenement.preventDefault();
+  if (!editionCourante) return;
+  const texte = $("tiroir-edition-texte");
+  const erreur = $("tiroir-edition-erreur");
+  const bouton = $("tiroir-edition-enregistrer");
+  if (bouton) bouton.disabled = true;
+  try {
+    const reponse = await fetch("/api/spec/modifier", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, enTeteAuthPilotage()),
+      body: JSON.stringify({
+        spec_id: editionCourante.specId,
+        empreinte: editionCourante.empreinte,
+        contenu: texte ? texte.value : "",
+      }),
+    });
+    const donnees = await reponse.json().catch(() => ({}));
+    if (reponse.status === 200) {
+      editionCourante = { specId: editionCourante.specId, empreinte: donnees.empreinte };
+      fermerEditionTiroir();
+      fermerTiroir();
+      rafraichir();
+      return;
+    }
+    if (reponse.status === 401) { sur401Lecture(); return; }
+    // 409 (empreinte périmée OU lancement en cours) : le dire, JAMAIS
+    // réessayer en silence (consigne du brief — « ne réessaie pas »).
+    if (erreur) {
+      erreur.hidden = false;
+      erreur.textContent = reponse.status === 409
+        ? "Un éditeur externe (ou un lancement en cours) a modifié cette spec entre-temps — rechargez-la avant de réessayer."
+        : (donnees.erreur || ("Erreur du serveur (" + reponse.status + ").`"));
+    }
+  } catch (e) {
+    if (erreur) { erreur.hidden = false; erreur.textContent = "Erreur réseau : " + e.message; }
+  } finally {
+    if (bouton) bouton.disabled = false;
+  }
+}
+
+// -- suppression (B3) : confirmation par le nom, VÉRIFIÉE CÔTÉ SERVEUR ------
+let suppressionCourante = null; // { specId }
+
+function fermerDialogueSuppression() {
+  fermerDialogue($("delete-dialog"));
+  suppressionCourante = null;
+}
+
+function ouvrirDialogueSuppression(specId) {
+  const dialogue = $("delete-dialog");
+  if (!dialogue) return;
+  suppressionCourante = { specId };
+  if ($("delete-copy")) {
+    $("delete-copy").textContent = "Cette action supprimera définitivement " + specId + " du backlog. "
+      + "Cette suppression n'est possible que si " + specId + " est déjà suivi par git et sans modification locale — "
+      + "sinon le serveur la refuse et le dit (« commit ou stash d'abord »).";
+  }
+  if ($("delete-confirm-label")) $("delete-confirm-label").textContent = "Tapez « " + specId + " » pour confirmer";
+  if ($("delete-confirm-aide")) $("delete-confirm-aide").textContent = "La suppression est REFUSÉE tant que le texte ne correspond pas exactement.";
+  const champ = $("delete-confirm-input");
+  if (champ) champ.value = "";
+  const bouton = $("delete-confirm-bouton");
+  if (bouton) bouton.disabled = true;
+  const erreur = $("delete-erreur");
+  if (erreur) { erreur.hidden = true; erreur.textContent = ""; }
+  ouvrirDialogue(dialogue);
+  if (champ && typeof champ.focus === "function") champ.focus();
+}
+
+function surSaisieConfirmationSuppression() {
+  if (!suppressionCourante) return;
+  const champ = $("delete-confirm-input");
+  const bouton = $("delete-confirm-bouton");
+  if (!champ || !bouton) return;
+  // Confort client SEULEMENT (règle du projet : jamais à la place du
+  // serveur) — `gestion_spec.supprimer()` revalide l'égalité stricte
+  // avant tout effet, GATE P1 S2.8. Désactiver ce bouton ne protège rien
+  // en soi ; c'est `POST /api/spec/supprimer` qui protège.
+  bouton.disabled = champ.value !== suppressionCourante.specId;
+}
+
+async function surClicConfirmerSuppression() {
+  if (!suppressionCourante) return;
+  const specId = suppressionCourante.specId;
+  const champ = $("delete-confirm-input");
+  const erreur = $("delete-erreur");
+  const bouton = $("delete-confirm-bouton");
+  if (bouton) bouton.disabled = true;
+  try {
+    const reponse = await fetch("/api/spec/supprimer", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, enTeteAuthPilotage()),
+      body: JSON.stringify({ spec_id: specId, confirmation_nom: champ ? champ.value : "" }),
+    });
+    const donnees = await reponse.json().catch(() => ({}));
+    if (reponse.status === 200) {
+      fermerDialogueSuppression();
+      if ($("a11y-announcement")) $("a11y-announcement").textContent = specId + " supprimée du backlog.";
+      rafraichir();
+      return;
+    }
+    if (reponse.status === 401) { sur401Lecture(); return; }
+    if (erreur) {
+      erreur.hidden = false;
+      erreur.textContent = donnees.erreur || ("Erreur du serveur (" + reponse.status + ").");
+    }
+  } catch (e) {
+    if (erreur) { erreur.hidden = false; erreur.textContent = "Erreur réseau : " + e.message; }
+  } finally {
+    surSaisieConfirmationSuppression();
+  }
+}
+
+// -- lancement pour une spec désignée (B1) -----------------------------------
+async function surClicLancerCyclePourSpec(specId) {
+  if (!pilotage.cleChoisie) {
+    if ($("a11y-announcement")) {
+      $("a11y-announcement").textContent = "Choisissez d'abord une commande dans Pilotage avant de lancer un cycle pour " + specId + ".";
+    }
+    return;
+  }
+  try {
+    const reponse = await fetch("/api/spec/lancer", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, enTeteAuthPilotage()),
+      body: JSON.stringify({ cle: pilotage.cleChoisie, spec_id: specId }),
+    });
+    if (reponse.status === 202) {
+      stockerJetonPilotage(jetonPilotageStocke());
+      pilotage.lancement = {
+        cle: pilotage.cleChoisie, etat: "en_cours", curseur: 0, tronque: false,
+        derniereActivite: Date.now() / 1000, debutClient: Date.now(),
+        texteSortie: "", syntheticMessage: null,
+      };
+      pilotage.phase = "lancement";
+      if (typeof rendrePilotage === "function") rendrePilotage();
+      demarrerSondagePilotage();
+      if ($("a11y-announcement")) $("a11y-announcement").textContent = "Cycle lancé pour " + specId + ".";
+      rafraichir();
+      return;
+    }
+    const donnees = await reponse.json().catch(() => ({}));
+    if (reponse.status === 401) { sur401Lecture(); return; }
+    if ($("a11y-announcement")) {
+      $("a11y-announcement").textContent = "Lancement refusé pour " + specId + " : " + (donnees.erreur || reponse.status);
+    }
+  } catch (e) {
+    if ($("a11y-announcement")) $("a11y-announcement").textContent = "Erreur réseau au lancement de " + specId + " : " + e.message;
+  }
+}
+
+// -- câblage des éléments STATIQUES du menu/dialogues (une fois) ------------
+(function cablerActionsBacklogUneFois() {
+  const fermer1 = $("close-feature");
+  if (fermer1) fermer1.addEventListener("click", () => fermerDialogue($("feature-dialog")));
+  const fermer2 = $("feature-done");
+  if (fermer2) fermer2.addEventListener("click", () => fermerDialogue($("feature-dialog")));
+
+  const menuLancer = $("menu-launch-cycle");
+  if (menuLancer) menuLancer.addEventListener("click", () => {
+    const cible = menuTargetSpec;
+    fermerMenuContextuel(false);
+    if (cible) surClicLancerCyclePourSpec(cible);
+  });
+  const menuDetails = $("view-details");
+  if (menuDetails) menuDetails.addEventListener("click", () => {
+    const cible = menuTargetSpec;
+    fermerMenuContextuel(false);
+    if (cible) ouvrirDetailFeature(cible);
+  });
+  const menuModifier = $("edit-item");
+  if (menuModifier) menuModifier.addEventListener("click", () => {
+    const cible = menuTargetSpec;
+    fermerMenuContextuel(false);
+    if (cible) ouvrirEditionSpec(cible);
+  });
+  const menuSupprimer = $("delete-item");
+  if (menuSupprimer) menuSupprimer.addEventListener("click", () => {
+    const cible = menuTargetSpec;
+    fermerMenuContextuel(false);
+    if (cible) ouvrirDialogueSuppression(cible);
+  });
+
+  const annulerSuppression = $("cancel-delete");
+  if (annulerSuppression) annulerSuppression.addEventListener("click", fermerDialogueSuppression);
+  const champConfirmation = $("delete-confirm-input");
+  if (champConfirmation) champConfirmation.addEventListener("input", surSaisieConfirmationSuppression);
+  const boutonSupprimer = $("delete-confirm-bouton");
+  if (boutonSupprimer) boutonSupprimer.addEventListener("click", surClicConfirmerSuppression);
+
+  const formeEdition = $("tiroir-edition");
+  if (formeEdition) formeEdition.addEventListener("submit", surSoumissionEditionSpec);
+  const annulerEdition = $("tiroir-edition-annuler");
+  if (annulerEdition) annulerEdition.addEventListener("click", () => { fermerEditionTiroir(); fermerTiroir(); });
+
+  // `#open-add-item`/`#add-item-dialog` : structure présente (F0), soumission
+  // INERTE et le dit — voir le commentaire d'`index.html` sur `#open-add-item`.
+  const ouvrirAjout = $("open-add-item");
+  if (ouvrirAjout) ouvrirAjout.addEventListener("click", () => {
+    const forme = $("add-item-form");
+    if (forme && typeof forme.reset === "function") forme.reset();
+    ouvrirDialogue($("add-item-dialog"));
+    const champ = $("item-description");
+    if (champ && typeof champ.focus === "function") champ.focus();
+  });
+  const fermerAjout = $("close-add-item");
+  if (fermerAjout) fermerAjout.addEventListener("click", () => fermerDialogue($("add-item-dialog")));
+  const annulerAjout = $("cancel-add-item");
+  if (annulerAjout) annulerAjout.addEventListener("click", () => fermerDialogue($("add-item-dialog")));
+  const formeAjout = $("add-item-form");
+  if (formeAjout) formeAjout.addEventListener("submit", (evenement) => {
+    if (evenement && typeof evenement.preventDefault === "function") evenement.preventDefault();
+    if ($("add-item-intro")) {
+      $("add-item-intro").textContent = "Cette action n'est pas encore reliée à l'écriture — "
+        + "la rédaction automatique de la spec est hors périmètre de ce lot (feature-024).";
+    }
+  });
+})();
 
 /* --------------------------------------------------------------- pilotage -- */
 /* Lancer un workflow déclaré, suivre sa sortie en direct, l'interrompre.

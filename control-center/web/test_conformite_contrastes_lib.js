@@ -181,6 +181,27 @@ const USAGES_APLAT = {
       "prototype (l. 497-500). Vérifié par la clause miroir, qui ne le voit " +
       "jamais parmi les aplats peints.",
   },
+  // feature-025 (lots 9-10) : `.progress-track` — ADOPTÉE REDÉFINIE (table
+  // F0), PAS un pourcentage mesuré (K4, voir app.css pour la justification
+  // complète). `aria-hidden="true"` dans `index.html`/`app.js` : la colonne
+  // porte déjà cette information au clavier et au lecteur d'écran (le
+  // titre de section `.column-title`), ceci n'en est qu'un RENFORT visuel
+  // — DECOR par construction, pas une seconde source de vérité que son
+  // illisibilité priverait d'information.
+  ".progress-track": {
+    role: DECOR,
+    motif:
+      "piste de fond de la barre d'état de colonne : décorative, " +
+      "`aria-hidden`, la colonne qui porte l'information reste " +
+      "`.column-title`.",
+  },
+  ".progress-track i": {
+    role: DECOR,
+    motif:
+      "remplissage de la barre d'état de colonne : même motif que le " +
+      "conteneur — décoratif, `aria-hidden`, trois largeurs FIXES par " +
+      "état (jamais un pourcentage, jamais une information isolée ici).",
+  },
   ".kanban-viewport::-webkit-scrollbar-thumb": {
     role: DECOR,
     pseudo: true,

@@ -122,7 +122,6 @@ const VALEURS_PAS_ENCORE_EMPLOYEES = {
     { val: "3px", raison: "`.brand-mark i` (prototype) : app.css emploie `50%` sur le même sélecteur — divergence assumée, voir DIVERGENCES_VECTEUR", lotDeCloture: "voir DIVERGENCES_VECTEUR, même entrée" },
     { val: "6px 16px 16px 16px", raison: "`.bubble` (bulle de message), feature-022, pas encore construite", lotDeCloture: "lot 11" },
     { val: "22px", raison: "`.composer` (champ de saisie vers Claude), feature-022, pas encore construit", lotDeCloture: "lot 11" },
-    { val: "inherit", raison: "`.progress-track i` (barre de progression, adoptée redéfinie), pas encore construite", lotDeCloture: "lot 10" },
   ],
   "box-shadow": [],
 };

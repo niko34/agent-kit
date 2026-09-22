@@ -76,6 +76,28 @@ revue
   d'animation du prototype (minutés en temps réel, hors de portée d'un
   `--virtual-time-budget` fiable sans dépendre d'un minutage fragile,
   PIEGES §28) : limite assumée, pas l'état par défaut nu.
+- LA RÉFÉRENCE EST FIGÉE, ET CE QUE LE FIGEAGE RETIRE EST DÉCLARÉ ICI.
+  `--force-prefers-reduced-motion` est posé sur les DEUX invocations : le
+  prototype est une démo qui se joue seule (`demoTimer` l.1037,
+  `metricTimer` l.1251) et `playing = !reducedMotion` (l.895) l'empêche de
+  démarrer. Sans ce figeage, sa signature peinte dépendait de la phase de
+  la démo au moment du relevé — mesuré : 1 échec sur 6 sous charge, la
+  valeur `--primary` à 8 % (halo d'un agent ACTIF) n'entrant dans la
+  référence que si la démo avait atteint cette étape.
+  Ce que le figeage RETIRE du périmètre comparé : les états de disque que
+  seule la démo produisait. Ils sont RENDUS déterministes, pas perdus — la
+  scène du prototype pose désormais `state-active` / `state-done` /
+  `state-pending` explicitement sur trois `.agent-node` (noms du prototype,
+  donc clé de jointure), là où la scène du cockpit les obtient déjà par
+  construction (`termine` true/false de ses passages). Ce qui reste hors
+  périmètre est ce qui dépend d'une ANIMATION en cours, jamais d'un état.
+  Effet second : les `transition` (`.agent-node` : `box-shadow 460ms`) ne
+  sont plus échantillonnées à mi-course.
+- G3 PROUVE la stabilité de sa référence au lieu d'être seulement
+  configurée pour l'obtenir : le prototype est relevé DEUX fois dans la
+  même exécution, et `REFERENCE_stable_entre_deux_releves_*` échoue en
+  nommant l'écart si les deux diffèrent. Une garde dont l'ATTENDU varie
+  d'un run à l'autre est pire qu'absente — on apprend à l'ignorer.
 
 Saute proprement si Chromium OU `node` est introuvable.
 """
@@ -204,12 +226,53 @@ ANCRES_LARGEUR_NON_COMPARABLE = {
     "link-sec-front2": "connecteur du graphe — même raison que cycle-canvas",
     "link-spec-front": "connecteur du graphe — même raison que cycle-canvas",
     "link-tests-front2": "connecteur du graphe — même raison que cycle-canvas",
+    # feature-025 (lots 9-10) : chips/titres du dialogue de détail — largeur
+    # gouvernée par le TEXTE qu'ils encadrent (chip Material, `<h2>` en
+    # ligne), jamais garantie identique entre le jeu de démonstration du
+    # prototype (`featureDetails['F-023']`) et celui de cette scène.
+    "feature-title": "titre du dialogue de détail, texte variable (identifiant + titre de spec)",
+    "feature-status": "chip de statut, texte variable",
+    "feature-priority": "chip de priorité, texte variable",
+    "feature-agent": "chip d'agent, texte variable — non exposé par `specs.py` (K4), texte de repli",
+    "add-item-title": "texte identique (« Ajouter un élément ») mais `<h2>` en ligne dont la largeur "
+                       "dépend aussi de la hauteur du dialogue VOISIN (feature-dialog) ouvert en même "
+                       "temps dans cette scène — dérive avec le contenu du dialogue de détail, pas un "
+                       "défaut de app.css",
+    "cycle-title": "titre du cycle, texte variable (« Cycle #N », titre de spec, ou aucun cycle observé)",
 }
 
 # Ancres dont le `top` (position verticale) n'est pas un signal d'ORDRE DE
 # LECTURE fiable — motif nommé, exclues de la clause d'ordre uniquement.
 ANCRES_ORDRE_NON_COMPARABLE = {
     "a11y-announcement": "visuellement masqué (position hors-écran), son `top` ne reflète aucun ordre de lecture",
+    # feature-025 (lots 9-10) : MÊME raison que leur exclusion de largeur
+    # ci-dessus — leur position verticale est DÉRIVÉE de la géométrie du
+    # graphe (disposer()), pas un ordre de lecture de document, et cette
+    # géométrie n'est pas requise de coïncider pixel pour pixel avec celle
+    # du prototype (6 agents dessinés côté prototype, 3 côté cockpit).
+    "link-front-sec": "connecteur du graphe — position dérivée de la géométrie du disque, même raison que sa largeur",
+    "link-front-tests": "connecteur du graphe — même raison",
+    "link-front2-review": "connecteur du graphe — même raison",
+    "link-reprise": "connecteur du graphe — même raison",
+    "link-sec-front2": "connecteur du graphe — même raison",
+    "link-spec-front": "connecteur du graphe — même raison",
+    "link-tests-front2": "connecteur du graphe — même raison",
+    # feature-025 (lots 9-10) : à la frontière de bande (seuil 40px, chaîné)
+    # entre l'en-tête du dialogue (chips déjà exclues de la largeur
+    # ci-dessus) et le corps — mesuré : bascule d'un côté ou de l'autre pour
+    # un écart d'interligne de quelques px, jamais un ordre de LECTURE réel
+    # (la description suit TOUJOURS les chips dans le DOM, `feature-meta`
+    # puis `feature-section`, vérifié par `test_conformite_a11y.js`/F4a).
+    "feature-description": "frontière de bande fragile avec l'en-tête du dialogue, pas un ordre DOM différent",
+    # Boutons d'action des dialogues (bas de `.feature-dialog`/`.add-item-
+    # dialog`) : leur `top` dépend de la HAUTEUR du dialogue (donc du texte
+    # qu'il contient, déjà la raison des exclusions ci-dessus), pas d'un
+    # ordre de lecture — ils tombent, selon cette hauteur, dans la même
+    # bande que la feuille de détail (`selected-*`) ou une bande séparée,
+    # sans que l'ordre RELATIF dans chaque document ne change.
+    "feature-edit": "position dépend de la hauteur du dialogue de détail, pas un ordre DOM différent",
+    "feature-done": "position dépend de la hauteur du dialogue de détail, pas un ordre DOM différent",
+    "cancel-add-item": "position dépend de la hauteur du dialogue d'ajout, pas un ordre DOM différent",
 }
 
 # Valeurs de `border-radius`/`box-shadow` peintes par le cockpit hors de
@@ -226,7 +289,6 @@ AJOUTS_HISTOGRAMME_DECLARES = {
     "border-radius": [],
     "box-shadow": [
         {"val": "rgb(255, 251, 255) 0px 0px 0px 2px", "raison": "`.agent-flag` (F16) : anneau `0 0 0 2px var(--surface)`, résolu"},
-        {"val": "color(srgb 0.466667 0.45098 0.521569 / 0.08) 0px 0px 0px 6px", "raison": "`.agent-flag` (F16) : halo `0 0 0 6px color-mix(...var(--muted)...)`, résolu"},
         {"val": "color(srgb 0.729412 0.101961 0.101961 / 0.08) 0px 0px 0px 6px", "raison": "`.agent-flag--echec` (F16) : variante échec du halo, résolu"},
     ],
 }
@@ -316,6 +378,20 @@ def _script_scene_prototype(ancres_json):
     if (premiereCarte) premiereCarte.click();
     var ouvrirAjout = document.getElementById('open-add-item');
     if (ouvrirAjout) ouvrirAjout.click();
+
+    // Les TROIS états de disque, posés EXPLICITEMENT — jamais attendus de
+    // la démo. Sous `--force-prefers-reduced-motion` celle-ci ne démarre
+    // pas (`playing = !reducedMotion`), donc aucun agent n'atteindrait
+    // `state-active` et le halo `--primary` à 8 % manquerait de la
+    // référence alors que la scène du cockpit le peint (ses passages sont
+    // construits avec `termine` true/false, donc déterministes). Les noms
+    // de classe sont ceux du prototype : ils sont la clé de jointure.
+    var disques = document.querySelectorAll('.agent-node');
+    var etats = ['state-active', 'state-done', 'state-pending'];
+    for (var i = 0; i < etats.length && i < disques.length; i++) {
+      disques[i].classList.remove('state-active', 'state-done', 'state-pending');
+      disques[i].classList.add(etats[i]);
+    }
     out.mesure = fideliteMesurer(""" + ancres_json + r""");
   } catch (e) {
     out.erreur = String((e && e.stack) || e);
@@ -376,6 +452,66 @@ def _script_scene_cockpit(ancres_json):
     // peupler la bottom sheet de détail (F11, ancres `selected-*`).
     var premierNoeud = document.querySelector('.agent-node');
     if (premierNoeud) premierNoeud.click();
+
+    // feature-025 (lots 9-10) — MÊMES trois états balayés côté prototype
+    // (menu ouvert, dialogue de détail ouvert, formulaire d'ajout ouvert),
+    // par les MÊMES gestionnaires réels (clic), même « cimetière » pour le
+    // menu (fermé par l'ouverture du dialogue, comme côté prototype :
+    // `document.addEventListener('click', …)` dans app.js le referme dès
+    // qu'un clic tombe hors de lui).
+    //
+    // ⚠️ `#feature-dialog` diverge d'UN point du prototype : son ouverture
+    // RÉELLE (`ouvrirDetailFeature`, sur clic de `.card-title-button`) passe
+    // par `GET /api/spec` — réseau ABSENT de cette scène statique (servie
+    // par un simple fichier, pas `server.py`). Peupler puis ouvrir le
+    // dialogue À LA MAIN ci-dessous reproduit EXACTEMENT ce que cette
+    // fonction pose sur le DOM une fois la réponse reçue (mêmes id, même
+    // `showModal()`) — un test double délibéré, pas une divergence de
+    // fidélité : c'est la MÊME raison que `rendreKanban`/`rendreAgents`
+    // sont appelées directement plus haut avec des données synthétiques,
+    // plutôt que via `/api/etat`.
+    var cimetiere2 = document.createElement('div');
+    cimetiere2.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(cimetiere2);
+
+    var premierPlus = document.querySelector('.more-button');
+    if (premierPlus) premierPlus.click();
+    var menu = document.getElementById('context-menu');
+    if (menu && !menu.hidden) cimetiere2.appendChild(menu.cloneNode(true));
+
+    var fd = document.getElementById('feature-dialog');
+    if (fd) {
+      document.getElementById('feature-kind').textContent = 'Feature';
+      document.getElementById('feature-title').textContent = 'F-001 · a';
+      var statut = document.getElementById('feature-status');
+      statut.className = 'feature-chip todo';
+      statut.textContent = 'todo';
+      var priorite = document.getElementById('feature-priority');
+      priorite.className = 'feature-chip high';
+      priorite.textContent = 'Haute';
+      document.getElementById('feature-agent').textContent = 'Agent · non déterminé par le dépôt';
+      // Longueur COMPARABLE à `featureDetails['F-023']` du prototype (la
+      // première carte cliquée des deux côtés) : une description d'une
+      // phrase et TROIS critères — sinon la hauteur du dialogue diverge et
+      // décale la bande verticale d'éléments qui n'ont rien à voir avec lui
+      // (mesuré : les connecteurs SVG du graphe migraient de bande).
+      document.getElementById('feature-description').textContent =
+        'Permettre un remboursement partiel avec génération automatique d’un avoir.';
+      var crit = document.getElementById('feature-criteria');
+      ['Saisir un montant inférieur au paiement initial',
+       'Tracer chaque remboursement dans l’historique',
+       'Empêcher un cumul supérieur au montant encaissé'].forEach(function (texte) {
+        var li = document.createElement('li');
+        li.textContent = texte;
+        crit.appendChild(li);
+      });
+      document.getElementById('feature-dependency').textContent = 'API avoirs';
+      document.getElementById('feature-updated').textContent = 'Il y a 18 min';
+      if (typeof fd.showModal === 'function') fd.showModal();
+    }
+
+    var ouvrirAjout = document.getElementById('open-add-item');
+    if (ouvrirAjout) ouvrirAjout.click();
 
     out.mesure = fideliteMesurer(""" + ancres_json + r""");
   } catch (e) {
@@ -443,6 +579,18 @@ def _mesurer_page(navigateur, url_ou_fichier, fichier_page=None):
     res = _lancer_navigateur([
         navigateur, "--headless", "--disable-gpu", "--no-sandbox",
         "--force-device-scale-factor=1", "--hide-scrollbars",
+        # ⚠️ Fige la RÉFÉRENCE. Le prototype est une démo qui se joue seule
+        # (`demoTimer = setInterval(...)` l.1037, `metricTimer` l.1251) et
+        # `playing = !reducedMotion` (l.895) : sous ce drapeau, elle ne
+        # démarre JAMAIS. Sans lui, la signature peinte du prototype dépend
+        # de la phase de la démo à l'instant du relevé — mesuré : 1 échec
+        # sur 6 sous charge, toujours sur `B_box_shadow_...`, la valeur
+        # `--primary` à 8 % du halo d'un agent ACTIF n'apparaissant que
+        # lorsque la démo a atteint cette étape. Posé des DEUX côtés : un
+        # drapeau asymétrique rendrait la comparaison fausse. Effet second
+        # utile : les `transition` (`.agent-node` porte `box-shadow 460ms`)
+        # ne sont plus échantillonnées à mi-course.
+        "--force-prefers-reduced-motion",
         "--virtual-time-budget=3000", "--window-size=1440,1000",
         "--dump-dom", cible,
     ])
@@ -508,7 +656,16 @@ def main():
     fil_cockpit.start()
 
     try:
-        mesure_proto = _mesurer_page(navigateur, "http://127.0.0.1:%d/%s" % (port_maquette, _MAQUETTE_NOM))
+        url_maquette = "http://127.0.0.1:%d/%s" % (port_maquette, _MAQUETTE_NOM)
+        mesure_proto = _mesurer_page(navigateur, url_maquette)
+        # ⚠️ La référence doit PROUVER sa stabilité, pas seulement être
+        # configurée pour l'être. Un second relevé, identique en tous
+        # points : si les deux diffèrent, l'attendu bouge d'un run à
+        # l'autre et TOUTE comparaison en aval est un tirage au sort. Une
+        # garde dont l'attendu varie est pire qu'absente — on apprend à
+        # l'ignorer (bug-022 : sept runs rouges avant qu'on cesse de
+        # croire au hasard).
+        mesure_proto_bis = _mesurer_page(navigateur, url_maquette)
 
         page_cockpit = construire_page_cockpit(base_cockpit, _script_scene_cockpit(ancres_json))
         with tempfile.TemporaryDirectory(prefix="cc-test-fidelite-page-") as dossier:
@@ -524,6 +681,17 @@ def main():
         serveur_maquette.server_close()
         serveur_cockpit.shutdown()
         serveur_cockpit.server_close()
+
+    # -- La référence est-elle stable ? (avant toute comparaison) ---------
+    for _prop in ("borderRadius", "boxShadow"):
+        _un = sorted(mesure_proto["histogramme"][_prop])
+        _deux = sorted(mesure_proto_bis["histogramme"][_prop])
+        _ecart = sorted(set(_un) ^ set(_deux))
+        check("REFERENCE_stable_entre_deux_releves_" + _prop,
+              _un == _deux,
+              "la référence a BOUGÉ entre deux relevés — %d valeur(s) d'écart : %s "
+              "(l'attendu varie d'un run à l'autre, aucune comparaison en aval n'a de sens)"
+              % (len(_ecart), ", ".join(_ecart[:6])))
 
     check("atteignabilite_noeuds_prototype_visites", mesure_proto["noeudsVisites"] > 100,
           "obtenu %d" % mesure_proto["noeudsVisites"])

@@ -133,7 +133,16 @@ const ICI = __dirname;
   // `hidden` PAR CONSTRUCTION (déjà retiré du rendu et de l'arbre
   // d'accessibilité, PIEGES §15) ET reçoit `inert` comme tout autre frère à
   // l'ouverture de la porte (double protection, aucune n'est retirée).
-  const FRERES_INERTES = ["bandeau-hote", "skip-link", "app-shell", "tiroir", "gabarits-adoptes"];
+  // feature-025 (lots 9-10) : `#context-menu` et les trois `<dialog>` sont
+  // ENFANTS DIRECTS DE `<body>`, comme les frères déjà listés — ils entrent
+  // dans `fixerInerteAutourDeLaPorte` au même titre (`app.js` parcourt TOUS
+  // les frères, jamais une liste bornée) et doivent donc entrer ICI aussi,
+  // sans quoi cette mesure STATIQUE compterait à tort leurs boutons/champs
+  // comme atteignables hors de la porte alors qu'ils reçoivent `inert`.
+  const FRERES_INERTES = [
+    "bandeau-hote", "skip-link", "app-shell", "tiroir", "gabarits-adoptes",
+    "context-menu", "feature-dialog", "add-item-dialog", "delete-dialog",
+  ];
   const FOCALISABLE = /<(a\s[^>]*href=|button|input|select|textarea|[a-zA-Z][a-zA-Z0-9-]*\s[^>]*tabindex=")/gi;
   (function compterAtteignablesHorsPorte() {
     const sansCommentaires = html.replace(/<!--[\s\S]*?-->/g, "");

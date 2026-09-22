@@ -198,6 +198,11 @@ _SCRIPT_MESURE = r"""
         { id: "F-001", titre: "a", colonne: "todo", priorite: "Basse", divergence: false, statut_texte: "todo" },
         { id: "F-002", titre: "b", colonne: "todo", priorite: "Haute", divergence: true, statut_texte: "doing" },
         { id: "F-003", titre: "c", colonne: "doing", priorite: "Critique — urgent", divergence: false, statut_texte: "doing" },
+        // feature-025 (lots 9-10) : une spec en DERNIÈRE colonne, sinon
+        // `.progress-track.etat-derniere` (posée par `roleColonneClient`)
+        // n'est jamais atteinte par ce scénario — F3b la trouverait
+        // déclarée dans app.css et jamais posée, pour la MAUVAISE raison.
+        { id: "F-004", titre: "d", colonne: "done", priorite: "Moyenne", divergence: false, statut_texte: "done" },
       ],
       divergences: 1,
     });
@@ -391,6 +396,32 @@ _SCRIPT_MESURE = r"""
     rendreRedaction();
     figer('redaction-corps');
 
+    // -- mutation (c), feature-025 : `.progress-track` NE PORTE JAMAIS un
+    // pourcentage mesuré (K4 — aucune grandeur de progression n'est exposée
+    // par `specs.py`, voir app.css). Balaie les instances RÉELLEMENT posées
+    // par `rendreKanban` ci-dessus (colonnes todo/doing/done, donc les
+    // trois classes d'état) et vérifie qu'AUCUNE ne porte `role=
+    // "progressbar"`, `aria-valuenow`, ni un `%` dans son attribut `style`
+    // (un pourcentage introduit — inline ou via `aria-valuenow` — doit
+    // faire échouer CETTE assertion, pas une relecture du code source).
+    var pistes = Array.prototype.slice.call(document.querySelectorAll('.progress-track'));
+    var pistesAvecPourcentage = [];
+    pistes.forEach(function (p) {
+      var suspects = [p].concat(Array.prototype.slice.call(p.children));
+      suspects.forEach(function (n) {
+        var style = n.getAttribute('style') || '';
+        var role = n.getAttribute('role');
+        var valeurNow = n.getAttribute('aria-valuenow');
+        if (style.indexOf('%') !== -1 || role === 'progressbar' || valeurNow !== null) {
+          pistesAvecPourcentage.push({
+            selecteur: n.className, style: style, role: role, ariaValuenow: valeurNow,
+          });
+        }
+      });
+    });
+    out.progressTrackInstances = pistes.length;
+    out.progressTrackAvecPourcentage = pistesAvecPourcentage;
+
     // -- balayage final : toutes les classes RÉELLEMENT présentes dans le DOM
     var classesVues = {};
     Array.prototype.forEach.call(document.querySelectorAll('*'), function (el) {
@@ -533,6 +564,16 @@ def main():
           % (len(orphelines), orphelines[:15]))
     print("[dérivé] %d classe(s) posée(s) UNIQUEMENT au runtime (absentes du HTML statique)"
           % len(runtime_seules))
+
+    # -- mutation (c), feature-025 : `.progress-track` sans pourcentage -----
+    instances = mesures.get("progressTrackInstances", 0)
+    check("atteignabilite_progress_track_instances_reellement_posees", instances >= 3,
+          "obtenu %d — le scénario ne construit peut-être plus les trois colonnes" % instances)
+    avec_pourcentage = mesures.get("progressTrackAvecPourcentage", [])
+    check("F5c_progress_track_ne_porte_jamais_un_pourcentage", len(avec_pourcentage) == 0,
+          "%d instance(s) portent un pourcentage (role=progressbar, aria-valuenow, ou "
+          "`%%` dans style) alors que K4 n'expose aucune grandeur de progression mesurée : %s"
+          % (len(avec_pourcentage), avec_pourcentage))
 
     print("\n%d cas, %d echec(s)" % (_tests, len(_echecs)))
     for nom in _echecs:

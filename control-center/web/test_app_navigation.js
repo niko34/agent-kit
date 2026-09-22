@@ -235,7 +235,12 @@ const CSS_SANS_COMMENTAIRES = sansCommentairesCSS(CSS);
   // `.colonne-entete` et `.etiquette` disparaissent avec le rendu qu'ils
   // habillaient, sans qu'aucune règle neuve ne redéclare `var(--sans)` —
   // héritée du corps, comme dans le prototype).
-  check("C_compte_mono_final_dix_sept", compteMono === 17, "obtenu " + compteMono);
+  // feature-021 cycle 2, lots 9-10 (feature-025, B2) : `#tiroir-edition-
+  // texte` reprend le tiroir EXISTANT comme surface de modification d'une
+  // spec — c'est du Markdown technique relu par un humain, MÊME NATURE que
+  // `#tiroir-contenu` qu'il complète (l'un affiche, l'autre édite le même
+  // texte) : 17 → 18 mono (+1), sans-serif inchangé.
+  check("C_compte_mono_final_dix_sept", compteMono === 18, "obtenu " + compteMono);
   check("C_compte_sans_final_dix_sept", compteSans === 17, "obtenu " + compteSans);
 
   const DOIT_RESTER_MONO = [
@@ -243,7 +248,7 @@ const CSS_SANS_COMMENTAIRES = sansCommentairesCSS(CSS);
     ".agent-sigle", ".agent-nom", ".maillon .mnom",
     ".pilotage-jeton input", "#sortie-lancement", ".fichier .fcode",
     ".fichier .fchemin", ".timeline .quoi", ".tiroir-barre",
-    "#tiroir-contenu", "#porte-champ", ".selected-mark",
+    "#tiroir-contenu", "#porte-champ", ".selected-mark", "#tiroir-edition-texte",
   ];
   DOIT_RESTER_MONO.forEach((selecteur) => {
     const i = CSS_SANS_COMMENTAIRES.indexOf(selecteur);
@@ -332,6 +337,10 @@ function analyserReglesCSS(css) {
     // feature-021 cycle 2, lot 3 (F7) : sigle du passage sélectionné
     // (bottom sheet, id adopté), même nature que `.agent-sigle`.
     ".selected-mark",
+    // feature-025 (lots 9-10) : surface de modification d'une spec,
+    // réutilise le tiroir existant — voir le commentaire au-dessus de
+    // `C_compte_mono_final_dix_sept`.
+    "#tiroir-edition-texte",
     // `.carte .cid` (feature-008) RETIRÉ au lot 5 (F10) : le kanban M3 ne
     // porte plus de chasse fixe dédiée à l'identifiant de spec.
   ];
@@ -386,8 +395,15 @@ function analyserReglesCSS(css) {
   // prototype (l.231-237) et n'en reçoit donc aucun ici (ADR-0024 §4 :
   // `--surface-2`/`--surface-low` reste interdit en aplat de repos INVENTÉ,
   // pas en aplat COPIÉ du prototype qui fait foi).
+  //
+  // feature-021 cycle 2, lots 9-10 (feature-025) : SIX usages neufs
+  // rejoignent les deux existants (`.sheet-toggle`, `.cycle-bouton:hover`),
+  // tous COPIÉS du prototype (jamais inventés, ADR-0024 §4) : `.menu-item:
+  // hover` (interaction, l.529), `.feature-chip` (l.551), `.feature-fact`
+  // (l.560), `.feature-dialog-actions` (l.563), `.type-segment` (l.581),
+  // `.add-item-actions` (l.587) — 2 → 8.
   const compte = (CSS_SANS_COMMENTAIRES.match(/var\(--surface-low\)/g) || []).length;
-  check("C_surface_low_deux_usages", compte === 2, "obtenu " + compte);
+  check("C_surface_low_deux_usages", compte === 8, "obtenu " + compte);
   check("C_surface_low_cycle_bouton_survol_conserve",
     /\.cycle-bouton:hover\s*\{[^}]*var\(--surface-low\)/.test(CSS_SANS_COMMENTAIRES));
   check("C_surface_low_sheet_toggle_fidele_au_prototype",

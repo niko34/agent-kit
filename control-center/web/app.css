@@ -627,6 +627,148 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
  * `rendreKanban`) porte déjà le signal ; ce trait n'est qu'un renfort. */
 .divergence-flag { color: var(--amber); border-bottom: 1px dashed var(--amber); }
 
+/* ------- backlog : menu ⋮, dialogues M3, ajout/suppression (feature-025,
+   cycle 2, lots 9-10) ------------------------------------------------------
+ * Sélecteurs et valeurs REPRIS du prototype (l.501-593), pas re-dérivés
+ * (consigne du cycle). `.feature-card` passe de <button> à <article> : la
+ * carte elle-même n'est plus un bouton (elle porte désormais DEUX contrôles
+ * internes, `.more-button` et `.card-title-button`) — `position: relative`
+ * est la SEULE propriété ajoutée à la règle existante, pour ancrer
+ * `.more-button` en absolu. */
+.feature-card { position: relative; }
+.feature-card h3 { margin: 0; padding-right: 52px; }
+/* 48px : cible tactile M3, MÊME valeur que le prototype (l.506, l.509) —
+ * une carte plus compacte que le prototype (padding 7px/9px contre 12px)
+ * n'est pas un motif pour rétrécir une cible sous le plancher d'accessibilité. */
+.card-title-button {
+  min-height: 48px; width: 100%; border: 0; padding: 0; margin: 0;
+  background: transparent; color: inherit; text-align: left; font: inherit;
+  font-weight: 500; cursor: pointer;
+}
+.card-title-button:hover { color: var(--primary); }
+.more-button {
+  position: absolute; top: 2px; right: 2px; width: 48px; height: 48px;
+  border-radius: 50%; border: 0; background: transparent; font-size: 20px;
+  color: var(--primary-ink); cursor: pointer; z-index: 2;
+}
+.more-button:hover, .more-button[aria-expanded="true"] { background: var(--primary-soft); }
+
+/* `progress-track` — ADOPTÉE REDÉFINIE (table F0) : PAS un pourcentage
+ * mesuré (K4 : aucune grandeur de complétion n'est exposée par le backend,
+ * `specs.py` ne porte pas ce champ — lot 9, journal du 2026-09-22). La
+ * grandeur RÉELLE retenue est L'ÉTAT DE COLONNE (première / intermédiaire /
+ * dernière — `gestion_spec.role_colonne()` côté serveur, la MÊME position
+ * lue côté client sur `etat.colonnes`), jamais un ratio de cases cochées
+ * (PIEGES §16 : mesuré 36 % sur une spec jamais commencée). Trois largeurs
+ * FIXES par état, jamais une division — même patron que l'anneau d'activité
+ * (`--progress` sur `.agent-node`, lot 8, 0deg/270deg/360deg). Décoratif
+ * (`aria-hidden`, jamais `role="progressbar"`/`aria-valuenow`) : la colonne
+ * qui porte déjà cette information au clavier et au lecteur d'écran est le
+ * titre de la section kanban (`.column-title`), ceci n'en est qu'un renfort
+ * visuel, pas une seconde source de vérité. */
+.progress-track { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; margin-top: 6px; }
+.progress-track i { display: block; height: 100%; background: var(--primary); border-radius: inherit; }
+.progress-track.etat-premiere i { width: 12%; }
+.progress-track.etat-intermediaire i { width: 55%; }
+.progress-track.etat-derniere i { width: 100%; }
+
+.context-menu {
+  /* `z-index: 60` dans le prototype (l.518) — ABAISSÉ ici à 26 : ce module
+   * garde une invariante de sécurité que le prototype n'a pas (`test_app_
+   * navigation.js`, "tout z-index reste sous la porte d'authentification,
+   * SEULE exception documentée à 30") — le menu contextuel n'a aucune
+   * raison de rivaliser avec `#porte-jeton`, et ses frères le rendent de
+   * toute façon `inert` quand la porte est ouverte. Écart déclaré, pas une
+   * fidélité rompue par oubli. */
+  position: fixed; z-index: 26; width: 190px; padding: 6px;
+  background: var(--surface); border-radius: 14px; box-shadow: var(--shadow-2);
+}
+.context-menu[hidden] { display: none; }
+.menu-item[hidden], .menu-divider[hidden] { display: none; }
+.menu-item {
+  width: 100%; min-height: 48px; display: flex; align-items: center; gap: 10px;
+  padding: 0 10px; border-radius: 9px; background: transparent; border: 0;
+  text-align: left; color: inherit; font: inherit; cursor: pointer;
+}
+.menu-icon { width: 22px; display: inline-grid; place-items: center; font-size: 18px; }
+.menu-item:hover { background: var(--surface-low); }
+.menu-item.launch-action { color: var(--primary); font-weight: 500; }
+.menu-item.danger { color: var(--danger); }
+.menu-divider { height: 1px; background: var(--line); margin: 5px 6px; }
+
+/* Style `<dialog>` générique — les trois dialogues de ce lot le partagent,
+ * comme dans le prototype (l.534-540). */
+dialog { border: 0; border-radius: 24px; padding: 22px; max-width: 420px; color: var(--ink); background: var(--surface); box-shadow: var(--shadow-2); }
+dialog::backdrop { background: rgba(29, 27, 32, .28); }
+dialog p { color: var(--muted); margin: 8px 0 18px; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.dialog-actions button { min-height: 48px; border: 0; border-radius: 13px; padding: 0 14px; cursor: pointer; }
+.dialog-actions .cancel, .form-buttons .cancel { background: var(--surface-high); color: inherit; }
+.dialog-actions .confirm { background: var(--danger); color: white; }
+.dialog-actions .confirm[disabled] { background: var(--line-strong); cursor: not-allowed; }
+
+.feature-dialog { width: min(620px, calc(100vw - 32px)); max-width: 620px; max-height: calc(100vh - 32px); padding: 0; overflow: hidden; }
+.feature-dialog[open] { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+.feature-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 22px 22px 15px; }
+.feature-dialog-heading { display: grid; gap: 7px; }
+.feature-dialog-heading h2 { font-size: 22px; margin: 0; }
+.feature-kind { justify-self: start; min-height: 28px; display: inline-flex; align-items: center; padding: 0 9px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-ink); font-size: 12px; font-weight: 500; letter-spacing: .03em; text-transform: uppercase; }
+.feature-close { flex: 0 0 auto; margin: -5px -5px 0 0; }
+.feature-dialog-body { padding: 0 22px 20px; overflow-y: auto; }
+.feature-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+.feature-chip { min-height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 10px; background: var(--surface-low); color: var(--muted); font-size: 12px; }
+.feature-chip.todo { background: #fff0c8; color: #654b00; }
+.feature-chip.high { background: var(--danger-soft); color: var(--chip-high-ink); }
+.feature-section { padding: 15px 0; border-top: 1px solid var(--line); }
+.feature-section h3 { font-size: 13px; margin: 0 0 7px; }
+.feature-section p { margin: 0; color: var(--ink); line-height: 1.5; }
+.feature-section ul { margin: 0; padding-left: 20px; color: var(--ink); }
+.feature-section li + li { margin-top: 5px; }
+.feature-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.feature-fact { min-width: 0; padding: 11px 12px; border-radius: 12px; background: var(--surface-low); }
+.feature-fact span { display: block; color: var(--muted); font-size: 12px; margin-bottom: 3px; }
+.feature-fact strong { display: block; font-weight: 500; overflow-wrap: anywhere; }
+.feature-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 22px 18px; background: var(--surface-low); }
+.feature-dialog-actions button { min-height: 48px; border: 0; border-radius: 13px; padding: 0 16px; cursor: pointer; }
+.feature-dialog-actions .secondary { background: transparent; color: var(--primary); }
+.feature-dialog-actions .primary { background: var(--primary); color: white; }
+
+.add-item-dialog { width: min(720px, calc(100vw - 32px)); max-width: 720px; max-height: calc(100vh - 32px); padding: 0; overflow: hidden; }
+.add-item-dialog[open] { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.add-item-form { min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
+.add-item-body { overflow-y: auto; padding: 0 22px 22px; }
+.form-intro { color: var(--muted); margin: 0 0 18px; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.form-field { display: grid; gap: 7px; min-width: 0; }
+.form-field.full { grid-column: 1 / -1; }
+.form-field > label, .field-label { font-weight: 500; font-size: 13px; }
+.form-field input, .form-field select, .form-field textarea { width: 100%; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface); color: var(--ink); padding: 11px 12px; }
+.form-field input, .form-field select { min-height: 48px; }
+.form-field textarea { min-height: 88px; resize: vertical; }
+.field-help { color: var(--muted); font-size: 12px; }
+.type-segment { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; border-radius: 14px; background: var(--surface-low); }
+.type-option { position: relative; cursor: pointer; }
+.type-option input { position: absolute; opacity: 0; pointer-events: none; }
+.type-option span { min-height: 44px; display: grid; place-items: center; border-radius: 10px; color: var(--muted); font-weight: 500; }
+.type-option input:checked + span { background: var(--surface); color: var(--primary); box-shadow: var(--shadow-1); }
+.type-option input:focus-visible + span { outline: 3px solid var(--primary); outline-offset: 2px; }
+.add-item-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 22px 18px; background: var(--surface-low); }
+.required-note { color: var(--muted); font-size: 12px; }
+.form-buttons { display: flex; gap: 8px; }
+.form-buttons button { min-height: 48px; border: 0; border-radius: 13px; padding: 0 16px; cursor: pointer; }
+.form-buttons .cancel { background: transparent; color: var(--primary); }
+.form-buttons .submit { background: var(--primary); color: white; font-weight: 500; }
+
+.add-item-button { min-height: 48px; display: inline-flex; align-items: center; gap: 8px; border: 0; border-radius: 14px; padding: 0 16px; background: var(--primary); color: white; cursor: pointer; font-weight: 500; }
+.add-item-button:hover { filter: brightness(.96); }
+.add-item-button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+
+/* `#delete-dialog` : le champ de confirmation par le nom N'EST PAS dans le
+ * prototype (déviation déclarée, voir index.html). Réutilise `.form-field`
+ * (déjà déclarée ci-dessus pour le formulaire d'ajout) plutôt qu'une classe
+ * neuve. */
+#delete-confirm-input:invalid { border-color: var(--line-strong); }
+
 /* ---------------- cycles (feature-016) ----------------
  * Liste en accordéon (docs/DESIGN-SYSTEM.md §6) : un seul détail ouvert à la
  * fois, le plus récent par défaut. Précédence identité/état (§8), appliquée
@@ -1219,6 +1361,15 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   margin: 0; padding: 14px; overflow: auto; flex: 1;
   font-family: var(--mono); font-size: 12px; line-height: 1.55;
   white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted);
+}
+
+/* feature-025 (B2) : surface de modification, réutilise le tiroir. */
+#tiroir-edition { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 14px; gap: 8px; }
+#tiroir-edition[hidden] { display: none; }
+#tiroir-edition-texte {
+  flex: 1; min-height: 0; resize: none; border: 1px solid var(--line-strong);
+  border-radius: 9px; background: var(--surface); color: var(--ink);
+  font-family: var(--mono); font-size: 12px; line-height: 1.5; padding: 10px;
 }
 
 /* ---------------- porte (authentification) ---------------- */

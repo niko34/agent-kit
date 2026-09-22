@@ -253,6 +253,19 @@
           <span class="backlog-count visually-hidden" id="backlog-count">—</span>
         </div>
         <div class="kanban-actions filtres">
+          <!-- `open-add-item`/`add-item-button` repris du prototype (l.769,
+               feature-025, lots 9-10). ⚠️ Écart déclaré : le formulaire qu'il
+               ouvre reste INERTE à la soumission — `#add-item-dialog` fait
+               partie du périmètre visuel/structurel de ce lot (F0, table de
+               partition), mais la rédaction de la spec par Claude est
+               `feature-024`, hors périmètre (voir la section « Hors
+               périmètre » de cette spec). `surSoumissionAjoutInerte`
+               (app.js) le dit en clair plutôt que de fabriquer un appel
+               réseau que ce lot ne spécifie pas. -->
+          <button class="add-item-button" id="open-add-item" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"></path></svg>
+            <span>Ajouter un élément</span>
+          </button>
           <input type="search" id="filtre" placeholder="Filtrer par identifiant, titre ou statut…"
                  autocomplete="off" spellcheck="false">
           <label class="bascule">
@@ -368,7 +381,10 @@
     <section class="kanban-column column-todo">
       <div class="column-title"><span class="column-label"><i></i>Todo</span><span>—</span></div>
       <article class="feature-card active-card">
+        <button class="more-button" type="button" aria-haspopup="menu" aria-controls="context-menu" aria-expanded="false">⋮</button>
+        <h3><button class="card-title-button" type="button">—</button></h3>
         <p>—</p>
+        <div class="progress-track" aria-hidden="true"><i></i></div>
         <div class="card-footer"><span class="priority-high">—</span></div>
       </article>
     </section>
@@ -387,6 +403,22 @@
     <button type="button" id="tiroir-fermer" aria-label="Fermer">✕</button>
   </div>
   <pre id="tiroir-contenu"></pre>
+  <!-- feature-025 (B2, lot 10) : surface de MODIFICATION d'une spec —
+       compare-and-write sur `POST /api/spec/modifier` (empreinte lue au
+       `GET`, GATE P1 S2.3). Aucune maquette dédiée n'a été produite pour
+       cet écran (`ux-ui-designer` explicitement non invoqué sur cette spec,
+       « le menu est spécifié par la maquette » — feature-025, Agents
+       requis) : réutilise le tiroir EXISTANT plutôt que d'inventer un
+       nouveau patron visuel (règle « sobriété UI »). -->
+  <form id="tiroir-edition" hidden>
+    <label class="visually-hidden" for="tiroir-edition-texte">Contenu Markdown de la spec</label>
+    <textarea id="tiroir-edition-texte" rows="20"></textarea>
+    <p class="note erreur" id="tiroir-edition-erreur" role="alert" hidden></p>
+    <div class="form-buttons">
+      <button type="button" class="cancel" id="tiroir-edition-annuler">Annuler</button>
+      <button type="submit" class="submit" id="tiroir-edition-enregistrer">Enregistrer</button>
+    </div>
+  </form>
 </div>
 
 <div class="porte" id="porte-jeton" role="dialog" aria-modal="true"
@@ -402,6 +434,97 @@
     <button type="button" id="porte-bouton" class="action-ecriture"></button>
   </div>
 </div>
+
+<!-- feature-025 (lots 9-10) — menu contextuel et les trois `<dialog>` du
+     prototype. ENFANTS DIRECTS DE `<body>`, comme `#porte-jeton` : quand la
+     porte s'ouvre, `fixerInerteAutourDeLaPorte` les traite déjà comme
+     n'importe quel autre frère (aucun code à dupliquer pour ce sens-là).
+     Dans l'AUTRE sens — un de CES éléments ouvert doit rendre le reste
+     inatteignable — les deux `<dialog>` s'appuient sur la sémantique modale
+     NATIVE du navigateur (`showModal()` place le reste du document en
+     dehors du top layer, donc hors de la portée du focus et du clic,
+     PIEGES §15 vérifié sur ce module au lot 5 pour `#porte-jeton`, qui n'est
+     PAS un `<dialog>` et a dû recevoir `fixerInerteAutourDeLaPorte` pour
+     cette raison précise) : aucune duplication du mécanisme, mesurée par
+     `test_app_feature025_navigateur.py` plutôt que supposée. `#context-menu`
+     n'est PAS un `<dialog>` (comme dans le prototype : un menu n'est pas une
+     modale plein-écran) — sa fermeture au clic extérieur/Échap/redimension-
+     nement est gérée par `app.js`, jamais par `inert`. -->
+<div class="context-menu" id="context-menu" role="menu" hidden>
+  <button class="menu-item launch-action" id="menu-launch-cycle" type="button" role="menuitem"><span class="menu-icon" aria-hidden="true">▶</span><span>Lancer un cycle</span></button>
+  <div class="menu-divider" id="launch-divider"></div>
+  <button class="menu-item" id="view-details" type="button" role="menuitem"><span class="menu-icon" aria-hidden="true">◉</span><span>Voir les détails</span></button>
+  <button class="menu-item" id="edit-item" type="button" role="menuitem"><span class="menu-icon" aria-hidden="true">✎</span><span>Modifier</span></button>
+  <div class="menu-divider"></div>
+  <button class="menu-item danger" id="delete-item" type="button" role="menuitem"><span class="menu-icon" aria-hidden="true">⌫</span><span>Supprimer</span></button>
+</div>
+
+<dialog class="feature-dialog" id="feature-dialog" aria-labelledby="feature-title" aria-describedby="feature-description">
+  <div class="feature-dialog-header">
+    <div class="feature-dialog-heading"><span class="feature-kind" id="feature-kind">Feature</span><h2 id="feature-title">—</h2></div>
+    <button class="icon-button feature-close" id="close-feature" type="button" aria-label="Fermer le détail"><span aria-hidden="true">×</span></button>
+  </div>
+  <div class="feature-dialog-body">
+    <div class="feature-meta"><span class="feature-chip todo" id="feature-status">—</span><span class="feature-chip high" id="feature-priority">—</span><span class="feature-chip" id="feature-agent">Agent · —</span></div>
+    <section class="feature-section"><h3>Description</h3><p id="feature-description"></p></section>
+    <section class="feature-section"><h3>Critères d’acceptation</h3><ul id="feature-criteria"></ul></section>
+    <section class="feature-section"><div class="feature-facts"><div class="feature-fact"><span>Dépendance</span><strong id="feature-dependency"></strong></div><div class="feature-fact"><span>Dernière mise à jour</span><strong id="feature-updated"></strong></div></div></section>
+  </div>
+  <div class="feature-dialog-actions"><button class="secondary" id="feature-edit" type="button">Modifier</button><button class="primary" id="feature-done" type="button">Fermer</button></div>
+</dialog>
+
+<!-- `#add-item-dialog` : markup/classes repris tels quels du prototype
+     (l.822-844) pour la fidélité structurelle (F0). Sa soumission reste
+     INERTE — voir le commentaire sur `#open-add-item` plus haut : câbler un
+     vrai appel réseau ici sortirait du périmètre déclaré de cette spec
+     (« rédaction par Claude » = feature-024). Ouverture/fermeture et
+     validation de formulaire (HTML natif, `required`) restent fonctionnelles. -->
+<dialog class="add-item-dialog" id="add-item-dialog" aria-labelledby="add-item-title" aria-describedby="add-item-intro">
+  <div class="feature-dialog-header">
+    <div class="feature-dialog-heading"><span class="feature-kind">Backlog</span><h2 id="add-item-title">Ajouter un élément</h2></div>
+    <button class="icon-button feature-close" id="close-add-item" type="button" aria-label="Fermer le formulaire"><span aria-hidden="true">×</span></button>
+  </div>
+  <form class="add-item-form" id="add-item-form">
+    <div class="add-item-body">
+      <p class="form-intro" id="add-item-intro">Décrivez le besoin. Cette action n’est pas encore reliée à l’écriture — voir feature-024.</p>
+      <div class="form-grid">
+        <fieldset class="form-field full" style="border:0;padding:0;margin:0">
+          <legend class="field-label">Type d’élément</legend>
+          <div class="type-segment">
+            <label class="type-option"><input type="radio" name="item-type" value="feature" checked><span>Feature</span></label>
+            <label class="type-option"><input type="radio" name="item-type" value="bug"><span>Bug</span></label>
+          </div>
+        </fieldset>
+        <div class="form-field full"><label for="item-description">Description <span aria-hidden="true">*</span></label><textarea id="item-description" name="description" required maxlength="280" placeholder="Décrivez le besoin ou le comportement observé…"></textarea><span class="field-help">Une ou deux phrases centrées sur le résultat attendu.</span></div>
+        <div class="form-field full"><label for="item-priority">Priorité</label><select id="item-priority" name="priority"><option value="Moyenne" selected>Moyenne</option><option value="Haute">Haute</option><option value="Basse">Basse</option></select></div>
+      </div>
+    </div>
+    <div class="add-item-actions"><span class="required-note"><span aria-hidden="true">*</span> Champs obligatoires</span><div class="form-buttons"><button class="cancel" id="cancel-add-item" type="button">Annuler</button><button class="submit" type="submit">Ajouter au backlog</button></div></div>
+  </form>
+</dialog>
+
+<!-- `#delete-dialog` : DÉVIATION DÉLIBÉRÉE du prototype (l.846), qui ne
+     porte qu'un Oui/Non. Le backend (`gestion_spec.supprimer`, GATE P1
+     S2.8) exige une `confirmation_nom` EXACTE — l'ajout d'un champ de
+     saisie est la conséquence directe de ce contrat serveur, pas une
+     invention gratuite (feature-025, F3 : « confirmation nommant
+     précisément l'élément »). `delete-confirm-input`/`delete-confirm-
+     bouton` ne figurent pas dans la table F0 (le prototype ne les porte
+     pas) : ajoutés à `IDS` (test_app_bug012.js) comme tout autre id réel. -->
+<dialog id="delete-dialog" aria-labelledby="delete-title" aria-describedby="delete-copy">
+  <h2 id="delete-title">Supprimer cet élément ?</h2>
+  <p id="delete-copy">Cette action supprimera définitivement la feature.</p>
+  <div class="form-field full">
+    <label for="delete-confirm-input" id="delete-confirm-label">Tapez l’identifiant pour confirmer</label>
+    <input type="text" id="delete-confirm-input" autocomplete="off" aria-describedby="delete-confirm-aide">
+    <span class="field-help" id="delete-confirm-aide"></span>
+  </div>
+  <p class="note erreur" id="delete-erreur" role="alert" hidden></p>
+  <div class="dialog-actions">
+    <button class="cancel" id="cancel-delete" type="button">Annuler</button>
+    <button class="confirm" id="delete-confirm-bouton" type="button" disabled>Supprimer</button>
+  </div>
+</dialog>
 
 <!-- Module PUR du diagramme de déroulé (feature-017) — chargé AVANT app.js,
      qui appelle sa fonction `disposer()`. Zéro dépendance (ADR-0006), zéro
