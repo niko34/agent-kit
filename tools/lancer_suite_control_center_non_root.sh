@@ -39,6 +39,12 @@ mkdir -p "$CLONE/.claude" "$CLONE/specs/features"
 [ -d "$RACINE_DEPOT/.claude/agents" ] && cp -a "$RACINE_DEPOT/.claude/agents" "$CLONE/.claude/agents"
 [ -f "$RACINE_DEPOT/specs/features/_template.md" ] && cp -a "$RACINE_DEPOT/specs/features/_template.md" "$CLONE/specs/features/_template.md"
 [ -f "$RACINE_DEPOT/specs/modele.md" ] && cp -a "$RACINE_DEPOT/specs/modele.md" "$CLONE/specs/modele.md"
+# `doing/` est copié depuis feature-021 : la clause miroir du lot 6
+# (`test_conformite_perimetre.js`) lit les specs absorbées pour vérifier que
+# tout élément rangé dans un bucket y est NOMMÉ. Sans elles, la garde lève une
+# `Error` au lieu d'échouer proprement, et ce clone rendait un fichier MUET —
+# 35 comptes pour 36 fichiers, visible seulement au code de sortie.
+[ -d "$RACINE_DEPOT/specs/features/doing" ] && cp -a "$RACINE_DEPOT/specs/features/doing" "$CLONE/specs/features/doing"
 
 # Purge de tout .pyc avant de changer de propriétaire : un bytecode compilé
 # en root et relu par un autre compte peut masquer un fichier source déjà
@@ -75,6 +81,8 @@ printf '  - %s\n' "${fichiers[@]}"
 echo
 
 echec_global=0
+comptes=0
+muets=()
 for fichier in "${fichiers[@]}"; do
   echo "=== $fichier ==="
   # HOME=$CLONE : `runuser -u` ne fournit pas de répertoire personnel
@@ -83,10 +91,33 @@ for fichier in "${fichiers[@]}"; do
   # (`test_app_*_navigateur.py`) échoue pour une raison SANS RAPPORT avec
   # bug-018 (profil Chromium introuvable), un faux signal qu'il faut éviter
   # ici plutôt que le confondre avec le défaut recherché.
-  if ! runuser -u "$UTILISATEUR_TEST" -- env HOME="$CLONE" PYTHONDONTWRITEBYTECODE=1 python3 "$fichier"; then
+  sortie_fichier="$(mktemp)"
+  if ! runuser -u "$UTILISATEUR_TEST" -- env HOME="$CLONE" PYTHONDONTWRITEBYTECODE=1 python3 "$fichier" 2>&1 | tee "$sortie_fichier"; then
     echec_global=1
   fi
+  # ⚠️ `tee` masque le code de sortie de `runuser` : `pipefail` le restaure,
+  # mais un script qui PLANTE (trace Python, `Error` JS non attrapée) sort en
+  # échec SANS avoir rendu la ligne « N cas » de PIEGES §6. Un fichier muet
+  # n'est pas un fichier vert — et sans ce comptage, la seule trace est le code
+  # de sortie global, qui ne dit pas LEQUEL s'est tu.
+  if ! grep -qE '^[0-9]+ cas, [0-9]+ echec' "$sortie_fichier"; then
+    echo "❌ MUET : $fichier n'a rendu aucune ligne « N cas » — il a planté au lieu d'échouer." >&2
+    muets+=("$fichier")
+    echec_global=1
+  else
+    comptes=$((comptes + 1))
+  fi
+  rm -f "$sortie_fichier"
   echo
 done
+
+# Exécutés contre découverts (leçon de bug-022) : le compte des fichiers ayant
+# rendu un verdict doit égaler le compte des fichiers lancés. Un écart signale
+# un fichier muet, jamais un succès.
+echo "Fichiers lancés : ${#fichiers[@]} — ayant rendu un verdict : $comptes"
+if [ "$comptes" -ne "${#fichiers[@]}" ]; then
+  echo "❌ $(( ${#fichiers[@]} - comptes )) fichier(s) MUET(S) : ${muets[*]}" >&2
+  echec_global=1
+fi
 
 exit "$echec_global"

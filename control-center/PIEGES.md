@@ -708,6 +708,49 @@ associé au défaut qu'il surveille doit explicitement s'exclure de sa propre
 analyse**, plutôt que de compter sur le hasard de son organisation interne
 (ordre des définitions, nom de variable) pour ne pas se détecter lui-même.
 
+## 55. Le sélecteur universel `*` ne couvre pas les pseudo-éléments
+
+`* { animation: none !important }` **n'arrête pas** une animation posée sur
+`::before` ou `::after`. Mesuré au navigateur (Chromium,
+`--force-prefers-reduced-motion`, lot 8 de `feature-021`) : un `animation`
+sur `.agent-node::before` **survit intégralement** au bloc universel, alors
+que le même test sur un élément réel confirme que `*` l'arrête bien.
+
+C'est la règle CSS, pas un bogue : un pseudo-élément n'est pas un élément, et
+`*` ne sélectionne que des éléments. Il faut écrire `*, *::before, *::after`.
+
+**Pourquoi ça compte ici.** Le bloc `@media (prefers-reduced-motion: reduce)`
+est un engagement d'accessibilité. Écrit avec `*` seul, il en donne
+l'apparence et laisse tourner tout ce qui est peint sur un pseudo-élément —
+et l'anneau d'activité du diagramme l'est, précisément pour ne pas faire
+tourner le sigle avec le disque.
+
+**Et aucune garde statique ne peut le voir** : une garde qui vérifie la
+*présence* du bloc, ou qui lit le *texte* de la règle, le trouve conforme.
+Seul un harnais qui **mesure l'`animation-name` calculé** sous
+`--force-prefers-reduced-motion` l'établit. C'est le même patron que §30 —
+une garde qui vérifie le mécanisme et non le résultat.
+
+## 56. Un drapeau de durcissement du binaire peut retirer la source des identifiants
+
+`claude --restricted` et `--bare` répondent **« Not logged in · Please run
+/login » avec `rc=0` et un JSON parfaitement formé**. `--restricted` ignore
+les fichiers de réglages, `--bare` saute les lectures de trousseau — or c'est
+là que vivent les identifiants. Le durcissement **supprime l'authentification**.
+
+Ce n'est pas un bogue du binaire : un drapeau qui retire les *settings*
+retire l'auth qui y vit.
+
+**Conséquence de test, et c'est elle qui coûte** : un harnais qui vérifie
+« le processus a répondu », ou « le code de retour est 0 », ou « la sortie est
+du JSON valide », est **vert à tort** — il mesure un agent qui n'a rien fait.
+Exiger un message `assistant` **à contenu non vide** et **l'absence du motif
+de connexion** dans le résultat.
+
+Vaut pour toute commande lancée par le centre de contrôle : un lancement qui
+« réussit » sans agent connecté consomme le verrou d'écrivain et journalise
+une fin propre pour un cycle qui n'a rien produit.
+
 ## Voir aussi
 
 - `docs/DESIGN-SYSTEM.md` — règles de couleur, de surface et de typographie
