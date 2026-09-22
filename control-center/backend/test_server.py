@@ -144,7 +144,7 @@ def main():
               set(SRV._ROUTES_ECRITURE) == {"/api/lancer", "/api/interrompre",
                                              "/api/spec/brouillon", "/api/spec/ecrire",
                                              "/api/spec/lancer", "/api/spec/modifier",
-                                             "/api/spec/supprimer"},
+                                             "/api/spec/supprimer", "/api/conversation"},
               "trouvées : %r" % sorted(SRV._ROUTES_ECRITURE))
 
         # --- routes de lecture ----------------------------------------------

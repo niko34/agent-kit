@@ -312,10 +312,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .summary-copy span { color: var(--muted); font-size: 12px; white-space: nowrap; }
 
 /* ---- zone de travail (classe adoptée `workspace`) : le graphe d'agents
- * (`cycle-surface`/`cycle-canvas`) est construit au LOT 4 (F8/F9) — cette
- * coquille est un conteneur STATIQUE (25 id adoptés présents, F4a), aucune
- * géométrie ni animation n'y est branchée ici. ---- */
-.workspace { display: flex; flex-direction: column; gap: 16px; }
+ * (`cycle-surface`/`cycle-canvas`) est construit au LOT 4 (F8/F9). Grille
+ * 72/28 réactivée au LOT 11 (feature-022, absorbée) : `minmax(0,1fr) 340px`
+ * + 14px, MÊME sélecteur et MÊMES valeurs que `.workspace` du prototype
+ * (l.176-181) — le panneau `.claude-panel` prend la colonne fixe. ---- */
+.workspace { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: stretch; }
 .cycle-surface {
   min-width: 0; display: flex; flex-direction: column; gap: 10px;
   /* 12px : le prototype ne pose ni fond ni rayon sur `.cycle-surface`
@@ -412,6 +413,41 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .repo-strip { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
 .repo-strip .ok { color: var(--teal); }
 
+/* ---- panneau de conversation permanent (classes adoptées `claude-panel`,
+ * `claude-title`, `claude-ident`, `claude-mark`, `claude-status`,
+ * `conversation`, `message`, `message-avatar`, `bubble`, `question`,
+ * `composer`, `send-button` — F0, lot 11, feature-022 absorbée). Repris
+ * VERBATIM par sélecteur du prototype (l.435-459) : mêmes propriétés, mêmes
+ * valeurs — seul le contenu de `#conversation` est construit par
+ * `rendreConversation()` (app.js), jamais recopié ici. ---- */
+.claude-panel {
+  background: var(--surface);
+  border-radius: 24px;
+  box-shadow: var(--shadow-1);
+  padding: 18px;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 14px;
+}
+.claude-title { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.claude-ident { display: flex; align-items: center; gap: 10px; }
+.claude-mark { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; color: var(--coral); background: var(--coral-soft); font-size: 22px; }
+.claude-status { color: var(--teal); font-size: 12px; }
+.conversation { display: grid; align-content: start; gap: 12px; min-height: 0; overflow: auto; padding-right: 2px; }
+.message { display: grid; grid-template-columns: 30px 1fr; gap: 8px; align-items: start; }
+.message-avatar { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--coral-soft); color: var(--coral); }
+.bubble { background: var(--surface-low); border-radius: 6px 16px 16px 16px; padding: 10px 12px; color: var(--primary-ink); }
+.bubble time { display: block; color: var(--muted); font-size: 12px; margin-bottom: 3px; }
+.question { background: var(--coral-soft); border-radius: 16px; padding: 12px; color: var(--question-ink); }
+.question strong { font-weight: 500; }
+.composer { display: flex; gap: 8px; padding: 5px 5px 5px 14px; background: var(--surface-low); border-radius: 22px; }
+.composer input { flex: 1; min-width: 0; min-height: 48px; border: 0; background: transparent; color: var(--ink); font: inherit; }
+.composer input::placeholder { color: var(--muted); opacity: 1; }
+.composer input:disabled { opacity: 0.7; cursor: not-allowed; }
+.send-button { width: 48px; height: 48px; border-radius: 50%; border: 0; display: grid; place-items: center; background: var(--primary); color: white; cursor: pointer; }
+.send-button:disabled { opacity: 0.55; cursor: not-allowed; }
+
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
 /* ---- kanban M3, câblé (F10, feature-021 cycle 2, lot 5) : `.kanban-grid`
@@ -460,6 +496,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   /* F10/F12 : les colonnes s'empilent (le défilement imbriqué par colonne a
    * déjà disparu au-dessus, `.kanban-viewport` porte le seul défilement). */
   .kanban-grid { grid-template-columns: 1fr; }
+  /* Repris du prototype (l.606-608, point de rupture 1180px) — MÊME motif
+   * que ci-dessus (feature-021, cycle 2, lot 11) : le point de rupture de ce
+   * module reste 600px, pas 1180px, donc la colonne fixe de `.claude-panel`
+   * s'empile ici plutôt qu'à 1180px. */
+  .workspace { grid-template-columns: 1fr; }
+  .claude-panel { min-height: 360px; }
 }
 
 .bloc {

@@ -402,12 +402,20 @@ function analyserReglesCSS(css) {
   // hover` (interaction, l.529), `.feature-chip` (l.551), `.feature-fact`
   // (l.560), `.feature-dialog-actions` (l.563), `.type-segment` (l.581),
   // `.add-item-actions` (l.587) — 2 → 8.
+  // feature-021 cycle 2, lot 11 (feature-022, absorbée) : DEUX usages neufs
+  // rejoignent les huit précédents, tous deux COPIÉS du prototype (ADR-0024
+  // §4) : `.bubble` (bulle de message, l.452) et `.composer` (fond du
+  // composeur, l.456) — 8 → 10.
   const compte = (CSS_SANS_COMMENTAIRES.match(/var\(--surface-low\)/g) || []).length;
-  check("C_surface_low_deux_usages", compte === 8, "obtenu " + compte);
+  check("C_surface_low_dix_usages", compte === 10, "obtenu " + compte);
   check("C_surface_low_cycle_bouton_survol_conserve",
     /\.cycle-bouton:hover\s*\{[^}]*var\(--surface-low\)/.test(CSS_SANS_COMMENTAIRES));
   check("C_surface_low_sheet_toggle_fidele_au_prototype",
     /\.sheet-toggle\s*\{[^}]*var\(--surface-low\)/.test(CSS_SANS_COMMENTAIRES));
+  check("C_surface_low_bubble_fidele_au_prototype",
+    /\.bubble\s*\{[^}]*var\(--surface-low\)/.test(CSS_SANS_COMMENTAIRES));
+  check("C_surface_low_composer_fidele_au_prototype",
+    /\.composer\s*\{[^}]*var\(--surface-low\)/.test(CSS_SANS_COMMENTAIRES));
   check("C_surface_low_cycle_canvas_aucun_fond_propre",
     !/\.cycle-canvas\s*\{[^}]*background/.test(CSS_SANS_COMMENTAIRES));
   check("C_surface_low_nav_onglet_survol_disparu",

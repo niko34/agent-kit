@@ -118,6 +118,11 @@ const IDS = [
   "backlog-column-count", "backlog-count",
   "backlog-title", "bandeau-hote", "bandeau-hote-bouton",
   "bandeau-hote-texte", "barre", "bouton-generer-brouillon",
+  // feature-022 (lot 11) : `app.js` touche ces id SANS CONDITION au
+  // chargement (câblage du composeur de conversation) — absents d'ici,
+  // `creerBac()` rendrait `null` et le chargement lèverait (PIEGES §38).
+  "claude-status", "composer", "composer-etat", "conversation",
+  "conversation-erreur", "envoyer-conversation", "prompt",
   "compteur-prompt", "compteur-specs", "cycle-canvas", "cycle-indice",
   "cycle-status", "cycle-title", "derogation-minimale", "erreur-generer-brouillon",
   "fichiers", "filtre", "filtre-divergences", "gabarits-adoptes",
@@ -127,7 +132,7 @@ const IDS = [
   "link-sec-front2", "link-spec-front", "link-tests-front2", "main-content",
   "motion-note", "note-agents", "pied-cycles", "pilotage-corps",
   "porte-aide", "porte-bouton", "porte-champ", "porte-corps", "porte-erreur",
-  "porte-jeton", "porte-titre", "projet", "prompt", "redaction-corps",
+  "porte-jeton", "porte-titre", "projet", "spec-prompt", "redaction-corps",
   "repo-strip", "repo-strip-ok", "repo-strip-texte",
   "selected-code", "selected-duration", "selected-files", "selected-state",
   "selected-task", "selected-title", "selected-tools", "sheet-metrics", "sheet-toggle", "status-dot",

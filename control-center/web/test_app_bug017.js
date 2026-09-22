@@ -260,7 +260,7 @@ function creerBac() {
     "bandeau-hote-bouton", "bandeau-hote-texte", "barre", "jauge-flux", "jauge-git",
     "jauge-pilotage", "horodatage", "projet", "agents", "note-agents", "systeme",
     "kanban", "filtre", "filtre-divergences", "compteur-specs", "titre-besoin",
-    "prompt", "compteur-prompt", "derogation-minimale", "erreur-generer-brouillon",
+    "spec-prompt", "compteur-prompt", "derogation-minimale", "erreur-generer-brouillon",
     "bouton-generer-brouillon", "redaction-corps", "pilotage-corps", "workflows",
     "legende-cycles", "pied-cycles", "fichiers", "timeline", "tiroir-contenu",
     "tiroir-fermer", "tiroir-titre", "main-content", "a11y-announcement",
@@ -269,6 +269,10 @@ function creerBac() {
     "selected-state", "selected-tools", "selected-files", "selected-duration",
     "sheet-metrics", "sheet-toggle",
     "backlog-title", "backlog-count", "backlog-column-count",
+    // feature-022 (lot 11) : `app.js` touche ces id SANS CONDITION au
+    // chargement (câblage du composeur de conversation) — PIEGES §38.
+    "claude-status", "composer", "composer-etat", "conversation",
+    "conversation-erreur", "envoyer-conversation", "prompt",
   ];
   AUTRES_IDS.forEach((id) => appShell.appendChild(creer(id)));
   ["porte-titre", "porte-corps", "porte-aide"].forEach((id) => porteJeton.appendChild(creer(id)));

@@ -131,8 +131,24 @@ _DEFAUTS = {
         # commande ne reçoit le drapeau ; le déclarer est une décision
         # explicite du projet, pas un héritage silencieux.
         "commandes_avec_budget": [],
+        # Liste FERMÉE des clés de [commandes] dont l'argv DÉCLARÉ peut porter
+        # un drapeau de contournement des permissions (feature-022, GATE P1
+        # re-passage, S3.13). VIDE par défaut : le serveur ne desserre jamais
+        # rien lui-même, l'argv vient exclusivement de [commandes] — une
+        # commande qui porte un tel drapeau sans figurer ici est REFUSÉE
+        # (503) avant tout `Popen`.
+        "commandes_sans_permissions": [],
     },
 }
+
+# Drapeaux qui contournent l'invite de permission de `claude` — présents dans
+# l'argv DÉCLARÉ d'une commande, ils rendent cette commande lançable
+# uniquement si sa clé figure dans `[garde_fous].commandes_sans_permissions`
+# (feature-022, GATE P1 re-passage, S3.13). `bypassPermissions` est cherché
+# comme SOUS-CHAÎNE d'un token (ex. `--permission-mode=bypassPermissions`),
+# les deux autres comme token EXACT.
+_DRAPEAUX_CONTOURNEMENT_PERMISSIONS = ("--dangerously-skip-permissions",
+                                       "--allow-dangerously-skip-permissions")
 
 
 class Config(dict):
@@ -163,11 +179,69 @@ class Config(dict):
         ⚠️ C'est ici que vit la LISTE FERMÉE. L'appelant fournit une CLÉ ; il ne
         fournit jamais une ligne de commande. Aucune chaîne venue du réseau ne
         peut donc atteindre un shell : au pire elle ne correspond à aucune clé.
+
+        Deux formes TOML acceptées, fusion incluse (feature-022, D1) : la
+        forme HISTORIQUE — `cle = [...]`, une liste directe, `entree()` rend
+        alors `"aucune"` — et la forme TABLE — `[commandes.cle] argv = [...]`
+        (+ `entree` optionnel) —, seule capable de porter une propriété
+        déclarative comme `entree`. Une entrée table SANS `argv` valide
+        (absent, mal typé) n'est pas une commande : `None`, comme une entrée
+        absente.
         """
-        argv = self.section("commandes").get(cle)
+        brut = self.section("commandes").get(cle)
+        argv = brut.get("argv") if isinstance(brut, dict) else brut
         if isinstance(argv, list) and argv and all(isinstance(x, str) for x in argv):
             return list(argv)
         return None
+
+    def entree(self, cle):
+        """Protocole d'entrée déclaré pour `cle` — `"aucune"` ou
+        `"json-lines"` (feature-022, GATE P1 re-passage, D1).
+
+        `"aucune"` est le DÉFAUT SÛR, rendu pour toute commande qui ne se
+        déclare pas sous forme de table, toute table sans champ `entree`, et
+        toute valeur qui ne serait ni `"aucune"` ni `"json-lines"` — c'est
+        EXACTEMENT le comportement d'avant ce lot (`lanceur.Lancement` ouvre
+        alors `stdin=DEVNULL`, inchangé). `entree` n'est JAMAIS un champ de
+        requête : un porteur du jeton ne peut donc pas ouvrir un canal sur
+        une commande qui ne le déclare pas ICI, dans la configuration.
+        """
+        brut = self.section("commandes").get(cle)
+        if not isinstance(brut, dict):
+            return "aucune"
+        valeur = brut.get("entree")
+        if valeur not in ("aucune", "json-lines"):
+            return "aucune"
+        return valeur
+
+    def permissions_autorisees(self, cle):
+        """Vrai si l'argv DÉCLARÉ de `cle` peut porter un drapeau de
+        contournement des permissions (feature-022, GATE P1 re-passage,
+        S3.13).
+
+        Le serveur ne touche JAMAIS aux drapeaux de permission : l'argv vient
+        EXCLUSIVEMENT de `[commandes]`. Cette méthode ne fait que JUGER un
+        argv déjà déclaré — elle n'ajoute, ne retire ni ne réécrit rien.
+        Une commande dont l'argv ne porte AUCUN des drapeaux de
+        `_DRAPEAUX_CONTOURNEMENT_PERMISSIONS` (token exact) ni de
+        `bypassPermissions` (sous-chaîne d'un token) est toujours autorisée :
+        c'est la PRÉSENCE du drapeau qui déclenche le test, jamais l'inverse.
+        Une commande qui en porte un doit alors figurer dans la liste FERMÉE
+        `[garde_fous].commandes_sans_permissions`, VIDE par défaut — sinon
+        REFUS (503, avant tout `Popen`).
+        """
+        argv = self.commande(cle)
+        if argv is None:
+            return True  # rien à autoriser : le 404 de clé inconnue prime
+        sensible = (any(d in argv for d in _DRAPEAUX_CONTOURNEMENT_PERMISSIONS)
+                    or any("bypassPermissions" in tok for tok in argv))
+        if not sensible:
+            return True
+        bruts = self.section("garde_fous").get("commandes_sans_permissions", [])
+        if not isinstance(bruts, list):
+            return False
+        autorisees = [c for c in bruts if isinstance(c, str) and c]
+        return cle in autorisees
 
     def commande_pour_spec_id(self, cle, spec_id):
         """`argv` de `cle`, `spec_id` substitué comme ÉLÉMENT UNIQUE de la

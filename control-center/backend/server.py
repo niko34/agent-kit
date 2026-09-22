@@ -194,9 +194,15 @@ _BATTEMENT = 20.0              # secondes sans changement avant un signe de vie
 # premier chemin DESTRUCTIF de ce module — voir `gestion_spec.py`). PAS de
 # `do_PUT` (`PIEGES §34`) : ces trois routes restent des `POST`, routées
 # exactement comme les autres — aucune seconde chaîne de gardes à maintenir.
+#
+# feature-022 (GATE P1 re-passage, S3.1) ajoute `/api/conversation` : envoie
+# UN message au canal `json-lines` d'un lancement en cours. La LECTURE du fil
+# (l'historique persistant) est un `GET`, gardée par la chaîne commune de
+# `do_GET` — `/api/*` — jamais une seconde route d'écriture.
 _ROUTES_ECRITURE = ("/api/lancer", "/api/interrompre",
                      "/api/spec/brouillon", "/api/spec/ecrire",
-                     "/api/spec/lancer", "/api/spec/modifier", "/api/spec/supprimer")
+                     "/api/spec/lancer", "/api/spec/modifier", "/api/spec/supprimer",
+                     "/api/conversation")
 
 # Un corps de POST tient largement sous cette borne : {"cle": "..."} ne
 # dépasse jamais quelques dizaines d'octets. Au-delà, 413 sans lire le reste.
@@ -219,7 +225,30 @@ _TAILLES_MAX_CORPS = {
     # ne transportent que de courtes chaînes : le défaut (4096) leur suffit
     # largement, comme à `/api/lancer`.
     "/api/spec/modifier": 65536,
+    # `/api/conversation` (feature-022, S3.3) : `{"texte": "<= 8192
+    # caractères>"}` — la borne du CORPS HTTP doit couvrir l'enveloppe JSON
+    # pire cas d'un texte de 8192 caractères ASTRAUX envoyé tel quel par un
+    # client qui échapperait en `\uXXXX` (12 octets/caractère, le pire cas
+    # mesuré par le GATE, M11/M11-bis) + le nom du champ : 131072 (128 Kio)
+    # en garde une marge large, JAMAIS un chèque en blanc — `texte` reste de
+    # toute façon borné en CARACTÈRES par `_TAILLE_MAX_TEXTE_CONVERSATION`
+    # avant tout envoi (413), indépendamment de cette borne HTTP.
+    "/api/conversation": 131072,
 }
+
+# `texte` d'un message de conversation (feature-022, D3, GATE P1 re-passage
+# S3.3) : borne en CARACTÈRES, jamais en octets — un texte de 8192
+# caractères astraux sérialisé par le canal `json-lines` (`ensure_ascii`
+# réel du code) reste, mesuré, sous la moitié de `_CAPACITE_TUBE_JSON_LINES`
+# (S3.11 : la marge se DÉRIVE par test, jamais ne se récite ici).
+_TAILLE_MAX_TEXTE_CONVERSATION = 8192
+
+_RACINE_CONVERSATIONS = os.path.join(_RACINE_VAR, "conversations")
+
+# Borne défensive de LECTURE d'un fil de conversation (S3.4) : jamais un
+# `SELECT *` non borné exposé, même si le fichier grossit sans limite au fil
+# d'une longue conversation.
+_TAILLE_MAX_LECTURE_CONVERSATION = 1_000_000
 
 # Freinage des échecs d'authentification (GATE P1, condition 6) : au-delà de
 # ce nombre d'échecs sur la fenêtre, 429 SANS comparer le jeton présenté — un
@@ -263,6 +292,79 @@ def _ecrire_evenement(chemin_journal, champs):
             os.close(fd)
     except OSError:
         pass
+
+
+def _texte_conversation_valide(texte):
+    """Vrai si `texte` ne porte aucun caractère de contrôle interdit
+    (feature-022, GATE P1 re-passage, S3.3) : NUL et tout C0 (< 0x20) HORS
+    `\\n` et `\\t` sont refusés (422) — `\\r` y compris, délibérément : ce
+    n'est ni `\\n` ni `\\t`.
+    """
+    return all(ord(c) >= 0x20 or c in ("\n", "\t") for c in texte)
+
+
+def _chemin_conversation(lancement):
+    """`var/conversations/<pid>.jsonl` — UN fichier par lancement
+    (feature-022, S3.4/S3.7) : l'effacer efface le fil, il n'existe NULLE
+    PART ailleurs. `pid` est unique pour la durée de vie de CE lancement —
+    aucun autre identifiant stable n'existe sur `Lancement`.
+    """
+    return os.path.join(_RACINE_CONVERSATIONS, "%d.jsonl" % lancement.pid)
+
+
+def _ecrire_message_conversation(chemin_journal, texte):
+    """Ajoute UNE ligne JSON au fil, mode 0600 (feature-022, S3.4 — PAS le
+    0644 du collecteur d'événements : ce fichier porte du texte libre d'un
+    utilisateur, potentiellement sensible), O_APPEND, UN SEUL `write()`.
+
+    Rend `True`/`False` — jamais d'exception : un fil qu'on ne peut pas
+    journaliser est un 500 pour l'appelant, JAMAIS un envoi silencieusement
+    non tracé (condition centrale de S3.4 : jamais « envoyé puis non
+    journalisé »). Appelé AVANT tout envoi sur le canal — dans cet ordre
+    précis, un échec ici empêche l'envoi plutôt que l'inverse.
+    """
+    ligne = (json.dumps({"ts": _horodatage_ms(), "texte": texte},
+                        ensure_ascii=False) + "\n").encode("utf-8")
+    try:
+        os.makedirs(os.path.dirname(chemin_journal), exist_ok=True)
+        fd = os.open(chemin_journal, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        try:
+            os.write(fd, ligne)
+        finally:
+            os.close(fd)
+        return True
+    except OSError:
+        return False
+
+
+def _lire_conversation(chemin_journal):
+    """Rend `(messages, tronque)` — jamais un `SELECT *` non borné (S3.4) :
+    au-delà de `_TAILLE_MAX_LECTURE_CONVERSATION`, seule la QUEUE du fichier
+    est lue, et `tronque` le dit. Un fichier absent (aucun message encore
+    envoyé) rend `([], False)`, jamais une erreur.
+    """
+    try:
+        taille = os.path.getsize(chemin_journal)
+    except OSError:
+        return [], False
+    tronque = taille > _TAILLE_MAX_LECTURE_CONVERSATION
+    try:
+        with open(chemin_journal, "rb") as fichier:
+            if tronque:
+                fichier.seek(taille - _TAILLE_MAX_LECTURE_CONVERSATION)
+                fichier.readline()  # ligne de tête probablement partielle : écartée
+            brut = fichier.read()
+    except OSError:
+        return [], False
+    messages = []
+    for ligne in brut.decode("utf-8", errors="replace").splitlines():
+        if not ligne:
+            continue
+        try:
+            messages.append(json.loads(ligne))
+        except ValueError:
+            continue
+    return messages, tronque
 
 
 def _hote_valide(valeur):
@@ -614,12 +716,38 @@ class Ecriture:
             self._echecs.append(time.monotonic())
 
     # -- lancement ------------------------------------------------------------
-    def lancer(self, cle, argv, cwd, journal, spec_id=None):
+    def lancer(self, cle, argv, cwd, journal, spec_id=None, entree="aucune"):
         """Spawn puis verrouille. Rend (Lancement, None) ou (None, raison).
+
+        `raison`, depuis ce lot (feature-022), est SOIT une chaîne (comme
+        avant : refus de PLACE, 409, « un écrivain occupe déjà la place »),
+        SOIT un couple `(code, message)` pour un refus de CANAL (503, S3.9,
+        S3.12) — les deux ne veulent pas dire la même chose pour l'appelant
+        HTTP, qui teste `isinstance(raison, tuple)` pour les distinguer.
+        Forme choisie pour ne RIEN changer à la signature (2-tuple) que les
+        appelants existants (`_lancer()`, `_spec_lancer()`, et les tests qui
+        appellent `Ecriture.lancer()` directement) unpackent déjà.
 
         `spec_id` (feature-025, GATE P1 S1.7) : `None` pour `/api/lancer`
         (clé fermée seule), la spec CIBLÉE pour `/api/spec/lancer` — mémorisé
         sur le `Lancement`, jamais recalculé ailleurs.
+
+        `entree` (feature-022, D1) : `"aucune"` (défaut, inchangé) ou
+        `"json-lines"` — vient de `config.entree(cle)`, JAMAIS d'une requête.
+        Deux refus supplémentaires AVANT toute tentative de verrou (même
+        esprit que le cas « clé inconnue » d'A5, qui reste écarté plus tôt
+        encore, avant tout appel à `lancer()`) :
+
+        - `L.CommandeRefusee` (S3.12, levée par `Lancement.__init__` AVANT
+          tout `Popen` — `--restricted`/`--bare` sur un canal authentifié) :
+          traitée EXACTEMENT comme une `OSError` de `Popen`, rien à nettoyer ;
+        - `lancement.echec_capacite` (S3.9, le fils EXISTE déjà : le
+          `F_SETPIPE_SZ` posé après `Popen` a échoué) : jamais de canal à la
+          capacité par défaut. Le fils est confié au thread de lecture (le
+          SEUL récolteur légitime, cf. `lanceur.tuer_immediatement`) puis tué
+          immédiatement, SANS qu'aucun verrou ne soit jamais tenté pour lui —
+          distinct de la course perdue plus bas : ici, on sait DÉJÀ que ce
+          lancement ne doit jamais tenir la place.
 
         ⚠️ L'ORDRE (Popen puis verrou) est déterminé par une contrainte du
         verrou lui-même : sa méta porte `pid_fils` pour détecter un ORPHELIN
@@ -665,9 +793,22 @@ class Ecriture:
         try:
             lancement = L.Lancement(cle, argv, cwd,
                                      sur_fin=lambda l: self._sur_fin(l, journal),
-                                     spec_id=spec_id)
+                                     spec_id=spec_id, entree=entree)
+        except L.CommandeRefusee as erreur:
+            # S3.12 : AVANT tout `Popen`, comme une `OSError` de `Popen` —
+            # mais un refus DÉLIBÉRÉ de canal, jamais un simple conflit de
+            # place (409 serait trompeur : rejouer plus tard ne change rien).
+            return None, (503, str(erreur))
         except OSError as erreur:
+            # Comportement HISTORIQUE, inchangé (commande déclarée mais
+            # absente de la machine, etc.) : `raison` reste une chaîne, donc
+            # 409 par le chemin générique de l'appelant.
             return None, "impossible de lancer la commande : %s" % type(erreur).__name__
+
+        if lancement.echec_capacite:
+            lancement.demarrer_lecture()
+            L.tuer_immediatement(lancement.pid)
+            return None, (503, "capacité du canal d'entrée indisponible")
 
         # Bascule à `False` dès que `demarrer_lecture()` est TENTÉE (pas
         # seulement réussie) : c'est ce qui distingue, pour le `finally`
@@ -757,6 +898,22 @@ class Ecriture:
         ne portait plus que le second lancement, sans rapport avec X.
         """
         return [l for l in self.lancements.values() if l.toujours_en_cours()]
+
+    def lancement_conversation(self):
+        """Le lancement actif qui accepte un canal `json-lines` (feature-022,
+        GATE P1 re-passage), ou `None`.
+
+        ⚠️ Sur `lancements_actifs()` — TOUS les lancements encore en cours —,
+        JAMAIS sur `lancement_courant()` seul (le GATE l'a écrit, puis
+        corrigé de lui-même au P2 du lot 9 : `lancement_courant()` ne rend
+        que le DERNIER écrivain, pas forcément celui qui porte le canal).
+        Avec `ecrivains_simultanes = 1` (le défaut), il n'existe de toute
+        façon jamais plus d'un candidat ; le premier trouvé fait foi.
+        """
+        for lancement in self.lancements_actifs():
+            if lancement.entree == "json-lines":
+                return lancement
+        return None
 
     def interrompre_courant(self):
         lancement = self.lancement_courant()
@@ -1026,6 +1183,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._flux()
             if chemin == "/api/lancement":
                 return self._lancement(parametres)
+            if chemin == "/api/conversation":
+                return self._conversation_lire()
             if chemin.count("/") == 1:
                 return self._statique(chemin[1:])
             return self._erreur(404, "route inconnue")
@@ -1145,6 +1304,9 @@ class Handler(BaseHTTPRequestHandler):
 
             if chemin == "/api/spec/supprimer":
                 return self._spec_supprimer(corps)
+
+            if chemin == "/api/conversation":
+                return self._conversation_envoyer(corps)
 
             # -- /api/lancer : 6) clé -------------------------------------------
             try:
@@ -1279,6 +1441,17 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(lancement.sortie_depuis(curseur))
 
     # -- routes POST ----------------------------------------------------------
+    def _erreur_lancement(self, raison):
+        """Traduit la `raison` d'un `Ecriture.lancer()` refusé en réponse HTTP
+        (feature-022) : un COUPLE `(code, message)` (S3.9, S3.12 — refus de
+        CANAL) garde son propre code ; une chaîne NUE reste le comportement
+        HISTORIQUE, 409 (« place déjà occupée »).
+        """
+        if isinstance(raison, tuple):
+            code, message = raison
+            return self._erreur(code, message)
+        return self._erreur(409, raison or "un écrivain occupe déjà la place")
+
     def _lancer(self, cle):
         config = self.server.etat.config
         argv = config.commande(cle)
@@ -1294,13 +1467,20 @@ class Handler(BaseHTTPRequestHandler):
             # bornée, donc le lancement est REFUSÉ plutôt que silencieusement
             # lancé sans plafond.
             return self._erreur(503, "plafond de dépense non transmissible pour cette commande")
+        if not config.permissions_autorisees(cle):
+            # S3.13 : liste FERMÉE, VIDE par défaut — un argv qui porte un
+            # drapeau de contournement des permissions sans figurer dans
+            # `[garde_fous].commandes_sans_permissions` est refusé AVANT tout
+            # `Popen`, comme le plafond de dépense ci-dessus.
+            return self._erreur(503, "mode de permission non autorisé pour cette commande")
         argv = argv + ["--max-budget-usd", str(config.budget_max_usd())]
 
         ecriture = self._ecriture()
         lancement, raison = ecriture.lancer(cle, argv, self.server.etat.racine,
-                                             self.server.etat.journal)
+                                             self.server.etat.journal,
+                                             entree=config.entree(cle))
         if lancement is None:
-            return self._erreur(409, raison or "un écrivain occupe déjà la place")
+            return self._erreur_lancement(raison)
 
         # D3 (`bug-014`) : `argv` est une liste FERMÉE (`config.commande()`),
         # mais `control-center.toml` n'est PAS versionné — une entrée locale
@@ -1433,13 +1613,17 @@ class Handler(BaseHTTPRequestHandler):
             return self._erreur(code, message)
         if not config.budget_transmissible(cle):
             return self._erreur(503, "plafond de dépense non transmissible pour cette commande")
+        if not config.permissions_autorisees(cle):
+            # S3.13, même garde que `_lancer()`.
+            return self._erreur(503, "mode de permission non autorisé pour cette commande")
         argv = argv + ["--max-budget-usd", str(config.budget_max_usd())]
 
         ecriture = self._ecriture()
         lancement, raison = ecriture.lancer(cle, argv, self.server.etat.racine,
-                                             self.server.etat.journal, spec_id=spec_id)
+                                             self.server.etat.journal, spec_id=spec_id,
+                                             entree=config.entree(cle))
         if lancement is None:
-            return self._erreur(409, raison or "un écrivain occupe déjà la place")
+            return self._erreur_lancement(raison)
 
         # Même discipline que `_lancer()` (D3, bug-014) : `command_head`
         # passe par `RC.command_head`, jamais l'`argv` brut.
@@ -1532,6 +1716,67 @@ class Handler(BaseHTTPRequestHandler):
             "sha": resultat["retour_arriere"]["sha"],
         })
         return self._json(resultat, 200)
+
+    # -- feature-022 : canal de conversation (GATE P1 re-passage, S3) -------
+
+    def _conversation_envoyer(self, corps):
+        """`POST /api/conversation {texte}` — écrit UN message sur le canal
+        `json-lines` du lancement en cours qui l'accepte (D1/D3).
+
+        Ordre EXACT, condition par condition : forme du corps (400) → borne
+        en CARACTÈRES (413, S3.3/S3.11 — AVANT tout écriture, journal
+        compris) → caractères de contrôle interdits (422, S3.3) →
+        destinataire (404 si aucun lancement `json-lines` actif) →
+        journalisation (500 si impossible — JAMAIS envoyé puis non
+        journalisé, S3.4) → écriture sur le canal (503 si occupé/corrompu/
+        indisponible, S3.9/S3.10) → 202 (« tube vidé, message écrit entier »,
+        D3 — pas « traité » : le traitement se constate par le message
+        utilisateur rejoué sur `/api/lancement`, `--replay-user-messages`).
+        """
+        donnees, erreur = self._corps_spec(corps)
+        if erreur is not None:
+            code, message = erreur
+            return self._erreur(code, message)
+        texte = donnees.get("texte")
+        if not isinstance(texte, str) or not texte:
+            return self._erreur(400, "texte manquant")
+        if len(texte) > _TAILLE_MAX_TEXTE_CONVERSATION:
+            self.close_connection = True
+            return self._erreur(413, "message trop long (max %d caractères)"
+                                     % _TAILLE_MAX_TEXTE_CONVERSATION)
+        if not _texte_conversation_valide(texte):
+            return self._erreur(422, "caractères de contrôle non autorisés")
+
+        ecriture = self._ecriture()
+        lancement = ecriture.lancement_conversation()
+        if lancement is None:
+            return self._erreur(404, "aucun agent en cours n'accepte de message")
+
+        chemin = _chemin_conversation(lancement)
+        if not _ecrire_message_conversation(chemin, texte):
+            return self._erreur(500, "journalisation du message impossible")
+
+        ok, motif = lancement.envoyer(texte)
+        if not ok:
+            return self._erreur(503, motif or "canal indisponible")
+        return self._json({"envoye": True}, 202)
+
+    def _conversation_lire(self):
+        """`GET /api/conversation` — le fil PERSISTANT du lancement en cours
+        qui accepte un canal (S3.1 : une route de LECTURE, sous `/api/*`,
+        gardée par la chaîne commune de `do_GET` — aucune seconde chaîne).
+
+        Ne porte QUE les messages UTILISATEUR (S3.4/D2) : les réponses de
+        l'agent vivent dans le tampon circulaire de `/api/lancement`, jamais
+        recopiées ici.
+        """
+        ecriture = self._ecriture()
+        lancement = ecriture.lancement_conversation()
+        if lancement is None:
+            return self._erreur(404, "aucun agent en cours n'accepte de message")
+        chemin = _chemin_conversation(lancement)
+        messages, tronque = _lire_conversation(chemin)
+        return self._json({"messages": messages, "tronque": tronque})
 
     def log_message(self, format, *args):
         # Le journal par défaut écrit une ligne par requête, flux SSE compris.

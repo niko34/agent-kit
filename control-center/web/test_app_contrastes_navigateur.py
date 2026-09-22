@@ -197,6 +197,17 @@ _SCRIPT_MESURE = r"""
     document.getElementById('jauge-flux').className = 'jauge ko';
     document.getElementById('jauge-pilotage').className = 'jauge lecture-seule';
 
+    // -- scène 3bis : conversation (feature-022, lot 11) — panneau
+    // disponible, un message persisté + le statut réel d'un agent actif :
+    // peint `.claude-mark`/`.message-avatar`/`.bubble` (aucun autre scénario
+    // de ce fichier ne les atteint, sinon le balayage ci-dessous mesurerait
+    // un contraste jamais réellement peint — PIEGES §38/§55).
+    conversation.phase = "disponible";
+    conversation.messages = [{ ts: Date.parse("2026-09-21T10:00:00.000Z"), texte: "un message utilisateur" }];
+    conversation.tronque = false;
+    dernierEtat = Object.assign({}, dernierEtat, { ecriture_active: true, agents: [{ nom: "frontend-developer", actif_sur: "F-003" }] });
+    rendreConversation();
+
     // -- scène 4 : bandeau d'hôte, alerte ----------------------------------
     afficherBandeauHote('reseau');
 
@@ -403,7 +414,29 @@ def construire_page(base_http, jetons, selecteurs_aplat=()):
         '<span id="repo-strip-texte">main · 2 fichier(s)</span>'
         '<span class="ok" id="repo-strip-ok"><span aria-hidden="true">●</span>'
         '<span class="visually-hidden">dépôt accessible</span></span></p>'
-        '</section></div>'
+        '</section>'
+        # feature-022 (lot 11) : panneau de conversation, markup minimal
+        # nécessaire pour que `rendreConversation()` trouve `#conversation`
+        # et peigne réellement `.claude-mark`/`.message-avatar`/`.bubble` —
+        # sans ce fragment, le scénario 3bis s'exécute mais `$("conversation")`
+        # rend `null` et la fonction sort sans rien peindre (PIEGES §38).
+        '<aside class="claude-panel" aria-labelledby="claude-title">'
+        '<div class="claude-title"><div class="claude-ident">'
+        '<span class="claude-mark" aria-hidden="true">✺</span>'
+        '<span><h2 id="claude-title">Claude</h2>'
+        '<span class="claude-status" id="claude-status">…</span></span></div>'
+        '<button class="icon-button" type="button" aria-disabled="true" aria-label="Options"><span aria-hidden="true">⋮</span></button>'
+        '</div>'
+        '<div class="conversation" id="conversation" aria-live="polite"><p class="vide">chargement…</p></div>'
+        '<div class="question" id="claude-question" hidden><strong>Question en attente</strong><p id="claude-question-texte"></p></div>'
+        '<form class="composer" id="composer"><label class="visually-hidden" for="prompt">Répondre à Claude</label>'
+        '<input id="prompt" autocomplete="off" placeholder="Répondre à Claude…" maxlength="8192" disabled>'
+        '<button class="send-button" id="envoyer-conversation" type="submit" aria-label="Envoyer le message" disabled>'
+        '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path></svg></button></form>'
+        '<p class="note" id="composer-etat" aria-live="polite"></p>'
+        '<p class="note erreur" id="conversation-erreur" role="alert" hidden></p>'
+        '</aside>'
+        '</div>'
         '<section class="bloc" aria-labelledby="titre-agents"><h2 id="titre-agents">Agents</h2>'
         '<p class="note" id="note-agents"></p><ul class="agents" id="agents"></ul></section>'
         '<section class="bloc" aria-labelledby="titre-systeme"><h2 id="titre-systeme">Système</h2>'
@@ -412,7 +445,7 @@ def construire_page(base_http, jetons, selecteurs_aplat=()):
         '<h2 id="titre-demande">Que souhaitez-vous développer ?</h2>'
         '<div class="champ-titre"><label for="titre-besoin">Titre</label>'
         '<input type="text" id="titre-besoin" maxlength="200"></div>'
-        '<textarea id="prompt" rows="4"></textarea>'
+        '<textarea id="spec-prompt" rows="4"></textarea>'
         '<span class="compteur" id="compteur-prompt">0 caractère</span>'
         '<p class="note avert">Aucun secret.</p>'
         '<label class="bascule"><input type="checkbox" id="derogation-minimale"><span>Minimal</span></label>'

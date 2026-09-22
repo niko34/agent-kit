@@ -148,6 +148,13 @@ const IDS = [
   "backlog-column-count", "backlog-count",
   "backlog-title", "bandeau-hote", "bandeau-hote-bouton",
   "bandeau-hote-texte", "barre", "bouton-generer-brouillon",
+  // feature-022 (lot 11) : `app.js` touche ces id SANS CONDITION au chargement
+  // (câblage du composeur de conversation, `appliquerEtatComposer`,
+  // `rendreConversation`) — absents d'ici, `creerBac()` rendrait `null` et
+  // `chargerAppJS` lèverait au chargement, pour TOUS les harnais de cette
+  // feature, pas seulement les siens (PIEGES §38).
+  "claude-status", "composer", "composer-etat", "conversation",
+  "conversation-erreur", "envoyer-conversation", "prompt",
   "compteur-prompt", "compteur-specs", "cycle-canvas", "cycle-status",
   "cycle-title", "derogation-minimale", "erreur-generer-brouillon", "fichiers", "filtre",
   "filtre-divergences", "horodatage", "jauge-flux", "jauge-git",
@@ -156,7 +163,7 @@ const IDS = [
   "link-sec-front2", "link-spec-front", "link-tests-front2", "main-content",
   "motion-note", "note-agents", "pied-cycles", "pilotage-corps",
   "porte-aide", "porte-bouton", "porte-champ", "porte-corps", "porte-erreur",
-  "porte-jeton", "porte-titre", "projet", "prompt", "redaction-corps",
+  "porte-jeton", "porte-titre", "projet", "spec-prompt", "redaction-corps",
   "selected-code", "selected-duration", "selected-files", "selected-state",
   "selected-task", "selected-title", "selected-tools", "sheet-metrics", "sheet-toggle", "summary-active",
   "summary-step", "summary-time", "systeme", "timeline", "tiroir",
@@ -370,7 +377,7 @@ async function testCycleNominalComplet() {
     "obtenu " + corps.children.length + " enfant(s)");
 
   bac.$("titre-besoin").value = "Ajouter un export CSV";
-  bac.$("prompt").value = "Ajouter un export CSV des specs affichées";
+  bac.$("spec-prompt").value = "Ajouter un export CSV des specs affichées";
   bac.$("derogation-minimale").checked = false;
 
   enfilerUneFois(bac, "/api/spec/brouillon", 200, {
@@ -481,7 +488,7 @@ async function testCycleNominalComplet() {
   cliquer(boutonNouveau);
   check("N_retour_saisie_corps_vide", corps.children.length === 0);
   check("N_titre_reinitialise", bac.$("titre-besoin").value === "");
-  check("N_prompt_reinitialise", bac.$("prompt").value === "");
+  check("N_prompt_reinitialise", bac.$("spec-prompt").value === "");
   check("N_derogation_reinitialisee", bac.$("derogation-minimale").checked === false);
 }
 
@@ -489,7 +496,7 @@ async function testEcritureActiveEstUneCommoditePasUneGarde() {
   const bac = await chargerAvecEtat({ ecriture_active: false, ecriture_raison: "plafond atteint" });
   const corps = bac.$("redaction-corps");
   bac.$("titre-besoin").value = "Un besoin quelconque";
-  bac.$("prompt").value = "Un besoin quelconque, en détail";
+  bac.$("spec-prompt").value = "Un besoin quelconque, en détail";
 
   enfilerUneFois(bac, "/api/spec/brouillon", 200, {
     genre: "feature", slug: "x", nom_fichier_prevu: "feature-NNN-x.md",
@@ -529,7 +536,7 @@ async function testEscaladeIgnoreeVisible() {
   // par l'absence de « ## Symptôme observé » dans le contenu renvoyé.
   const bac1 = await chargerAvecEtat({ ecriture_active: true });
   bac1.$("titre-besoin").value = "Ajouter une permission d'accès";
-  bac1.$("prompt").value = "Ajouter une permission d'accès au tableau de bord";
+  bac1.$("spec-prompt").value = "Ajouter une permission d'accès au tableau de bord";
   bac1.$("derogation-minimale").checked = true;
   enfilerUneFois(bac1, "/api/spec/brouillon", 200, {
     genre: "bug", slug: "permission", nom_fichier_prevu: "bug-NNN-permission.md",
@@ -547,7 +554,7 @@ async function testEscaladeIgnoreeVisible() {
   // minimal (« ## Symptôme observé » présent) — pas de note.
   const bac2 = await chargerAvecEtat({ ecriture_active: true });
   bac2.$("titre-besoin").value = "Corriger une faute de frappe";
-  bac2.$("prompt").value = "Corriger une faute de frappe dans le pied de page";
+  bac2.$("spec-prompt").value = "Corriger une faute de frappe dans le pied de page";
   bac2.$("derogation-minimale").checked = true;
   enfilerUneFois(bac2, "/api/spec/brouillon", 200, {
     genre: "bug", slug: "faute", nom_fichier_prevu: "bug-NNN-faute.md",
@@ -564,7 +571,7 @@ async function testEscaladeIgnoreeVisible() {
   // est le complet (cas normal, pas une escalade).
   const bac3 = await chargerAvecEtat({ ecriture_active: true });
   bac3.$("titre-besoin").value = "Une fonctionnalité banale";
-  bac3.$("prompt").value = "Une fonctionnalité banale, sans rapport avec la sécurité";
+  bac3.$("spec-prompt").value = "Une fonctionnalité banale, sans rapport avec la sécurité";
   bac3.$("derogation-minimale").checked = false;
   enfilerUneFois(bac3, "/api/spec/brouillon", 200, {
     genre: "feature", slug: "banal", nom_fichier_prevu: "feature-NNN-banal.md",
@@ -581,7 +588,7 @@ async function testEscaladeIgnoreeVisible() {
 async function testErreur409NeChangePasDePhase() {
   const bac = await chargerAvecEtat({ ecriture_active: true });
   bac.$("titre-besoin").value = "Un besoin déjà nommé";
-  bac.$("prompt").value = "Un besoin déjà nommé, en détail";
+  bac.$("spec-prompt").value = "Un besoin déjà nommé, en détail";
   enfilerUneFois(bac, "/api/spec/brouillon", 200, {
     genre: "feature", slug: "deja-nomme", nom_fichier_prevu: "feature-NNN-deja-nomme.md",
     contenu: "contenu du brouillon\n[remplir]", substitutions: [],
@@ -628,7 +635,7 @@ async function testErreur409NeChangePasDePhase() {
 async function testErreur422ContenuVideGereeCommeLesAutres() {
   const bac = await chargerAvecEtat({ ecriture_active: true });
   bac.$("titre-besoin").value = "Un besoin quelconque";
-  bac.$("prompt").value = "Un besoin quelconque, en détail";
+  bac.$("spec-prompt").value = "Un besoin quelconque, en détail";
   enfilerUneFois(bac, "/api/spec/brouillon", 200, {
     genre: "feature", slug: "quelconque", nom_fichier_prevu: "feature-NNN-quelconque.md",
     contenu: "contenu du brouillon\n[remplir]", substitutions: [],
@@ -667,7 +674,7 @@ async function test401RouvreLaPorteJamaisUneModaleDediee() {
   const bac = await chargerAvecEtat({ ecriture_active: true, jeton_requis: false });
   bac.sessionStorageDonnees["pilotage_jeton"] = "jeton-perime";
   bac.$("titre-besoin").value = "Peu importe";
-  bac.$("prompt").value = "Peu importe, en détail";
+  bac.$("spec-prompt").value = "Peu importe, en détail";
 
   enfilerUneFois(bac, "/api/spec/brouillon", 401, null);
   cliquer(bac.$("bouton-generer-brouillon"));
@@ -689,7 +696,7 @@ async function test401NeBloqueJamaisLesBoutonsNiNePerdLeMarkdown() {
   // brouillon, où vivent les boutons concernés par le défaut signalé) --
   const bac1 = await chargerAvecEtat({ ecriture_active: true, jeton_requis: false });
   bac1.$("titre-besoin").value = "Un besoin";
-  bac1.$("prompt").value = "Un besoin, en détail";
+  bac1.$("spec-prompt").value = "Un besoin, en détail";
   enfilerUneFois(bac1, "/api/spec/brouillon", 200, {
     genre: "feature", slug: "besoin", nom_fichier_prevu: "feature-NNN-besoin.md",
     contenu: "contenu relu\n[remplir]", substitutions: [],
@@ -719,7 +726,7 @@ async function test401NeBloqueJamaisLesBoutonsNiNePerdLeMarkdown() {
   // -- Route 2/2 : /api/spec/ecrire, depuis « Confirmer l'écriture » --
   const bac2 = await chargerAvecEtat({ ecriture_active: true, jeton_requis: false });
   bac2.$("titre-besoin").value = "Un autre besoin";
-  bac2.$("prompt").value = "Un autre besoin, en détail";
+  bac2.$("spec-prompt").value = "Un autre besoin, en détail";
   enfilerUneFois(bac2, "/api/spec/brouillon", 200, {
     genre: "feature", slug: "autre-besoin", nom_fichier_prevu: "feature-NNN-autre-besoin.md",
     contenu: "contenu relu et corrigé\n[remplir]", substitutions: [],
@@ -755,7 +762,7 @@ async function test401NeBloqueJamaisLesBoutonsNiNePerdLeMarkdown() {
 async function testAucuneFuiteDuTexteEnQueryString() {
   const bac = await chargerAvecEtat({ ecriture_active: true });
   bac.$("titre-besoin").value = "Un titre anodin";
-  bac.$("prompt").value = "un secret ne doit jamais partir en clair dans une URL";
+  bac.$("spec-prompt").value = "un secret ne doit jamais partir en clair dans une URL";
   enfilerUneFois(bac, "/api/spec/brouillon", 200, {
     genre: "feature", slug: "x", nom_fichier_prevu: "feature-NNN-x.md",
     contenu: "[remplir]", substitutions: [],
@@ -778,7 +785,7 @@ function testStatiqueHTML() {
   })();
 
   check("S_prompt_nest_plus_disabled",
-    !/<textarea id="prompt"[^>]*\bdisabled\b/.test(bloc));
+    !/<textarea id="spec-prompt"[^>]*\bdisabled\b/.test(bloc));
   check("S_ancienne_note_inactif_a_dessein_disparue",
     HTML.indexOf("Inactif à dessein") === -1);
   check("S_avertissement_rgpd_permanent_present",

@@ -127,7 +127,7 @@ const PARTITION_IDS = {
   "menu-launch-cycle": ["adopte", "action « lancer » du menu contextuel", "9-10"],
   "motion-note": ["adopte", "note de mouvement du panneau cycle", "3"],
   "open-add-item": ["adopte", "ouverture du dialogue d'ajout", "9-10"],
-  "prompt": ["adopte", "champ de saisie du composer — ⚠️ COLLISION D'IDENTIFIANT non résolue avec le `#prompt` déjà posé par feature-008 (textarea de rédaction de spec, index.html) : à trancher au lot 11 (L11 du plan), pas ici", "11"],
+  "prompt": ["adopte", "champ de saisie du composer — COLLISION D'IDENTIFIANT avec le `#prompt` déjà posé par feature-008 (textarea de rédaction de spec, index.html), TRANCHÉE (architect, 2026-09-22 08:10, point (2)) : le composeur du prototype garde `#prompt`, notre textarea cède le sien et devient `#spec-prompt` — les noms du prototype sont la clé de jointure des gardes de fidélité", "11"],
   "selected-code": ["adopte", "sigle du passage sélectionné, bottom sheet F11", "3"],
   "selected-duration": ["adopte", "durée du passage sélectionné, F11", "3"],
   "selected-files": ["adopte", "fichiers du passage sélectionné, F11 — donnée mesurée (liseret)", "3"],

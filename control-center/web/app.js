@@ -2844,7 +2844,7 @@ function texteCompteRemplir(n) {
 }
 
 function actualiserCompteurPrompt() {
-  const champ = $("prompt");
+  const champ = $("spec-prompt");
   const compteur = $("compteur-prompt");
   if (!champ || !compteur) return;
   const n = champ.value.length;
@@ -3031,7 +3031,7 @@ function rendreRedaction() {
 
 /* Sert à la fois « Générer le brouillon » (phase saisie) et « Régénérer »
  * (phase brouillon) : les deux relisent les MÊMES champs (`#titre-besoin`,
- * `#prompt`, `#derogation-minimale`) — Régénérer n'agit jamais sur le texte
+ * `#spec-prompt`, `#derogation-minimale`) — Régénérer n'agit jamais sur le texte
  * édité du brouillon, seulement sur le besoin d'origine (voir message du
  * 409). La case « bug simple / refactor ponctuel » pilote À LA FOIS le
  * PRÉFIXE de fichier demandé (`type` : "bug" plutôt que "feature") et
@@ -3041,7 +3041,7 @@ function rendreRedaction() {
  * rien, il relit ce que le contenu renvoyé révèle. */
 async function surClicGenererBrouillon() {
   const champTitre = $("titre-besoin");
-  const champPrompt = $("prompt");
+  const champPrompt = $("spec-prompt");
   const champDerogation = $("derogation-minimale");
   if (!champTitre || !champPrompt || !champDerogation) return;
   const titre = champTitre.value;
@@ -3240,7 +3240,7 @@ function surClicNouveauBrouillon() {
   };
   masquerErreurGenerationStatique();
   const champTitre = $("titre-besoin");
-  const champPrompt = $("prompt");
+  const champPrompt = $("spec-prompt");
   const champDerogation = $("derogation-minimale");
   if (champTitre) champTitre.value = "";
   if (champPrompt) champPrompt.value = "";
@@ -3248,6 +3248,269 @@ function surClicNouveauBrouillon() {
   actualiserCompteurPrompt();
   rendreRedaction();
   if (champTitre) champTitre.focus();
+}
+
+/* ------------------------------------------------------------ conversation --
+ * feature-022 (absorbée, lot 11) : panneau de conversation permanent avec
+ * l'agent principal. `GET /api/conversation` ne porte QUE les messages
+ * UTILISATEUR persistés (S3.4/D2, server.py `_conversation_lire`) — la
+ * réponse de l'agent vit dans le tampon circulaire de `/api/lancement`,
+ * jamais recopiée ici. Ce panneau n'affiche donc AUCUNE bulle « Claude »
+ * fabriquée : `#claude-status` reflète un fait réel (« disponible » = un
+ * lancement accepte le canal, backend `lancement_conversation()`), jamais un
+ * texte inventé (PIEGES §16).
+ *
+ * Trois états de lecture (chargement/erreur/vide), comme partout ailleurs
+ * dans ce module :
+ *  - chargement : avant la première réponse de `GET /api/conversation` ;
+ *  - erreur : le serveur ne répond pas — le fil déjà affiché N'EST PAS
+ *    effacé (« il ne fige pas un fil périmé » ≠ « il l'efface »), un bandeau
+ *    dit l'incertitude ;
+ *  - vide : réponse 200, aucun message — état vide explicite, jamais un
+ *    panneau blanc.
+ *
+ * Le rafraîchissement suit le MÊME rythme que le reste du tableau de bord
+ * (signal SSE `/api/flux`, ou le sondage 10 s de repli) — aucun minuteur
+ * séparé, pour ne pas surcharger l'API (skill frontend-developer).
+ */
+let conversation = {
+  phase: "chargement",   // chargement | disponible | indisponible | erreur
+  messages: [],
+  tronque: false,
+  erreurLecture: null,
+  envoiEnCours: false,
+};
+
+function heureDepuisMs(ts) {
+  if (typeof ts !== "number" || !isFinite(ts)) return "";
+  try {
+    return new Date(ts).toISOString().slice(11, 19);
+  } catch (erreur) {
+    return "";
+  }
+}
+
+/* Construit UN message. `auteur` distingue seulement le glyphe de l'avatar
+ * (texte, jamais une image ni une classe neuve) — `message`/`message-avatar`/
+ * `bubble` restent les SEULES classes adoptées pour ce rôle (F0) : pas de
+ * variante « utilisateur » inventée hors du prototype. */
+function rendreMessageConversation(auteur, glyphe, texteMessage, ts) {
+  const article = el("article", "message");
+  article.appendChild(el("span", "message-avatar", glyphe)).setAttribute("aria-hidden", "true");
+  const bulle = el("div", "bubble");
+  const heureTexte = heureDepuisMs(ts);
+  if (heureTexte) bulle.appendChild(el("time", "", heureTexte));
+  bulle.appendChild(document.createTextNode(texteMessage));
+  article.appendChild(bulle);
+  return article;
+}
+
+function texteActiviteClaude(etat) {
+  if (!etat || !Array.isArray(etat.agents)) return null;
+  const actifs = etat.agents.filter((a) => a.actif_sur);
+  if (!actifs.length) return null;
+  if (actifs.length === 1) return actifs[0].nom + " est actif.";
+  return actifs.map((a) => a.nom).join(", ") + " sont actifs.";
+}
+
+/* Bulle « statut réel de Claude » (jamais un message fabriqué) : porte
+ * `#claude-live-message` (id adopté, F0) autour du texte DÉRIVÉ de
+ * `etat.agents[].actif_sur` — jamais inventé. Reconstruite à chaque rendu,
+ * comme le reste de `#conversation` (PIEGES §38 : un id créé dynamiquement
+ * n'existe qu'après ce rendu). */
+function rendreMessageActiviteClaude(texteActivite) {
+  const article = el("article", "message");
+  article.appendChild(el("span", "message-avatar", "✺")).setAttribute("aria-hidden", "true");
+  const bulle = el("div", "bubble");
+  const portee = el("span", "", texteActivite);
+  portee.id = "claude-live-message";
+  bulle.appendChild(portee);
+  article.appendChild(bulle);
+  return article;
+}
+
+function rendreConversation() {
+  const conteneur = $("conversation");
+  if (!conteneur) return;
+  vider(conteneur);
+
+  if (conversation.phase === "chargement") {
+    conteneur.appendChild(el("p", "vide", "chargement…"));
+    appliquerEtatComposer();
+    return;
+  }
+
+  if (conversation.erreurLecture) {
+    const p = el("p", "note erreur",
+      "Serveur injoignable — dernier fil connu affiché, peut-être périmé (" +
+      conversation.erreurLecture + ").");
+    p.setAttribute("role", "alert");
+    conteneur.appendChild(p);
+  }
+
+  /* Statut réel de l'agent (jamais un message fabriqué) — seulement quand
+   * le canal est disponible ET qu'une activité réelle existe. */
+  const activite = conversation.phase === "disponible" ? texteActiviteClaude(dernierEtat) : null;
+  if (activite) conteneur.appendChild(rendreMessageActiviteClaude(activite));
+
+  if (conversation.phase === "indisponible" && !conversation.messages.length) {
+    conteneur.appendChild(el("p", "vide", "Aucun agent en cours n'accepte de message."));
+  } else if (!activite && !conversation.messages.length) {
+    conteneur.appendChild(el("p", "vide", "Aucun message pour l'instant."));
+  }
+
+  if (conversation.tronque) {
+    conteneur.appendChild(el("p", "note",
+      "Fil tronqué : les messages les plus anciens ne sont plus disponibles."));
+  }
+
+  conversation.messages.forEach((msg) => {
+    conteneur.appendChild(rendreMessageConversation(
+      "utilisateur", "→", String((msg && msg.texte) || ""), msg && msg.ts));
+  });
+
+  // Question bloquante épinglée (F2) : AUCUNE source de données ce cycle —
+  // reste `hidden`, jamais un texte fabriqué (voir le commentaire HTML sur
+  // `#claude-question`, PIEGES §16).
+
+  appliquerEtatComposer();
+}
+
+async function actualiserConversation() {
+  try {
+    const reponse = await fetch("/api/conversation", { headers: enTeteAuthPilotage() });
+    if (reponse.status === 200) {
+      const donnees = await reponse.json();
+      conversation.phase = "disponible";
+      conversation.messages = Array.isArray(donnees.messages) ? donnees.messages : [];
+      conversation.tronque = !!donnees.tronque;
+      conversation.erreurLecture = null;
+    } else if (reponse.status === 404) {
+      conversation.phase = "indisponible";
+      conversation.messages = [];
+      conversation.tronque = false;
+      conversation.erreurLecture = null;
+    } else if (reponse.status === 401) {
+      sur401Lecture();
+      return;
+    } else {
+      conversation.erreurLecture = "réponse inattendue (" + reponse.status + ")";
+    }
+  } catch (erreur) {
+    conversation.erreurLecture = "hors ligne";
+  }
+  rendreConversation();
+}
+
+function afficherErreurConversation(message) {
+  const p = $("conversation-erreur");
+  if (!p) return;
+  p.textContent = message;
+  p.hidden = false;
+}
+function masquerErreurConversation() {
+  const p = $("conversation-erreur");
+  if (!p) return;
+  p.hidden = true;
+  p.textContent = "";
+}
+
+/* Inerte visiblement (jamais absent, §skill frontend-developer) tant que
+ * l'écriture n'est pas active, qu'aucun agent n'accepte de message, ou
+ * qu'un envoi est en cours — la RAISON est répétée en texte (`#composer-etat`,
+ * lu par un lecteur d'écran) ET dans le `placeholder`/`title`, jamais la
+ * couleur seule. Le backend REVALIDE tout : ceci est un confort, pas une
+ * garde (skill frontend-developer, « le frontend n'est jamais une barrière
+ * de sécurité »). */
+function appliquerEtatComposer() {
+  const champ = $("prompt");
+  const bouton = $("envoyer-conversation");
+  const note = $("composer-etat");
+  if (!champ || !bouton) return;
+
+  const ecritureActive = Boolean(dernierEtat && dernierEtat.ecriture_active);
+  let raison = null;
+  if (conversation.phase === "chargement") {
+    raison = "chargement de la conversation…";
+  } else if (!ecritureActive) {
+    raison = "écriture non activée" +
+      ((dernierEtat && dernierEtat.ecriture_raison) ? " : " + dernierEtat.ecriture_raison : "");
+  } else if (conversation.phase === "indisponible") {
+    raison = "aucun agent en cours n'accepte de message";
+  } else if (conversation.envoiEnCours) {
+    raison = "envoi en cours…";
+  }
+
+  const inerte = raison !== null;
+  champ.disabled = inerte;
+  bouton.disabled = inerte;
+  champ.placeholder = inerte
+    ? raison.charAt(0).toUpperCase() + raison.slice(1)
+    : "Répondre à Claude…";
+  champ.title = inerte ? raison : "";
+  if (note) note.textContent = inerte ? raison.charAt(0).toUpperCase() + raison.slice(1) : "";
+
+  const statut = $("claude-status");
+  if (statut) {
+    vider(statut);
+    statut.appendChild(el("span", "", "●")).setAttribute("aria-hidden", "true");
+    statut.appendChild(document.createTextNode(
+      " " + (conversation.phase === "disponible" ? "En ligne"
+        : conversation.phase === "indisponible" ? "Hors ligne"
+        : conversation.phase === "erreur" ? "Injoignable" : "…")));
+  }
+}
+
+async function surSoumissionConversation(evenement) {
+  evenement.preventDefault();
+  const champ = $("prompt");
+  if (!champ || champ.disabled) return;
+  const texte = champ.value;
+  if (!texte.trim() || conversation.envoiEnCours) return;
+
+  masquerErreurConversation();
+  conversation.envoiEnCours = true;
+  appliquerEtatComposer();
+
+  try {
+    const reponse = await fetch("/api/conversation", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, enTeteAuthPilotage()),
+      body: JSON.stringify({ texte }),
+    });
+    if (reponse.status === 202) {
+      champ.value = "";
+      conversation.envoiEnCours = false;
+      await actualiserConversation();
+      return;
+    }
+    if (reponse.status === 401) {
+      conversation.envoiEnCours = false;
+      sur401Lecture();
+      return;
+    }
+    const donnees = await reponse.json().catch(() => ({}));
+    /* 503 « canal occupé » (S3.9/S3.10) : normal et attendu tant que l'agent
+     * n'a pas lu le message précédent — on le DIT à l'écran, on ne réessaie
+     * JAMAIS en silence (feature-022, cas limites). Le texte reste dans le
+     * champ : rien n'est perdu, l'utilisateur choisit de réessayer. */
+    if (reponse.status === 503) {
+      afficherErreurConversation("Canal occupé — " +
+        (donnees.erreur || "l'agent n'a pas encore lu le message précédent") +
+        ". Le message n'a pas été envoyé, réessayez.");
+    } else if (reponse.status === 404) {
+      conversation.phase = "indisponible";
+      afficherErreurConversation(donnees.erreur || "aucun agent en cours n'accepte de message");
+      rendreConversation();
+    } else {
+      afficherErreurConversation(donnees.erreur || ("réponse inattendue (" + reponse.status + ")"));
+    }
+  } catch (erreur) {
+    afficherErreurConversation("Serveur injoignable — le message n'a pas été envoyé.");
+  } finally {
+    conversation.envoiEnCours = false;
+    appliquerEtatComposer();
+  }
 }
 
 /* ------------------------------------------------------------------ flux -- */
@@ -3283,6 +3546,12 @@ async function rafraichir() {
     rendreFichiers(etat);
     rendreTimeline(etat);
     actualiserPilotage(etat);
+    /* `ecriture_active` vient de rafraîchir : réapplique l'état du composer
+     * immédiatement (raison à jour), sans attendre `actualiserConversation`
+     * ci-dessous — même cadence que le reste du tableau de bord (signal SSE
+     * ou sondage 10 s), AUCUN minuteur séparé (pas de polling agressif). */
+    appliquerEtatComposer();
+    actualiserConversation();
   } catch (erreur) {
     const jauge = $("jauge-flux");
     jauge.textContent = "serveur injoignable";
@@ -3328,8 +3597,17 @@ $("filtre").addEventListener("input", refiltrer);
 $("filtre-divergences").addEventListener("change", refiltrer);
 
 /* feature-008 : compteur de caractères, purement local (aucune requête). */
-$("prompt").addEventListener("input", actualiserCompteurPrompt);
+$("spec-prompt").addEventListener("input", actualiserCompteurPrompt);
 $("bouton-generer-brouillon").addEventListener("click", surClicGenererBrouillon);
+
+/* feature-022 (lot 11) : composeur de conversation — `#composer`/`#prompt`
+ * reprennent les noms du PROTOTYPE (clé de jointure des gardes de fidélité),
+ * `#spec-prompt` ci-dessus a cédé le sien. Inerte par défaut dans le HTML
+ * (`disabled`) tant que `rendreConversation`/`appliquerEtatComposer` n'a pas
+ * tourné au moins une fois — jamais un bouton actif avant la première
+ * réponse connue. */
+$("composer").addEventListener("submit", surSoumissionConversation);
+rendreConversation();
 
 document.addEventListener("keydown", (evenement) => {
   if (evenement.key === "Escape") fermerTiroir();

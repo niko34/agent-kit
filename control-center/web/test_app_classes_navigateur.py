@@ -329,6 +329,28 @@ _SCRIPT_MESURE = r"""
     document.getElementById('status-dot').className = 'status-dot actif';
     figer('jauge-git'); figer('jauge-flux'); figer('jauge-pilotage'); figer('status-dot');
 
+    // -- conversation (feature-022, lot 11) : fil disponible, avec un
+    // message utilisateur persisté ET une activité réelle d'agent — pose
+    // `message`/`message-avatar`/`bubble` (les trois classes que F3b
+    // signalait déclarées jamais posées avant ce scénario). `file://` fait
+    // échouer le `fetch` automatique de `verifierEtatAuth()` (réseau
+    // refusé), qui ne touche jamais `#conversation` sur cette branche
+    // (`afficherBandeauHote('reseau')` seulement) : ce scénario n'est donc
+    // écrasé par aucun rafraîchissement asynchrone. -----------------------
+    conversation.phase = "disponible";
+    conversation.messages = [{ ts: Date.parse("2026-09-21T10:00:00.000Z"), texte: "un message utilisateur" }];
+    conversation.tronque = false;
+    dernierEtat = { ecriture_active: true, agents: [{ nom: "frontend-developer", actif_sur: "F-003" }] };
+    rendreConversation();
+    figer('conversation');
+
+    // -- conversation : indisponible (état vide explicite) ------------------
+    conversation.phase = "indisponible";
+    conversation.messages = [];
+    conversation.tronque = false;
+    rendreConversation();
+    figer('conversation');
+
     // -- bandeau d'hôte : les deux motifs -----------------------------------
     afficherBandeauHote('reseau');
     afficherBandeauHote('hote');

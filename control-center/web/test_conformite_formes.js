@@ -120,8 +120,9 @@ const AJOUTS_HORS_ECHELLE = {
 const VALEURS_PAS_ENCORE_EMPLOYEES = {
   "border-radius": [
     { val: "3px", raison: "`.brand-mark i` (prototype) : app.css emploie `50%` sur le même sélecteur — divergence assumée, voir DIVERGENCES_VECTEUR", lotDeCloture: "voir DIVERGENCES_VECTEUR, même entrée" },
-    { val: "6px 16px 16px 16px", raison: "`.bubble` (bulle de message), feature-022, pas encore construite", lotDeCloture: "lot 11" },
-    { val: "22px", raison: "`.composer` (champ de saisie vers Claude), feature-022, pas encore construit", lotDeCloture: "lot 11" },
+    // `6px 16px 16px 16px` (`.bubble`) et `22px` (`.composer`) : construites
+    // au lot 11 (feature-022, absorbée), valeurs reprises AU BIT PRÈS du
+    // prototype — retirées d'ici, désormais employées.
   ],
   "box-shadow": [],
 };

@@ -357,6 +357,98 @@ commandes_avec_budget = ["tests", "deja_borne", "inconnue"]
         check("test_budget_transmissible_sans_configuration_est_faux",
               c.budget_transmissible("nimporte_quoi") is False)
 
+        # --- feature-022 (GATE P1 re-passage, D1) : `entree()` -------------------
+        # Forme HISTORIQUE (liste directe) : `entree()` rend TOUJOURS "aucune",
+        # jamais autre chose — c'est le défaut sûr, identique à avant ce lot.
+        c_liste = C.charger(chemin=ecrire(tmp, '[commandes]\ndemo = ["ls", "-l"]\n'),
+                            racine_projet=tmp)
+        check("test_entree_forme_liste_vaut_aucune",
+              c_liste.entree("demo") == "aucune")
+        check("test_entree_cle_absente_vaut_aucune",
+              c_liste.entree("nexiste_pas") == "aucune")
+
+        # Forme TABLE, `entree` DÉCLARÉ : seule façon d'obtenir "json-lines".
+        c_table = C.charger(chemin=ecrire(tmp, '''[commandes.chat]
+argv = ["claude", "-p", "--output-format", "stream-json"]
+entree = "json-lines"
+
+[commandes.silencieux]
+argv = ["claude", "-p"]
+'''), racine_projet=tmp)
+        check("test_entree_table_json_lines_rendue",
+              c_table.entree("chat") == "json-lines")
+        check("test_commande_table_argv_resolu",
+              c_table.commande("chat") == ["claude", "-p", "--output-format", "stream-json"],
+              "obtenu %r" % c_table.commande("chat"))
+        check("test_entree_table_sans_champ_entree_vaut_aucune",
+              c_table.entree("silencieux") == "aucune",
+              "une table SANS `entree` doit retomber sur le défaut sûr, "
+              "PAS sur une absence de commande")
+        check("test_commande_table_silencieuse_argv_resolu",
+              c_table.commande("silencieux") == ["claude", "-p"])
+
+        # Mutation exigée (brief) : `entree` forcé à `"json-lines"` doit faire
+        # mourir un test « une commande sans déclaration reçoit `"aucune"` » —
+        # c'est exactement `test_entree_cle_absente_vaut_aucune` ci-dessus et
+        # celui-ci, sur une valeur explicitement invalide.
+        c_invalide = C.charger(chemin=ecrire(tmp, '''[commandes.casse]
+argv = ["ls"]
+entree = "texte-brut"
+'''), racine_projet=tmp)
+        check("test_entree_valeur_invalide_retombe_sur_aucune",
+              c_invalide.entree("casse") == "aucune",
+              "seuls 'aucune' et 'json-lines' sont acceptés, tout le reste "
+              "doit retomber sur le défaut SÛR")
+
+        # Table sans `argv` valide : pas une commande, `commande()` rend None,
+        # exactement comme une clé absente.
+        c_table_cassee = C.charger(
+            chemin=ecrire(tmp, '[commandes.vide]\nentree = "json-lines"\n'),
+            racine_projet=tmp)
+        check("test_commande_table_sans_argv_rend_none",
+              c_table_cassee.commande("vide") is None)
+        check("test_entree_table_sans_argv_reste_lisible",
+              c_table_cassee.entree("vide") == "json-lines",
+              "`entree` reste ce qui est DÉCLARÉ ; c'est `commande()` "
+              "(None) qui empêche tout lancement, ailleurs dans server.py")
+
+        # --- feature-022 (GATE P1 re-passage, S3.13) : `permissions_autorisees` -
+        c_permissions = C.charger(chemin=ecrire(tmp, '''[commandes]
+neutre = ["claude", "-p"]
+contournement = ["claude", "-p", "--dangerously-skip-permissions"]
+contournement_allow = ["claude", "-p", "--allow-dangerously-skip-permissions"]
+mode_bypass = ["claude", "-p", "--permission-mode=bypassPermissions"]
+
+[garde_fous]
+commandes_sans_permissions = ["contournement"]
+'''), racine_projet=tmp)
+        check("test_permissions_autorisees_sans_drapeau_sensible",
+              c_permissions.permissions_autorisees("neutre") is True,
+              "une commande qui ne porte AUCUN drapeau sensible n'a besoin "
+              "de figurer dans aucune liste")
+        check("test_permissions_autorisees_drapeau_liste",
+              c_permissions.permissions_autorisees("contournement") is True)
+        check("test_permissions_refusees_drapeau_absent_de_la_liste",
+              c_permissions.permissions_autorisees("contournement_allow") is False,
+              "liste FERMÉE, VIDE par défaut : une clé absente REFUSE, même "
+              "si une AUTRE clé y figure")
+        check("test_permissions_refusees_bypass_par_sous_chaine",
+              c_permissions.permissions_autorisees("mode_bypass") is False,
+              "'bypassPermissions' cherché comme SOUS-CHAÎNE d'un token, pas "
+              "seulement comme token exact")
+        check("test_permissions_autorisees_cle_inconnue_est_vraie",
+              c_permissions.permissions_autorisees("n_existe_pas") is True,
+              "rien à autoriser : le 404 de clé inconnue prime, ailleurs")
+
+        c_sans_garde_fou = C.charger(
+            chemin=ecrire(tmp, '[commandes]\nx = ["claude", "-p", '
+                               '"--dangerously-skip-permissions"]\n'),
+            racine_projet=tmp)
+        check("test_permissions_defaut_vide_refuse",
+              c_sans_garde_fou.permissions_autorisees("x") is False,
+              "commandes_sans_permissions est VIDE par défaut : le serveur "
+              "ne desserre jamais rien tout seul")
+
         # --- accord des DEUX écrivains (bug-014, condition 5 du GATE P1) ----
         # `config.tetes_de_commande()` (via C.RC) et `server._lancer()` (via
         # SRV.RC) doivent appeler la MÊME fonction sur `" ".join(argv)` — sinon

@@ -2526,6 +2526,48 @@ par ce dépôt.
   n'est pas de relancer jusqu'au vert, c'est de savoir qui écrit**, et de **séquencer** les
   lots qui touchent les mêmes fichiers.
   **Suite : 40 fichiers, 1658 cas, 0 échec.** 50 specs, 191 liens.
+- [2026-09-22 23:50] Lot 11 backend — **le canal de conversation livré**, S3.1 à S3.13
+  devenues assertions. D1 : `entree` déclarée dans `[commandes]`, défaut `"aucune"` =
+  `DEVNULL` **inchangé**, jamais un champ de requête. D3 : capacité **262 144** posée par
+  `F_SETPIPE_SZ` **après `Popen`**, `FIONREAD == 0` exigé, **un seul** `os.write`, jamais
+  d'arithmétique de place. S3.10 : `n != len(ligne)` → canal **corrompu en permanence**,
+  503 sur tout envoi suivant. S3.11 : enveloppe pire cas **dérivée par le sérialiseur du
+  code** (98 317 o mesurés), jamais récitée. S3.2 : fondé sur **`lancements_actifs()`** —
+  le nom que le brief signalait comme périmé, correctement évité.
+  Quatre mutations, toutes tuées ; l'agent principal en a revérifié deux : `--restricted`
+  non vérifié → 2 échecs ; **liste fermée des permissions neutralisée → `202` et processus
+  RÉELLEMENT lancé** (`popen=[1]`, pid nommé). La garde est bien ce qui l'arrête.
+  ✔️ **Point « non mesuré » comblé par l'agent principal** : `claude auth status` rend
+  **`rc = 1` déconnecté** (`loggedIn: false`) et **`rc = 0` connecté**. Discriminant net,
+  donc la vérification préalable qu'autorise le GATE est implémentable. Et
+  **`projectsDirectory` suit `CLAUDE_CONFIG_DIR`** — ce qui confirme l'argument de
+  `feature-026` pour le lot 12 : lire ce champ vaut mieux que reconstruire le chemin.
+  ⚠️ Deux pièges du sous-agent, tous deux justes : `repr()` sur une chaîne multi-lignes
+  produit du TOML **littéral** où `\n` reste deux caractères (contourné par `json.dumps`) ;
+  et enchaîner deux envois sans attendre la lecture du premier **mesure une course, pas un
+  bug** — le 503 transitoire est la propriété demandée, pas un défaut.
+- [2026-09-23 01:30] Lot 11 frontend — **le panneau de conversation livré**, le tiers droit
+  de la maquette. Collision `#prompt` tranchée et **renommage exhaustif dans un seul
+  commit** : **22 occurrences dans 6 fichiers**, compte rendu au lieu d'une affirmation, et
+  l'annotation « collision non résolue » de la table de partition corrigée. `IDS` : +10.
+  ⚠️ **S3.6 N'EXISTAIT PAS** — le GATE l'avait supposée présente. Créée :
+  `test_conformite_rendu_textuel.{js,py}`, qui **dérive** la liste des `.js` servis et exige
+  **zéro** `innerHTML=`/`outerHTML=`/`insertAdjacentHTML(`. Trois mutations tuées, dont un
+  `innerHTML` injecté et le renommage laissé incomplet à un seul endroit.
+  ⚠️ **ÉCART DE COMPTES RÉCONCILIÉ par l'agent principal.** Le sous-agent signalait
+  honnêtement ne pas pouvoir reproduire le chiffre de départ (43/1691 contre 41/1727).
+  Mesuré : **root 43 fichiers / 1761 cas · non-root 43 / 1691 · écart 70 = 6
+  (`test_ci_decouverte`) + 64 (`test_ci_partition_navigateur`)**, les deux fichiers ne
+  trouvant les forges que dans le dépôt réel. Il comparait **son non-root à mon root** ;
+  les deux étaient justes. `PIEGES §47` appliqué — et il a eu raison de ne pas conclure à
+  une régression faute de reproduire.
+  ⚠️ Trois pièges relevés, à garder : la table `IDS` est **dupliquée dans cinq fichiers**,
+  et un id touché sans condition au chargement doit être ajouté **partout**, sinon le
+  harnais meurt **avant son premier cas** ; `document.querySelector` est **interdit** dans
+  ce module (aucun bac `vm` ne l'implémente) et rien ne le signale ; et un `fetch` simulé à
+  **usage unique** masque un second appel, intégralement avalé par un `catch` — panneau
+  bloqué sur « chargement… » sans aucune erreur visible.
+  **Suite : root 43 fichiers / 1761 cas / 0 échec ; non-root 43 / 1691 / 0 échec.**
 ### 4. F17 — le registre `ATTENDU_ROUGE`, défini (l'agent principal avait transmis le terme sans sa définition)
 
 **Le problème qu'il résout.** Écrire les cinq gardes au lot 0 et les voir échouer,

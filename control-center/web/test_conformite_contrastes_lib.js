@@ -202,6 +202,24 @@ const USAGES_APLAT = {
       "conteneur — décoratif, `aria-hidden`, trois largeurs FIXES par " +
       "état (jamais un pourcentage, jamais une information isolée ici).",
   },
+  // feature-022 (lot 11) : `.send-button` ne porte AUCUN texte visible (une
+  // flèche SVG, `stroke: currentColor`, jugée par le balayage des TRAITS,
+  // pas ici) — c'est une forme pleine sans enfant texte, donc dans le champ
+  // de F5b. Le SENS du bouton (« envoyer ») vient de son `aria-label` et de
+  // la forme de la flèche, jamais du remplissage `--primary` : l'état
+  // inactif (`:disabled`) se signale par `opacity`, jamais par une seconde
+  // teinte — aucune information n'est portée par la couleur seule.
+  ".send-button": {
+    role: DECOR,
+    motif:
+      "remplissage du bouton d'envoi de la conversation : même motif que " +
+      "les autres boutons d'action pleins (`.add-item-button`, " +
+      "`.action-ecriture`…), qui portent tous un LIBELLÉ texte jugé par le " +
+      "balayage des textes — celui-ci porte une icône seule, son sens vient " +
+      "de `aria-label`\"Envoyer le message\" et de la forme de la flèche, " +
+      "jamais de la teinte. L'état inactif se signale par `opacity`, pas " +
+      "par une teinte différente.",
+  },
   ".kanban-viewport::-webkit-scrollbar-thumb": {
     role: DECOR,
     pseudo: true,

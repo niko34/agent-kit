@@ -137,7 +137,10 @@
          aucun disque d'agent (`agent-node`/`agent-wrap`, classes adoptées
          mais quarantinées jusqu'au lot 4 dans `F3A_CLASSES_ADOPTEES_
          ABSENTES`). Le panneau de conversation permanente (`claude-panel`)
-         est hors périmètre de ce cycle (feature-022, différé par F0). -->
+         est câblé au LOT 11 (feature-022, absorbée) : markup et classes
+         repris par sélecteur du prototype (l.754-764), grille 72/28
+         `.workspace` réactivée (`minmax(0,1fr) 340px`, même valeur que le
+         prototype). -->
     <div class="workspace">
       <section class="cycle-surface" aria-labelledby="cycle-title">
         <div class="cycle-toolbar">
@@ -229,6 +232,80 @@
           <span class="ok" id="repo-strip-ok" hidden><span aria-hidden="true">●</span><span class="visually-hidden">dépôt accessible</span></span>
         </p>
       </section>
+
+      <!-- Panneau de conversation permanent (feature-022, absorbée, lot 11).
+           Markup/classes repris VERBATIM par sélecteur du prototype
+           (l.754-764) : `.claude-panel`/`.claude-title`/`.claude-ident`/
+           `.claude-mark`/`.claude-status`/`.conversation`/`.message`/
+           `.message-avatar`/`.bubble`/`.question`/`.composer`/
+           `.send-button` — tous classes ADOPTÉES (F0, lot 11). Le contenu
+           du fil (`#conversation`) est intégralement reconstruit par
+           `rendreConversation()` (app.js) : ce que ce fichier porte est le
+           SEUL contenu initial neutre, jamais affiché tel quel une fois le
+           premier `GET /api/conversation` répondu. -->
+      <aside class="claude-panel" aria-labelledby="claude-title">
+        <div class="claude-title">
+          <div class="claude-ident">
+            <span class="claude-mark" aria-hidden="true">✺</span>
+            <span>
+              <h2 id="claude-title">Claude</h2>
+              <span class="claude-status" id="claude-status">
+                <span aria-hidden="true">●</span> …
+              </span>
+            </span>
+          </div>
+          <!-- 5ᵉ et dernière instance d'`icon-button` (F0, lot 11, prototype
+               l.757) : « Options de la conversation ». Aucune fonctionnalité
+               d'options n'existe ce cycle (pas de propriétaire) — même
+               traitement inerte que les icon-button sans propriétaire du
+               lot 7 (`aria-disabled`, JAMAIS `disabled`, motif en clair,
+               aucun `:hover`, ADR-0039). -->
+          <button class="icon-button" type="button" aria-disabled="true"
+                  aria-label="Options de la conversation — aucune option disponible depuis l'interface">
+            <span aria-hidden="true">⋮</span>
+          </button>
+        </div>
+
+        <div class="conversation" id="conversation" aria-live="polite">
+          <p class="vide">chargement…</p>
+        </div>
+
+        <!-- Question bloquante épinglée (F2 de la check-list de feature-022).
+             ⚠️ Écart déclaré, même motif que `.notification-badge`
+             (PIEGES §16) : AUCUNE source de données n'expose de « question
+             posée par l'agent » ce cycle — ni `/api/etat`, ni
+             `/api/conversation` (qui ne porte que les messages UTILISATEUR,
+             server.py `_conversation_lire`), ni `feature-009` (non
+             absorbée). L'élément reste dans le DOM (classe/id adoptés) mais
+             `hidden` en permanence : un texte fabriqué serait pire qu'une
+             absence. -->
+        <div class="question" id="claude-question" hidden>
+          <strong>Question en attente</strong>
+          <p id="claude-question-texte"></p>
+        </div>
+
+        <form class="composer" id="composer">
+          <label class="visually-hidden" for="prompt">Répondre à Claude</label>
+          <!-- `maxlength` = CONFORT client seul (S3.3) : le serveur reste
+               l'autorité, `POST /api/conversation` revalide la borne de
+               8192 caractères indépendamment (server.py,
+               `_TAILLE_MAX_TEXTE_CONVERSATION`) et la fait respecter même
+               si ce champ était contourné. -->
+          <input id="prompt" autocomplete="off" placeholder="Répondre à Claude…"
+                 maxlength="8192" disabled>
+          <!-- `id` ajouté (absent du prototype, qui ne cible ce bouton par
+               aucun script) : convention de ce module, AUCUN
+               `document.querySelector` n'est utilisé (app.js l.1429), le
+               bac à sable `vm` des harnais ne l'implémente pas non plus
+               (PIEGES §38 contexte). -->
+          <button class="send-button" id="envoyer-conversation" type="submit"
+                  aria-label="Envoyer le message" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path></svg>
+          </button>
+        </form>
+        <p class="note" id="composer-etat" aria-live="polite">chargement de la conversation…</p>
+        <p class="note erreur" id="conversation-erreur" role="alert" hidden></p>
+      </aside>
     </div>
 
     <!-- Kanban M3 câblé (F10, feature-021 cycle 2, lot 5) : `#kanban`
@@ -298,7 +375,12 @@
         <input type="text" id="titre-besoin" maxlength="200" autocomplete="off"
           placeholder="Ex. : Ajouter un export CSV des specs affichées">
       </div>
-      <textarea id="prompt" rows="4"
+      <!-- Renommé `spec-prompt` (feature-021 cycle 2, lot 11, arbitrage
+           architect 2026-09-22 08:10, point (2)) : le prototype assigne
+           `#prompt` au composeur de conversation (`.claude-panel`,
+           ci-dessous) — les noms du prototype sont la clé de jointure des
+           gardes de fidélité, notre id cède le sien. -->
+      <textarea id="spec-prompt" rows="4"
         placeholder="Décrire le besoin en détail…"></textarea>
       <span class="compteur" id="compteur-prompt" aria-live="polite">0 caractère</span>
       <p class="note avert">
