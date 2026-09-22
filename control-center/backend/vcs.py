@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""Lecture de git — fichiers touchés, diffs, historique.
+"""Git — fichiers touchés, diffs, historique, ET (depuis feature-025) la
+suppression d'une spec suivie et propre.
 
 Git est la source de vérité de l'état du code, comme les specs le sont de l'état
-fonctionnel. Ce module ne fait que **lire** : aucun `add`, aucun `commit`, aucun
-`checkout`. Le dépôt appartient à l'humain et aux agents.
+fonctionnel. Ce module a longtemps été un module de LECTURE SEULE — ce n'est
+plus vrai depuis feature-025 (GATE P1 S2.10, ADR-0040 — À ÉCRIRE au lot 13,
+ne pas la citer comme existante avant que `doc-writer` ne la produise) :
+`supprimer_suivi()` exécute `git rm`, le premier `git` en ÉCRITURE lancé
+depuis ce serveur. La
+garde ne change pas : `argv`, `shell=False`, confinement par `chemin_sur()`
+AVANT tout appel — seule la surface s'élargit d'une commande.
 
 ## Deux invariants de sûreté, et pourquoi ils sont ici
 
@@ -228,6 +234,59 @@ def journal(racine, limite=20):
         commits.append({"hash": champs[0], "date": champs[1],
                         "auteur": champs[2], "sujet": champs[3]})
     return commits
+
+
+def verifier_supprimable(racine, chemin_relatif):
+    """`(True, None)` si `chemin_relatif` est SUIVI par git et SANS aucune
+    modification, ni dans l'arbre de travail ni dans l'index — sinon
+    `(False, motif)`, sans AUCUN effet (GATE P1 S2.6, feature-025).
+
+    `POST /api/spec/ecrire` (`redaction_spec.py`) n'appelle jamais `git add`
+    ni `git commit` : toute spec créée depuis le cockpit est donc NON SUIVIE
+    par git jusqu'à un commit humain. Mesuré : `git rm` y échoue avec
+    `rc 128` (« did not match any files ») ; sur une spec par ailleurs suivie
+    mais modifiée, il échoue aussi (`rc 1`, « has local modifications »). Un
+    plan de retour arrière fondé sur `git rm` + une référence est donc
+    INAPPLICABLE dans ces deux cas — cette fonction le VÉRIFIE et le DIT
+    avant que `supprimer_suivi()` ne soit jamais appelée.
+    """
+    ok, _ = _git(racine, "ls-files", "--error-unmatch", "--", chemin_relatif)
+    if not ok:
+        return False, "spec non suivie par git — commit ou stash d'abord"
+    ok, _ = _git(racine, "diff", "--quiet", "--", chemin_relatif)
+    if not ok:
+        return False, "spec modifiée dans l'arbre de travail — commit ou stash d'abord"
+    ok, _ = _git(racine, "diff", "--cached", "--quiet", "--", chemin_relatif)
+    if not ok:
+        return False, "spec modifiée dans l'index — commit ou stash d'abord"
+    return True, None
+
+
+def tete_sha(racine):
+    """Hash complet du commit `HEAD`, ou `None` si indisponible.
+
+    C'est la référence ATTEIGNABLE (jamais un blob dangling) que le plan de
+    retour arrière d'une suppression porte (`git checkout <sha> -- <chemin>`,
+    GATE P1 S2.7) — valable seulement parce que `verifier_supprimable()` a
+    garanti que le contenu sur disque égale `HEAD:<chemin>` avant l'appel.
+    """
+    ok, sortie = _git(racine, "rev-parse", "HEAD")
+    if not ok:
+        return None
+    sha = sortie.strip()
+    return sha or None
+
+
+def supprimer_suivi(racine, chemin_relatif):
+    """`git rm -- <chemin_relatif>` — le SEUL point d'écriture git de ce
+    module (GATE P1 S2.10, feature-025). À appeler UNIQUEMENT après
+    `verifier_supprimable()` : sur une spec suivie et propre, `git rm` ne
+    touche que l'index et l'arbre de travail, jamais l'historique — le
+    retour arrière reste toujours une référence atteignable.
+
+    `shell=False` (via `_git()`), `--` avant le chemin : mêmes garanties que
+    toute autre commande de ce module."""
+    return _git(racine, "rm", "--", chemin_relatif)
 
 
 def fichiers_du_commit(racine, reference):

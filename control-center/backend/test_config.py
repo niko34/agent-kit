@@ -375,6 +375,37 @@ commandes_avec_budget = ["tests", "deja_borne", "inconnue"]
               "config a rendu %r, server a rendu %r (attendu 'env' des deux "
               "côtés)" % (tete_config, tete_server))
 
+        # --- commande_pour_spec_id : placeholder DÉCLARÉ, ÉLÉMENT UNIQUE de
+        # l'argv (feature-025, GATE P1 S1.3 — `ADR-0005` amendé, pas révoqué)
+        c_spec = C.charger(chemin=ecrire(tmp, '''[commandes]
+avec_emplacement = ["claude", "-p", "{spec_id}", "--truc"]
+sans_emplacement = ["claude", "-p"]
+deux_emplacements = ["echo", "{spec_id}", "{spec_id}"]
+'''), racine_projet=tmp)
+        argv, erreur = c_spec.commande_pour_spec_id("avec_emplacement", "feature-025-x")
+        check("test_commande_pour_spec_id_substitue_un_element_unique",
+              erreur is None and argv == ["claude", "-p", "feature-025-x", "--truc"],
+              "obtenu argv=%r erreur=%r" % (argv, erreur))
+        # ⚠️ La CHAÎNE substituée ne doit JAMAIS être découpée en tokens : un
+        # `spec_id` contenant un espace doit rester UN SEUL élément de l'argv.
+        argv_espace, _ = c_spec.commande_pour_spec_id("avec_emplacement", "avec espace")
+        check("test_commande_pour_spec_id_jamais_de_decoupage",
+              argv_espace == ["claude", "-p", "avec espace", "--truc"]
+              and len(argv_espace) == 4,
+              "obtenu %r (4 éléments attendus, pas 5)" % argv_espace)
+
+        argv_none, erreur = c_spec.commande_pour_spec_id("sans_emplacement", "feature-025-x")
+        check("test_commande_pour_spec_id_sans_placeholder_400",
+              argv_none is None and erreur == (400, "commande sans emplacement déclaré pour spec_id"),
+              "obtenu %r" % (erreur,))
+
+        argv_double, erreur = c_spec.commande_pour_spec_id("deux_emplacements", "feature-025-x")
+        check("test_commande_pour_spec_id_deux_placeholders_400",
+              argv_double is None and erreur[0] == 400, "obtenu %r" % (erreur,))
+
+        argv_inconnue, erreur = c_spec.commande_pour_spec_id("cle_inexistante", "feature-025-x")
+        check("test_commande_pour_spec_id_cle_inconnue_404",
+              argv_inconnue is None and erreur == (404, "clé de commande inconnue"))
 
     print("\n%d cas, %d echec(s)" % (_tests, len(_echecs)))
     for echec in _echecs:

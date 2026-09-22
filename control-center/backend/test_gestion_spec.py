@@ -1,0 +1,339 @@
+#!/usr/bin/env python3
+"""Tests unitaires de `gestion_spec.py` — résolution confinée, éligibilité
+par colonne, conformité du nom (feature-025, GATE P1 S1.2-S1.4).
+
+    python3 control-center/backend/test_gestion_spec.py
+
+Les scénarios de bout en bout (HTTP, compare-and-write concurrent,
+suppression + retour arrière EXÉCUTÉ, git non suivi/modifié) vivent dans
+`test_server_feature025.py` — ce fichier-ci couvre ce que l'HTTP n'exerce pas
+directement : la DOUBLE garde de confinement de `resoudre_spec()` (mutée
+séparément de `vcs.chemin_sur()` qu'elle appelle — `PIEGES §37`), et
+`role_colonne()` sur des configurations à un nombre de colonnes variable.
+"""
+
+import os
+import shutil
+import sys
+import tempfile
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import config as C  # noqa: E402
+import gestion_spec as GS  # noqa: E402
+import vcs as V  # noqa: E402
+
+_echecs = []
+_tests = 0
+
+
+def check(nom, condition, detail=""):
+    global _tests
+    _tests += 1
+    if condition:
+        print("  ok     %s" % nom)
+    else:
+        _echecs.append(nom)
+        print("  ECHEC  %s%s" % (nom, (" : " + detail) if detail else ""))
+
+
+def _depot_jetable(colonnes=("todo", "doing", "done")):
+    tmp = tempfile.mkdtemp(prefix="cc-test-gestion-spec-")
+    for colonne in colonnes:
+        os.makedirs(os.path.join(tmp, "specs", "features", colonne), exist_ok=True)
+    config = C.charger(chemin=os.path.join(tmp, "n-existe-pas.toml"), racine_projet=tmp)
+    return tmp, config
+
+
+def _ecrire(config, colonne, spec_id, contenu="# x\n"):
+    chemin = os.path.join(config["_racine_projet"], "specs", "features", colonne,
+                          spec_id + ".md")
+    with open(chemin, "w", encoding="utf-8") as fichier:
+        fichier.write(contenu)
+    return chemin
+
+
+def main():
+    # --- empreinte : stable, sensible au moindre octet ----------------------
+    check("test_empreinte_stable", GS.empreinte("abc") == GS.empreinte("abc"))
+    check("test_empreinte_sensible_a_un_octet", GS.empreinte("abc") != GS.empreinte("abd"))
+    check("test_empreinte_est_hex_sha256", len(GS.empreinte("")) == 64)
+
+    # --- spec_id_conforme : `_RE_NUMERO` appliqué au nom complet -------------
+    check("test_conforme_feature", GS.spec_id_conforme("feature-025-actions-du-backlog"))
+    check("test_conforme_bug", GS.spec_id_conforme("bug-007-un-motif"))
+    check("test_non_conforme_sans_numero", not GS.spec_id_conforme("notes"))
+    check("test_non_conforme_template", not GS.spec_id_conforme("_template"))
+    check("test_non_conforme_readme", not GS.spec_id_conforme("README"))
+    check("test_non_conforme_vide", not GS.spec_id_conforme(""))
+
+    # --- resoudre_spec : égalité stricte, confinement double -----------------
+    tmp, config = _depot_jetable()
+    try:
+        _ecrire(config, "todo", "feature-001-alpha")
+        _ecrire(config, "doing", "feature-002-beta")
+
+        spec, relatif = GS.resoudre_spec(config, "feature-001-alpha")
+        check("test_resoudre_trouve_la_spec", spec is not None and spec["id"] == "feature-001-alpha")
+        check("test_resoudre_chemin_relatif_attendu",
+              relatif == "specs/features/todo/feature-001-alpha.md", "obtenu %r" % relatif)
+
+        spec2, _ = GS.resoudre_spec(config, "feature-002-beta")
+        check("test_resoudre_colonne_doing", spec2["colonne"] == "doing")
+
+        for force in ("../../etc/passwd", "feature-999-inexistante", "", None, 42):
+            spec_none, relatif_none = GS.resoudre_spec(config, force)
+            check("test_resoudre_refuse[%r]" % (force,),
+                  spec_none is None and relatif_none is None)
+
+        # --- MUTATION du CONFINEMENT (PIEGES §37 : muter la garde elle-même,
+        # pas `vcs.chemin_sur()` qu'elle appelle) : si `resoudre_spec()`
+        # faisait confiance à `chemin_sur()` SEUL (sans l'égalité exacte
+        # `relatif != attendu`), un `chemin_sur()` qui rendrait un chemin
+        # RÉSOLU MAIS DIFFÉRENT de celui attendu passerait à tort.
+        original = V.chemin_sur
+        try:
+            V.chemin_sur = lambda racine, chemin: "specs/features/todo/AUTRE-FICHIER.md"
+            spec_mute, relatif_mute = GS.resoudre_spec(config, "feature-001-alpha")
+            check("test_confinement_deuxieme_garde_tue_le_mutant",
+                  spec_mute is None and relatif_mute is None,
+                  "la garde par égalité exacte doit refuser un chemin RÉSOLU mais DIFFÉRENT")
+        finally:
+            V.chemin_sur = original
+
+        # --- MUTATION : `chemin_sur()` renvoie `None` (lien hors dépôt, etc.)
+        try:
+            V.chemin_sur = lambda racine, chemin: None
+            spec_none2, relatif_none2 = GS.resoudre_spec(config, "feature-001-alpha")
+            check("test_confinement_chemin_sur_none_refuse",
+                  spec_none2 is None and relatif_none2 is None)
+        finally:
+            V.chemin_sur = original
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    # --- resoudre_spec : lien symbolique RÉEL planté dans todo/ (GATE P2,
+    # lot 9, condition 3) --------------------------------------------------
+    #
+    # Les MUTATIONS ci-dessus (lambda sur `V.chemin_sur`) ne prouvent que la
+    # forme du code, jamais le cas RÉEL : un `spec_id` FORGÉ (`"../../etc/
+    # passwd"`) n'atteint JAMAIS la branche `relatif != attendu`, puisque
+    # `resoudre_spec()` ne construit un chemin qu'à partir d'un `spec_id`
+    # RÉELLEMENT découvert par `S.lister_depuis_config()` — et `listdir()`
+    # ne connaît que ce qui existe sur disque. Le cas réel où la SECONDE
+    # garde (l'égalité exacte, pas `chemin_sur()` seul) fait la différence
+    # est un LIEN SYMBOLIQUE planté dans `todo/` : `os.listdir()` le voit
+    # comme une spec (feature-025), et `chemin_sur()` (qui résout les liens
+    # via `os.path.realpath`) le suit jusqu'à sa cible — DANS le dépôt, mais
+    # PAS là où `resoudre_spec()` l'attend. Sans l'égalité exacte,
+    # `modifier()` ferait un `os.replace()` sur ce fichier-là : n'importe
+    # quel fichier du dépôt qu'un lien planté dans `todo/` viserait.
+    tmp7, config7 = _depot_jetable()
+    try:
+        dossier_todo = os.path.join(tmp7, "specs", "features", "todo")
+        dossier_doing = os.path.join(tmp7, "specs", "features", "doing")
+
+        # Cas 1 : lien vers un fichier RÉEL mais HORS de `specs/` (à la
+        # racine du projet) — `chemin_sur()` le résout DANS le dépôt (donc ne
+        # rend pas `None`) : SEULE l'égalité exacte l'écarte.
+        cible_racine = os.path.join(tmp7, "CIBLE.md")
+        with open(cible_racine, "w", encoding="utf-8") as f:
+            f.write("# cible hors de specs/\n")
+        os.symlink(cible_racine, os.path.join(dossier_todo, "feature-900-lien-racine.md"))
+
+        # Cas 2 : lien RELATIF vers une AUTRE colonne (`doing/`) — même
+        # raison : résolu DANS le dépôt, mais pas à l'emplacement attendu.
+        cible_doing = os.path.join(dossier_doing, "feature-901-cible-doing.md")
+        with open(cible_doing, "w", encoding="utf-8") as f:
+            f.write("# cible dans doing/\n")
+        os.symlink(os.path.join("..", "doing", "feature-901-cible-doing.md"),
+                  os.path.join(dossier_todo, "feature-902-lien-doing.md"))
+
+        # Cas 3 : lien vers un fichier HORS du dépôt entier — `chemin_sur()`
+        # rend déjà `None` ici (PREMIÈRE garde). Gardé pour couvrir les
+        # trois formes citées par le GATE, et pour documenter que ce cas-là,
+        # lui, était DÉJÀ protégé même par la lecture SEULE de `chemin_sur()`.
+        os.symlink("/etc/hostname",
+                  os.path.join(dossier_todo, "feature-903-lien-hors-depot.md"))
+
+        cas = [
+            ("feature-900-lien-racine", cible_racine),
+            ("feature-902-lien-doing", cible_doing),
+            ("feature-903-lien-hors-depot", "/etc/hostname"),
+        ]
+        for spec_id, cible in cas:
+            avant = open(cible, encoding="utf-8").read()
+            spec, relatif = GS.resoudre_spec(config7, spec_id)
+            check("test_resoudre_lien_symbolique_reel_refuse[%s]" % spec_id,
+                  spec is None and relatif is None,
+                  "obtenu spec=%r relatif=%r" % (spec, relatif))
+            apres = open(cible, encoding="utf-8").read()
+            check("test_resoudre_lien_symbolique_cible_intacte[%s]" % spec_id,
+                  avant == apres)
+
+        # Preuve que le mutant `if relatif is None:` SEUL (sans
+        # `or relatif != attendu`) laisserait RÉELLEMENT passer les cas 1 et
+        # 2 — donc que c'est bien la DEUXIÈME moitié de la garde qui les
+        # arrête, pas la première : `chemin_sur()`, appelé seul sur les
+        # MÊMES chemins, ne rend PAS `None` pour ces deux cas (il est résolu
+        # DANS le dépôt). Sans cette preuve, `test_resoudre_lien_symbolique_
+        # reel_refuse` pourrait passer pour une tout autre raison.
+        for spec_id, _cible in cas[:2]:  # cas 1 et 2 seulement (résolus DANS le dépôt)
+            nom = spec_id + ".md"
+            chemin_absolu = os.path.join(dossier_todo, nom)
+            check("test_resoudre_lien_symbolique_chemin_sur_seul_ne_suffit_pas[%s]" % spec_id,
+                  V.chemin_sur(tmp7, chemin_absolu) is not None,
+                  "chemin_sur() rend déjà None ici : ce cas ne prouverait "
+                  "rien sur l'égalité exacte, contrairement au cas 3")
+    finally:
+        shutil.rmtree(tmp7, ignore_errors=True)
+
+    # --- role_colonne : par POSITION, jamais par nom (ADR-0003) --------------
+    tmp2, config2 = _depot_jetable()
+    try:
+        check("test_role_premiere", GS.role_colonne(config2, "todo") == "premiere")
+        check("test_role_intermediaire", GS.role_colonne(config2, "doing") == "intermediaire")
+        check("test_role_derniere", GS.role_colonne(config2, "done") == "derniere")
+        check("test_role_classe_inconnue_none", GS.role_colonne(config2, "nimporte") is None)
+    finally:
+        shutil.rmtree(tmp2, ignore_errors=True)
+
+    # --- role_colonne sur une configuration à DEUX colonnes seulement --------
+    tmp3 = tempfile.mkdtemp(prefix="cc-test-gestion-spec-2col-")
+    try:
+        for colonne in ("backlog", "archive"):
+            os.makedirs(os.path.join(tmp3, "specs", "features", colonne), exist_ok=True)
+        chemin_toml = os.path.join(tmp3, "control-center.toml")
+        with open(chemin_toml, "w", encoding="utf-8") as fichier:
+            fichier.write(
+                '[specs]\n'
+                'colonnes = [{repertoire = "backlog"}, {repertoire = "archive"}]\n')
+        config3 = C.charger(chemin=chemin_toml, racine_projet=tmp3)
+        check("test_role_deux_colonnes_premiere", GS.role_colonne(config3, "backlog") == "premiere")
+        check("test_role_deux_colonnes_derniere_pas_intermediaire",
+              GS.role_colonne(config3, "archive") == "derniere")
+    finally:
+        shutil.rmtree(tmp3, ignore_errors=True)
+
+    # --- eligible_au_lancement : compose resoudre_spec + conformite + role --
+    tmp4, config4 = _depot_jetable()
+    try:
+        _ecrire(config4, "todo", "feature-010-eligible")
+        _ecrire(config4, "doing", "feature-011-en-cours")
+        _ecrire(config4, "todo", "notes")  # existe, mais nom non conforme
+
+        spec, erreur = GS.eligible_au_lancement(config4, "feature-010-eligible")
+        check("test_eligible_nominal", erreur is None and spec is not None)
+
+        _, erreur = GS.eligible_au_lancement(config4, "feature-999-absente")
+        check("test_eligible_inconnue_404", erreur == (404, "spec inconnue"))
+
+        _, erreur = GS.eligible_au_lancement(config4, "notes")
+        check("test_eligible_non_conforme_422",
+              erreur is not None and erreur[0] == 422, "obtenu %r" % (erreur,))
+
+        _, erreur = GS.eligible_au_lancement(config4, "feature-011-en-cours")
+        check("test_eligible_doing_409",
+              erreur is not None and erreur[0] == 409, "obtenu %r" % (erreur,))
+    finally:
+        shutil.rmtree(tmp4, ignore_errors=True)
+
+    # --- modifier() : bornes, immuabilité, en_cours, verrou isolé ------------
+    tmp5, config5 = _depot_jetable()
+    try:
+        chemin = _ecrire(config5, "todo", "feature-020-modifiable", "contenu initial\n")
+        chemin_verrou = os.path.join(tmp5, "var", "specs.lock")
+
+        # spec inconnue -> 404
+        _, erreur = GS.modifier(config5, "feature-999-x", "peu importe", "y",
+                                chemin_verrou=chemin_verrou)
+        check("test_modifier_inconnue_404", erreur == (404, "spec inconnue"))
+
+        # empreinte fausse -> 409, fichier intact
+        _, erreur = GS.modifier(config5, "feature-020-modifiable", "empreinte-fausse",
+                                "nouveau", chemin_verrou=chemin_verrou)
+        check("test_modifier_empreinte_fausse_409",
+              erreur is not None and erreur[0] == 409, "obtenu %r" % (erreur,))
+        with open(chemin, encoding="utf-8") as fichier:
+            check("test_modifier_empreinte_fausse_fichier_intact",
+                  fichier.read() == "contenu initial\n")
+
+        # nominal
+        empreinte_actuelle = GS.empreinte("contenu initial\n")
+        resultat, erreur = GS.modifier(config5, "feature-020-modifiable", empreinte_actuelle,
+                                       "contenu final\n", chemin_verrou=chemin_verrou)
+        check("test_modifier_nominal_ok", erreur is None, "obtenu %r" % (erreur,))
+        with open(chemin, encoding="utf-8") as fichier:
+            check("test_modifier_nominal_fichier_ecrit", fichier.read() == "contenu final\n")
+        check("test_modifier_nominal_empreinte_rendue",
+              resultat["empreinte"] == GS.empreinte("contenu final\n"))
+
+        # en_cours=True -> 409, quelle que soit l'empreinte
+        _, erreur = GS.modifier(config5, "feature-020-modifiable",
+                                GS.empreinte("contenu final\n"), "x",
+                                en_cours=True, chemin_verrou=chemin_verrou)
+        check("test_modifier_en_cours_409", erreur == (409, "un lancement est en cours sur cette spec"))
+
+        # colonne `done` immuable
+        _ecrire(config5, "done", "feature-021-close", "clos\n")
+        _, erreur = GS.modifier(config5, "feature-021-close", GS.empreinte("clos\n"), "x",
+                                chemin_verrou=chemin_verrou)
+        check("test_modifier_done_409", erreur is not None and erreur[0] == 409, "obtenu %r" % (erreur,))
+
+        # contenu non encodable -> 422, fichier intact
+        _, erreur = GS.modifier(config5, "feature-020-modifiable",
+                                GS.empreinte("contenu final\n"), "\ud800",
+                                chemin_verrou=chemin_verrou)
+        check("test_modifier_non_encodable_422",
+              erreur is not None and erreur[0] == 422, "obtenu %r" % (erreur,))
+        with open(chemin, encoding="utf-8") as fichier:
+            check("test_modifier_non_encodable_fichier_intact",
+                  fichier.read() == "contenu final\n")
+    finally:
+        shutil.rmtree(tmp5, ignore_errors=True)
+
+    # --- supprimer() : confirmation AVANT tout effet, MUTATION ciblée -------
+    tmp6, config6 = _depot_jetable()
+    try:
+        chemin = _ecrire(config6, "todo", "feature-030-jamais-suivie")
+        chemin_verrou = os.path.join(tmp6, "var", "specs.lock")
+
+        _, erreur = GS.supprimer(config6, "feature-030-jamais-suivie", "AUTRE-NOM",
+                                 chemin_verrou=chemin_verrou)
+        check("test_supprimer_confirmation_discordante_422",
+              erreur is not None and erreur[0] == 422, "obtenu %r" % (erreur,))
+        check("test_supprimer_confirmation_discordante_fichier_intact", os.path.isfile(chemin))
+
+        # ⚠️ MUTATION (`PIEGES §37`) : neutraliser la garde ELLE-MÊME (pas
+        # une fonction qu'elle appelle) — reproduit ici en désactivant la
+        # comparaison directement dans le code source, un test qui la
+        # laisserait passer prouverait que la garde ne tient à rien.
+        # Preuve documentée dans le rapport de cycle (mutation exécutée,
+        # revertée) ; ce cas ci-dessus est celui qui doit MOURIR sous cette
+        # mutation — c'est la même assertion, cause et effet inversés.
+
+        # Non suivie par git : PAS de dépôt git ici du tout -> 409 (la garde
+        # `vcs.verifier_supprimable` échoue dès `ls-files`, hors dépôt).
+        _, erreur = GS.supprimer(config6, "feature-030-jamais-suivie",
+                                 "feature-030-jamais-suivie", chemin_verrou=chemin_verrou)
+        check("test_supprimer_hors_depot_git_409",
+              erreur is not None and erreur[0] == 409, "obtenu %r" % (erreur,))
+        check("test_supprimer_hors_depot_git_fichier_intact", os.path.isfile(chemin))
+    finally:
+        shutil.rmtree(tmp6, ignore_errors=True)
+
+    print("\n%d cas, %d echec(s)" % (_tests, len(_echecs)))
+    for echec in _echecs:
+        print("  - %s" % echec)
+    return 1 if _echecs else 0
+
+
+if __name__ == "__main__":
+    try:
+        _code = main()
+    except Exception as erreur:
+        import traceback
+        traceback.print_exc()
+        print("\n%d cas atteints, INTERROMPU par %s : %s"
+              % (_tests, type(erreur).__name__, erreur))
+        _code = 1
+    sys.exit(_code)

@@ -20,6 +20,17 @@ lot. Ce qui la remplace :
   sans lui, `do_POST` répond 403 à toute route d'écriture, quoi qu'on
   présente.
 
+## Ce qui a changé depuis feature-021 cycle 2 (lots 9-10, GATE P1 S1/S2)
+
+Trois routes de plus, sur des specs EXISTANTES cette fois (`feature-025`) :
+`/api/spec/lancer` (lance un cycle POUR une spec désignée — distinct de
+`/api/lancer`, qui ne transporte qu'une clé fermée), `/api/spec/modifier`
+(compare-and-write atomique) et `/api/spec/supprimer` (le premier chemin
+DESTRUCTIF du cockpit, jamais sans plan de retour arrière EXÉCUTABLE ni sans
+vérifier que git peut effectivement le tenir — voir `gestion_spec.py`). Pas
+de `do_PUT` : ces trois routes restent des `POST`, routées comme les autres
+par `_ROUTES_ECRITURE` — aucune seconde chaîne de gardes.
+
 ## Ce qui a changé depuis l'étape D (feature-008)
 
 `_ROUTES_ECRITURE` est passée de deux à QUATRE chemins :
@@ -120,6 +131,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__f
 import agents as A  # noqa: E402
 import config as C  # noqa: E402
 import events as E  # noqa: E402
+import gestion_spec as GS  # noqa: E402
 import jeton as J  # noqa: E402
 import lanceur as L  # noqa: E402
 import redaction_commande as RC  # noqa: E402
@@ -152,9 +164,13 @@ _TYPES = {
 # courir à tout champ neuf (A8b). La sortie de la commande, elle, n'y figure
 # JAMAIS (condition 10 du GATE P1) : seule sa tête (`command_head`, déjà
 # présente) est journalisée.
+#
+# `spec_id` et `sha` (feature-025, GATE P1 S1.6/S2.12) : sans eux ici, un
+# lancement ciblé sur une spec ou une suppression resteraient INVISIBLES au
+# navigateur — même piège que A8b pour `cle`/`pid_fils`/`resultat`.
 _CHAMPS_PUBLICS = ("ts", "runtime", "session_id", "hook_event_name",
                    "agent_type", "agent_id", "tool", "command_head", "file", "failed",
-                   "cle", "pid_fils", "resultat")
+                   "cle", "pid_fils", "resultat", "spec_id", "sha")
 
 _INTERVALLE_SONDAGE = 2.0      # secondes entre deux comparaisons d'empreinte
 _BATTEMENT = 20.0              # secondes sans changement avant un signe de vie
@@ -171,8 +187,16 @@ _BATTEMENT = 20.0              # secondes sans changement avant un signe de vie
 # routes qui écrivent réellement (jeton/origine, Host, Content-Length) :
 # c'est un choix délibéré, pas un effet de bord — aucune prévisualisation de
 # spec ne doit être possible sans la même autorisation qu'une écriture.
+#
+# feature-025 (GATE P1 S1.1/S2.1) ajoute TROIS routes sur des specs
+# EXISTANTES : `/api/spec/lancer` (lance un cycle pour une spec désignée),
+# `/api/spec/modifier` (compare-and-write) et `/api/spec/supprimer` (le
+# premier chemin DESTRUCTIF de ce module — voir `gestion_spec.py`). PAS de
+# `do_PUT` (`PIEGES §34`) : ces trois routes restent des `POST`, routées
+# exactement comme les autres — aucune seconde chaîne de gardes à maintenir.
 _ROUTES_ECRITURE = ("/api/lancer", "/api/interrompre",
-                     "/api/spec/brouillon", "/api/spec/ecrire")
+                     "/api/spec/brouillon", "/api/spec/ecrire",
+                     "/api/spec/lancer", "/api/spec/modifier", "/api/spec/supprimer")
 
 # Un corps de POST tient largement sous cette borne : {"cle": "..."} ne
 # dépasse jamais quelques dizaines d'octets. Au-delà, 413 sans lire le reste.
@@ -189,6 +213,12 @@ _TAILLE_MAX_CORPS = 4096
 _TAILLES_MAX_CORPS = {
     "/api/spec/brouillon": 8192,
     "/api/spec/ecrire": 65536,
+    # `/api/spec/modifier` porte un `contenu` en texte libre, même borne que
+    # `/api/spec/ecrire` (feature-025, GATE P1 S2.5). `/api/spec/lancer`
+    # ({cle, spec_id}) et `/api/spec/supprimer` ({spec_id, confirmation_nom})
+    # ne transportent que de courtes chaînes : le défaut (4096) leur suffit
+    # largement, comme à `/api/lancer`.
+    "/api/spec/modifier": 65536,
 }
 
 # Freinage des échecs d'authentification (GATE P1, condition 6) : au-delà de
@@ -370,13 +400,18 @@ class Etat:
         """
         return J.charger(self.config.fichier_jeton(), self.racine)
 
-    def instantane(self, peut_ecrire=None, jeton_requis=None):
+    def instantane(self, peut_ecrire=None, jeton_requis=None, spec_id_en_cours=None):
         """`peut_ecrire` et `jeton_requis` sont calculés PAR REQUÊTE par
         `do_GET` (`Handler._peut_ecrire`, bug-012, ADR-0020) — jamais déduits
         ici de la seule présence d'un `fichier_jeton`. `None` (tout appelant
         hors `do_GET` : tests directs sur `Etat`) retombe sur l'ancien test
         global, conservateur — un jeton configuré mais jamais confronté à un
-        demandeur précis ne peut affirmer une capacité."""
+        demandeur précis ne peut affirmer une capacité.
+
+        `spec_id_en_cours` (feature-025, GATE P1 S1.7) : la spec du
+        lancement courant si un est encore actif, sinon `None` — calculé par
+        `do_GET` depuis `Ecriture.lancement_courant()` (que `Etat` ne
+        détient pas). Champ ADDITIF : le frontend en tolère l'absence."""
         # Une SEULE lecture de l'horloge, partagée entre la requalification
         # `sans_cloture` (bug-013) et `horodatage` ci-dessous : deux appels
         # séparés à `time.gmtime()` pourraient diverger de quelques
@@ -477,6 +512,11 @@ class Etat:
             # échouera quand même. Le frontend s'en sert pour choisir entre
             # `EventSource` et un sondage qui pose l'en-tête lui-même.
             "jeton_requis": jeton_requis,
+            # Additif (feature-025, GATE P1 S1.7) : source de `cycle-title`
+            # (lot 10, frontend) et, côté serveur, de la garde S2.4 — ce
+            # dernier usage passe directement par `Ecriture`, jamais par ce
+            # champ JSON (pas de course entre deux lectures indépendantes).
+            "lancement_spec_id": spec_id_en_cours,
             "horodatage": time.strftime("%Y-%m-%dT%H:%M:%SZ", maintenant),
         }
 
@@ -574,8 +614,12 @@ class Ecriture:
             self._echecs.append(time.monotonic())
 
     # -- lancement ------------------------------------------------------------
-    def lancer(self, cle, argv, cwd, journal):
+    def lancer(self, cle, argv, cwd, journal, spec_id=None):
         """Spawn puis verrouille. Rend (Lancement, None) ou (None, raison).
+
+        `spec_id` (feature-025, GATE P1 S1.7) : `None` pour `/api/lancer`
+        (clé fermée seule), la spec CIBLÉE pour `/api/spec/lancer` — mémorisé
+        sur le `Lancement`, jamais recalculé ailleurs.
 
         ⚠️ L'ORDRE (Popen puis verrou) est déterminé par une contrainte du
         verrou lui-même : sa méta porte `pid_fils` pour détecter un ORPHELIN
@@ -620,7 +664,8 @@ class Ecriture:
         """
         try:
             lancement = L.Lancement(cle, argv, cwd,
-                                     sur_fin=lambda l: self._sur_fin(l, journal))
+                                     sur_fin=lambda l: self._sur_fin(l, journal),
+                                     spec_id=spec_id)
         except OSError as erreur:
             return None, "impossible de lancer la commande : %s" % type(erreur).__name__
 
@@ -690,6 +735,28 @@ class Ecriture:
         if self.courant is None:
             return None
         return self.lancements.get(self.courant)
+
+    def lancements_actifs(self):
+        """TOUS les lancements encore actifs (`toujours_en_cours()`), quel
+        que soit leur index de verrou — jamais seulement `self.courant`
+        (GATE P2, lot 9, condition 1).
+
+        ⚠️ Avec `ecrivains_simultanes > 1`, un lancement CIBLÉ sur une spec
+        (`/api/spec/lancer`) peut rester actif alors qu'un lancement PLUS
+        RÉCENT — ciblé ou non — bascule `self.courant` sur un AUTRE index.
+        `lancement_courant()` seul rendrait alors ce premier lancement
+        INVISIBLE aux deux usages qui doivent pourtant le voir : la garde de
+        confinement (`Handler._spec_en_cours`, qui protège `modifier()` et
+        `supprimer()` d'une écriture concurrente pendant qu'un agent
+        travaille sur la même spec) et `/api/etat.lancement_spec_id`.
+
+        Mesuré par exécution (GATE P2) : lancement ciblé sur X (202) puis
+        lancement générique (202, `self.courant` bascule) puis
+        `POST /api/spec/modifier` sur X PENDANT que l'agent y travaille
+        rendait `200` (fichier écrasé) au lieu de `409` — `lancement_courant()`
+        ne portait plus que le second lancement, sans rapport avec X.
+        """
+        return [l for l in self.lancements.values() if l.toujours_en_cours()]
 
     def interrompre_courant(self):
         lancement = self.lancement_courant()
@@ -930,8 +997,27 @@ class Handler(BaseHTTPRequestHandler):
             if chemin == "/":
                 return self._statique("index.html")
             if chemin == "/api/etat":
+                # feature-025, GATE P1 S1.7 : `spec_id_en_cours` vient de
+                # `Ecriture` (pas de `Etat`, qui n'en détient aucune
+                # instance) — calculé ici, jamais dans `Etat.instantane()`.
+                #
+                # ⚠️ Sur `lancements_actifs()` — TOUS les lancements encore en
+                # cours —, jamais sur le seul `lancement_courant()` (GATE P2,
+                # lot 9, condition 1, même raison que `_spec_en_cours`) : avec
+                # `ecrivains_simultanes > 1`, un lancement ciblé plus ancien
+                # peut rester actif alors que `self.courant` a basculé sur un
+                # lancement plus récent — ce champ resterait alors `None`
+                # (ou porterait le mauvais `spec_id`) tant qu'un AUTRE
+                # lancement ciblé est actif. Le premier trouvé PARMI ceux qui
+                # portent un `spec_id` fait foi : ce champ reste singulier,
+                # affichage seul (jamais utilisé comme garde — la garde
+                # réelle est `_spec_en_cours`, interrogée séparément par
+                # spec pour `modifier`/`supprimer`).
+                spec_id_en_cours = next(
+                    (l.spec_id for l in self._ecriture().lancements_actifs()
+                     if l.spec_id is not None), None)
                 return self._json(self.server.etat.instantane(
-                    self._peut_ecrire(jeton, distante), jeton_requis))
+                    self._peut_ecrire(jeton, distante), jeton_requis, spec_id_en_cours))
             if chemin == "/api/spec":
                 return self._spec(parametres)
             if chemin == "/api/diff":
@@ -1051,6 +1137,15 @@ class Handler(BaseHTTPRequestHandler):
             if chemin == "/api/spec/ecrire":
                 return self._spec_ecrire(corps)
 
+            if chemin == "/api/spec/lancer":
+                return self._spec_lancer(corps)
+
+            if chemin == "/api/spec/modifier":
+                return self._spec_modifier(corps)
+
+            if chemin == "/api/spec/supprimer":
+                return self._spec_supprimer(corps)
+
             # -- /api/lancer : 6) clé -------------------------------------------
             try:
                 donnees = json.loads(corps.decode("utf-8")) if corps else {}
@@ -1103,7 +1198,12 @@ class Handler(BaseHTTPRequestHandler):
                     contenu = fichier.read()
             except (OSError, UnicodeDecodeError):
                 return self._erreur(404, "spec illisible")
-            return self._json(dict(spec, contenu=contenu[:400_000]))
+            # `empreinte` (feature-025, GATE P1 S2.3) : SHA-256 du contenu
+            # COMPLET, pas de la version tronquée à 400 000 caractères —
+            # c'est elle que `POST /api/spec/modifier` doit recevoir en
+            # retour pour que le compare-and-write porte sur le VRAI fichier.
+            return self._json(dict(spec, contenu=contenu[:400_000],
+                                   empreinte=GS.empreinte(contenu)))
         return self._erreur(404, "spec inconnue")
 
     def _diff(self, parametres):
@@ -1289,6 +1389,149 @@ class Handler(BaseHTTPRequestHandler):
             code, message = erreur
             return self._erreur(code, message)
         return self._json(resultat, 201)
+
+    # -- feature-025 : actions sur une spec EXISTANTE ------------------------
+
+    def _spec_lancer(self, corps):
+        """`POST /api/spec/lancer {cle, spec_id}` — lance un cycle POUR une
+        spec désignée (feature-025, GATE P1 S1). Distinct de `/api/lancer` :
+        cette route ne connaît qu'une CLÉ.
+
+        `spec_id` ne construit JAMAIS un chemin : `gestion_spec.
+        eligible_au_lancement()` le résout par ÉGALITÉ STRICTE contre les
+        specs RÉELLEMENT découvertes, confiné deux fois (`vcs.chemin_sur()`
+        PUIS égalité exacte du chemin attendu). Seule la PREMIÈRE colonne
+        est éligible (S1.4) : `doing/`/`done/` reçoivent 409. `cle` reste
+        choisie dans `[commandes]` (`ADR-0005` amendé, pas révoqué) ;
+        `spec_id` y entre comme un ÉLÉMENT UNIQUE de l'`argv`, par
+        substitution d'un placeholder DÉCLARÉ (`config.
+        commande_pour_spec_id()`, S1.3) — jamais par concaténation.
+        """
+        donnees, erreur = self._corps_spec(corps)
+        if erreur is not None:
+            code, message = erreur
+            return self._erreur(code, message)
+        cle = donnees.get("cle")
+        spec_id = donnees.get("spec_id")
+        if not isinstance(cle, str) or not cle:
+            return self._erreur(400, "clé manquante")
+        if not isinstance(spec_id, str) or not spec_id:
+            return self._erreur(400, "spec_id manquant")
+
+        config = self.server.etat.config
+        # ⚠️ SEUL cas pour lequel A5/S1.1 exigent explicitement zéro effet :
+        # toute la résolution ci-dessous précède tout appel à
+        # `Ecriture.lancer()`, donc tout `Popen`.
+        _, erreur = GS.eligible_au_lancement(config, spec_id)
+        if erreur is not None:
+            code, message = erreur
+            return self._erreur(code, message)
+
+        argv, erreur = config.commande_pour_spec_id(cle, spec_id)
+        if erreur is not None:
+            code, message = erreur
+            return self._erreur(code, message)
+        if not config.budget_transmissible(cle):
+            return self._erreur(503, "plafond de dépense non transmissible pour cette commande")
+        argv = argv + ["--max-budget-usd", str(config.budget_max_usd())]
+
+        ecriture = self._ecriture()
+        lancement, raison = ecriture.lancer(cle, argv, self.server.etat.racine,
+                                             self.server.etat.journal, spec_id=spec_id)
+        if lancement is None:
+            return self._erreur(409, raison or "un écrivain occupe déjà la place")
+
+        # Même discipline que `_lancer()` (D3, bug-014) : `command_head`
+        # passe par `RC.command_head`, jamais l'`argv` brut.
+        evenement = {
+            "hook_event_name": "LancementDemande",
+            "cle": cle,
+            "spec_id": spec_id,
+            "pid_fils": lancement.pid,
+        }
+        tete = RC.command_head(" ".join(argv))
+        if tete:
+            evenement["command_head"] = tete
+        _ecrire_evenement(self.server.etat.journal, evenement)
+        return self._json({"lance": True, "cle": cle, "spec_id": spec_id,
+                           "pid": lancement.pid}, 202)
+
+    def _spec_en_cours(self, spec_id):
+        """Vrai si un lancement encore actif porte CE `spec_id` (feature-025,
+        GATE P1 S2.4) — même source que `/api/etat.lancement_spec_id`,
+        interrogée directement ici pour éviter toute course entre deux
+        lectures indépendantes de `Ecriture.lancement_courant()`.
+
+        ⚠️ Sur `Ecriture.lancements_actifs()` — TOUS les lancements encore en
+        cours —, JAMAIS sur `lancement_courant()` seul (GATE P2, lot 9,
+        condition 1) : avec `ecrivains_simultanes > 1`, un lancement CIBLÉ
+        sur `spec_id` peut rester actif alors qu'un lancement plus récent a
+        déjà basculé `self.courant` ailleurs — `lancement_courant()` le
+        rendrait invisible, et `modifier()`/`supprimer()` s'exécuteraient
+        SUR la spec qu'un agent est en train de traiter."""
+        return any(l.spec_id == spec_id for l in self._ecriture().lancements_actifs())
+
+    def _spec_modifier(self, corps):
+        """`POST /api/spec/modifier {spec_id, empreinte, contenu}` — modifie
+        une spec existante par compare-and-write ATOMIQUE (feature-025, GATE
+        P1 S2.3). `empreinte` doit être celle rendue par le dernier
+        `GET /api/spec?id=...` ; un écart — édition concurrente, hors du
+        cockpit ou non — rend `409`, fichier intact."""
+        donnees, erreur = self._corps_spec(corps)
+        if erreur is not None:
+            code, message = erreur
+            return self._erreur(code, message)
+        spec_id = donnees.get("spec_id")
+        if not isinstance(spec_id, str) or not spec_id:
+            return self._erreur(400, "spec_id manquant")
+
+        resultat, erreur = GS.modifier(
+            self.server.etat.config, spec_id,
+            donnees.get("empreinte"), donnees.get("contenu"),
+            en_cours=self._spec_en_cours(spec_id))
+        if erreur is not None:
+            code, message = erreur
+            return self._erreur(code, message)
+        return self._json(resultat, 200)
+
+    def _spec_supprimer(self, corps):
+        """`POST /api/spec/supprimer {spec_id, confirmation_nom}` — le SEUL
+        chemin DESTRUCTIF du cockpit (feature-025, GATE P1 S2). Ne supprime
+        JAMAIS sans confirmation nommant EXACTEMENT la spec (S2.8), sans
+        vérifier que git peut effectivement la restaurer (S2.6, Règle
+        absolue n°4), ni pendant qu'un lancement porte sur elle (S2.4).
+
+        La réponse porte le plan de retour arrière — `git checkout <sha
+        HEAD> -- <chemin>` — EXÉCUTABLE tel quel : ce serveur ne l'exécute
+        jamais lui-même, c'est le plan ÉCRIT que la Règle absolue n°4
+        exige, pas un geste automatique de plus.
+        """
+        donnees, erreur = self._corps_spec(corps)
+        if erreur is not None:
+            code, message = erreur
+            return self._erreur(code, message)
+        spec_id = donnees.get("spec_id")
+        if not isinstance(spec_id, str) or not spec_id:
+            return self._erreur(400, "spec_id manquant")
+
+        resultat, erreur = GS.supprimer(
+            self.server.etat.config, spec_id,
+            donnees.get("confirmation_nom"),
+            en_cours=self._spec_en_cours(spec_id))
+        if erreur is not None:
+            code, message = erreur
+            return self._erreur(code, message)
+
+        # Journalisé APRÈS l'effet, jamais avant (même discipline que
+        # `LancementTermine`) : `spec_id` et `sha` sont dans
+        # `_CHAMPS_PUBLICS`, sinon l'événement serait invisible au
+        # navigateur (piège A8b, GATE P1 S2.12).
+        _ecrire_evenement(self.server.etat.journal, {
+            "hook_event_name": "SpecSupprimee",
+            "spec_id": spec_id,
+            "sha": resultat["retour_arriere"]["sha"],
+        })
+        return self._json(resultat, 200)
 
     def log_message(self, format, *args):
         # Le journal par défaut écrit une ligne par requête, flux SSE compris.

@@ -169,6 +169,28 @@ class Config(dict):
             return list(argv)
         return None
 
+    def commande_pour_spec_id(self, cle, spec_id):
+        """`argv` de `cle`, `spec_id` substitué comme ÉLÉMENT UNIQUE de la
+        liste, jamais par concaténation de chaîne (feature-025, GATE P1
+        S1.3 — `ADR-0005` amendé, pas révoqué : la clé reste choisie dans
+        `[commandes]`, seule la substitution est neuve).
+
+        L'emplacement est un PLACEHOLDER DÉCLARÉ, le littéral `"{spec_id}"`,
+        présent EXACTEMENT une fois dans l'`argv` de `cle` — jamais deviné,
+        jamais ajouté d'office. Une clé sans cet emplacement (ou en portant
+        plus d'un) est un `400` : ce n'est pas une commande prévue pour être
+        ciblée sur une spec, quelle que soit sa validité par ailleurs pour
+        `/api/lancer`.
+
+        Rend `(argv, None)` ou `(None, (code, message))`.
+        """
+        argv = self.commande(cle)
+        if argv is None:
+            return None, (404, "clé de commande inconnue")
+        if argv.count("{spec_id}") != 1:
+            return None, (400, "commande sans emplacement déclaré pour spec_id")
+        return [spec_id if tok == "{spec_id}" else tok for tok in argv], None
+
     def agents_ouvrants(self):
         """Les `agent_type` dont l'invocation ouvre un cycle, chaînes non vides.
 

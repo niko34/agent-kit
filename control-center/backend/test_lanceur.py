@@ -14,8 +14,9 @@ Trois familles de cas comptent ici :
    récolte le processus, le thread de lecture — jamais un `waitpid` concurrent
    depuis ailleurs.
 2. **Le tampon circulaire et sa troncature ANNONCÉE** — jamais silencieuse.
-3. **`sortie_depuis`** rend exactement les sept champs attendus, y compris les
-   deux derniers ajoutés : `debut` et `code_retour`.
+3. **`sortie_depuis`** rend exactement les huit champs attendus (feature-025,
+   GATE P1 S1.7 : `spec_id` s'ajoute aux sept déjà couverts, dont les deux
+   plus anciens `debut` et `code_retour`).
 """
 
 import os
@@ -64,11 +65,23 @@ def main():
     check("test_nominal_code_retour_zero", d["code_retour"] == 0)
     check("test_nominal_sortie_contient_bonjour", "bonjour" in d["lignes"])
     for champ in ("etat", "lignes", "curseur", "tronque", "derniere_activite",
-                  "debut", "code_retour"):
+                  "debut", "code_retour", "spec_id"):
         check("test_sortie_depuis_porte_le_champ_%s" % champ, champ in d,
               "champs obtenus : %r" % sorted(d))
-    check("test_sortie_depuis_champs_exactement_sept", len(d) == 7,
+    check("test_sortie_depuis_champs_exactement_huit", len(d) == 8,
           "champs en trop ou manquants : %r" % sorted(d))
+    check("test_sortie_depuis_spec_id_none_par_defaut", d["spec_id"] is None,
+          "un `Lancement` sans `spec_id` déclaré ne doit rien inventer")
+
+    # --- `spec_id` mémorisé tel quel (feature-025, GATE P1 S1.7) ------------
+    lancement_cible = L.Lancement("t", [_PY, "-c", "print('ok')"], cwd=".",
+                                   spec_id="feature-025-actions-du-backlog")
+    lancement_cible.demarrer_lecture()
+    _attendre(lambda: not lancement_cible.toujours_en_cours())
+    d_cible = lancement_cible.sortie_depuis(0)
+    check("test_sortie_depuis_spec_id_memorise",
+          d_cible["spec_id"] == "feature-025-actions-du-backlog",
+          "obtenu %r" % d_cible["spec_id"])
 
     # --- échec : code de retour non nul --------------------------------------
     lancement = L.Lancement("t", [_PY, "-c", "import sys; sys.exit(3)"], cwd=".")

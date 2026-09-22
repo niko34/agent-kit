@@ -131,16 +131,20 @@ def main():
         #    est EXACTEMENT l'ensemble ci-dessous (feature-008 : ADR-0027 y
         #    ajoute `/api/spec/brouillon` et `/api/spec/ecrire` — la première
         #    n'écrit rien mais doit rester dans cette liste pour être
-        #    ATTEIGNABLE, `do_POST` n'en routant aucun chemin absent d'ici) :
-        #    y ajouter une route sans la déclarer ici (ou l'inverse) fait
-        #    échouer ce test.
+        #    ATTEIGNABLE, `do_POST` n'en routant aucun chemin absent d'ici ;
+        #    feature-025, GATE P1 S2.1, y ajoute `/api/spec/lancer`,
+        #    `/api/spec/modifier` et `/api/spec/supprimer` — TOUJOURS en
+        #    `POST`, PAS de `do_PUT` : `PIEGES §34`) : y ajouter une route
+        #    sans la déclarer ici (ou l'inverse) fait échouer ce test.
         methodes_do = {n for n in dir(SRV.Handler) if n.startswith("do_")}
         check("test_do_methodes_limitees_a_get_et_post",
               methodes_do == {"do_GET", "do_POST"},
               "trouvées : %r" % sorted(methodes_do))
         check("test_routes_ecriture_fermees",
               set(SRV._ROUTES_ECRITURE) == {"/api/lancer", "/api/interrompre",
-                                             "/api/spec/brouillon", "/api/spec/ecrire"},
+                                             "/api/spec/brouillon", "/api/spec/ecrire",
+                                             "/api/spec/lancer", "/api/spec/modifier",
+                                             "/api/spec/supprimer"},
               "trouvées : %r" % sorted(SRV._ROUTES_ECRITURE))
 
         # --- routes de lecture ----------------------------------------------

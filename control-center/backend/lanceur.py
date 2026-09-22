@@ -107,9 +107,15 @@ class Lancement:
     en garder simultanément (autant que de verrous obtenus).
     """
 
-    def __init__(self, cle, argv, cwd, sur_fin=None):
+    def __init__(self, cle, argv, cwd, sur_fin=None, spec_id=None):
         self.cle = cle
         self.argv = list(argv)
+        # `spec_id` (feature-025, GATE P1 S1.7) : `None` pour un lancement
+        # par la route générique `/api/lancer` (clé fermée seule) ; la
+        # spec CIBLÉE pour un lancement par `/api/spec/lancer`. Mémorisé
+        # tel quel, jamais recalculé — sert de source à `cycle-title` et à
+        # la garde de non-modification concurrente (S2.4).
+        self.spec_id = spec_id
         self.debut = time.time()
         self.verrou = None  # rempli par l'appelant après acquisition
         self._sur_fin = sur_fin
@@ -224,6 +230,9 @@ class Lancement:
                 "derniere_activite": self.derniere_activite,
                 "debut": self.debut,
                 "code_retour": self.code_retour,
+                # Additif (feature-025, GATE P1 S1.7) : `None` pour un
+                # lancement par clé seule, sinon la spec ciblée.
+                "spec_id": self.spec_id,
             }
 
     def toujours_en_cours(self):
