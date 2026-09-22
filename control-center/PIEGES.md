@@ -802,6 +802,35 @@ pas reproductible**, et toute comparaison ultérieure à ce chiffre conclura à
 tort. Un écart inexpliqué se vérifie d'abord contre *qui écrivait*, avant d'être
 imputé au code.
 
+## 59. Un préfixe devant l'identifiant annule le témoin de traversée classique
+
+Quand un chemin se compose `<racine>/<prefixe><identifiant><suffixe>`, le
+témoin habituel `../../etc/passwd` **ne s'échappe pas** — parce que
+`prefixe..` n'est pas littéralement `..`, et que `realpath` ne le traite donc
+pas comme un composant de remontée.
+
+Mesuré, avec le motif `agent-%s.jsonl` :
+
+```
+agent_id = "../../etc/passwd"          →  <racine>/subagents/etc/passwd.jsonl   CONFINÉ
+agent_id = "x/../../../../etc/passwd"  →  /etc/passwd.jsonl                     S'ÉCHAPPE
+agent_id = ".."                        →  <racine>/subagents/agent-...jsonl     CONFINÉ
+```
+
+Seul un `/` **intercalé** réintroduit un `..` **pur** comme composant séparé,
+et c'est celui-là qui sort.
+
+**Conséquence de test, et c'est elle qui coûte** : un test de confinement bâti
+sur le témoin classique reste **vert même quand on retire entièrement la
+garde**. Il ne prouve rien, et il inspire confiance. Le cas a été trouvé en
+retirant vraiment la garde et en observant que le test ne bronchait pas —
+jamais en le relisant.
+
+**Règle** : un témoin de traversée se **vérifie**, il ne se suppose pas.
+Construire le chemin final avec le témoin, appeler `realpath`, et **constater
+qu'il sort de la racine** — avant de s'en servir comme preuve. Un témoin qui
+ne s'échappe pas ne teste que lui-même.
+
 ## Voir aussi
 
 - `docs/DESIGN-SYSTEM.md` — règles de couleur, de surface et de typographie

@@ -127,6 +127,14 @@
         <span class="summary-icon" aria-hidden="true">●</span>
         <span class="summary-copy"><strong id="summary-active">—</strong><span>agents actifs</span></span>
       </div>
+      <!-- feature-023 (lot 12) : agrégat des SEULS passages "connu" du cycle
+           affiché — `resumerTokensCycle`, app.js. Valeur initiale « — »,
+           jamais « 0 token » : le premier rafraîchissement peut mettre du
+           temps, et « 0 » se lirait comme une mesure. -->
+      <div class="summary-item">
+        <span class="summary-icon" aria-hidden="true">◫</span>
+        <span class="summary-copy"><strong id="summary-tokens">—</strong><span>consommés</span></span>
+      </div>
     </section>
 
     <!-- Zone de travail (classe adoptée `workspace`) : le graphe d'agents
@@ -217,10 +225,19 @@
           </div>
           <div class="sheet-metrics" id="sheet-metrics">
             <div class="metric"><span>Anneau · état</span><strong id="selected-state">—</strong></div>
+            <!-- feature-023 (lot 12) : `selectionnerPassage` (app.js) pose la
+                 VALEUR ; le libellé dit déjà ce qu'elle compte. Trois textes
+                 possibles : un chiffre (connu), « lecture partielle »
+                 (budget de lecture épuisé, S5.6) ou « indisponible »
+                 (absence propre) — jamais « 0 ». -->
+            <div class="metric"><span>Centre · tokens</span><strong id="selected-tokens">—</strong></div>
             <div class="metric"><span>Graduations · outils</span><strong id="selected-tools">—</strong></div>
             <div class="metric"><span>Points · fichiers</span><strong id="selected-files">—</strong></div>
             <div class="metric"><span>Sous le disque · durée</span><strong id="selected-duration">—</strong></div>
           </div>
+          <!-- F2 (feature-023) : la bottom sheet DIT ce que le chiffre
+               compte — texte FIXE, jamais recalculé (§16 PIEGES). -->
+          <p class="motion-note">Le compte de tokens additionne l'entrée et la sortie du passage : il mesure le travail produit, pas son coût.</p>
         </section>
 
         <!-- Fil d'état du dépôt (classe adoptée `repo-strip`, F0) — données
@@ -453,7 +470,11 @@
       <span class="tool-ticks"></span>
       <span class="agent-face">
         <span class="agent-code">??</span>
-        <span class="agent-data"><span class="file-dots"><i></i><i></i><i></i></span></span>
+        <!-- feature-023 (lot 12) : `.token-value` adopté (F0, lot 12) — posé
+             ici en STATIQUE pour F3a (fidélité), comme `.file-dots` déjà ;
+             le rendu RÉEL, conditionnel, est construit par `app.js`
+             (`construireDisqueAgent`), jamais lu depuis ce gabarit. -->
+        <span class="agent-data"><span class="token-value">—</span><span class="file-dots"><i></i><i></i><i></i></span></span>
       </span>
     </button>
     <span class="agent-name"><strong>—</strong></span>

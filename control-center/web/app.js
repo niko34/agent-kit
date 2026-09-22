@@ -931,6 +931,69 @@ function libelleEtatDisque(etat) {
   return "non lancé";
 }
 
+/* feature-023 (lot 12) — trois états pour le compteur de tokens d'UN
+ * passage, jamais deux (décision du cycle, notes d'implémentation §5) :
+ *
+ *   "connu"   : `agentId` figure dans `tokens_par_passage.par_agent` — la
+ *               somme entrée+sortie est un FAIT mesuré.
+ *   "partiel" : `agentId` en est absent, mais la lecture GLOBALE a été
+ *               coupée par le budget (`tokens_par_passage.partiel === true`,
+ *               S5.6) — on ne SAIT PAS si ce passage a des tokens, ce qui
+ *               est différent d'« absent ».
+ *   "absent"  : `agentId` en est absent et la lecture n'a PAS été coupée
+ *               (agent inconnu du relevé, transcript introuvable/illisible
+ *               — S5.7 — ou backend plus ancien sans le champ du tout) :
+ *               absence PROPRE, jamais confondue avec un zéro.
+ *
+ * ⚠️ Ne dépend QUE de `tokensParPassage` — jamais de `agentGeo.etat` ni
+ * d'aucun autre champ de géométrie : l'anneau (`--progress`, `app.css`)
+ * reste piloté par l'état SEUL (ADR-0031 §5), ce compteur ne le recouple
+ * PAS. `agentId` peut être `null` (agent ouvrant, `diagramme.js`) : traité
+ * comme "absent", jamais comme une clé forgée. */
+function etatTokensAgent(agentId, tokensParPassage) {
+  const parAgent = (tokensParPassage && tokensParPassage.par_agent) || {};
+  if (agentId && Object.prototype.hasOwnProperty.call(parAgent, agentId)) {
+    const compteur = parAgent[agentId] || {};
+    const entree = typeof compteur.input_tokens === "number" ? compteur.input_tokens : 0;
+    const sortie = typeof compteur.output_tokens === "number" ? compteur.output_tokens : 0;
+    return { etat: "connu", total: entree + sortie };
+  }
+  if (tokensParPassage && tokensParPassage.partiel) return { etat: "partiel", total: null };
+  return { etat: "absent", total: null };
+}
+
+/* Formatage — repris du prototype (`formatCompact`/`formatNumber`,
+ * l.888-889 de la maquette), AUCUNE dépendance à `Intl` : absent du bac à
+ * sable `vm` des harnais `test_app_*.js` (PIEGES §38/§56 : une API globale
+ * non fournie par le harnais lève au premier appel, avant le premier cas —
+ * vérifié, `Intl` n'existe nulle part dans les sandbox de ce dépôt). */
+function formatTokensCompact(valeur) {
+  if (valeur >= 1000) return (valeur / 1000).toFixed(1).replace(".", ",") + "k";
+  return String(Math.round(valeur));
+}
+function formatTokensLong(valeur) {
+  return String(Math.round(valeur)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+}
+
+/* Résumé du cycle affiché (`summary-tokens`) : somme des SEULS passages
+ * "connu" parmi `geo.agents` — jamais une extrapolation sur les passages
+ * "absent"/"partiel". `partielGlobal` se dit TOUJOURS explicitement dans le
+ * texte plutôt que d'être tu (règle 5 des notes cycle 2 §5 : la bottom
+ * sheet — et ce résumé — disent ce qui manque). */
+function resumerTokensCycle(geo, tokensParPassage) {
+  const agents = (geo && geo.agents) || [];
+  let total = 0;
+  let connus = 0;
+  agents.forEach((a) => {
+    const info = etatTokensAgent(a.agentId, tokensParPassage);
+    if (info.etat === "connu") { total += info.total; connus += 1; }
+  });
+  const partielGlobal = !!(tokensParPassage && tokensParPassage.partiel);
+  if (!connus) return partielGlobal ? "lecture partielle" : "aucun token mesuré";
+  return formatTokensCompact(total) + " token" + (total > 1 ? "s" : "") +
+    (partielGlobal ? " · lecture partielle" : "");
+}
+
 /* F11 (feature-021, cycle 2, lot 5) — la bottom sheet DIT ce que le chiffre
  * compte : `#selected-task` porte une PHRASE, jamais un chiffre nu sans
  * légende (§16 PIEGES). Un échec ne se lit jamais par-dessus « sans
@@ -949,12 +1012,19 @@ function tacheDisque(agentGeo) {
  * chiffre compte (« Graduations · outils », « Points · fichiers »…) ; ce
  * qu'on pose ici est la VALEUR, jamais un chiffre sans le libellé qui
  * l'accompagne dans le DOM. */
-function selectionnerPassage(agentGeo, sigle) {
+function selectionnerPassage(agentGeo, sigle, infoTokens) {
   $("selected-code").textContent = sigle;
   $("selected-title").textContent = agentGeo.agent;
   $("selected-task").textContent = tacheDisque(agentGeo);
   $("selected-state").textContent = libelleEtatDisque(agentGeo.etat)
     + (agentGeo.echec ? " · échec" : "") + (agentGeo.sansCloture ? " · sans clôture" : "");
+  /* F2 (feature-023, lot 12) : la VALEUR seule ici, le libellé du `.metric`
+   * (« Centre · tokens », index.html) dit déjà ce qu'elle compte ; la phrase
+   * qui dit COMMENT elle est comptée (entrée+sortie, travail pas coût) est
+   * un texte fixe du gabarit, pas recalculée à chaque sélection. */
+  const jetons = infoTokens || { etat: "absent", total: null };
+  $("selected-tokens").textContent = jetons.etat === "connu" ? formatTokensLong(jetons.total)
+    : jetons.etat === "partiel" ? "lecture partielle" : "indisponible";
   $("selected-tools").textContent =
     agentGeo.outils + " appel" + (agentGeo.outils > 1 ? "s" : "") + " d'outil enregistré" + (agentGeo.outils > 1 ? "s" : "");
   $("selected-files").textContent = agentGeo.fichiersTotal
@@ -973,7 +1043,7 @@ function selectionnerPassage(agentGeo, sigle) {
  * quatre représentations F16 (échec, sans clôture, agent principal) sont
  * des AJOUTS de classe, jamais une variante des 3 états `state-*` — la
  * grammaire du prototype n'a QUE ces 3 états (ADR-0031 §3). */
-function construireDisqueAgent(agentGeo, sigles) {
+function construireDisqueAgent(agentGeo, sigles, tokensParPassage) {
   const wrap = el("div", "agent-wrap");
   definirVariable(wrap, "--x", agentGeo.cx + "px");
   definirVariable(wrap, "--y", agentGeo.cy + "px");
@@ -985,13 +1055,24 @@ function construireDisqueAgent(agentGeo, sigles) {
   const noeud = el("button", classes.join(" "));
   noeud.type = "button";
   const sigle = (sigles && sigles.get(agentGeo.agent)) || "??";
+  /* feature-023 (lot 12) : calculé UNE FOIS ici, réutilisé pour le centre
+   * du disque ET pour la bottom sheet au clic (`selectionnerPassage`) — la
+   * seule source de vérité est `etatTokensAgent`, jamais un second calcul. */
+  const infoTokens = etatTokensAgent(agentGeo.agentId, tokensParPassage);
   noeud.setAttribute("aria-label", agentGeo.agent + ", " + libelleEtatDisque(agentGeo.etat)
     + (agentGeo.echec ? ", en échec" : "")
     + (agentGeo.sansCloture ? ", sans clôture" : "")
-    + (agentGeo.principal ? ", agent principal" : ""));
+    + (agentGeo.principal ? ", agent principal" : "")
+    /* La VALEUR est portée à l'accessible name ici : le bouton porte un
+     * `aria-label` explicite, qui MASQUE le texte de ses descendants
+     * (`.token-value` compris) pour la technologie d'assistance — comme
+     * c'est déjà le cas pour `.agent-code` (le sigle). */
+    + (infoTokens.etat === "connu" ? ", " + formatTokensLong(infoTokens.total) + " tokens" : "")
+    + (infoTokens.etat === "partiel" ? ", lecture de tokens partielle" : ""));
   /* F11 : cliquer le disque remplit la bottom sheet — voir
-   * `selectionnerPassage`, qui ne relit que `agentGeo`, déjà calculé. */
-  noeud.addEventListener("click", () => selectionnerPassage(agentGeo, sigle));
+   * `selectionnerPassage`, qui ne relit que `agentGeo`/`infoTokens`, déjà
+   * calculés. */
+  noeud.addEventListener("click", () => selectionnerPassage(agentGeo, sigle, infoTokens));
 
   if (agentGeo.principal) {
     const anneauRole = el("span", "role-ring");
@@ -1008,18 +1089,27 @@ function construireDisqueAgent(agentGeo, sigles) {
 
   const face = el("span", "agent-face");
   face.appendChild(el("span", "agent-code", sigle));
-  /* F15 : le centre du disque ne porte AUCUN chiffre à ce cycle (0 token
-   * sur 14 372 événements mesurés — le lire suppose les transcripts de
-   * sous-agent, hors GATE de ce cycle, `feature-023`). `.agent-data` ne
-   * contient QUE les pastilles de fichiers, une donnée réellement mesurée
-   * (PIEGES §16) — la branche « chiffre au centre » n'est PAS écrite : le
-   * nœud n'existe pas (pas de `.token-value` posé), donc `F4b` peut
-   * assertionner son ABSENCE sans qu'aucune lecture ne confonde « pas de
-   * donnée » et « zéro » (règle 1, notes d'implémentation cycle 2 §5).
-   * Le disque reste DÉGRADABLE et JAMAIS à trous : `place-content:center`
-   * (`.agent-face`) recentre le seul sigle qui reste, aucun espace n'est
-   * réservé pour un chiffre absent. */
+  /* F15 (feature-023, lot 12) — la branche « chiffre au centre » est
+   * maintenant ÉCRITE, mais SEULEMENT quand `infoTokens.etat === "connu"` :
+   *   - "connu"   : `.token-value` posé, texte = compte compact (§16 PIEGES,
+   *                 donnée réellement mesurée, jamais un zéro fabriqué) ;
+   *   - "partiel" : `.token-value` posé avec un glyphe DISTINCT (« … », pas
+   *                 un chiffre, pas le « ⋯ » de `.agent-flag--sans-cloture`
+   *                 — un mélange romprait la règle 1, notes cycle 2 §5 : la
+   *                 lecture ne doit JAMAIS confondre « on ne sait pas si ce
+   *                 passage a des tokens » avec un autre état) ;
+   *   - "absent"  : le nœud N'EXISTE PAS — comme avant ce lot — le disque
+   *                 reste DÉGRADABLE et JAMAIS à trous, `place-content:
+   *                 center` (`.agent-face`) recentre ce qui reste.
+   * `.agent-data` continue de porter les pastilles de fichiers (donnée
+   * réellement mesurée, PIEGES §16) que l'un des trois cas ci-dessus soit
+   * vrai ou non. */
   const donnees = el("span", "agent-data");
+  if (infoTokens.etat === "connu") {
+    donnees.appendChild(el("span", "token-value", formatTokensCompact(infoTokens.total)));
+  } else if (infoTokens.etat === "partiel") {
+    donnees.appendChild(el("span", "token-value token-value--partiel", "…"));
+  }
   const points = el("span", "file-dots");
   for (let i = 0; i < 3; i++) {
     points.appendChild(el("i", i < agentGeo.fichiersAllumes ? "on" : ""));
@@ -1064,7 +1154,7 @@ function classeConnecteur(etat) {
  * au prototype (démo fixe à 388px), la largeur réelle dépend du nombre de
  * créneaux — `.graphe-scroll` défile horizontalement plutôt que de tasser
  * les disques (écart assumé, voir app.css). */
-function construireGrapheAgents(geo, sigles) {
+function construireGrapheAgents(geo, sigles, tokensParPassage) {
   const scroll = el("div", "graphe-scroll");
   scroll.setAttribute("tabindex", "0");
   scroll.setAttribute("role", "group");
@@ -1094,7 +1184,7 @@ function construireGrapheAgents(geo, sigles) {
   });
   plan.appendChild(svg);
 
-  geo.agents.forEach((a) => plan.appendChild(construireDisqueAgent(a, sigles)));
+  geo.agents.forEach((a) => plan.appendChild(construireDisqueAgent(a, sigles, tokensParPassage)));
   scroll.appendChild(plan);
   return scroll;
 }
@@ -1104,7 +1194,7 @@ function construireGrapheAgents(geo, sigles) {
  * `wf.passages` sur un backend plus ancien. Un cycle sans aucun segment
  * retombe sur `null` : l'appelant garde alors le seul état vide déjà
  * affiché par la table des passages. */
-function construireDiagramme(wf, sigles) {
+function construireDiagramme(wf, sigles, tokensParPassage) {
   const segments = wf.segments || wf.passages || [];
   if (!segments.length) return null;
   /* Garde (bug-020, conservée) : `diagramme.js` est chargé en `<script>`
@@ -1118,7 +1208,7 @@ function construireDiagramme(wf, sigles) {
   const geo = disposer(segments);
   const enveloppe = document.createDocumentFragment();
   enveloppe.appendChild(el("p", "note", "l'écart horizontal sert la lisibilité, il ne mesure pas le temps"));
-  enveloppe.appendChild(construireGrapheAgents(geo, sigles));
+  enveloppe.appendChild(construireGrapheAgents(geo, sigles, tokensParPassage));
   return enveloppe;
 }
 
@@ -1171,6 +1261,7 @@ function rendreGrapheCyclePrincipal(etat) {
     $("cycle-status").textContent = "Aucun cycle sélectionné";
     $("summary-step").textContent = "—";
     $("summary-time").textContent = "00:00";
+    $("summary-tokens").textContent = "—";
     $("motion-note").textContent = "aucun passage à afficher pour l'instant — invoquez un agent depuis la section Développer";
     $("cycle-indice").textContent = "—";
     /* #cycle-title (F0, prototype l.687) : JAMAIS une chaîne vide — c'est la
@@ -1217,16 +1308,23 @@ function rendreGrapheCyclePrincipal(etat) {
     ? "un agent est actif : son disque grandit et révèle ses données"
     : "cycle " + info.libelle;
 
-  if (!segments.length || typeof disposer !== "function") return;
+  if (!segments.length || typeof disposer !== "function") {
+    $("summary-tokens").textContent = "—";
+    return;
+  }
   const geo = disposer(segments);
-  zone.appendChild(construireGrapheAgents(geo, sigles));
+  /* feature-023 (lot 12) : `etat.tokens_par_passage` est additif — absent
+   * sur un backend plus ancien, `resumerTokensCycle`/`etatTokensAgent`
+   * dégradent alors vers "absent" pour chaque passage, jamais une erreur. */
+  $("summary-tokens").textContent = resumerTokensCycle(geo, etat.tokens_par_passage);
+  zone.appendChild(construireGrapheAgents(geo, sigles, etat.tokens_par_passage));
 }
 
 
-function construireDetailCycle(wf, sigles) {
+function construireDetailCycle(wf, sigles, tokensParPassage) {
   const detail = document.createDocumentFragment();
   detail.appendChild(construireProprietes(wf));
-  const diagramme = construireDiagramme(wf, sigles);
+  const diagramme = construireDiagramme(wf, sigles, tokensParPassage);
   if (diagramme) detail.appendChild(diagramme);
   detail.appendChild(construireTablePassages(wf, sigles));
   detail.appendChild(construireChaineEtNotes(wf));
@@ -1293,7 +1391,7 @@ function rendreCycles(etat) {
     /* Le contenu est construit que le cycle soit ouvert ou non (item M/C :
      * jamais retiré du DOM) — coûte une reconstruction de plus au clic, en
      * échange d'un état de dépliement qui ne perd jamais rien au clavier. */
-    detail.appendChild(construireDetailCycle(wf, sigles));
+    detail.appendChild(construireDetailCycle(wf, sigles, etat.tokens_par_passage));
     li.appendChild(detail);
     zone.appendChild(li);
   });

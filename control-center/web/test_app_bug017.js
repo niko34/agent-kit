@@ -264,9 +264,9 @@ function creerBac() {
     "bouton-generer-brouillon", "redaction-corps", "pilotage-corps", "workflows",
     "legende-cycles", "pied-cycles", "fichiers", "timeline", "tiroir-contenu",
     "tiroir-fermer", "tiroir-titre", "main-content", "a11y-announcement",
-    "summary-step", "summary-time", "summary-active", "cycle-status", "motion-note",
+    "summary-step", "summary-time", "summary-active", "summary-tokens", "cycle-status", "motion-note",
     "cycle-canvas", "selected-code", "selected-title", "selected-task",
-    "selected-state", "selected-tools", "selected-files", "selected-duration",
+    "selected-state", "selected-tokens", "selected-tools", "selected-files", "selected-duration",
     "sheet-metrics", "sheet-toggle",
     "backlog-title", "backlog-count", "backlog-column-count",
     // feature-022 (lot 11) : `app.js` touche ces id SANS CONDITION au

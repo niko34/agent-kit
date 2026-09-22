@@ -1103,16 +1103,20 @@ dialog p { color: var(--muted); margin: 8px 0 18px; }
   gap: 1px;
   text-align: center;
 }
-/* F15 : le centre du disque n'affiche AUCUN chiffre à ce cycle (0 token sur
- * 14 372 événements mesurés, `ADR-0031 §5`) — `.agent-code` porte le SIGLE
- * SEUL, centré sur les deux axes du disque (règle 1, notes cycle 2 §5).
- * `.token-value`/`.agent-data` restent déclarés (le prototype les porte,
- * F1/F3 les couvrent) mais leur nœud n'est JAMAIS posé par `app.js` à ce
- * lot — branche « centre avec chiffre » NON ÉCRITE, réservée à
- * `feature-023` et son propre GATE. Le disque reste DÉGRADABLE : aucun
- * espace n'est réservé pour un chiffre absent (§9 DESIGN-SYSTEM, PIEGES
- * §15 — un `visibility:hidden` laisserait le trou), `place-content:center`
- * centre le seul sigle qui reste. */
+/* F15 (feature-023, lot 12) : le centre du disque affiche le sigle, PLUS le
+ * chiffre `input+output` QUAND il est connu — `.agent-code` porte toujours
+ * le sigle ; `.token-value` est posé par `app.js` (`construireDisqueAgent`)
+ * SEULEMENT si un compteur existe pour ce passage, jamais à titre
+ * décoratif. Trois états CÔTÉ JS (`etatTokensAgent`), pas ici :
+ *   - connu   : `.token-value` (chiffre compact) ;
+ *   - partiel : `.token-value.token-value--partiel` (glyphe « … », JAMAIS
+ *     un chiffre ni le « ⋯ » du drapeau sans-clôture — un mélange
+ *     confondrait « on ne sait pas » avec un autre état, PIEGES/notes
+ *     cycle 2 règle 1) ;
+ *   - absent  : le nœud n'existe PAS.
+ * Le disque reste DÉGRADABLE : aucun espace n'est réservé pour un chiffre
+ * absent (§9 DESIGN-SYSTEM, PIEGES §15 — un `visibility:hidden` laisserait
+ * le trou), `place-content:center` centre ce qui reste. */
 .agent-code { font-weight: 500; font-size: 12px; letter-spacing: .02em; }
 .agent-data {
   display: grid;
@@ -1123,6 +1127,12 @@ dialog p { color: var(--muted); margin: 8px 0 18px; }
 }
 .state-active .agent-data, .state-done .agent-data { opacity: 1; transform: translateY(0); }
 .token-value { color: var(--primary-ink); font-size: 12px; font-variant-numeric: tabular-nums; }
+/* CLASSES_AJOUTEES (test_conformite_classes.js) : glyphe distinct d'un
+ * chiffre (seconde dimension, jamais la seule couleur) pour le relevé
+ * INTERROMPU PAR LE BUDGET (S5.6) — jamais confondu avec l'absence propre
+ * (pas de nœud du tout) ni avec `.agent-flag--sans-cloture` (glyphe
+ * différent, sémantique différente : un flux de tokens, pas un cycle). */
+.token-value--partiel { color: var(--muted); font-style: italic; letter-spacing: .5px; }
 .file-dots { display: flex; justify-content: center; gap: 3px; margin-top: 2px; }
 .file-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--teal); opacity: .35; }
 .file-dots i.on { opacity: 1; }

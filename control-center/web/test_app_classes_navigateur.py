@@ -114,9 +114,20 @@ _NODE_DERIVATION = r"""
 const lib = require("./test_conformite_lib.js");
 const html = lib.lireNonVide(lib.cheminWeb("index.html"), "index.html");
 const css = lib.lireNonVide(lib.cheminWeb("app.css"), "app.css");
+// `POSES_A_L_EXECUTION` de F4a : les ids que le volet STATIQUE s'interdit de
+// vérifier parce qu'`app.js` les construit à chaque rendu. Les lire ICI
+// COUPLE les deux gardes : déclarer une exception dans F4a OBLIGE ce harnais
+// à la couvrir sur DOM exécuté, sinon l'élément ne serait vérifié nulle part
+// — le trou exact trouvé sur `claude-live-message` (lot 11 non déclaré livré).
+const a11y = require("fs").readFileSync(lib.cheminWeb("test_conformite_a11y.js"), "utf8");
+const bloc = a11y.match(/const POSES_A_L_EXECUTION = \{([\s\S]*?)\n\};/);
+const idsExecution = bloc
+  ? [...bloc[1].matchAll(/^\s*"([^"]+)"\s*:/gm)].map((m) => m[1])
+  : null;
 process.stdout.write(JSON.stringify({
   classesCssAvecCorps: [...lib.classesDeclareesAvecCorps(css)],
   classesHtmlStatique: [...lib.classesDeHtml(html)],
+  idsExecutionDeclaresParF4a: idsExecution,
 }));
 """
 
@@ -140,12 +151,12 @@ def deriver():
 # liste qui s'allonge en silence (même discipline que
 # `JETONS_AJOUTES`/`CLASSES_AJOUTEES`, F1/F2) — et soumise à la clause
 # miroir ci-dessous : toute entrée qui SE MET à être posée doit être retirée.
-NON_ATTEIGNABLES_CE_CYCLE = {
-    "token-value": "F15/ADR-0031 §5 : la branche « centre avec chiffre » n'est délibérément "
-                    "PAS écrite ce cycle (0 token sur 14 372 événements mesurés, la lecture des "
-                    "transcripts est le GATE de feature-023) — aucun scénario ne peut la poser "
-                    "sans inventer une donnée que le cycle n'a pas le droit de lire.",
-}
+#
+# feature-023 (lot 12) : VIDE depuis ce lot — `token-value` a été purgée
+# (clause miroir, la voir posée l'a exigé) : la branche « centre avec
+# chiffre » est maintenant ÉCRITE, et le scénario diagramme ci-dessous lui
+# fournit un `tokens_par_passage` qui la déclenche.
+NON_ATTEIGNABLES_CE_CYCLE = {}
 
 
 _SCRIPT_MESURE = r"""
@@ -172,20 +183,25 @@ _SCRIPT_MESURE = r"""
         agent: o.agent, debut: o.debut, duree_ms: o.duree_ms || 5000,
         outils: o.outils || 0, fichiers: o.fichiers || [],
         echecs: o.echecs || 0, termine: o.termine !== false,
-        etat: o.etat, type: o.type || "sousagent",
+        etat: o.etat, type: o.type || "sousagent", agent_id: o.agent_id,
       };
     }
 
     // -- diagramme : tous les états F16 réunis ------------------------------
     var passages = [
-      passage({ agent: "claude", debut: "2026-09-21T10:00:00.000Z", type: "principal" }),
-      passage({ agent: "backend-developer", debut: "2026-09-21T10:00:05.000Z", termine: false, fichiers: ["a"] }),
-      passage({ agent: "test-engineer", debut: "2026-09-21T10:00:10.000Z", echecs: 2 }),
-      passage({ agent: "doc-writer", debut: "2026-09-21T10:00:15.000Z", etat: "sans_cloture" }),
+      passage({ agent: "claude", debut: "2026-09-21T10:00:00.000Z", type: "principal", agent_id: "claude-id" }),
+      passage({ agent: "backend-developer", debut: "2026-09-21T10:00:05.000Z", termine: false, fichiers: ["a"], agent_id: "backend-id" }),
+      passage({ agent: "test-engineer", debut: "2026-09-21T10:00:10.000Z", echecs: 2, agent_id: "test-id" }),
+      passage({ agent: "doc-writer", debut: "2026-09-21T10:00:15.000Z", etat: "sans_cloture", agent_id: "doc-id" }),
     ];
     var wf1 = { segments: passages, passages: passages };
     var sigles = siglesAgents(Array.from(collecterRoles([wf1])));
-    document.getElementById('cycle-canvas').appendChild(construireDiagramme(wf1, sigles));
+    // feature-023 (lot 12) : `partiel: true` GLOBAL + un SEUL agent_id
+    // connu — pose `.token-value` (backend-developer, compteur réel) ET
+    // `.token-value--partiel` (les trois autres, faute de compteur alors
+    // que la lecture a été coupée par le budget) dans ce MÊME scénario.
+    var tokensParPassage = { partiel: true, par_agent: { "backend-id": { input_tokens: 4000, output_tokens: 1500 } } };
+    document.getElementById('cycle-canvas').appendChild(construireDiagramme(wf1, sigles, tokensParPassage));
 
     // -- kanban : priorité (basse/moyenne/haute/critique) + divergence -----
     rendreKanban({
@@ -455,6 +471,15 @@ _SCRIPT_MESURE = r"""
       });
     });
     out.classesRuntime = Object.keys(classesVues);
+
+    // -- balayage final des ids RÉELLEMENT présents (cimetière compris) :
+    // c'est lui qui couvre les ids qu'`app.js` construit et que le volet
+    // statique de F4a s'interdit de vérifier.
+    var idsVus = {};
+    Array.prototype.forEach.call(document.querySelectorAll('[id]'), function (el) {
+      idsVus[el.id] = true;
+    });
+    out.idsRuntime = Object.keys(idsVus);
   } catch (e) {
     out.erreur = String(e && e.stack || e);
   }
@@ -576,6 +601,24 @@ def main():
     purgees = sorted(c for c in NON_ATTEIGNABLES_CE_CYCLE if c in classes_posees_quelque_part)
     check("F3b_aucune_entree_non_atteignable_purgee_par_les_scenarios", len(purgees) == 0,
           "%s : maintenant posée(s), à retirer de NON_ATTEIGNABLES_CE_CYCLE" % purgees)
+
+    # -- A bis : tout id que F4a s'interdit de vérifier statiquement DOIT
+    # être posé par un scénario ici. Sans cette assertion, déclarer une
+    # exception dans F4a suffirait à faire disparaître un élément de TOUTE
+    # vérification — c'est le trou trouvé sur `claude-live-message`, invisible
+    # tant que le lot 11 n'était pas déclaré livré.
+    ids_declares = derive.get("idsExecutionDeclaresParF4a")
+    check("F3b_liste_des_ids_execution_lue_depuis_F4a", isinstance(ids_declares, list),
+          "POSES_A_L_EXECUTION introuvable dans test_conformite_a11y.js — le couplage "
+          "des deux gardes est rompu, un id exempté ne serait plus couvert nulle part")
+    if isinstance(ids_declares, list):
+        ids_runtime = set(mesures.get("idsRuntime") or [])
+        print("[dérivé] %d id(s) relevé(s) dans le DOM exécuté ; %d exempté(s) par F4a"
+              % (len(ids_runtime), len(ids_declares)))
+        jamais_poses = sorted(i for i in ids_declares if i not in ids_runtime)
+        check("F3b_tout_id_exempte_par_F4a_est_pose_par_un_scenario", len(jamais_poses) == 0,
+              "%s : exempté(s) du volet statique de F4a et posé(s) par AUCUN scénario ici — "
+              "ces id ne sont vérifiés nulle part" % jamais_poses)
 
     # -- B : toute classe posée au runtime, absente du HTML statique, est
     # déclarée avec un corps non vide dans app.css -----------------------

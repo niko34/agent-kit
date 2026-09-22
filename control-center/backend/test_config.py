@@ -499,6 +499,64 @@ deux_emplacements = ["echo", "{spec_id}", "{spec_id}"]
         check("test_commande_pour_spec_id_cle_inconnue_404",
               argv_inconnue is None and erreur == (404, "clé de commande inconnue"))
 
+        # --- feature-023 (GATE P1 S5.1/S5.6) : réglages de lecture des transcripts
+        c_defaut = C.charger(chemin=os.path.join(tmp, "absent6.toml"), racine_projet=tmp)
+        check("test_transcripts_racine_surcharge_absente_par_defaut",
+              c_defaut.transcripts_racine_surcharge() is None)
+        check("test_transcripts_budget_secondes_defaut", c_defaut.transcripts_budget_secondes() == 1.0)
+        check("test_transcripts_budget_octets_defaut", c_defaut.transcripts_budget_octets() == 20_000_000)
+
+        c_racine_absolue = C.charger(
+            chemin=ecrire(tmp, '[transcripts]\nracine = "/tmp/racine-declaree"\n'),
+            racine_projet=tmp)
+        check("test_transcripts_racine_surcharge_absolue_rendue",
+              c_racine_absolue.transcripts_racine_surcharge() == "/tmp/racine-declaree")
+
+        c_racine_relative = C.charger(
+            chemin=ecrire(tmp, '[transcripts]\nracine = "relatif/sous-repertoire"\n'),
+            racine_projet=tmp)
+        check("test_transcripts_racine_surcharge_relative_ignoree",
+              c_racine_relative.transcripts_racine_surcharge() is None,
+              "une racine relative ne peut pas remplacer un calcul de "
+              "confinement absolu — obtenu %r"
+              % c_racine_relative.transcripts_racine_surcharge())
+
+        for toml, nom in (
+            ('[transcripts]\nracine = ""\n', "test_transcripts_racine_vide_ignoree"),
+            ('[transcripts]\nracine = 42\n', "test_transcripts_racine_type_invalide_ignoree"),
+        ):
+            c = C.charger(chemin=ecrire(tmp, toml), racine_projet=tmp)
+            check(nom, c.transcripts_racine_surcharge() is None)
+
+        # `0` est une valeur VALIDE pour les deux budgets (S5.6 : « budget 0
+        # → champ partiel »), distincte d'une valeur absente ou invalide.
+        c_budget_zero = C.charger(
+            chemin=ecrire(tmp, "[transcripts]\nbudget_secondes = 0\nbudget_octets = 0\n"),
+            racine_projet=tmp)
+        check("test_transcripts_budget_secondes_zero_est_valide",
+              c_budget_zero.transcripts_budget_secondes() == 0.0)
+        check("test_transcripts_budget_octets_zero_est_valide",
+              c_budget_zero.transcripts_budget_octets() == 0)
+
+        for toml, nom in (
+            ("[transcripts]\nbudget_secondes = -1\n", "test_transcripts_budget_secondes_negatif_retombe"),
+            ('[transcripts]\nbudget_secondes = "vite"\n', "test_transcripts_budget_secondes_type_invalide_retombe"),
+            ("[transcripts]\nbudget_secondes = true\n", "test_transcripts_budget_secondes_booleen_retombe"),
+            ("[transcripts]\nbudget_secondes = nan\n", "test_transcripts_budget_secondes_nan_retombe"),
+            ("[transcripts]\nbudget_secondes = inf\n", "test_transcripts_budget_secondes_inf_retombe"),
+        ):
+            c = C.charger(chemin=ecrire(tmp, toml), racine_projet=tmp)
+            check(nom, c.transcripts_budget_secondes() == 1.0)
+
+        for toml, nom in (
+            ("[transcripts]\nbudget_octets = -1\n", "test_transcripts_budget_octets_negatif_retombe"),
+            ('[transcripts]\nbudget_octets = "beaucoup"\n', "test_transcripts_budget_octets_type_invalide_retombe"),
+            ("[transcripts]\nbudget_octets = true\n", "test_transcripts_budget_octets_booleen_retombe"),
+            ("[transcripts]\nbudget_octets = 1.5\n", "test_transcripts_budget_octets_flottant_retombe"),
+        ):
+            c = C.charger(chemin=ecrire(tmp, toml), racine_projet=tmp)
+            check(nom, c.transcripts_budget_octets() == 20_000_000)
+
     print("\n%d cas, %d echec(s)" % (_tests, len(_echecs)))
     for echec in _echecs:
         print("  - %s" % echec)

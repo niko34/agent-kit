@@ -201,6 +201,7 @@ def deriver():
 # côté cockpit, gabarit fixe côté prototype) — exclues de la comparaison de
 # largeur, jamais de la comparaison de forme/ordre.
 ANCRES_LARGEUR_NON_COMPARABLE = {
+    "claude-title": "contient `.claude-status`, dont le texte est un substitut rempli à\n        l'exécution depuis l'état réel (« … ») là où le prototype affiche une prose fixe\n        (« En ligne ») — largeur non comparable ; le RESTE de son vecteur de style l'est",
     "backlog-count": "texte variable (« N éléments »)",
     "backlog-column-count": "texte variable (compte de colonne)",
     "backlog-title": "texte du titre, longueur non garantie identique",
@@ -216,6 +217,10 @@ ANCRES_LARGEUR_NON_COMPARABLE = {
     "selected-duration": "durée formatée, longueur variable",
     "selected-tools": "texte « N appels », longueur variable",
     "selected-files": "texte « N fichiers », longueur variable",
+    # feature-023 (lot 12) : texte connu/absent/partiel, longueur variable —
+    # même famille que summary-active/summary-step/selected-tools ci-dessus.
+    "selected-tokens": "chiffre ou texte d'état (« lecture partielle »/« indisponible »), longueur variable",
+    "summary-tokens": "chiffre ou texte d'état, longueur variable selon le compte connu",
     "a11y-announcement": "visuellement masqué, largeur non significative",
     "cycle-canvas": "largeur du SVG DÉRIVÉE du nombre d'agents dessinés (disposer()) — la scène "
                     "en peint 3 côté cockpit contre 6 côté prototype, DONNÉE, pas CSS",

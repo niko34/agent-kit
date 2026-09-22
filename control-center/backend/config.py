@@ -139,6 +139,17 @@ _DEFAUTS = {
         # (503) avant tout `Popen`.
         "commandes_sans_permissions": [],
     },
+    # Lecture des transcripts de sous-agents, HORS racine du projet
+    # (feature-023, GATE P1 S5). VIDE par défaut : `racine` calculée depuis
+    # l'environnement seul (`transcripts.racine()`), jamais depuis une valeur
+    # projet qui pourrait pointer n'importe où. Les deux budgets bornent une
+    # lecture qui, sans plafond, vaudrait un déni de service auto-infligé
+    # (S5.6) : `/api/etat` est rappelé à chaque signal.
+    "transcripts": {
+        "racine": "",
+        "budget_secondes": 1.0,
+        "budget_octets": 20_000_000,
+    },
 }
 
 # Drapeaux qui contournent l'invite de permission de `claude` — présents dans
@@ -405,6 +416,52 @@ class Config(dict):
             return False
         autorisees = [c for c in bruts if isinstance(c, str) and c]
         return cle in autorisees
+
+    def transcripts_racine_surcharge(self):
+        """Racine de lecture des transcripts DÉCLARÉE par le projet, ou
+        `None` (feature-023, GATE P1 S5.1).
+
+        Ignorée si elle n'est pas un chemin ABSOLU : une racine relative ne
+        peut pas remplacer un calcul dont la garantie est justement d'être
+        confiné, sans faire dépendre ce confinement du répertoire courant du
+        processus. `transcripts.racine()` retombe alors sur le calcul par
+        défaut, jamais sur une valeur à moitié acceptée.
+        """
+        brut = self.section("transcripts").get("racine", "")
+        if not isinstance(brut, str) or not brut:
+            return None
+        if not os.path.isabs(brut):
+            return None
+        return brut
+
+    def transcripts_budget_secondes(self):
+        """Budget de TEMPS pour une lecture de transcripts (S5.6), en
+        secondes, `>= 0` — **`0` est une valeur VALIDE** (dégrade tout de
+        suite, `tokens_par_passage.partiel = true`, S5.6 : « budget 0 →
+        champ partiel, réponse < 1 s »), distincte d'une valeur absente ou
+        du mauvais type qui, elles, retombent sur le défaut. NaN, infini ou
+        négatif retombent aussi sur le défaut : ce ne sont pas des bornes
+        exprimables."""
+        defaut = _DEFAUTS["transcripts"]["budget_secondes"]
+        brut = self.section("transcripts").get("budget_secondes", defaut)
+        if isinstance(brut, bool) or not isinstance(brut, (int, float)):
+            return defaut
+        if not math.isfinite(brut) or brut < 0:
+            return defaut
+        return float(brut)
+
+    def transcripts_budget_octets(self):
+        """Budget d'OCTETS pour une lecture de transcripts (S5.6), entier
+        `>= 0` — **`0` est une valeur VALIDE**, même raison que
+        `transcripts_budget_secondes` ci-dessus. Retombe sur le défaut si
+        absent, du mauvais type, ou négatif."""
+        defaut = _DEFAUTS["transcripts"]["budget_octets"]
+        brut = self.section("transcripts").get("budget_octets", defaut)
+        if isinstance(brut, bool) or not isinstance(brut, int):
+            return defaut
+        if brut < 0:
+            return defaut
+        return brut
 
     def tetes_de_commande(self):
         """Les têtes RÉDIGÉES de chaque commande autorisée.

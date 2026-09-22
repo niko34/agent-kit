@@ -48,6 +48,10 @@ const ATTENDU_ROUGE = {};
 // agent-flag--echec, agent-flag--sans-cloture, role-ring — 4 représentations
 // absentes du prototype, mandat ADR-0031 §3. KEYFRAMES_AJOUTES (F2) reste
 // vide : ces 4 inventions sont STATIQUES, aucun jeton neuf non plus.
+// feature-023 (lot 12) : token-value--partiel s'ajoute à la même discipline
+// (classe posée SEULEMENT par app.js, jamais dans index.html statique — non
+// scrutée par B1 ci-dessous pour cette raison, enregistrée quand même par
+// discipline, comme les 7 entrées F16 déjà dynamiques-seules).
 const CLASSES_AJOUTEES = [
   { nom: "state-sans-cloture", raison: "F16 : représenter un passage sans fin observée sans se fonder sur SessionEnd (PIEGES §17)" },
   { nom: "has-echec", raison: "F16 : représenter un échec, absent du prototype (3 classes d'état seulement)" },
@@ -55,6 +59,7 @@ const CLASSES_AJOUTEES = [
   { nom: "agent-flag", raison: "F16 : porteur générique des drapeaux d'état neufs (base commune)" },
   { nom: "agent-flag--echec", raison: "F16 : variante échec du drapeau" },
   { nom: "agent-flag--sans-cloture", raison: "F16 : variante sans-clôture du drapeau" },
+  { nom: "token-value--partiel", raison: "feature-023 (lot 12) : distinguer un relevé de tokens interrompu par le budget (S5.6) d'un chiffre absent ou connu — glyphe dédié, jamais celui de sans-clôture" },
   { nom: "role-ring", raison: "F16 : anneau secondaire portant le rôle principal" },
 ];
 
@@ -86,8 +91,27 @@ console.log("[dérivé] " + classesRequisesAdoptees.size + " classe(s) « adopt�
 const classesHtmlApp = lib.classesDeHtml(htmlApp);
 const classesCssApp = lib.classesDeclareesAvecCorps(cssApp);
 
+// -- Exception déclarée : classes POSÉES À L'EXÉCUTION, jamais statiques --
+// Le prototype montre ces éléments avec des DONNÉES D'EXEMPLE (deux messages
+// écrits en dur dans son HTML) ; le cockpit les dérive du réel et les
+// construit dans `app.js` à chaque rendu. Une parité STATIQUE ne peut donc
+// pas les voir — c'est la même limite structurelle que les 96 faux positifs
+// qui ont fait retirer le sens CSS→HTML de ce volet au lot 0, et c'est le
+// mandat de F3b (`test_app_classes_navigateur.py`, DOM exécuté).
+//
+// ⚠️ Ce n'est PAS une dette : rien à combler, donc rien dans ATTENDU_ROUGE.
+// La clause miroir ci-dessous fait échouer une entrée devenue statique —
+// sans quoi la liste survivrait à sa raison d'être.
+const POSEES_A_L_EXECUTION = {
+  "bubble": "corps d'un message, construit par app.js — le prototype l'écrit en dur (2 messages d'exemple) ; couverte par F3b",
+  "message": "conteneur d'un message, construit par app.js — idem ; couverte par F3b",
+  "message-avatar": "glyphe d'un message, construit par app.js — idem ; couverte par F3b",
+};
+
 // -- A. Fidélité au prototype (modulo F0) --
-const manquantesHtml = [...classesRequisesAdoptees].filter((c) => !classesHtmlApp.has(c));
+const manquantesHtml = [...classesRequisesAdoptees]
+  .filter((c) => !classesHtmlApp.has(c))
+  .filter((c) => !Object.prototype.hasOwnProperty.call(POSEES_A_L_EXECUTION, c));
 const manquantesCss = [...classesRequisesAdoptees].filter((c) => !classesCssApp.has(c));
 const fideliteOk = manquantesHtml.length === 0 && manquantesCss.length === 0;
 if (fideliteOk) {
@@ -130,6 +154,22 @@ if (poseesNonDeclarees.length === 0) {
 const ajoutsSansRaison = CLASSES_AJOUTEES.filter((c) => !c.raison || !c.raison.trim());
 check("F3a_toute_classe_ajoutee_porte_une_raison", ajoutsSansRaison.length === 0,
   ajoutsSansRaison.map((c) => c.nom).join(", "));
+
+// Clause miroir de POSEES_A_L_EXECUTION : une classe qui DEVIENDRAIT statique
+// n'a plus de raison d'être exemptée — l'exception doit être retirée, sinon
+// elle masquerait pour toujours une régression sur cette classe.
+const exemptionsPerimees = Object.keys(POSEES_A_L_EXECUTION).filter((c) => classesHtmlApp.has(c));
+check("F3a_aucune_exemption_execution_perimee", exemptionsPerimees.length === 0,
+  exemptionsPerimees.length
+    ? exemptionsPerimees.join(", ") + " — désormais posée(s) statiquement dans index.html : "
+      + "retirer l'entrée de POSEES_A_L_EXECUTION, le volet statique les couvre"
+    : "");
+
+// Et l'inverse : une exemption doit désigner une classe RÉELLEMENT requise,
+// sinon la liste accumule des noms morts que plus rien ne rattache à F0.
+const exemptionsHorsCible = Object.keys(POSEES_A_L_EXECUTION).filter((c) => !classesRequisesAdoptees.has(c));
+check("F3a_toute_exemption_execution_designe_une_classe_requise", exemptionsHorsCible.length === 0,
+  exemptionsHorsCible.join(", "));
 
 if (fideliteOk && ATTENDU_ROUGE.F3A_CLASSES_ADOPTEES_ABSENTES) {
   check("F3A_CLASSES_ADOPTEES_ABSENTES_purgee_du_registre_si_verte", false,

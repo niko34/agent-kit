@@ -12,9 +12,16 @@
  *     pur par `app.js`, `--i` 0..11 — aucune géométrie data-dépendante, donc
  *     hors du contrat de sortie ci-dessous, voir la note dans `app.js`),
  *   - pastilles de fichiers = 3, binaires (allumée/éteinte),
- *   - anneau = activité, jamais une progression chiffrée (`ADR-0031 §5`),
- *   - centre = sigle (le chiffre `input+output` est hors périmètre de ce
- *     cycle, `feature-023`, `ADR-0031 §5`/notes d'implémentation §5),
+ *   - anneau = activité, jamais une progression chiffrée (`ADR-0031 §5`) —
+ *     et ÇA RESTE VRAI depuis `feature-023` (lot 12) : le chiffre de tokens
+ *     ci-dessous n'alimente JAMAIS `--progress`, posé UNIQUEMENT par les
+ *     classes CSS `.state-*` (`app.css`), jamais par `app.js` ni ce module,
+ *   - centre = sigle, PLUS le chiffre `input+output` (`feature-023`, lot 12)
+ *     QUAND il est connu — `disposer()` ne le CALCULE pas (ni lecture de
+ *     transcript ni arithmétique de tokens ici, module toujours pur sur
+ *     `passages[]`), il se contente de laisser passer `agent_id` (champ
+ *     `agentId` ci-dessous) pour que l'appelant (`app.js`) aille chercher le
+ *     compteur déjà agrégé par le serveur (`/api/etat.tokens_par_passage`),
  *   - sous le disque = durée seule ; au-dessus = nom.
  *
  * `disposer()` reste l'UNIQUE autorité de géométrie (`ADR-0031 §4`,
@@ -32,6 +39,11 @@
  *   largeur, hauteur, axeY,      // dimensions totales du tracé (px)
  *   agents: [{
  *     passageIndex, agent, id,          // id = index séquentiel stable (DOM)
+ *     agentId,                          // `passage.agent_id` TEL QUEL, ou
+ *                                       // `null` — valeur BRUTE passée à
+ *                                       // l'appelant (feature-023, lot 12),
+ *                                       // jamais interprétée ici (pas de
+ *                                       // lecture de transcript, module pur)
  *     etat,                             // "pending" | "active" | "done"
  *     echec, sansCloture, principal,    // booléens F16 (indépendants de `etat`)
  *     diametre,                         // 52 | 88
@@ -302,6 +314,10 @@ function disposer(passages, mesures) {
         passageIndex: index,
         agent: passage.agent,
         id: "agent-" + index,
+        // feature-023 (lot 12) : passthrough BRUT, jamais fabriqué — un
+        // passage sans `agent_id` (agent ouvrant, backend plus ancien) rend
+        // `null`, jamais une chaîne inventée (S5.7, absence propre).
+        agentId: typeof passage.agent_id === "string" ? passage.agent_id : null,
         etat, echec, sansCloture, principal,
         diametre,
         cx: 0, cy: 0,

@@ -312,7 +312,7 @@ const PARTITION_CLASSES = {
 // le défaut que la règle non négociable n°2 interdit. `lotEstDejaLivre`
 // referme ce trou : la cible de F3a/F4a reste « déjà construit », comme
 // avant, sans jamais recopier à la main la liste des lots clos.
-const LOTS_DEJA_LIVRES = new Set(["0", "1", "2", "3", "4", "5", "7", "9-10", "10"]);
+const LOTS_DEJA_LIVRES = new Set(["0", "1", "2", "3", "4", "5", "7", "9-10", "10", "11", "12"]);
 function lotEstDejaLivre(lotField) {
   return String(lotField).split(",").map((s) => s.trim()).every((tok) => LOTS_DEJA_LIVRES.has(tok));
 }

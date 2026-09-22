@@ -48,6 +48,20 @@ const ECARTS_DECLARES = {
   },
 };
 
+// -- Exception déclarée : ids POSÉS À L'EXÉCUTION, jamais statiques --
+// Le prototype écrit `#claude-live-message` en dur, à l'intérieur d'un de ses
+// deux messages d'EXEMPLE. Le cockpit ne fabrique jamais de message : il
+// construit cette bulle à chaque rendu autour d'un texte DÉRIVÉ de
+// `etat.agents[].actif_sur` (voir app.js, qui cite PIEGES §38 : un id créé
+// dynamiquement est invisible à toute lecture du HTML statique).
+//
+// ⚠️ Ce n'est PAS une dette, donc rien dans ATTENDU_ROUGE — c'est la limite
+// structurelle du volet statique. La couverture réelle est F4b/F3b, sur DOM
+// exécuté. Les deux clauses miroir plus bas empêchent cette liste de pourrir.
+const POSES_A_L_EXECUTION = {
+  "claude-live-message": "bulle de statut construite par app.js à chaque rendu, texte dérivé d'etat.agents[].actif_sur ; le prototype l'écrit en dur dans un message d'exemple — couvert au runtime",
+};
+
 let _tests = 0;
 const _echecs = [];
 function check(nom, condition, detail) {
@@ -97,7 +111,9 @@ for (const [libelle, htmlSource] of [["prototype", htmlPrototype], ["index.html"
 }
 
 const idsApp = lib.idsDeHtml(htmlApp);
-const idsManquants = idsAdoptes.filter((id) => !idsApp.has(id));
+const idsManquants = idsAdoptes
+  .filter((id) => !idsApp.has(id))
+  .filter((id) => !Object.prototype.hasOwnProperty.call(POSES_A_L_EXECUTION, id));
 
 // -- B. Pour les ids présents, role/aria-* au moins équivalents --
 const attributsDivergents = [];
@@ -172,6 +188,21 @@ if (compteTab === 0 && ATTENDU_ROUGE.F4A_ROLE_TAB_RESIDUEL) {
 for (const [cle, entree] of Object.entries(ATTENDU_ROUGE)) {
   check("ATTENDU_ROUGE_" + cle + "_porte_un_lot_de_cloture_nomme", !!(entree.lotDeCloture && entree.lotDeCloture.trim()));
 }
+
+// Clause miroir de POSES_A_L_EXECUTION : un id devenu statique n'a plus de
+// raison d'être exempté, et l'exemption masquerait dès lors toute régression
+// sur son role/aria-*.
+const exemptionsPerimees = Object.keys(POSES_A_L_EXECUTION).filter((id) => idsApp.has(id));
+check("F4a_aucune_exemption_execution_perimee", exemptionsPerimees.length === 0,
+  exemptionsPerimees.length
+    ? exemptionsPerimees.join(", ") + " — désormais posé(s) statiquement dans index.html : "
+      + "retirer l'entrée de POSES_A_L_EXECUTION, le volet statique le couvre"
+    : "");
+
+// Et l'inverse : une exemption qui ne désigne aucun id requis est un nom mort.
+const exemptionsHorsCible = Object.keys(POSES_A_L_EXECUTION).filter((id) => !idsAdoptes.includes(id));
+check("F4a_toute_exemption_execution_designe_un_id_requis", exemptionsHorsCible.length === 0,
+  exemptionsHorsCible.join(", "));
 
 function main() {
   console.log("\n" + _tests + " cas, " + _echecs.length + " echec(s)");

@@ -135,8 +135,8 @@ const IDS = [
   "porte-jeton", "porte-titre", "projet", "spec-prompt", "redaction-corps",
   "repo-strip", "repo-strip-ok", "repo-strip-texte",
   "selected-code", "selected-duration", "selected-files", "selected-state",
-  "selected-task", "selected-title", "selected-tools", "sheet-metrics", "sheet-toggle", "status-dot",
-  "summary-active", "summary-step", "summary-time", "systeme", "timeline",
+  "selected-task", "selected-title", "selected-tokens", "selected-tools", "sheet-metrics", "sheet-toggle", "status-dot",
+  "summary-active", "summary-step", "summary-time", "summary-tokens", "systeme", "timeline",
   "tiroir", "tiroir-contenu", "tiroir-fermer", "tiroir-titre", "titre-agents",
   "titre-besoin", "titre-cycles", "titre-demande",
   "titre-evenements", "titre-fichiers", "titre-pilotage", "titre-systeme",
@@ -1203,24 +1203,133 @@ async function sondeGraduationsFixesEtPastillesPlafonnees() {
     "obtenu " + allumees + " sur 5 fichiers réels");
 }
 
-// -- F15 : le centre du disque ne porte JAMAIS de nœud de chiffre — ni
-// `.token-value`, ni aucun texte numérique — la branche « centre avec
-// chiffre » n'est PAS écrite à ce cycle (feature-023, hors GATE).
-async function sondeCentreDisqueSansChiffre() {
+// -- F15 (feature-023, lot 12) : TROIS états pour le centre du disque, pas
+// deux — connu, absent (dégradé, sans trou), partiel (budget de lecture
+// coupé, S5.6). Les trois sont ici pour qu'aucune reboucle ne puisse en
+// tester deux et laisser le troisième glisser (`PIEGES` — une garde qui ne
+// couvre que ce qu'elle énumère laisse toujours dehors ce qu'elle n'a pas
+// listé).
+
+// 1/3 — ABSENT : aucun `tokens_par_passage` dans la réponse (backend plus
+// ancien, ou agent_id inconnu du relevé) — mutation (a) : si le code
+// fabriquait un « 0 » au lieu de dégrader, `valeurJeton` serait truthy et ce
+// test mourrait.
+async function sondeCentreDisqueTokensAbsent() {
   const passage = segment("sousagent", "backend-developer", {
     debut: "2026-09-14T08:00:00.000Z", duree_ms: 2000, outils: 1, etat: "en_cours",
   });
-  const wf = workflow({ workflow_id: "sessF15#0", segments: [passage], passages: [passage] });
+  const wf = workflow({ workflow_id: "sessF15A#0", segments: [passage], passages: [passage] });
   const bac = await chargerAvecEtat({ workflows: [wf] });
   const { detail } = enteteEtDetail(cyclesLi(bac)[0]);
   const noeud = agentsDuDetail(detail)[0];
-  check("sondeF15_agent_trouve", !!noeud);
+  check("sondeF15absent_agent_trouve", !!noeud);
   if (!noeud) return;
   const valeurJeton = tousLesNoeuds(noeud).find((n) => aClasse(n, "token-value"));
-  check("sondeF15_aucun_noeud_token_value_pose", !valeurJeton,
-    "un nœud .token-value a été posé alors que F15 l'interdit à ce cycle");
+  check("sondeF15absent_aucun_noeud_token_value_pose", !valeurJeton,
+    "un nœud .token-value a été posé alors qu'aucune donnée n'est disponible pour ce passage");
   const donnees = tousLesNoeuds(noeud).find((n) => aClasse(n, "agent-data"));
-  check("sondeF15_agent_data_present_pour_les_pastilles", !!donnees);
+  check("sondeF15absent_agent_data_present_pour_les_pastilles", !!donnees);
+  check("sondeF15absent_aria_label_ne_mentionne_pas_les_tokens",
+    (noeud.getAttribute("aria-label") || "").indexOf("token") === -1);
+}
+
+// 2/3 — CONNU : `agent_id` présent dans `par_agent` — chiffre compact posé,
+// et la bottom sheet reprend la même donnée (long format) au clic.
+async function sondeCentreDisqueTokensConnu() {
+  const passage = segment("sousagent", "backend-developer", {
+    debut: "2026-09-14T08:00:00.000Z", duree_ms: 2000, outils: 1, etat: "en_cours",
+  });
+  const wf = workflow({ workflow_id: "sessF15C#0", segments: [passage], passages: [passage] });
+  const bac = await chargerAvecEtat({
+    workflows: [wf],
+    tokens_par_passage: { partiel: false, par_agent: { "backend-developer-id": { input_tokens: 5000, output_tokens: 1234 } } },
+  });
+  const { detail } = enteteEtDetail(cyclesLi(bac)[0]);
+  const noeud = agentsDuDetail(detail)[0];
+  check("sondeF15connu_agent_trouve", !!noeud);
+  if (!noeud) return;
+  const valeurJeton = tousLesNoeuds(noeud).find((n) => aClasse(n, "token-value"));
+  check("sondeF15connu_noeud_token_value_pose", !!valeurJeton);
+  if (valeurJeton) {
+    check("sondeF15connu_texte_compact_6234_tokens", valeurJeton.textContent === "6,2k",
+      "obtenu " + JSON.stringify(valeurJeton.textContent));
+    check("sondeF15connu_jamais_la_classe_partiel", !aClasse(valeurJeton, "token-value--partiel"));
+  }
+  check("sondeF15connu_aria_label_porte_le_compte_long",
+    (noeud.getAttribute("aria-label") || "").indexOf("6 234 tokens") !== -1,
+    "obtenu " + JSON.stringify(noeud.getAttribute("aria-label")));
+  cliquer(noeud);
+  check("sondeF15connu_bottom_sheet_reprend_le_compte_long",
+    bac.$("selected-tokens").textContent === "6 234",
+    "obtenu " + JSON.stringify(bac.$("selected-tokens").textContent));
+}
+
+// 3/3 — PARTIEL : `agent_id` absent de `par_agent`, mais la lecture globale
+// a été coupée par le budget (`partiel: true`) — mutation (c) : si le code
+// rendait ce cas indistinct du cas ABSENT (aucun nœud posé, ou un nœud
+// identique), les deux assertions distinctives ci-dessous meurent.
+async function sondeCentreDisqueTokensPartiel() {
+  const passage = segment("sousagent", "backend-developer", {
+    debut: "2026-09-14T08:00:00.000Z", duree_ms: 2000, outils: 1, etat: "en_cours",
+  });
+  const wf = workflow({ workflow_id: "sessF15P#0", segments: [passage], passages: [passage] });
+  const bac = await chargerAvecEtat({
+    workflows: [wf],
+    tokens_par_passage: { partiel: true, par_agent: {} },
+  });
+  const { detail } = enteteEtDetail(cyclesLi(bac)[0]);
+  const noeud = agentsDuDetail(detail)[0];
+  check("sondeF15partiel_agent_trouve", !!noeud);
+  if (!noeud) return;
+  const valeurJeton = tousLesNoeuds(noeud).find((n) => aClasse(n, "token-value"));
+  check("sondeF15partiel_noeud_token_value_pose_DISTINCT_de_absent", !!valeurJeton,
+    "le cas PARTIEL doit poser un nœud — sinon il est indistinct du cas ABSENT (mutation c)");
+  if (valeurJeton) {
+    check("sondeF15partiel_porte_la_classe_dediee", aClasse(valeurJeton, "token-value--partiel"));
+    check("sondeF15partiel_glyphe_distinct_du_drapeau_sans_cloture",
+      valeurJeton.textContent !== "⋯" && valeurJeton.textContent.indexOf("0") === -1,
+      "obtenu " + JSON.stringify(valeurJeton.textContent));
+  }
+  check("sondeF15partiel_aria_label_dit_lecture_partielle",
+    (noeud.getAttribute("aria-label") || "").indexOf("lecture de tokens partielle") !== -1,
+    "obtenu " + JSON.stringify(noeud.getAttribute("aria-label")));
+  cliquer(noeud);
+  check("sondeF15partiel_bottom_sheet_dit_lecture_partielle",
+    bac.$("selected-tokens").textContent === "lecture partielle",
+    "obtenu " + JSON.stringify(bac.$("selected-tokens").textContent));
+}
+
+// -- Mutation (b) : l'anneau (`--progress`) ne dépend JAMAIS des tokens.
+// Deux agents dans le MÊME état ("active", donc même `--progress` CSS visé
+// par `.state-active`), l'un avec un compte de tokens connu et élevé,
+// l'autre sans aucune donnée — si `app.js` posait `--progress` en style
+// INLINE à partir des tokens (recouplage), `noeud.style` porterait la
+// propriété ; les classes `.state-*` seules la pilotent (`app.css`), jamais
+// `app.js` (PIEGES/ADR-0031 §5, recoupé deux fois par l'humain, 2026-09-20).
+async function sondeAnneauIndependantDesTokens() {
+  const avecTokens = segment("sousagent", "backend-developer", {
+    debut: "2026-09-14T08:00:00.000Z", duree_ms: 2000, outils: 1, etat: "en_cours",
+  });
+  const sansTokens = segment("sousagent", "frontend-developer", {
+    debut: "2026-09-14T08:05:00.000Z", duree_ms: 2000, outils: 1, etat: "en_cours",
+  });
+  const wf = workflow({
+    workflow_id: "sessF15Anneau#0",
+    segments: [avecTokens, sansTokens],
+    passages: [avecTokens, sansTokens],
+  });
+  const bac = await chargerAvecEtat({
+    workflows: [wf],
+    tokens_par_passage: { partiel: false, par_agent: { "backend-developer-id": { input_tokens: 900000, output_tokens: 900000 } } },
+  });
+  const { detail } = enteteEtDetail(cyclesLi(bac)[0]);
+  const noeuds = agentsDuDetail(detail);
+  check("sondeAnneau_deux_disques", noeuds.length === 2, "obtenu " + noeuds.length);
+  noeuds.forEach((n, i) => {
+    check("sondeAnneau_style_inline_ne_porte_jamais_progress_" + i,
+      !Object.prototype.hasOwnProperty.call(n.style, "--progress"),
+      "style inline : " + JSON.stringify(n.style));
+  });
 }
 
 // -- F16 : les quatre représentations absentes du prototype (ADR-0031 §3),
@@ -1355,7 +1464,10 @@ async function main() {
   await sondePositionAgentVientDeDisposer();
   await sondeConnecteurDVientDeDisposer();
   await sondeGraduationsFixesEtPastillesPlafonnees();
-  await sondeCentreDisqueSansChiffre();
+  await sondeCentreDisqueTokensAbsent();
+  await sondeCentreDisqueTokensConnu();
+  await sondeCentreDisqueTokensPartiel();
+  await sondeAnneauIndependantDesTokens();
   await sondeRepresentationsF16();
   await testDureeTablePassagesFormatMaquette();
   sondeZeroArithmetiqueDansLesFonctionsDeDiagramme();

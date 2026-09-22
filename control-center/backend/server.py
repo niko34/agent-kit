@@ -137,6 +137,7 @@ import lanceur as L  # noqa: E402
 import redaction_commande as RC  # noqa: E402
 import redaction_spec as RS  # noqa: E402
 import specs as S  # noqa: E402
+import transcripts as T  # noqa: E402
 import vcs as V  # noqa: E402
 import verrou as VR  # noqa: E402
 
@@ -567,6 +568,20 @@ class Etat:
                 if passage["etat"] == E.ETAT_EN_COURS:
                     actifs[passage["agent"]] = workflow["workflow_id"]
 
+        workflows_affiches = workflows[-self.config.workflows_affiches():]
+        # feature-023 (GATE P1 S5) : tokens des SEULS passages réellement
+        # affichés ci-dessous — jamais de tout l'historique du journal. Ce
+        # module ne parcourt jamais `subagents/` de sa propre initiative
+        # (`transcripts.lire_tokens_par_passage`) : la liste fournie ici EST
+        # la borne de ce qu'il peut ouvrir.
+        agent_ids_affiches = {
+            passage.get("agent_id")
+            for workflow in workflows_affiches
+            for passage in workflow["passages"]
+            if passage.get("agent_id")
+        }
+        tokens_par_passage = T.lire_tokens_par_passage(self.config, agent_ids_affiches)
+
         return {
             "projet": self.config.section("projet").get("nom"),
             # Identité (feature-021, cycle 2, lot 7, GATE S4) : SEULE source
@@ -580,7 +595,13 @@ class Etat:
             "specs": specs,
             "divergences": sum(1 for s in specs if s["divergence"]),
             "agents": [dict(a, actif_sur=actifs.get(a["nom"])) for a in agents],
-            "workflows": workflows[-self.config.workflows_affiches():],
+            "workflows": workflows_affiches,
+            # Additif (feature-023, GATE P1 S5) : `{agent_id: {input_tokens,
+            # output_tokens}}` pour les SEULS passages affichés ci-dessus,
+            # plus `partiel` (S5.6) — le frontend en tolère l'absence
+            # (backend plus ancien) et ne l'utilise JAMAIS pour piloter
+            # l'anneau, décision du 2026-09-20 : seul le chiffre se dégrade.
+            "tokens_par_passage": tokens_par_passage,
             # Additifs (feature-016, item K) : le frontend en tolère
             # l'absence (backend plus ancien) — la légende de la liste de
             # cycles retombe alors sur le seul compte affiché.
