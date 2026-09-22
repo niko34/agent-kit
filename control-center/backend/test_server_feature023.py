@@ -62,8 +62,12 @@ def _ecrire_journal(chemin, evenements):
             fichier.write(json.dumps(evenement) + "\n")
 
 
-def _ecrire_transcript(racine, agent_id, lignes):
-    chemin = os.path.join(racine, "subagents", "agent-%s.jsonl" % agent_id)
+def _ecrire_transcript(racine, session, agent_id, lignes):
+    """Écrit un transcript à l'endroit RÉELLEMENT mesuré sur cette machine :
+    `<racine>/<session>/subagents/agent-<agent_id>.jsonl` — jamais
+    `<racine>/subagents/...` (disposition livrée par erreur dans
+    `feature-023`, corrigée en revue de `feature-021` cycle 3)."""
+    chemin = os.path.join(racine, session, "subagents", "agent-%s.jsonl" % agent_id)
     os.makedirs(os.path.dirname(chemin), exist_ok=True)
     with open(chemin, "w", encoding="utf-8") as fichier:
         for ligne in lignes:
@@ -85,7 +89,10 @@ def main():
         # MÊME objet, jamais une copie.
         groupe.config["transcripts"] = {"racine": racine_transcripts}
 
-        _ecrire_transcript(racine_transcripts, agent_id, [
+        # Le journal ci-dessous déclare `session_id: "s1"` (`_ev`) : le
+        # transcript doit vivre sous CE même nom de session pour que le
+        # serveur, qui balaie les sessions réellement présentes, le trouve.
+        _ecrire_transcript(racine_transcripts, "s1", agent_id, [
             {"type": "assistant", "message": {
                 "role": "assistant",
                 "content": [{"type": "text", "text": "note privée : %s" % temoin}],

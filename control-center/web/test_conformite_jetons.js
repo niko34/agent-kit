@@ -222,21 +222,46 @@ check("F1_aucune_propriete_root_hors_de_tout_registre", horsTout.length === 0,
 // lui-même : `hexHorsRoot`/`hexHorsRootAvecContexte` ne servaient qu'au
 // PROTOTYPE (dérivation pour F1/F5a), jamais à l'implémentation livrée —
 // trouvé par mutation (un hex tout neuf hors `:root`, `.marque{color:
-// #123456}`, traverse les 33 fichiers/1330 cas SANS échec). Seuls les hex
-// dont la valeur est déjà EXPLICITEMENT tracée (un `JETONS_AJOUTES.valeur`,
-// ou l'unique exception de contexte non peignant `#000`, arrêt de
-// `mask: radial-gradient(...)` — pas une couleur rendue, déjà relevée au
-// lot 0) sont tolérés — tout AUTRE hex, peignant
-// ou non, hors `:root`, est un échec DUR : une nouvelle valeur qui échappe à
-// toute table de jetons est exactement ce que F1 existe pour interdire.
+// #123456}`, traverse les 33 fichiers/1330 cas SANS échec). Seule
+// l'exception de contexte non peignant `#000`, arrêt de
+// `mask: radial-gradient(...)` (pas une couleur rendue, relevée au lot 0)
+// est tolérée — tout AUTRE hex, hors `:root`, est un échec DUR.
+//
+// Revue de code, cycle `feature-021` (M2) : cette garde amnistiait aussi
+// tout hex dont la VALEUR figurait dans `JETONS_AJOUTES` — elle vérifiait
+// que la valeur était TRACÉE (le jeton existe, quelque part), pas qu'elle
+// était RÉFÉRENCÉE (cette déclaration précise utilise `var(--nom)`). Deux
+// couleurs recopiées en toutes lettres au lieu de `var(...)` (`--state-
+// color: #aaa6b0` et `.feature-chip.todo { background: #fff0c8; color:
+// #654b00 }`) passaient donc inaperçues : la valeur était bien la même que
+// le jeton, mais deux sources la portaient — un jeton changé de valeur
+// aurait fait diverger le rendu en silence à ces deux endroits. Amnistie
+// RETIRÉE : un hex hors `:root`, qu'il duplique ou non une valeur connue,
+// est désormais TOUJOURS un échec — la seule façon de faire passer une
+// couleur d'un jeton est de la RÉFÉRENCER.
 const EXCEPTIONS_HEX_HORS_ROOT_CONTEXTE_NON_PEIGNANT = ["mask"]; // arrêt de dégradé, pas une couleur rendue
-const valeursAjouteesConnues = new Set(JETONS_AJOUTES.map((j) => j.valeur));
 const hexHorsRootApp = lib.hexHorsRootAvecContexte(cssApp);
 const hexNonTraces = hexHorsRootApp.filter((o) =>
-  !EXCEPTIONS_HEX_HORS_ROOT_CONTEXTE_NON_PEIGNANT.includes(o.prop) && !valeursAjouteesConnues.has(o.hex));
+  !EXCEPTIONS_HEX_HORS_ROOT_CONTEXTE_NON_PEIGNANT.includes(o.prop));
 check("F1_aucun_hexadecimal_hors_root_non_trace_dans_app_css", hexNonTraces.length === 0,
-  hexNonTraces.length + " hex non tracé(s) (ni contexte non-peignant déclaré, ni JETONS_AJOUTES) : " +
+  hexNonTraces.length + " hex non référencé(s) via var() (hors contexte non-peignant déclaré) : " +
   hexNonTraces.slice(0, 10).map((o) => o.hex + " @ " + o.selecteur + " (" + o.prop + ")").join(" | "));
+
+// -- NON-RÉGRESSION de l'amnistie retirée ci-dessus (M2) : un hex hors
+// `:root` qui DUPLIQUE la valeur d'un jeton `JETONS_AJOUTES` (« tracé »)
+// doit rester un échec — l'ancienne amnistie le laissait passer parce que
+// la VALEUR était connue, sans exiger que la déclaration la RÉFÉRENCE
+// (`var(--nom)`). Fige en mémoire, indépendant d'app.css.
+(function nonRegressionAmnistieHexTraceRetiree() {
+  const jetonTemoin = JETONS_AJOUTES[0];
+  const feuille = ":root { --autre: #123456; }\n.mutant { color: " + jetonTemoin.valeur + "; }\n";
+  const trouves = lib.hexHorsRootAvecContexte(feuille)
+    .filter((o) => !EXCEPTIONS_HEX_HORS_ROOT_CONTEXTE_NON_PEIGNANT.includes(o.prop));
+  check("F1_NONREGRESSION_hex_duplique_d_un_jeton_trace_reste_refuse",
+    trouves.some((o) => o.hex === jetonTemoin.valeur),
+    "un hex recopiant `" + jetonTemoin.nom + "` (" + jetonTemoin.valeur + ") au lieu de `var(--" +
+    jetonTemoin.nom + ")` doit être vu, même si sa valeur est tracée dans JETONS_AJOUTES");
+})();
 
 // -- clause miroir des DEUX listes transitoires : une entrée déclarée qui
 // n'existe plus dans app.css est une liste PÉRIMÉE, pas une liste à jour —

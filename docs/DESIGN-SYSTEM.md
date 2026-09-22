@@ -201,16 +201,16 @@ départ, qui n'a plus d'emplacement). La séparation géométrie/rendu ci-dessou
 | Forme | Donnée |
 |---|---|
 | Diamètre du disque | **état**, plus la durée — 52 px non lancé, **88 px actif ou terminé** ; deux passages de durées très différentes, tous deux actifs, ont le même diamètre |
-| Anneau d'activité (`.work-orbit`) | éteint au repos, **animation indéterminée en boucle** pendant le travail, **complet et stable** une fois terminé — ne code **jamais** une progression chiffrée : aucun total final n'est connu pour un passage en cours (`ADR-0031 §5`) |
+| Anneau d'activité (`--progress` sur `.agent-node`, porté par un pseudo-élément `::before` dédié) | éteint au repos, **animation indéterminée en boucle** pendant le travail, **complet et stable** une fois terminé — ne code **jamais** une progression chiffrée : aucun total final n'est connu pour un passage en cours (`ADR-0031 §5`). Trois valeurs **fixes** par classe d'état (`0deg`/`270deg`/`360deg`), jamais une division — `--progress` ne s'anime pas par interpolation (0 `@property` déclarée). Une garde interdit de recoupler l'anneau aux tokens du centre (`ADR-0038 §5`) |
 | 12 graduations radiales | **fixes, purement décoratives** — elles ne comptent plus les appels d'outils (`ADR-0031 §2`) |
 | 3 pastilles de fichiers | **binaires** (allumée/éteinte), plafonnées à 3 — un passage à 4 fichiers et un passage à 40 fichiers dessinent pareil |
-| Centre du disque | le **sigle** de l'agent, seul. Aucun chiffre n'y est posé (report vers `feature-023`, voir la rectification ci-dessous) ; le disque est **dégradable**, jamais *à trous* : aucun espace n'est réservé à un chiffre absent |
+| Centre du disque | le **sigle** de l'agent, et depuis le lot 12 (`ADR-0038 §5`, `feature-023` absorbée) la somme `input_tokens + output_tokens` du passage, **quand elle est connue**. Trois états, jamais deux : chiffre connu ; chiffre **absent** (le nœud n'existe pas dans le DOM — jamais un `0`, un `—` ni un espace réservé) ; relevé **partiel** (le budget de lecture des transcripts a coupé, `ADR-0041`) — dit explicitement, jamais confondu avec l'absence. Le disque reste **dégradable**, jamais *à trous* |
 | Au-dessus du disque | le **nom** de l'agent |
 | Sous le disque | la **durée**, seule — l'heure de départ n'a plus d'emplacement |
 
 Les appels d'outils et le compte exact de fichiers restent mesurés dans le
 journal ; ils ne sont plus peints sur le disque. Leur affichage détaillé par
-passage (bottom sheet, F11) reste à livrer — **lot 5, non fait**.
+passage (bottom sheet, `.detail-sheet`, F11) est livré depuis le lot 5.
 
 ### Trois représentations ajoutées, absentes du prototype
 
@@ -247,10 +247,14 @@ ou durée) le plus large.
 > jetons ne sont mesurables nulle part » qui était faux, pas le principe. La
 > lecture de ces transcripts franchit la racine du projet et expose des
 > conversations entières (secrets, données personnelles) : elle exige un GATE
-> `security-reviewer` avant tout accès. **Le lot 4 (feature-021) a statué que
-> le disque se livre sans ce chiffre** — voir le tableau ci-dessus, centre du
-> disque ; la lecture des transcripts est reportée à `feature-023`, non fait.
-> Voir [ADR-0031](adr/0031-la-grammaire-du-disque-d-agent-change.md).
+> `security-reviewer` avant tout accès. **Le lot 4 (feature-021) avait statué que
+> le disque se livrait sans ce chiffre**, faute de périmètre ; `feature-023` a
+> depuis été **absorbée** dans le même cycle (lot 12, 2026-09-22) et le chiffre
+> est livré — voir le tableau ci-dessus, centre du disque. Voir
+> [ADR-0031](adr/0031-la-grammaire-du-disque-d-agent-change.md) §5 et
+> [ADR-0038](adr/0038-la-methode-du-cycle-2-gardes-avant-code-registre-borne-bug-017-absorbe.md) §5
+> (le constat de livraison) et [ADR-0041](adr/0041-lecture-hors-racine-compteurs-seulement.md)
+> (le lecteur de transcripts, ses bornes, et pourquoi il ne fait jamais sortir de texte).
 
 **Le journal d'événements ne porte pas les jetons.** Il contient l'horodatage,
 l'outil, le fichier et l'échec — pas les jetons consommés. Toute maquette qui
@@ -499,6 +503,7 @@ que la politique de sécurité n'ait à se prononcer.
 | 2026-09-19 | Mono-écran adopté par feature-021 ([ADR-0029](adr/0029-le-tableau-de-bord-revient-au-mono-ecran.md)) : §1 et la partie navigation de §2 d'ADR-0024 remplacés — navigation par onglets retirée, accordéon des cycles remplacé par la bande de sélection du §6, `role="tablist"` conservé pour les seuls cycles antérieurs ; table des passages d'agent supprimée, le diagramme de déroulé devenant seule représentation des enchaînements (§8) ; `three.js` autorisé puis écarté après mesure (2,02 Mo réels contre une estimation de ~600 Ko, ADR-0006 confirmé) ; §9 complété par la CSP mesurée en HTTP : Web Worker de même origine, `OffscreenCanvas`, WebGL et WebGL2 autorisés, `.woff2` bloqué par `_TYPES` et non par la CSP ; §4 étendu par le chronomètre vedette à 56 px |
 | 2026-09-20 | L'utilisateur fournit sa propre maquette Material 3 ; `feature-021` change d'objet (adoption fidèle, frontend seul). Cinq ADR neufs : [ADR-0030](adr/0030-material-design-3-ecrit-a-la-main-devient-le-systeme-visuel.md) — M3 écrit à la main, `ADR-0006` confirmé sans exception, §1/§4/§9 amendés, §3 et `ADR-0024 §4` révoqués (surfaces tonales en aplat de repos) ; [ADR-0031](adr/0031-la-grammaire-du-disque-d-agent-change.md) — nouvelle grammaire du disque d'agent, `ADR-0025 §1-§3` et `ADR-0026` révoqués, `ADR-0025 §4` maintenu en écart assumé, pertes nommées (appels d'outils, échelle des fichiers, échec, sans-clôture, agent principal, heure de départ), anneau d'activité sans progression chiffrée ; [ADR-0032](adr/0032-l-identite-coloree-des-agents-disparait-du-diagramme.md) — identité colorée par agent retirée, `ADR-0022 §1-§3` révoqués, §5 *sans objet* (pas faux), règle de précédence identité/état et son exception nommée révoquées (§8) ; [ADR-0033](adr/0033-le-theme-sombre-est-supprime.md) — thème sombre supprimé, `theme.js` et ses tests retirés, contraste à remesurer contre la palette M3 ; [ADR-0034](adr/0034-ce-que-le-depot-garde-des-references-de-conception.md) — le prototype HTML fait foi, les 12 PNG (18 Mo) ne sont pas versionnés, le prototype vit sous `control-center/maquettes/` pour rester lisible par le clone jetable. Deux règles corrigées, pas jetées : §5 et l'interdit n°7 du §9 affirmaient que les jetons ne sont mesurables nulle part — c'était vrai du seul journal d'événements, faux comme fait général (225 transcripts de sous-agent, 223/223 passages dessinés couverts), sous réserve d'un GATE de sécurité sur ces fichiers hors racine du projet (voir `feature-023`) |
 | 2026-09-21 | §5 et §8 **réécrits** : le lot 4 de `feature-021` livre le disque Material 3 (`ADR-0031`) — diamètre fonction de l'état (52/88 px), anneau d'activité sans progression chiffrée, 12 graduations fixes décoratives, 3 pastilles de fichiers binaires, centre au sigle seul (chiffre reporté à `feature-023`), trois représentations ajoutées (échec, sans clôture, agent principal) — et retire l'identité colorée par agent (`ADR-0032`), désormais appliquée au code. Kanban, feuille de détail peuplée et gardes runtime F3b/F4b/F5b restent au lot 5, non faits |
+| 2026-09-22 | Réouverture du périmètre de `feature-021` sur la maquette entière (`ADR-0039`) : la barre supérieure retrouve ses sept contrôles (sélecteur de projet, notifications, identité, compte — `ADR-0020` §1 confirmé, l'exclusion précédente corrigée comme lecture erronée, pas comme amendement), l'anneau du disque passe sur `--progress`/`.agent-node::before` piloté par l'état réel (§5, corrige la mauvaise attribution à `.work-orbit`), le centre du disque affiche le chiffre `input_tokens + output_tokens` en trois états (connu/absent/partiel, `ADR-0038` §5, `ADR-0041`), les trois `<dialog>` et le menu contextuel du backlog sont repris verbatim du prototype (`ADR-0040`), et le panneau de conversation permanent entre dans l'écran (`ADR-0040`). Une sixième garde — fidélité d'ensemble, `ADR-0039` §6 — vérifie l'emploi des jetons de forme/élévation (pas seulement leur déclaration) et la ressemblance rendue contre le prototype **chargé** dans le même Chromium |
 
 ## Voir aussi
 
@@ -513,6 +518,10 @@ que la politique de sécurité n'ait à se prononcer.
 - [ADR-0032 — l'identité colorée des agents disparaît du diagramme](adr/0032-l-identite-coloree-des-agents-disparait-du-diagramme.md)
 - [ADR-0033 — le thème sombre est supprimé](adr/0033-le-theme-sombre-est-supprime.md)
 - [ADR-0034 — ce que le dépôt garde des références de conception](adr/0034-ce-que-le-depot-garde-des-references-de-conception.md)
+- [ADR-0038 — la méthode du cycle 2 : gardes avant code, registre borné, `bug-017` absorbé](adr/0038-la-methode-du-cycle-2-gardes-avant-code-registre-borne-bug-017-absorbe.md)
+- [ADR-0039 — la fidélité à la maquette prime sur les restrictions antérieures](adr/0039-la-fidelite-a-la-maquette-prime-sur-les-restrictions-anterieures.md)
+- [ADR-0040 — les chemins d'écriture du cockpit](adr/0040-les-chemins-decriture-du-cockpit.md)
+- [ADR-0041 — lecture hors racine : compteurs seulement](adr/0041-lecture-hors-racine-compteurs-seulement.md)
 - [ARCHITECTURE.md](ARCHITECTURE.md)
-- [features/page-centre-de-controle.md](features/page-centre-de-controle.md) — la commande de thème côté écran
+- [features/page-centre-de-controle.md](features/page-centre-de-controle.md) — l'écran du centre de contrôle
 - `control-center/web/app.css` — les valeurs, source unique

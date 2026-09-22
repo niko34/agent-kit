@@ -2,7 +2,9 @@
 
 ## Statut
 
-Accepté
+Accepté (§3 précisé par [ADR-0040](0040-les-chemins-decriture-du-cockpit.md) §5 —
+la contrainte « vit dans git » s'attache à `feature-009`, pas au canal de
+conversation éphémère de `feature-022` ; §3 n'est pas remplacé)
 
 ## Date
 

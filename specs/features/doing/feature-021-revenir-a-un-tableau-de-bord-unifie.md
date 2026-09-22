@@ -2568,6 +2568,79 @@ par ce dépôt.
   **usage unique** masque un second appel, intégralement avalé par un `catch` — panneau
   bloqué sur « chargement… » sans aucune erreur visible.
   **Suite : root 43 fichiers / 1761 cas / 0 échec ; non-root 43 / 1691 / 0 échec.**
+- [2026-09-23 04:10] **COMMIT des lots 9 à 11** — `86e930d` (backend, les trois routes
+  d'écriture + les 5 conditions du P2), `d7682c3` (frontend du backlog), `f96c263`
+  (`PIEGES §57`/`§58` + `feature-026`), `f86db44` (la conversation). Arbre propre.
+- [2026-09-23 06:20] Lot 12 — **`feature-023` livrée des deux côtés**. Backend : filtre
+  **positif typé** sur `usage` (7 clés non entières mesurées), budget par instantané avec
+  `partiel` annoncé, `S5.7` tenue — permission refusée → **absence propre, jamais un zéro**.
+  Frontend : **trois** états au centre du disque — connu, absent (dégradation sans trou),
+  **partiel** distinct du second. L'anneau **reste découplé** des tokens, et une garde
+  l'interdit ; la mutation meurt deux fois.
+  ⚠️ **`PIEGES §59` écrit** : un **préfixe** devant l'identifiant **annule le témoin de
+  traversée classique**. Vérifié — `agent-../../etc/passwd.jsonl` **reste confiné**, seul un
+  séparateur intercalé fait sortir. **Un test de confinement bâti sur le témoin habituel
+  reste vert sans aucune garde.**
+  ⚠️ **Le signalement honnête du lot a rapporté plus que le lot** : `LOTS_DEJA_LIVRES`
+  n'incluait pas le jeton du lot 11, donc **17 éléments n'étaient vérifiés par aucune
+  garde**. En l'ajoutant, les gardes rougissent — le trou cachait un manque réel. Réparé
+  par **couplage** : F3b lit la liste des exemptions **dans le fichier de F4a** et exige que
+  chaque id exempté soit posé par un scénario. Renommer le bloc fait échouer F3b en nommant
+  la conséquence. Commité en `de22ca6`.
+- [2026-09-23 08:30] Étape 8 — **code-reviewer — REQUEST CHANGES**, et c'est l'étape que
+  l'agent principal avait **sautée pendant quinze commits**, en violation de `CLAUDE.md`.
+  ⚠️ **B1 — `feature-023` est livrée MORTE.** `transcripts.py:242` construit
+  `<racine>/subagents/agent-<id>.jsonl` ; la disposition réelle porte un **segment de
+  session**. Mesuré deux fois, par le relecteur et par l'agent principal : **289 fichiers**
+  en `<racine>/<session>/subagents/`, **0** au chemin construit. L'écran affiche « aucun
+  token mesuré » **pour toujours**.
+  **Trois raisons pour lesquelles rien ne l'a vu, et la troisième est de l'agent
+  principal** : (1) le **docstring décrit la bonne disposition** pendant que le code en
+  construit une autre — le relire **confirme** le bug ; (2) les **fixtures encodent la même
+  erreur que le code**, donc **567 lignes de tests verts sur une arborescence qui n'existe
+  nulle part** — aucune mutation ne pouvait les tuer ; (3) **j'avais mesuré la bonne
+  disposition sans le voir** : mon `find` portait `*/subagents`, j'ai transmis « 271
+  fichiers » au brief du lot 12 comme un fait, sans jamais vérifier que le code empruntait
+  le même chemin.
+  ✔️ **Le piège qu'il en tire, et qui est le revers de notre propre règle** : *un module
+  dont la seule sortie est « absence propre » n'a pas de mode d'échec bruyant — il faut
+  l'appeler pour savoir s'il marche.* « Absence, jamais un zéro » est juste, **et rend les
+  pannes muettes**. Les deux vont ensemble.
+  Autres points : **B2** fil de conversation indexé par **PID, jamais nettoyé** (réutilisation
+  de PID → un agent hérite des messages d'un autre) ; **B3** un message **refusé** est quand
+  même écrit dans le fil, donc l'écran affiche le message **et** « il n'est pas parti » ;
+  **B5** journal incomplet ; **M1** la liste fermée des permissions **se contourne par la
+  forme du drapeau** (`--flag=true`, `BYPASSPERMISSIONS` en majuscules) ; **M2** couleur
+  recopiée ; **M4** `theme.js` **code mort** chargé en synchrone avec un docstring faux ;
+  **M5** le client diagnostique à la place du serveur et se trompe 2 fois sur 3.
+  ⚠️ Piège d'outillage : **`claude --version` accepte n'importe quel drapeau inconnu** —
+  inutilisable pour tester si une forme est reconnue.
+- [2026-09-23 08:45] Lot 13 / D5 — **campagne de mutation finale** : **10 mutants, 8 tués,
+  2 survivants — tous deux expliqués comme équivalents**, ni l'un ni l'autre un défaut.
+  ⚠️ **Une garde creuse réelle trouvée par un mutant qu'il a inventé** : retirer un jeton de
+  `LOTS_DEJA_LIVRES` **survivait**, reproduisant exactement le trou du lot 11 — `de22ca6`
+  l'avait bouché **sans laisser de garde derrière lui**. Réparé par une **garde méta** :
+  tout élément `adopte` déjà posé dans le code dont le lot n'est pas couvert fait échouer.
+  Vérifié par l'agent principal : retirer `"12"` → `token-value` et
+  `selected-tokens, summary-tokens` nommés, EXIT=1 sur les deux fichiers.
+  ⚠️ Limite d'environnement : `chmod o+x` sur `/tmp` **refusé par le classificateur**, d'où
+  l'impossibilité de lancer la suite non-root depuis son propre clone — le script officiel,
+  lui, passe (il utilise `mktemp -d`, déjà traversable).
+- [2026-09-23 09:10] Étape 9 — **doc-writer — les quatre ADR écrits** : `0038` (méthode du
+  cycle, §5 en **constat** et non en prédiction), `0039` (la fidélité prime ; ⚠️ `ADR-0020`
+  **corrigé comme mauvaise lecture**, amendé seulement sur l'identité — la nuance a tenu),
+  `0040` (chemins d'écriture, hypothèse de segment **citée mot pour mot**, « **précise**
+  `ADR-0020 §3` » et jamais « remplace »), `0041` (lecture hors racine, modèle de menace
+  distinct, **non fusionné**). `0005`/`0019`/`0020`/`0023` : **ligne de statut seule, corps
+  intacts**. `docs/API.md`, `DESIGN-SYSTEM.md` (mauvais sélecteur `.work-orbit` → `--progress`
+  corrigé), `page-centre-de-controle.md`, `control-center/README.md`, `CHANGELOG.md`,
+  `PIEGES §60`. **240 liens résolus contre 201 avant**, les deux comptes comparés comme
+  `bug-023` l'exige. 50 specs, 0 doublon.
+  ✔️ **Il a corrigé une erreur de fait dans nos propres décisions** : le plan citait
+  `progress-track` comme lié au **ratio de cases cochées** ; le code l'a redéfini sur
+  **l'état de colonne**. Rectifié dans l'ADR **avant publication**.
+  Critères cochés dans `bug-017` (clos), `feature-022`, `023`, `025` — **sauf deux**, non
+  livrés faute de source de donnée, et **dits comme tels** plutôt que cochés (`PIEGES §16`).
 ### 4. F17 — le registre `ATTENDU_ROUGE`, défini (l'agent principal avait transmis le terme sans sa définition)
 
 **Le problème qu'il résout.** Écrire les cinq gardes au lot 0 et les voir échouer,

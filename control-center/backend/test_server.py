@@ -214,17 +214,22 @@ def main():
         code, _ = appeler(base, "/app.css")
         check("test_css_servi", code == 200)
 
-        # --- E10 (feature-015) : atteignabilité de `theme.js` ----------------
+        # --- E10 (feature-015) : atteignabilité d'un fichier servi ----------
+        # ⚠️ TÉMOIN CHANGÉ : `theme.js` était le fichier neuf de feature-015 ;
+        # supprimé au lot 13 de feature-021 (code mort, plus aucun lecteur
+        # depuis le lot 3). `diagramme.js` le remplace — la PROPRIÉTÉ prouvée
+        # est inchangée : un fichier de `web/` est réellement SERVI en HTTP,
+        # pas seulement lisible sur disque.
         # Un fichier neuf dans `web/` doit être RAMASSÉ par `_fichiers_servables()`
         # au démarrage réel du serveur, pas seulement lisible en `file://` — sinon
         # la garde CSP/amorçage-synchrone documentée par la spec est une garde
         # livrée mais inatteignable (404 en HTTP alors que le CSS reste 200).
         # Mesuré sur la VRAIE racine web (`serveur.servables` déjà calculé plus
         # haut par `_fichiers_servables()` sur le dépôt réel, pas un `faux_web`).
-        check("test_theme_js_dans_servables", "theme.js" in serveur.servables,
+        check("test_fichier_web_dans_servables", "diagramme.js" in serveur.servables,
               "clés trouvées : %r" % sorted(serveur.servables))
-        code, _ = appeler(base, "/theme.js")
-        check("test_theme_js_servi", code == 200, "obtenu %d" % code)
+        code, _ = appeler(base, "/diagramme.js")
+        check("test_fichier_web_servi", code == 200, "obtenu %d" % code)
 
         # --- ce qui doit refuser --------------------------------------------
         refus = [

@@ -100,8 +100,11 @@ ne le reçoit jamais.
 | **C** | Tableau de bord en lecture seule | ✅ livré · apparence non vérifiée |
 | **D** | Lancement d'un workflow | ✅ livré, validé par mutation |
 | **E** | Création d'une spec depuis un prompt | ✅ livré, validé par mutation |
-| F | Discussion par spec | à faire |
+| F | Discussion par spec (`feature-009`) — persistante, versionnée dans git | à faire |
 | G | Scénario complet avec échec réel | à faire |
+| **H** | Actions du backlog : lancer, modifier, supprimer une spec (`feature-025`) | ✅ livré, GATE P1 puis P2 sur le diff |
+| **I** | Conversation permanente avec l'agent en cours (`feature-022`) — éphémère, distincte de F, voir [ADR-0040](../docs/adr/0040-les-chemins-decriture-du-cockpit.md) §5 | ✅ livré, GATE P1 (refusé puis redessiné) puis P2 |
+| **J** | Tokens par passage d'agent, lus hors racine du dépôt (`feature-023`) | ✅ livré, GATE P1 |
 
 L'analyse préalable complète (workflow observé, agents détectés, cycle de vie
 mesuré, limites du runtime) est publiée à part ; les décisions qu'elle a figées
@@ -642,6 +645,106 @@ le **brouillon**. `/api/spec/ecrire` accepte un `contenu` arbitraire, non
 validé contre un gabarit ou les cases GATE : la garde réelle reste la
 relecture, par `spec-reader` et par l'humain, jamais le serveur. Voir
 [ADR-0027](../docs/adr/0027-le-centre-de-controle-ecrit-des-specs-il-n-en-valide-aucune.md).
+
+## Étape H — les actions du backlog
+
+`feature-025`, absorbée dans le cycle 2 de `feature-021` (lots 9-10) ; GATE
+`security-reviewer` P1 sur le design (**GO sous 8 conditions** pour lancer,
+**sous 12** pour modifier/supprimer), puis P2 sur le diff réel — trois
+défauts trouvés et corrigés avant merge (voir
+[ADR-0040](../docs/adr/0040-les-chemins-decriture-du-cockpit.md) §2).
+Trois routes neuves ([`backend/gestion_spec.py`](backend/gestion_spec.py)),
+ajoutées à `_ROUTES_ECRITURE` :
+
+- `POST /api/spec/lancer {cle, spec_id}` — lance un cycle **pour une spec
+  désignée**, distincte de `/api/lancer` qui ne connaît qu'une clé.
+  `spec_id` ne construit jamais un chemin : résolu par égalité stricte
+  contre les specs réellement découvertes, confiné deux fois. Seule la
+  **première colonne** (position, jamais un nom codé en dur — ADR-0003) est
+  éligible ; `409` sur les autres. `cle` reste choisie dans `[commandes]`
+  (ADR-0005) ; `spec_id` s'insère par substitution d'un placeholder déclaré
+  `"{spec_id}"`, présent exactement une fois dans l'`argv` de la commande.
+- `POST /api/spec/modifier {spec_id, empreinte, contenu}` — compare-and-write
+  atomique : `empreinte` (SHA-256, rendue par `GET /api/spec?id=…`) doit
+  concorder avec le contenu relu sous un verrou court, sinon `409`, fichier
+  intact.
+- `POST /api/spec/supprimer {spec_id, confirmation_nom}` — la **seule**
+  route destructive du cockpit. Confirmation nommant exactement la spec ;
+  refuse (`409`, motif dit) toute spec non suivie par git ou modifiée
+  localement, faute de quoi le plan de retour arrière serait inapplicable
+  (`git rm` rend `rc 128` sur un fichier non suivi, mesuré) ; sur une spec
+  suivie et propre, la réponse porte le plan **exécutable tel quel**
+  (`git checkout <sha HEAD> -- <chemin>`), jamais exécuté par ce serveur
+  lui-même (Règle absolue n°4).
+
+`role != "premiere"` refuse en fail-closed sur la suppression, plutôt qu'une
+énumération des rôles interdits. Détail complet, les trois défauts trouvés
+par le GATE P2 (garde vivante pour un seul écrivain, oracle qui s'accorde
+avec lui-même, confinement jamais éprouvé sur un lien symbolique réel) et
+leurs correctifs : [ADR-0040](../docs/adr/0040-les-chemins-decriture-du-cockpit.md) §2.
+
+## Étape I — la conversation permanente avec l'agent en cours
+
+`feature-022`, absorbée dans le même cycle (lot 11). Premier passage GATE :
+**NO GO tel quel** — pas parce que la capacité ajoutait un risque nouveau
+(« `PUT` + `lancer` donnent déjà, à eux deux, la capacité d'instruire
+arbitrairement un agent qui a un shell et l'identité git du développeur »),
+mais parce que la conception initiale du canal ne tenait pas ses propres
+garanties. Redessinée par `architect` (protocole d'entrée, canal de
+réponse, sémantique du `202`), elle repasse en GATE et obtient **GO sous
+13 conditions** (`S3.1` à `S3.13`).
+
+- `POST /api/conversation {texte}` — écrit un message sur le canal
+  `json-lines` du lancement en cours qui l'accepte. Le protocole d'entrée
+  (`"aucune"` par défaut, ou `"json-lines"`) est **déclaré dans
+  `[commandes.cle]`**, jamais un champ de requête : un porteur du jeton ne
+  peut ouvrir un canal que sur une commande qui le déclare dans la
+  configuration. Bornes appliquées dans l'ordre : forme du corps (`400`) →
+  taille en caractères (`413`, avant toute écriture) → caractères de
+  contrôle interdits (`422`) → destinataire (`404` si aucun lancement
+  `json-lines` actif) → journalisation (`500` si impossible, **avant**
+  l'écriture sur le canal) → écriture (`503` si occupé/corrompu/
+  indisponible) → `202` (« tube vidé, message écrit entier », pas
+  « traité »).
+- `GET /api/conversation` — le fil **persistant** des messages
+  **utilisateur** du lancement en cours (`var/conversations/<pid>.jsonl`,
+  hors dépôt, non versionné) ; les réponses de l'agent restent dans le
+  tampon circulaire de `/api/lancement`, jamais recopiées ici.
+
+La capacité du tube (`F_SETPIPE_SZ`, posée après `Popen`, 262 144 octets
+mesurés côté fils) et l'enveloppe pire cas du message (dérivée du
+sérialiseur réel, jamais recopiée d'un rapport — 3,0× d'écart mesuré selon
+le seul drapeau `ensure_ascii`) sont détaillées dans
+[ADR-0040](../docs/adr/0040-les-chemins-decriture-du-cockpit.md) §3, avec
+l'hypothèse de segment de confiance dont dépend toute cette surface.
+
+## Étape J — les tokens par passage d'agent
+
+`feature-023`, absorbée dans le même cycle (lot 12) ; modèle de menace
+**distinct** de H et I — une lecture seule, hors racine du dépôt, jamais une
+route d'écriture. GATE P1 : **GO sous 7 conditions** (`S5.1` à `S5.7`).
+
+[`backend/transcripts.py`](backend/transcripts.py) lit les transcripts de
+sous-agent sous `~/.claude/projects/<projet encodé>/<session>/subagents/
+agent-<id>.jsonl` pour en extraire **deux compteurs entiers par
+`agent_id`** — `input_tokens`, `output_tokens` — et rien d'autre : ni
+message, ni chemin, ni extrait de texte. `usage` porte sept clés non
+entières mesurées sur un vrai transcript (`cache_creation`,
+`inference_geo`, `iterations`, `output_tokens_details`, `server_tool_use`,
+`service_tier`, `speed`) ; un filtre **positif et typé** les exclut toutes.
+Racine confinée au projet courant, calculée depuis l'environnement seul ;
+`agent_id` validé par motif hexadécimal avant d'entrer dans un chemin,
+reconfiné par `vcs.chemin_sur()`. Budget de temps et d'octets par
+instantané : au premier dépassement, `partiel` devient vrai plutôt que de
+relire jusqu'à 270 Mo à chaque signal SSE. Un `agent_id` sans transcript
+lisible est **absent** du résultat, jamais un zéro. Le mécanisme complet,
+ses sept conditions et les alternatives écartées (dont l'appel à `claude
+auth status`) : [ADR-0041](../docs/adr/0041-lecture-hors-racine-compteurs-seulement.md).
+
+Le chiffre est exposé dans `/api/etat.tokens_par_passage`, additif — le
+frontend en tolère l'absence (backend plus ancien) et ne l'utilise jamais
+pour piloter l'anneau d'activité du disque, qui reste fonction de l'état
+seul.
 
 ## Tests
 

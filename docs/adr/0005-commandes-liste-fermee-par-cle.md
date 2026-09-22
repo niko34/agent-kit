@@ -2,7 +2,9 @@
 
 ## Statut
 
-Accepté
+Accepté (§ substitution d'un placeholder déclaré dans l'`argv`, pour cibler une
+commande sur un `spec_id`, ajoutée par [ADR-0040](0040-les-chemins-decriture-du-cockpit.md) —
+la garantie centrale, une clé jamais une ligne de commande, n'est pas révoquée)
 
 ## Date
 

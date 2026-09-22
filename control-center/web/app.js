@@ -1567,6 +1567,19 @@ function fermerDialogue(dialogue) {
 let menuTargetSpec = null;
 let menuBoutonActif = null;
 
+// Constantes de positionnement (revue de code, cycle `feature-021`) : le
+// menu n'a pas de rendu à lire au moment du calcul (`menu.hidden = false`
+// vient d'être posé, aucun reflow garanti côté bac à sable), donc sa
+// géométrie est nommée ici plutôt que mesurée en direct. `LARGEUR_PX` doit
+// rester égale à `.context-menu { width: … }` (`app.css`) ; les deux
+// hauteurs sont mesurées à la main (3 items + séparateur, ou 2 items) et se
+// désynchroniseront du CSS au premier changement de gabarit — à revoir
+// ensemble si le menu change.
+const MENU_CONTEXTUEL_LARGEUR_PX = 190; // .context-menu { width: 190px }
+const MENU_CONTEXTUEL_MARGE_VIEWPORT_PX = 12; // espace minimal laissé au bord droit du viewport
+const MENU_CONTEXTUEL_HAUTEUR_AVEC_LANCER_PX = 226; // « lancer » + séparateur + « modifier » + « supprimer »
+const MENU_CONTEXTUEL_HAUTEUR_SANS_LANCER_PX = 174; // « modifier » + « supprimer », sans « lancer »
+
 function elementsMenuVisibles() {
   const menu = $("context-menu");
   if (!menu) return [];
@@ -1613,8 +1626,14 @@ function ouvrirMenuContextuel(bouton, specId) {
     const rect = bouton.getBoundingClientRect();
     const largeurVue = (typeof window !== "undefined" && window.innerWidth) || 1024;
     const hauteurVue = (typeof window !== "undefined" && window.innerHeight) || 768;
-    menu.style.left = Math.min(largeurVue - 202, Math.max(8, rect.right - 190)) + "px";
-    menu.style.top = Math.min(hauteurVue - (launchable ? 226 : 174), rect.bottom + 4) + "px";
+    menu.style.left = Math.min(
+      largeurVue - (MENU_CONTEXTUEL_LARGEUR_PX + MENU_CONTEXTUEL_MARGE_VIEWPORT_PX),
+      Math.max(8, rect.right - MENU_CONTEXTUEL_LARGEUR_PX)
+    ) + "px";
+    menu.style.top = Math.min(
+      hauteurVue - (launchable ? MENU_CONTEXTUEL_HAUTEUR_AVEC_LANCER_PX : MENU_CONTEXTUEL_HAUTEUR_SANS_LANCER_PX),
+      rect.bottom + 4
+    ) + "px";
   }
   bouton.setAttribute("aria-expanded", "true");
   const items = elementsMenuVisibles();
@@ -1796,13 +1815,14 @@ async function surSoumissionEditionSpec(evenement) {
       return;
     }
     if (reponse.status === 401) { sur401Lecture(); return; }
-    // 409 (empreinte périmée OU lancement en cours) : le dire, JAMAIS
-    // réessayer en silence (consigne du brief — « ne réessaie pas »).
+    // Le serveur rend trois 409 sémantiquement distincts (spec close,
+    // lancement en cours, empreinte périmée) — CHACUN avec son message
+    // exact (`gestion_spec.py`, `modifier`). Le client ne diagnostique
+    // JAMAIS à sa place : il affiche `donnees.erreur` tel quel, jamais un
+    // texte fabriqué qui suppose UNE cause précise (revue de code, M5).
     if (erreur) {
       erreur.hidden = false;
-      erreur.textContent = reponse.status === 409
-        ? "Un éditeur externe (ou un lancement en cours) a modifié cette spec entre-temps — rechargez-la avant de réessayer."
-        : (donnees.erreur || ("Erreur du serveur (" + reponse.status + ").`"));
+      erreur.textContent = donnees.erreur || ("Erreur du serveur (" + reponse.status + ").");
     }
   } catch (e) {
     if (erreur) { erreur.hidden = false; erreur.textContent = "Erreur réseau : " + e.message; }
@@ -1899,7 +1919,6 @@ async function surClicLancerCyclePourSpec(specId) {
       body: JSON.stringify({ cle: pilotage.cleChoisie, spec_id: specId }),
     });
     if (reponse.status === 202) {
-      stockerJetonPilotage(jetonPilotageStocke());
       pilotage.lancement = {
         cle: pilotage.cleChoisie, etat: "en_cours", curseur: 0, tronque: false,
         derniereActivite: Date.now() / 1000, debutClient: Date.now(),
@@ -3391,14 +3410,26 @@ function heureDepuisMs(ts) {
 /* Construit UN message. `auteur` distingue seulement le glyphe de l'avatar
  * (texte, jamais une image ni une classe neuve) — `message`/`message-avatar`/
  * `bubble` restent les SEULES classes adoptées pour ce rôle (F0) : pas de
- * variante « utilisateur » inventée hors du prototype. */
-function rendreMessageConversation(auteur, glyphe, texteMessage, ts) {
+ * variante « utilisateur » inventée hors du prototype.
+ *
+ * `envoye === false` (revue de code, cycle `feature-021`, B3) : le serveur
+ * écrit désormais `"envoye": false` AVANT toute tentative, basculé à `true`
+ * seulement après remise confirmée (`server.py`, `_ecrire_message_
+ * conversation`). Sans marque à l'écran, un message resté à `false` (503,
+ * refus du canal) apparaît identique à un message réellement remis — le fil
+ * contredirait alors le bandeau d'erreur affiché au moment de l'envoi. La
+ * marque réutilise `.note.erreur` (AUCUNE classe neuve) : même texte,
+ * jamais porté par la seule couleur. */
+function rendreMessageConversation(auteur, glyphe, texteMessage, ts, envoye) {
   const article = el("article", "message");
   article.appendChild(el("span", "message-avatar", glyphe)).setAttribute("aria-hidden", "true");
   const bulle = el("div", "bubble");
   const heureTexte = heureDepuisMs(ts);
   if (heureTexte) bulle.appendChild(el("time", "", heureTexte));
   bulle.appendChild(document.createTextNode(texteMessage));
+  if (envoye === false) {
+    bulle.appendChild(el("p", "note erreur", "Non envoyé — réessayez."));
+  }
   article.appendChild(bulle);
   return article;
 }
@@ -3463,8 +3494,11 @@ function rendreConversation() {
   }
 
   conversation.messages.forEach((msg) => {
+    // `envoye` absent (fil écrit avant ce correctif) vaut « remis » — seule
+    // une valeur EXPLICITEMENT `false` marque un message non parti (B3).
+    const envoyeMsg = !msg || msg.envoye !== false;
     conteneur.appendChild(rendreMessageConversation(
-      "utilisateur", "→", String((msg && msg.texte) || ""), msg && msg.ts));
+      "utilisateur", "→", String((msg && msg.texte) || ""), msg && msg.ts, envoyeMsg));
   });
 
   // Question bloquante épinglée (F2) : AUCUNE source de données ce cycle —
@@ -3682,7 +3716,7 @@ function brancherFlux() {
  * `#titre-section-*` à piloter (retirer ce code, pas seulement le laisser
  * no-op sur des ids absents, évite qu'une suite continue d'exercer une
  * fonctionnalité qu'aucune page réelle ne peut plus atteindre — un vert à
- * tort, PIEGES §21/§33). `theme.js` continue de poser `data-section` sur
+ * tort, PIEGES §21/§33). `theme.js` a été SUPPRIMÉ (lot 13) ; plus rien ne pose `data-section` sur
  * `<html>` (fichier hors périmètre de ce lot) : cet attribut n'a plus AUCUN
  * lecteur ici, volontairement.
  * ========================================================================= */

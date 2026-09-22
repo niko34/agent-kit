@@ -148,18 +148,72 @@ Rien. Aucune route, aucun stockage, aucune notion de message ou de question bloq
 - `docs/adr/` — au moins un ADR
 
 ## Livrables — check-list
-- [ ] S1 — **GATE P1** sur le design : verdict sur l'injection de texte dans un agent en cours
-- [ ] A1 — arbitrage du lieu de stockage des messages, **avec `feature-009`**
-- [ ] A2 — verdict ADR sur l'amendement d'`ADR-0019` (table des routes)
-- [ ] B1 — canal d'entrée vers le processus lancé
-- [ ] B2 — route d'écriture, bornée, typée, avec ses codes d'erreur
-- [ ] B3 — lecture du fil
-- [ ] F1 — panneau permanent, 72/28, historique défilant
-- [ ] F2 — question bloquante épinglée
-- [ ] F3 — saisie à bouton unique, cas limites traités
-- [ ] S2 — **GATE P2** sur le diff réel
-- [ ] D1 — tests, dont **mutation** sur les gardes de la route neuve
-- [ ] C1 — `docs/API.md`, ADR, `CHANGELOG.md`
+- [x] S1 — **GATE P1** sur le design : verdict sur l'injection de texte dans un agent en cours
+      (premier passage **NO GO tel quel** — pas pour une capacité nouvelle,
+      `/api/spec/lancer` + `/api/spec/modifier` donnent déjà l'équivalent —
+      mais pour la conception initiale du canal ; redessinée par `architect`,
+      re-GATE **GO sous 13 conditions**, `S3.1`-`S3.13`)
+- [x] A1 — arbitrage du lieu de stockage des messages, **avec `feature-009`**
+      (JSON Lines non versionné sous `var/conversations/<pid>.jsonl` ; ce choix
+      **engage `feature-009`**, tranché par `architect`, voir `ADR-0040` §3/§5)
+- [x] A2 — verdict ADR sur l'amendement d'`ADR-0019` (table des routes)
+      (`ADR-0040` §4 — `_ROUTES_ECRITURE` 4 → 8, aucun verbe `do_*` neuf,
+      test d'introspection inchangé dans sa forme)
+- [x] B1 — canal d'entrée vers le processus lancé (`lanceur.py`, `entree`
+      déclaré dans `[commandes.cle]`, `F_SETPIPE_SZ` posé après `Popen`,
+      262 144 o mesurés côté fils, jamais un champ de requête)
+- [x] B2 — route d'écriture, bornée, typée, avec ses codes d'erreur
+      (`POST /api/conversation`, ordre exact des bornes : `400`→`413`→`422`
+      →`404`→`500`→`503`→`202`)
+- [x] B3 — lecture du fil (`GET /api/conversation`, messages **utilisateur**
+      seulement, `var/conversations/<pid>.jsonl`)
+- [x] F1 — panneau permanent, historique défilant (`.claude-panel`, colonne
+      fixe **340px** reprise du prototype — pas une répartition en
+      pourcentage 72/28, écart assumé à l'indication de la spec au profit de
+      la fidélité au prototype chargé, `ADR-0039` §6)
+- [ ] F2 — question bloquante épinglée — **non livré, délibérément**.
+      `#claude-question` existe dans le DOM (id adopté de la table F0) mais
+      reste `hidden` en permanence : aucune donnée du journal ne porte la
+      notion de « question bloquante » (même principe que `PIEGES §16` pour
+      un pourcentage inventé — ne jamais fabriquer une donnée qui n'existe
+      pas). Reste ouvert pour une prochaine spec qui déciderait d'où cette
+      donnée viendrait.
+- [x] F3 — saisie à bouton unique, cas limites traités (aucun agent en
+      cours : composer inerte, motif en texte ; pas de jeton : `enTeteAuthPilotage`
+      absent, écriture refusée côté serveur ; serveur injoignable : fil
+      « peut-être périmé » affiché plutôt que figé sans le dire)
+- [x] S2 — **GATE P2** sur le diff réel (conditions `S3.1`-`S3.13` devenues
+      des assertions dans `test_server_conversation.py`/`test_lanceur.py`,
+      quatre mutations posées, toutes tuées — dont `--restricted` non
+      vérifié, et la liste fermée de permissions neutralisée)
+- [x] D1 — tests, dont **mutation** sur les gardes de la route neuve
+- [x] C1 — `docs/API.md` (renvoi mis à jour vers `control-center/README.md`),
+      `control-center/README.md` (Étape I), `ADR-0040`, `CHANGELOG.md`
+
+## Notes d'implémentation (lot 11 de `feature-021`, cycle 2)
+
+Livré en deux temps : `Lot 11 backend` (canal, route, bornes — voir
+`ADR-0040` §3 pour le détail des treize conditions) puis `Lot 11 frontend`
+(le panneau lui-même, tiers droit de la maquette). La collision de nom
+`#prompt` (composeur de spec de `feature-008` vs. composeur de conversation
+de cette spec) a été tranchée en renommant **le nôtre** `#spec-prompt`,
+gardant `#prompt` pour le prototype — 22 occurrences renommées dans 6
+fichiers, dans un seul commit.
+
+Le canal ne s'ouvre que pour une commande qui déclare `entree =
+"json-lines"` : sur toute autre commande, `POST /api/conversation` rend
+`404`. `202` signifie « tube vidé, message écrit entier », jamais
+« traité » — le traitement se constate sur `/api/lancement` rejoué.
+
+**F2 n'est pas un oubli** : aucune source de données pour une « question
+bloquante » n'a été identifiée pendant ce cycle. L'élément DOM existe,
+prêt à être alimenté le jour où une telle source sera conçue, mais rien ne
+l'affiche aujourd'hui — conforme au principe qui gouverne tout ce cycle,
+ne jamais fabriquer une donnée absente.
+
+Détail complet du mécanisme (bornes, capacité du tube, enveloppe pire cas,
+hypothèse de segment de confiance dont dépend cette surface) :
+[ADR-0040](../../../docs/adr/0040-les-chemins-decriture-du-cockpit.md) §3.
 
 ## Sécurité & données
 - Authentification touchée : **oui** — une route d'écriture de plus
@@ -180,11 +234,15 @@ Rien. Aucune route, aucun stockage, aucune notion de message ou de question bloq
 - `CHANGELOG.md` : changement visible majeur
 
 ## Critères d'acceptation
-- [ ] Un message envoyé depuis le navigateur atteint l'agent en cours et sa réponse revient
-- [ ] Sans jeton, aucune écriture n'est possible et la saisie le dit
-- [ ] Une question bloquante est visible sans défilement
-- [ ] Verdict GATE P1 **et** P2 écrits dans la spec
-- [ ] Suite verte, lint propre, tests neufs validés par mutation
+- [x] Un message envoyé depuis le navigateur atteint l'agent en cours et sa réponse revient
+      (envoi via `POST /api/conversation`, réponse observée sur `/api/lancement`,
+      `--replay-user-messages`)
+- [x] Sans jeton, aucune écriture n'est possible et la saisie le dit
+- [ ] Une question bloquante est visible sans défilement — **non livré**, voir F2
+      ci-dessus : aucune source de données pour cette notion n'existe aujourd'hui
+- [x] Verdict GATE P1 **et** P2 écrits dans la spec (voir `feature-021`, journal
+      de bord cycle 2, Étape C et Lot 11 ; verdicts référencés ci-dessus)
+- [x] Suite verte, lint propre, tests neufs validés par mutation
 
 ## Plan de test manuel
 1. Lancer un agent, lui écrire, vérifier qu'il reçoit

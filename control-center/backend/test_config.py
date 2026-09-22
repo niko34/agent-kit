@@ -418,6 +418,8 @@ neutre = ["claude", "-p"]
 contournement = ["claude", "-p", "--dangerously-skip-permissions"]
 contournement_allow = ["claude", "-p", "--allow-dangerously-skip-permissions"]
 mode_bypass = ["claude", "-p", "--permission-mode=bypassPermissions"]
+contournement_egal_valeur = ["claude", "-p", "--dangerously-skip-permissions=true"]
+mode_bypass_casse = ["claude", "-p", "--permission-mode=BYPASSPERMISSIONS"]
 
 [garde_fous]
 commandes_sans_permissions = ["contournement"]
@@ -439,6 +441,19 @@ commandes_sans_permissions = ["contournement"]
         check("test_permissions_autorisees_cle_inconnue_est_vraie",
               c_permissions.permissions_autorisees("n_existe_pas") is True,
               "rien à autoriser : le 404 de clé inconnue prime, ailleurs")
+
+        # --- revue de code (feature-021, M1) : forme `--flag=valeur` ET casse
+        # différente doivent être reconnues comme le MÊME drapeau sensible —
+        # sinon la liste fermée se contourne par la FORME du token, pas son
+        # contenu (mesuré par le relecteur).
+        check("test_permissions_refusees_flag_egal_valeur_pas_liste",
+              c_permissions.permissions_autorisees("contournement_egal_valeur") is False,
+              "'--dangerously-skip-permissions=true' est le MÊME drapeau que "
+              "la forme nue, absente ici de commandes_sans_permissions -> refus")
+        check("test_permissions_refusees_bypass_casse_differente",
+              c_permissions.permissions_autorisees("mode_bypass_casse") is False,
+              "'BYPASSPERMISSIONS' doit être reconnu malgré la casse, comme "
+              "'bypassPermissions' l'est déjà")
 
         c_sans_garde_fou = C.charger(
             chemin=ecrire(tmp, '[commandes]\nx = ["claude", "-p", '

@@ -42,12 +42,14 @@ Toutes les sections qu'énumérait l'ancien tableau (Agents, Système,
 Développer — avec ses trois blocs, Cycles, Fichiers, Événements) sont
 **empilées sur une seule page**, chacune un `<section>` distinct, sans
 attribut `hidden` statique — la page n'a plus de contenu masqué au chargement.
-25 identifiants issus de la maquette Material 3 (`control-center/maquettes/`)
-sont posés dans le HTML servi ; leur câblage aux données réelles (le graphe
-d'agents, la feuille de détail d'un passage, l'historique des cycles) est le
-travail des lots 4 à 6, **non couvert par ce lot** — ce que le lot 3 livre est
-la structure statique et l'accessibilité de l'écran, pas encore le rendu
-dynamique de ces zones.
+Le cockpit adopte l'intégralité de la maquette Material 3 fournie par
+l'utilisateur (`control-center/maquettes/2026-09-20-maquette-materiel-3.html`,
+réouverture de périmètre du 2026-09-22, [ADR-0039](../adr/0039-la-fidelite-a-la-maquette-prime-sur-les-restrictions-anterieures.md)) :
+barre supérieure (voir « Barre supérieure »), bande de résumé, zone de
+travail avec le graphe d'agents à gauche, kanban pleine largeur en dessous
+(voir « Kanban et actions du backlog »), feuille de détail d'un passage
+(bottom sheet), et un panneau de conversation permanent avec l'agent en
+cours (voir « Conversation avec l'agent en cours »).
 
 ### États vides par section
 
@@ -104,6 +106,128 @@ observable : il ne pose plus `data-theme`, et la persistance de section
 active qu'il assurait depuis `feature-019` n'a plus d'objet, la page n'ayant
 plus de section à persister. Le fichier reste servi tel quel (hors périmètre
 du lot 3).
+
+## Barre supérieure
+
+Livrée au lot 7 de `feature-021` étendu (réouverture du 2026-09-22). Les
+**sept** contrôles du prototype sont repris avec leur markup, leurs classes
+et leurs cibles de 48 px — leur exclusion initiale au lot 0 reposait sur
+une lecture erronée d'`ADR-0020` (l'ADR ne mentionne ni projet, ni barre, ni
+switcher, ni avatar, ni notification ; il interdit les **comptes et rôles
+multiples**, pas un sélecteur de projet), corrigée par
+[ADR-0039](../adr/0039-la-fidelite-a-la-maquette-prime-sur-les-restrictions-anterieures.md) §2.
+
+- **`#projet`** (`.project-switcher`) — fusionné avec le sélecteur de
+  projet du prototype (celui-ci ne le câble nulle part dans son script :
+  le reproduire **inerte** est la fidélité, pas un compromis).
+  `aria-disabled="true"` (jamais `disabled`, qui sortirait l'élément du
+  parcours clavier), motif « un seul projet configuré » écrit en **texte
+  visible**, pas seulement dans l'`aria-label`.
+- **`#notification-button`**, badge — repris inerte, même motif ;
+  **le badge « 3 » de la maquette est retiré** (donnée d'exemple, pas une
+  vraie notification) et posé `hidden` en permanence.
+- **`#account-button`, avatar, `#user-name`** — affichent l'identité
+  **git réelle** du développeur, jamais une fabrication : `vcs.identite()`
+  (`control-center/backend/vcs.py`) lit `git config --get user.name`,
+  tronqué à 80 caractères, exposé dans `/api/etat.identite`. Jamais
+  `user.email`, `getlogin()` ni `$USER`. L'avatar porte des initiales
+  dérivées de ce nom réel.
+
+Les contrôles sans autre arbitrage possible (project-switcher,
+notifications) reçoivent le même traitement inerte-avec-motif ; aucun n'a
+d'effet `:hover`.
+
+### `#cycle-title` — le titre du cycle affiché dans la zone de travail
+
+`#cycle-title` (le `<h1>` de `.cycle-surface`, `aria-labelledby` de la
+région principale) n'appartient pas à la barre supérieure mais à la zone de
+travail, au-dessus du graphe d'agents. Il affiche **« Cycle #N »**
+(`indice_cycle`) quand la spec du cycle n'est pas connue, et le **titre de
+la spec** quand le cycle a été lancé depuis le cockpit
+(`POST /api/spec/lancer`, voir « Kanban et actions du backlog » ci-dessous)
+— jamais le vide, jamais une chaîne vide au premier rendu ni à la fin d'un
+cycle. Pour un cycle **observé** (pas lancé depuis le cockpit), le constat
+d'[ADR-0023](../adr/0023-un-cycle-observe-ne-porte-pas-de-nom.md) reste
+entier : aucune corrélation heuristique, seulement « Cycle #N ». Le cas
+« lancé depuis le cockpit » est l'amendement apporté par
+[ADR-0039](../adr/0039-la-fidelite-a-la-maquette-prime-sur-les-restrictions-anterieures.md) §3.
+
+## Kanban et actions du backlog
+
+Livré aux lots 9-10 de `feature-021` étendu (`feature-025`, absorbée).
+Trois colonnes lues depuis `GET /api/etat.colonnes`
+(`[{repertoire, classe, libelle}]`), **jamais** figées à `Todo`/`Doing`/
+`Done` — renommer une colonne dans `control-center.toml` suffit à la voir
+suivre à l'écran ([ADR-0003](../adr/0003-colonne-spec-depuis-repertoire.md)).
+Chaque spec est une carte (`.feature-card`), avec un menu contextuel
+(`#context-menu`, `role="menu"`) portant les actions disponibles selon sa
+colonne.
+
+### Lancer un cycle pour une spec
+
+`POST /api/spec/lancer {cle, spec_id}` — disponible sur les specs de la
+**première** colonne seulement (position, jamais un nom codé en dur). Le
+cycle qui en résulte connaît sa spec dès son lancement : `#cycle-title`
+l'affiche (voir « Barre supérieure »).
+
+### Modifier une spec
+
+`POST /api/spec/modifier` procède par **compare-and-write atomique** :
+l'écran envoie l'`empreinte` (SHA-256) lue au dernier chargement de la
+spec ; un écart — édition concurrente, dans le cockpit ou hors de lui — est
+refusé (`409`), la carte affiche l'erreur, rien n'est écrasé.
+
+### Supprimer une spec — la seule action destructive
+
+`#delete-dialog` exige une **confirmation nommant exactement la spec** — la
+maquette ne montre qu'un Oui/Non, mais la fidélité cède ici devant la
+sécurité (Règle absolue n°4), et c'est un écart déclaré. La suppression
+échoue (`409`, expliqué) si la spec n'est pas suivie par git ou porte des
+modifications non commitées : au delà de ce cas, la réponse porte le plan
+de retour arrière **exécutable** (`git checkout <sha> -- <chemin>`), que
+l'écran n'exécute jamais lui-même. Voir
+[ADR-0040](../adr/0040-les-chemins-decriture-du-cockpit.md) pour le détail
+du mécanisme et des conditions de sécurité.
+
+### `#add-item-dialog` — présent, inerte
+
+Reproduit du prototype mais **inerte avec motif affiché** : créer une spec
+depuis le cockpit relève de `feature-024`, hors périmètre de ce cycle.
+
+### La barre de progression du backlog
+
+`.progress-track` (linéaire, 6 px, sur chaque `.feature-card`) est livrée
+**sans aucun pourcentage inventé**. Un ratio de cases cochées dans la spec a
+été mesuré puis écarté : **36 %** sur une spec jamais commencée (les cases
+du gabarit qui ne sont pas des livrables gonflent le compte) — aussi
+trompeur qu'un pourcentage inventé, seulement déguisé en donnée réelle. La
+grandeur retenue est **l'état de colonne** de la carte (première /
+intermédiaire / dernière), à **trois largeurs fixes** (12 % / 55 % / 100 %),
+jamais une division (`PIEGES §16`, motif conservé, exclusion levée par la
+réouverture de périmètre — [ADR-0039](../adr/0039-la-fidelite-a-la-maquette-prime-sur-les-restrictions-anterieures.md) §5).
+L'élément est décoratif : la colonne porte déjà cette information au
+clavier et au lecteur d'écran par son titre, la barre n'en est qu'un
+renfort visuel. Un `aria-valuenow` sur cet élément est un défaut : sa présence fait échouer
+la garde de conformité dédiée.
+
+## Conversation avec l'agent en cours
+
+Livrée au lot 11 de `feature-021` étendu (`feature-022`, absorbée).
+`#conversation` affiche le fil des messages **utilisateur** envoyés à
+l'agent en cours d'exécution (`GET /api/conversation`) ; les réponses de
+l'agent restent dans le flux SSE de `/api/lancement`, jamais recopiées
+ici. `#spec-prompt` (renommé depuis `#prompt`, qui reste le composeur de
+rédaction de spec de `feature-008` — collision de noms tranchée par
+renommage exhaustif) envoie un message via `POST /api/conversation`.
+
+Le canal n'accepte du texte que si le lancement en cours l'a **déclaré**
+dans sa configuration (`entree = "json-lines"`) : sur toute autre commande,
+la route rend `404`, « aucun agent en cours n'accepte de message ». Un
+message trop long (`413`), portant des caractères de contrôle (`422`), ou
+envoyé sur un canal occupé/corrompu (`503`) est refusé **avant** tout effet
+— voir [ADR-0040](../adr/0040-les-chemins-decriture-du-cockpit.md) §3 pour
+le détail des conditions. Le fil est **persistant** (un fichier par
+lancement, hors dépôt) : fermer puis rouvrir l'onglet ne le perd pas.
 
 ## Identité d'agent : le texte, plus la couleur
 
@@ -210,22 +334,36 @@ contiennent que lui.
 - le **diamètre** : fonction de l'**état**, plus de la durée — 52 px non
   lancé, **88 px actif ou terminé** ; deux agents de durées très différentes,
   tous deux actifs, ont le même diamètre ;
-- l'**anneau d'activité** (`.work-orbit`) : éteint au repos, **animation
-  indéterminée en boucle** pendant que l'agent travaille, **complet et
-  stable** une fois terminé — il ne code jamais une proportion chiffrée
-  (aucun total final connu pour un passage en cours, `ADR-0031 §5`) ;
+- l'**anneau d'activité** (`--progress` sur `.agent-node`, porté par un
+  pseudo-élément `::before` dédié — pas le disque entier, qui ferait tourner
+  le texte) : éteint au repos (`0deg`), **arc fixe à 270° mis en rotation**
+  pendant que l'agent travaille, **complet et stable** à `360deg` une fois
+  terminé — trois valeurs **fixes** par classe d'état, jamais une division :
+  il ne code jamais une proportion chiffrée (aucun total final connu pour un
+  passage en cours, `ADR-0031 §5`). Une garde interdit de le recoupler aux
+  tokens du centre ;
 - **12 graduations radiales**, fixes, purement décoratives — elles ne
   comptent plus les appels d'outils ;
 - **3 pastilles de fichiers**, allumée/éteinte (binaire, plafonné à 3) — un
   passage à 4 fichiers et un passage à 40 fichiers dessinent pareil ;
-- le **centre** ne porte que le **sigle** de l'agent. Aucun chiffre n'y est
-  affiché : la lecture des tokens par sous-agent est hors périmètre de ce
-  cycle (`feature-023`). Le disque est **dégradable** — il fonctionne sans
-  ce chiffre — et jamais *à trous* : rien n'est réservé à sa place.
+- le **centre** porte le **sigle** de l'agent et, depuis la réouverture du
+  2026-09-22 (`feature-023`, absorbée), la somme `input_tokens +
+  output_tokens` du passage **quand elle est connue**. Trois états, jamais
+  deux : chiffre connu ; chiffre **absent** (le nœud n'existe pas dans le
+  DOM — jamais un `0`, un `—` ni un espace vide) ; relevé **partiel**
+  (le budget de lecture des transcripts de sous-agent a coupé avant terme —
+  dit explicitement, jamais confondu avec l'absence). La lecture se fait
+  hors de la racine du dépôt, confinée et bornée : voir
+  [ADR-0041](../adr/0041-lecture-hors-racine-compteurs-seulement.md). Le
+  disque reste **dégradable** — il fonctionne sans ce chiffre — et jamais
+  *à trous* : rien n'est réservé à sa place.
 
 Les appels d'outils et le compte exact de fichiers restent mesurés dans le
 journal ; ils ne sont simplement plus peints sur le disque. Leur affichage
-dans une feuille de détail par passage reste à faire (lot 5).
+détaillé vit dans la **feuille de détail** (`.detail-sheet`, bottom sheet
+Material 3) qu'ouvre un clic sur un disque, livrée au lot 5 — elle dit ce
+que le chiffre du centre compte, et ce qu'il ne compte pas (tokens
+d'entrée/sortie, pas le cache).
 
 ### Trois états, plus trois représentations ajoutées
 
@@ -330,7 +468,8 @@ pour la disparition de la couleur d'identité par agent (section
 - [ADR-0033](../adr/0033-le-theme-sombre-est-supprime.md) — le thème sombre
   est retiré, la page devient mono-thème
 - [ADR-0023](../adr/0023-un-cycle-observe-ne-porte-pas-de-nom.md) — pourquoi
-  un cycle n'est jamais désigné par un nom de spec
+  un cycle **observé** n'est jamais désigné par un nom de spec (amendé par
+  `ADR-0039` §3 pour un cycle lancé depuis le cockpit)
 - [ADR-0014](../adr/0014-bornage-des-cycles-par-marqueur-declare.md) — le
   bornage des cycles, et ce que `[workflows] affiches` tronque
 - [ADR-0025](../adr/0025-grammaire-du-diagramme-de-deroule.md) — la grammaire
@@ -345,4 +484,18 @@ pour la disparition de la couleur d'identité par agent (section
 - [ADR-0032](../adr/0032-l-identite-coloree-des-agents-disparait-du-diagramme.md)
   — la disparition de l'identité colorée par agent, appliquée au code au
   lot 4 (voir la note du 2026-09-21 dans l'ADR)
-- `control-center/README.md` — modèle de déploiement, jeton d'accès
+- [ADR-0038](../adr/0038-la-methode-du-cycle-2-gardes-avant-code-registre-borne-bug-017-absorbe.md)
+  — la méthode du cycle 2 (gardes avant code, registre `ATTENDU_ROUGE`,
+  absorption de `bug-017`) et le constat que le chiffre du centre du disque
+  est finalement livré (§5)
+- [ADR-0039](../adr/0039-la-fidelite-a-la-maquette-prime-sur-les-restrictions-anterieures.md)
+  — la réouverture de périmètre du 2026-09-22 : barre supérieure, backlog,
+  conversation, et la garde de fidélité d'ensemble
+- [ADR-0040](../adr/0040-les-chemins-decriture-du-cockpit.md) — lancer,
+  modifier et supprimer une spec, converser avec un agent en cours ; amende
+  `ADR-0005` et `ADR-0019`
+- [ADR-0041](../adr/0041-lecture-hors-racine-compteurs-seulement.md) —
+  lecture des transcripts de sous-agent hors racine, compteurs seulement,
+  budget par instantané
+- `control-center/README.md` — modèle de déploiement, jeton d'accès, et le
+  contrat des routes d'écriture (§ Étapes D à H)

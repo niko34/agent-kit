@@ -442,14 +442,12 @@ function analyserReglesCSS(css) {
     !/el\("span",\s*"fchemin",\s*commit\.sujet\)/.test(appJs));
 })();
 
-(function testThemeJsCommentaireCorrige() {
-  const themeJs = fs.readFileSync(path.join(ICI, "theme.js"), "utf8");
-  check("C_theme_js_ne_dit_plus_que_la_csp_interdit_le_style_inline",
-    !/CSP servie interdit[^]*?unsafe-inline`, voir server\.py/.test(themeJs)
-    || /style-src[^]*?unsafe-inline/.test(themeJs) || /autorise[^]*?style inline/.test(themeJs),
-    "le commentaire doit distinguer script (interdit) et style (autorisé)");
-  check("C_theme_js_mentionne_les_scripts_explicitement", /SCRIPTS/.test(themeJs));
-})();
+  /* `theme.js` a été SUPPRIMÉ au lot 13 de feature-021 : code mort depuis le
+   * lot 3 (plus aucun lecteur de `data-section`), chargé en synchrone dans
+   * `<head>` pour rien. Les deux cas qui vérifiaient son commentaire partent
+   * avec lui — ⚠️ un test qui lit un fichier ABSENT ne rougit pas, il PLANTE,
+   * et emporte tous les cas suivants du même fichier (mesuré : 1878 → 1708
+   * cas à la suppression, un seul fichier muet). */
 
 /* Condition de sécurité, EXHAUSTIVE : tout `z-index` déclaré dans la feuille
  * reste sous la profondeur 30, SAUF la porte d'authentification elle-même

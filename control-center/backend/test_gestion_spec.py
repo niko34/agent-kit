@@ -288,6 +288,30 @@ def main():
         with open(chemin, encoding="utf-8") as fichier:
             check("test_modifier_non_encodable_fichier_intact",
                   fichier.read() == "contenu final\n")
+
+        # --- revue de code (feature-021, point mineur) : un `os.replace()` qui
+        # échoue (disque plein, permissions...) est traduit en `(None, (500,
+        # …))` — JAMAIS une `OSError` qui s'échappe de `modifier()`. Le
+        # contrat annoncé (« Rend (resultat, None) ou (None, (code,
+        # message)) ») doit tenir sur CE chemin aussi.
+        _replace_original = GS.os.replace
+
+        def _replace_menteur(_src, _dst):
+            raise OSError("disque plein (simulation de test)")
+
+        GS.os.replace = _replace_menteur
+        try:
+            resultat, erreur = GS.modifier(
+                config5, "feature-020-modifiable", GS.empreinte("contenu final\n"),
+                "tentative pendant panne disque", chemin_verrou=chemin_verrou)
+        finally:
+            GS.os.replace = _replace_original
+        check("test_modifier_os_replace_echoue_rend_500_sans_lever",
+              resultat is None and erreur == (500, "écriture impossible"),
+              "obtenu resultat=%r erreur=%r" % (resultat, erreur))
+        with open(chemin, encoding="utf-8") as fichier:
+            check("test_modifier_os_replace_echoue_fichier_intact",
+                  fichier.read() == "contenu final\n")
     finally:
         shutil.rmtree(tmp5, ignore_errors=True)
 

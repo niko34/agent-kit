@@ -155,7 +155,81 @@ class GroupeConversation:
         shutil.rmtree(self._tmp, ignore_errors=True)
 
 
+def _test_chemin_conversation_unitaire():
+    """B2 (revue de code, cycle `feature-021`), en dehors de tout serveur
+    HTTP : `_chemin_conversation` doit produire des chemins DISTINCTS pour
+    deux lancements qui partagent le même `pid` mais pas le même `debut` —
+    c'est exactement le cas d'un pid RÉATTRIBUÉ par le noyau entre deux
+    lancements. Sans la clé composite, un nouvel agent hériterait du fil
+    (et donc des messages) d'un cycle antérieur sans rapport.
+    """
+    import types
+
+    srv_direct, tmp_direct, _ = TSE._importer_server_clone()
+    try:
+        ancien = types.SimpleNamespace(pid=4242, debut=1_700_000_000.0)
+        nouveau = types.SimpleNamespace(pid=4242, debut=1_700_000_050.0)  # même pid, réattribué plus tard
+        chemin_ancien = srv_direct._chemin_conversation(ancien)
+        chemin_nouveau = srv_direct._chemin_conversation(nouveau)
+        check("test_chemin_conversation_meme_pid_debuts_distincts_fichiers_distincts",
+              chemin_ancien != chemin_nouveau,
+              "pid réattribué, chemins obtenus identiques : %r" % chemin_ancien)
+
+        ok, _pos = srv_direct._ecrire_message_conversation(
+            chemin_ancien, "message-du-cycle-precedent")
+        check("test_chemin_conversation_ecriture_ancien_lancement_ok", ok)
+
+        messages_nouveau, _tronque = srv_direct._lire_conversation(chemin_nouveau)
+        check("test_pid_reattribue_ne_voit_pas_le_fil_precedent",
+              messages_nouveau == [],
+              "un lancement neuf sur un pid réattribué ne doit JAMAIS "
+              "hériter des messages d'un cycle antérieur ; obtenu %r"
+              % messages_nouveau)
+    finally:
+        shutil.rmtree(tmp_direct, ignore_errors=True)
+
+
+def _test_marquer_message_envoye_unitaire():
+    """B3 (revue de code, cycle `feature-021`), en dehors de tout serveur
+    HTTP : la ligne journalisée porte `"envoye": false` à l'écriture, et
+    seul un appel explicite à `_marquer_message_envoye` la fait basculer à
+    `true` — RIEN d'autre ne doit la faire changer d'état, en particulier
+    pas le simple fait d'écrire (cas d'un envoi refusé, 503 : la ligne doit
+    rester `false`, sans quoi rien ne distingue plus un message REFUSÉ d'un
+    message REMIS).
+    """
+    srv_direct, tmp_direct, _ = TSE._importer_server_clone()
+    try:
+        chemin = os.path.join(tmp_direct, "conv-b3.jsonl")
+        ok, position = srv_direct._ecrire_message_conversation(chemin, "un message")
+        check("test_marquer_envoye_ecriture_initiale_ok", ok)
+
+        messages_avant, _ = srv_direct._lire_conversation(chemin)
+        check("test_marquer_envoye_initialement_faux",
+              len(messages_avant) == 1 and messages_avant[0]["envoye"] is False,
+              "obtenu %r" % messages_avant)
+
+        # Simule un REFUS (503) : jamais d'appel à `_marquer_message_envoye`.
+        # La ligne doit rester `false` — c'est cette absence de bascule qui
+        # doit permettre à un client de distinguer un message non remis.
+        messages_refus, _ = srv_direct._lire_conversation(chemin)
+        check("test_marquer_envoye_refus_reste_faux",
+              messages_refus[0]["envoye"] is False)
+
+        srv_direct._marquer_message_envoye(chemin, position)
+        messages_apres, _ = srv_direct._lire_conversation(chemin)
+        check("test_marquer_envoye_bascule_a_vrai_apres_confirmation",
+              len(messages_apres) == 1 and messages_apres[0]["envoye"] is True
+              and messages_apres[0]["texte"] == "un message",
+              "obtenu %r" % messages_apres)
+    finally:
+        shutil.rmtree(tmp_direct, ignore_errors=True)
+
+
 def main():
+    _test_chemin_conversation_unitaire()
+    _test_marquer_message_envoye_unitaire()
+
     g = GroupeConversation(
         commandes_liste={
             "silencieux": [_PY, "-c", "print('ok')"],
@@ -268,8 +342,14 @@ def main():
                           corps=json.dumps({"texte": 42}).encode())
         check("test_texte_non_str_400", code == 400, "obtenu %d" % code)
 
-        chemin_fichier_conv = os.path.join(g.clone, "var", "conversations",
-                                           "%d.jsonl" % pid_chat)
+        # B2 (revue feature-021) : nom composite `<pid>-<debut_ms>.jsonl`, lu
+        # depuis le lancement RÉSOLU par le serveur — jamais reconstruit à la
+        # main à partir du seul pid, sinon ce test ne verrait pas une
+        # régression qui retomberait sur l'ancien nom `<pid>.jsonl`.
+        lancement_pour_nom = g.ecriture().lancement_conversation()
+        check("test_lancement_conversation_resout_pour_le_nom_de_fichier",
+              lancement_pour_nom is not None and lancement_pour_nom.pid == pid_chat)
+        chemin_fichier_conv = g.srv._chemin_conversation(lancement_pour_nom)
 
         # -- 413 : texte > 8192 CARACTÈRES, rien n'est journalisé -------------
         texte_trop_long = "é" * 8193  # caractères, pas octets (S3.3)
@@ -319,6 +399,17 @@ def main():
             return "recu:" in corps_lanc and "bonjour" in corps_lanc
 
         check("test_fils_recoit_le_message", _attendre(_fils_a_recu))
+
+        # -- B3 (revue de code, feature-021) : un envoi RÉUSSI (202) bascule
+        # `"envoye"` à `true` sur SA ligne — jamais sur les lignes voisines.
+        messages_bruts, _ = g.srv._lire_conversation(chemin_fichier_conv)
+        etats_par_texte = {m["texte"]: m["envoye"] for m in messages_bruts}
+        check("test_message_remis_202_bascule_envoye_vrai",
+              etats_par_texte.get("bonjour") is True,
+              "obtenu %r" % etats_par_texte)
+        check("test_message_remis_ne_touche_pas_les_voisins",
+              etats_par_texte.get("ligne1\nligne2\tfin") is True,
+              "obtenu %r" % etats_par_texte)
 
         # -- mode 0600 (PAS 0644, S3.4) -----------------------------------------
         mode = os.stat(chemin_fichier_conv).st_mode & 0o777
@@ -382,6 +473,15 @@ def main():
                                     corps=json.dumps({"texte": "plus-jamais"}).encode())
             check("test_canal_corrompu_503_puis_permanent_second_refus",
                   code2 == 503, "obtenu %d : %s" % (code2, corps2))
+
+            # -- B3 (revue de code, feature-021) : un message REFUSÉ (503) reste
+            # journalisé avec `"envoye": false` — rien ne le distingue d'un
+            # message remis SAUF ce champ, désormais posé.
+            messages_apres_refus, _ = g.srv._lire_conversation(chemin_fichier_conv)
+            textes_refuses = {m["texte"]: m["envoye"] for m in messages_apres_refus}
+            check("test_message_refuse_503_garde_envoye_faux",
+                  textes_refuses.get("va-etre-tronque") is False,
+                  "obtenu %r" % textes_refuses)
 
         # Nettoyage : tue le fils encore vivant.
         g.ecriture().interrompre_courant()

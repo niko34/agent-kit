@@ -210,7 +210,14 @@ def eligible_au_lancement(config, spec_id):
 
 def modifier(config, spec_id, empreinte_attendue, contenu, en_cours=False,
              chemin_verrou=None):
-    """Rend `(resultat, None)` ou `(None, (code, message))`.
+    """Rend `(resultat, None)` ou `(None, (code, message))` — JAMAIS
+    d'exception, y compris sur un échec d'écriture disque (`tempfile.mkstemp`,
+    `os.replace`) : traduit en `(None, (500, …))`, comme `supprimer()` le
+    fait déjà pour ses propres échecs (revue de code, cycle `feature-021` —
+    avant ce correctif, `OSError` s'échappait de `os.replace` sur ce chemin
+    précis et le contrat annoncé était faux ; l'appelant HTTP la rattrapait
+    tout de même en 500 générique via son `except Exception` de dernier
+    recours, mais le contrat de CETTE fonction, lui, mentait).
 
     `en_cours` est calculé par l'APPELANT (`server.py`, seul détenteur de
     `Ecriture.lancement_courant()`) : vrai si un lancement encore actif
@@ -253,7 +260,10 @@ def modifier(config, spec_id, empreinte_attendue, contenu, en_cours=False,
             return None, (422, "contenu invalide : caractère non encodable en UTF-8")
 
         dossier = os.path.dirname(chemin_absolu)
-        fd_tmp, chemin_tmp = tempfile.mkstemp(dir=dossier, prefix=".tmp-spec-")
+        try:
+            fd_tmp, chemin_tmp = tempfile.mkstemp(dir=dossier, prefix=".tmp-spec-")
+        except OSError:
+            return None, (500, "écriture impossible")
         try:
             with os.fdopen(fd_tmp, "wb") as fichier_tmp:
                 fichier_tmp.write(octets)
@@ -265,7 +275,7 @@ def modifier(config, spec_id, empreinte_attendue, contenu, en_cours=False,
                 os.unlink(chemin_tmp)
             except OSError:
                 pass
-            raise
+            return None, (500, "écriture impossible")
 
         return {"spec_id": spec_id, "empreinte": empreinte(contenu)}, None
     finally:

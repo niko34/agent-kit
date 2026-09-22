@@ -171,6 +171,31 @@ const exemptionsHorsCible = Object.keys(POSEES_A_L_EXECUTION).filter((c) => !cla
 check("F3a_toute_exemption_execution_designe_une_classe_requise", exemptionsHorsCible.length === 0,
   exemptionsHorsCible.join(", "));
 
+// Garde méta (feature-021, lot 13, D5) : LOTS_DEJA_LIVRES (module partagé)
+// ne doit JAMAIS être EN RETARD sur ce qui est réellement construit. Une
+// classe `adopte` dont le lot déclaré n'est PAS couvert par
+// `lotEstDejaLivre` (donc exclue de `classesRequisesAdoptees` ci-dessus) mais
+// qui est pourtant DÉJÀ posée dans index.html ET déclarée avec un corps non
+// vide dans app.css révèle exactement le trou trouvé (et corrigé) au lot 12
+// (jeton du lot 11 absent de LOTS_DEJA_LIVRES, 17 éléments non vérifiés par
+// aucune garde) — sans cette assertion, la même omission passe totalement
+// inaperçue : le compte de cas de ce fichier ne varie pas, `fideliteOk` ne
+// regarde jamais ce qui a été EXCLU du périmètre par `lotEstDejaLivre`.
+// Mesuré par mutation : retirer "12" de LOTS_DEJA_LIVRES laisse ce fichier à
+// 5 cas / 0 échec inchangé sans cette garde ; avec elle, cette assertion
+// meurt nommément (feature-021, rapport de mutation du lot 13).
+const classesConstruitesMaisLotNonCouvert = Object.entries(PARTITION_CLASSES)
+  .filter(([, [verdict]]) => verdict === ADOPTE)
+  .filter(([, [, , lot]]) => !lotEstDejaLivre(lot))
+  .filter(([nom]) => !Object.prototype.hasOwnProperty.call(POSEES_A_L_EXECUTION, nom))
+  .filter(([nom]) => classesHtmlApp.has(nom) && classesCssApp.has(nom))
+  .map(([nom]) => nom);
+check("F3a_LOTS_DEJA_LIVRES_ne_retarde_pas_sur_le_construit",
+  classesConstruitesMaisLotNonCouvert.length === 0,
+  classesConstruitesMaisLotNonCouvert.join(", ") +
+    " — posée(s)/déclarée(s) dans le code, mais leur lot n'est couvert par aucun "
+    + "jeton de LOTS_DEJA_LIVRES : le registre partagé est en retard sur le code livré");
+
 if (fideliteOk && ATTENDU_ROUGE.F3A_CLASSES_ADOPTEES_ABSENTES) {
   check("F3A_CLASSES_ADOPTEES_ABSENTES_purgee_du_registre_si_verte", false,
     "l'assertion est VERTE mais l'entrée est encore dans ATTENDU_ROUGE — la retirer (clause 2)");

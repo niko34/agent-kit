@@ -270,6 +270,44 @@ async function testFilNormalEtTronque() {
     bac.$("prompt").disabled === false && bac.$("envoyer-conversation").disabled === false);
 }
 
+// -- Revue de code, cycle `feature-021` (B3) : chaque ligne du fil porte
+// désormais `"envoye": bool` (`server.py`, `_ecrire_message_conversation`).
+// Un message resté à `false` (503, refus du canal) doit se DISTINGUER à
+// l'écran d'un message réellement remis — sinon le fil affiche le texte
+// comme s'il était parti, alors même qu'un bandeau a dit le contraire au
+// moment de l'envoi (contradiction visuelle, l'objet même du correctif).
+async function testEnvoyeFalseSeDistingueEnvoyeTrueNon() {
+  const bac = creerBac();
+  await demarrer(bac, {}, { status: 200, body: {
+    messages: [
+      { ts: 1, texte: "message remis", envoye: true },
+      { ts: 2, texte: "message resté bloqué", envoye: false },
+      { ts: 3, texte: "message d'avant ce correctif" }, // `envoye` absent : vaut remis
+    ],
+    tronque: false,
+  } });
+
+  // Inspection ARTICLE PAR ARTICLE (pas le texte concaténé du conteneur) :
+  // les bulles n'ont aucun séparateur textuel entre elles dans ce bac à
+  // sable, une recherche par sous-chaîne sur le texte entier déborderait
+  // sur l'article voisin (PIEGES §27, variante).
+  const articles = bac.$("conversation").children.filter((c) => c.className === "message");
+  check("B3_trois_articles_rendus", articles.length === 3, "obtenu " + articles.length);
+  const [remis, nonEnvoye, sansChamp] = articles;
+
+  check("B3_message_envoye_ne_porte_aucune_marque_non_envoye",
+    remis.textContent.indexOf("message remis") !== -1 && remis.textContent.indexOf("Non envoyé") === -1,
+    JSON.stringify(remis && remis.textContent));
+  check("B3_message_non_envoye_porte_une_marque_distincte",
+    nonEnvoye.textContent.indexOf("message resté bloqué") !== -1
+      && nonEnvoye.textContent.indexOf("Non envoyé") !== -1,
+    JSON.stringify(nonEnvoye && nonEnvoye.textContent));
+  check("B3_envoye_absent_traite_comme_remis_non_regression",
+    sansChamp.textContent.indexOf("message d'avant ce correctif") !== -1
+      && sansChamp.textContent.indexOf("Non envoyé") === -1,
+    JSON.stringify(sansChamp && sansChamp.textContent));
+}
+
 async function testFilVideEtatExplicite() {
   const bac = creerBac();
   await demarrer(bac, {}, { status: 200, body: { messages: [], tronque: false } });
@@ -411,6 +449,7 @@ async function testAntiDoubleSoumission() {
 async function main() {
   await testChargementInitialComposerInerte();
   await testFilNormalEtTronque();
+  await testEnvoyeFalseSeDistingueEnvoyeTrueNon();
   await testFilVideEtatExplicite();
   await testIndisponible404ComposerInerteAvecRaison();
   await testEcritureInactiveComposerInerteAvecRaison();

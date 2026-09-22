@@ -139,18 +139,40 @@ qui affiche un nombre de jetons **invente une donnée** » et son §9 l'interdit
 - `docs/DESIGN-SYSTEM.md` §5 et §9 — **à corriger, devenus faux**
 
 ## Livrables — check-list
-- [ ] S1 — **GATE P1** : verdict sur la lecture hors racine de fichiers contenant des
+- [x] S1 — **GATE P1** : verdict sur la lecture hors racine de fichiers contenant des
       conversations entières. Conditions numérotées et **vérifiables sur un diff**
-- [ ] A1 — verdict ADR sur le franchissement du confinement en lecture
-- [ ] B1 — module de lecture en flux, borné, tolérant aux lignes invalides
-- [ ] B2 — agrégation par `agent_id`, **compteurs seulement**
-- [ ] B3 — champ exposé dans `/api/etat`
-- [ ] F1 — chiffre au centre du disque, abrégé
-- [ ] F2 — bottom sheet qui **dit ce que le chiffre compte**
-- [ ] F3 — dégradation propre quand le transcript manque
-- [ ] S2 — **GATE P2** sur le diff réel
-- [ ] D1 — tests, dont **mutation** sur la garde de confinement et sur la borne de lecture
-- [ ] C1 — `docs/API.md`, `DESIGN-SYSTEM.md` §5 et §9 corrigés, ADR, `CHANGELOG.md`
+      (**GO sous 7 conditions**, `S5.1`-`S5.7` ; le GATE a lui-même corrigé son
+      propre compte de clés non entières de `usage`, de 2 à 7, en le remesurant)
+- [x] A1 — verdict ADR sur le franchissement du confinement en lecture
+      (`ADR-0041`, modèle de menace **distinct** des routes d'écriture — ne
+      pas fusionner avec `ADR-0040`)
+- [x] B1 — module de lecture en flux, borné, tolérant aux lignes invalides
+      (`control-center/backend/transcripts.py`, `_lire_fichier` — budget
+      d'octets et de secondes par instantané, ligne trop longue ignorée
+      plutôt que chargée entière)
+- [x] B2 — agrégation par `agent_id`, **compteurs seulement** (filtre
+      **positif et typé**, `_CLES_USAGE = ("input_tokens", "output_tokens")`,
+      testé récursivement sur l'ensemble de l'objet retourné)
+- [x] B3 — champ exposé dans `/api/etat` (`tokens_par_passage`, additif —
+      calculé sur les **seuls** `agent_id` des passages réellement affichés,
+      jamais un parcours spontané de `subagents/`)
+- [x] F1 — chiffre au centre du disque, abrégé (`formatTokensCompact`,
+      « 27,7k »)
+- [x] F2 — bottom sheet qui **dit ce que le chiffre compte** (`selected-tokens`,
+      `formatTokensLong`, réserve écrite : mesure le travail, pas le coût)
+- [x] F3 — dégradation propre quand le transcript manque (`.token-value`
+      absent du DOM, jamais un `0` ; état **partiel** distinct — glyphe « … »
+      — quand le budget de lecture a coupé avant terme, jamais confondu avec
+      l'absence)
+- [x] S2 — **GATE P2** — voir `feature-021`, journal cycle 2, Lot 12 : la
+      campagne de mutation du lot 6 (test-engineer) a trouvé et fait réparer
+      un trou de couverture préexistant (le jeton du lot 11 manquait à
+      `LOTS_DEJA_LIVRES`, 17 éléments non vérifiés par aucune garde)
+- [x] D1 — tests, dont **mutation** sur la garde de confinement et sur la borne de lecture
+      (`test_transcripts.py`, `test_server_feature023.py`, `test_config.py` ;
+      piège trouvé en exécutant et consigné `PIEGES §59` : un préfixe devant
+      un identifiant annule le témoin de traversée classique)
+- [x] C1 — `docs/API.md`, `DESIGN-SYSTEM.md` §5 et §9 corrigés, ADR, `CHANGELOG.md`
 
 ## Sécurité & données
 - Authentification : **non** · Permissions : **non**
@@ -171,12 +193,19 @@ qui affiche un nombre de jetons **invente une donnée** » et son §9 l'interdit
 - ⚠️ `docs/DESIGN-SYSTEM.md` §5 et §9 : **corriger deux règles devenues fausses**
 
 ## Critères d'acceptation
-- [ ] Les 223 passages dessinés affichent un chiffre ; aucun ne montre un zéro inventé
-- [ ] Aucun extrait de conversation ne sort du module — vérifié par test
-- [ ] Un transcript de 37 Mo ne charge pas 37 Mo en mémoire
-- [ ] Une ligne JSON invalide n'interrompt pas la lecture
-- [ ] Verdicts GATE P1 et P2 écrits
-- [ ] Suite verte, mutation sur la garde de confinement
+- [x] Les 223 passages dessinés affichent un chiffre ; aucun ne montre un zéro inventé
+      — nuance mesurée : un passage sans transcript lisible **n'affiche aucun
+      nœud**, plutôt qu'un chiffre à zéro ; le compte de 223/223 n'a pas été
+      remesuré dans ce lot (dérivé de la mesure du 2026-09-20)
+- [x] Aucun extrait de conversation ne sort du module — vérifié par test
+      (test récursif sur tout l'objet retourné, témoin planté dans un
+      message et dans `usage.service_tier`)
+- [x] Un transcript de 37 Mo ne charge pas 37 Mo en mémoire (lecture en
+      flux, `readline` bornée par ligne, budget d'octets cumulé)
+- [x] Une ligne JSON invalide n'interrompt pas la lecture
+- [x] Verdicts GATE P1 et P2 écrits (voir `feature-021`, journal cycle 2,
+      Étape C et Lot 12)
+- [x] Suite verte, mutation sur la garde de confinement
 
 ## Plan de test manuel
 1. Ouvrir le cockpit, comparer un chiffre affiché à un calcul fait à la main sur le transcript
@@ -188,3 +217,39 @@ qui affiche un nombre de jetons **invente une donnée** » et son §9 l'interdit
 - Le **coût** en monnaie : `input + output` ne le mesure pas
 - Le cache : mesuré, écarté, motivé
 - Tout affichage de contenu de transcript
+
+## Notes d'implémentation (lot 12 de `feature-021`, cycle 2)
+
+Livré le 2026-09-22, après `feature-022` (lot 11) et `feature-025` (lots
+9-10). `control-center/backend/transcripts.py` porte le mécanisme complet ;
+`server.py` construit `agent_ids_affiches` à partir des **seuls** passages
+que `/api/etat` envoie déjà au frontend (jamais un parcours autonome de
+`subagents/`), ce qui rend « compteurs seulement » vérifiable : un
+`agent_id` jamais demandé n'est jamais ouvert.
+
+**Le chiffre porte désormais trois états, pas deux** — connu, absent,
+**partiel** (le troisième, introduit par ce lot : le budget de lecture a
+coupé avant terme, dit explicitement, jamais confondu avec l'absence). Un
+zéro n'est affiché dans aucun des trois cas.
+
+L'anneau reste piloté par l'état seul, comme prévu (`ADR-0031 §5`) : une
+garde interdit désormais explicitement de le recoupler aux tokens, vérifiée
+par deux mutations qui tentent ce recouplage et meurent.
+
+**Le signalement honnête du lot a trouvé plus que le lot lui-même** : en
+ajoutant le jeton de ce lot à `LOTS_DEJA_LIVRES` (le registre de partition
+du cycle), les gardes ont rougi sur un trou préexistant — dix-sept éléments
+du lot 11 (conversation) n'étaient vérifiés par aucune garde. Treize
+étaient déjà couverts ailleurs, trois posés à l'exécution et couverts par
+le volet runtime, un ne l'était par rien ; réparé dans ce même lot, avec une
+règle neuve (`F3b` exige que toute exemption déclarée soit couverte par un
+scénario réel, sous peine de faire échouer la garde en le nommant).
+
+`docs/DESIGN-SYSTEM.md` §5 et §9 sont corrigés : la règle « aucun chiffre
+qu'on ne sait pas mesurer » est conservée, son fondement factuel — « les
+jetons ne sont mesurables nulle part » — était faux et est rectifié depuis
+le 2026-09-20 ; ce lot en tire la conséquence dans le rendu.
+
+Détail complet (les sept conditions du GATE, le piège de confinement trouvé
+en exécutant, les alternatives écartées) :
+[ADR-0041](../../../docs/adr/0041-lecture-hors-racine-compteurs-seulement.md).

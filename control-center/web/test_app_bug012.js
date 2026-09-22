@@ -123,6 +123,9 @@ class FakeNode {
   addEventListener(type, gestionnaire) {
     (this._listeners[type] = this._listeners[type] || []).push(gestionnaire);
   }
+  // `ouvrirTiroir` (app.js) appelle `.focus()` SANS garde de type sur
+  // `#tiroir-fermer` — no-op nécessaire pour exercer ce chemin (M5).
+  focus() {}
   get classList() {
     const self = this;
     return {
@@ -845,6 +848,59 @@ async function testIdentiteGateEtCycleTitle() {
     "non-régression : le scénario SANS lancement_spec_id (ci-dessus) doit rester inchangé");
 }
 
+// -- Revue de code, cycle `feature-021` (M5) : le serveur rend trois `409`
+// sémantiquement distincts sur `POST /api/spec/modifier` (`gestion_spec.py`
+// : « spec close : immuable », « un lancement est en cours sur cette
+// spec », empreinte périmée) — CHACUN avec son message exact. Le client ne
+// doit JAMAIS fabriquer un diagnostic à leur place : il affiche
+// `donnees.erreur` tel quel. Trois messages serveur DISTINCTS, trois
+// assertions — la ancienne version affichait le MÊME texte fabriqué
+// (« … rechargez-la avant de réessayer ») sur les trois, dont sur une spec
+// `done` que rien ne rend modifiable.
+async function testModifierSpec409AfficheLeMessageExactDuServeur() {
+  const casServeur = [
+    "spec close : immuable",
+    "un lancement est en cours sur cette spec",
+    "empreinte périmée, rechargez la spec",
+  ];
+  for (const messageServeur of casServeur) {
+    const bac = creerBac();
+    enfilerEtat(bac, 200, corpsEtat(false, {}));
+    chargerAppJS(bac);
+    await attendreMicrotaches();
+    await attendreMicrotaches();
+    await attendreMicrotaches();
+
+    // `editionCourante` est un `let` de niveau supérieur d'`app.js` : PIEGES
+    // §39, il ne devient JAMAIS une propriété du sandbox `vm` — l'y écrire
+    // directement (`bac.sandbox.editionCourante = …`) crée une propriété
+    // ORPHELINE, sans effet sur la variable réellement lue par
+    // `surSoumissionEditionSpec`. Seul le flux réel (`ouvrirEditionSpec`,
+    // une `async function` déclarée — PIEGES §39, celles-ci DEVIENNENT des
+    // propriétés du sandbox) la pose pour de vrai.
+    bac.reponsesFetch.push({
+      predicat: (url) => String(url).indexOf("/api/spec?id=") === 0,
+      repondre: async () => ({ status: 200, body: { contenu: "contenu initial", empreinte: "abc123" } }),
+    });
+    await bac.sandbox.ouvrirEditionSpec("feature-900-exemple");
+    await attendreMicrotaches();
+
+    bac.$("tiroir-edition-texte").value = "contenu modifié";
+    bac.reponsesFetch.push({
+      predicat: (url, options) => String(url) === "/api/spec/modifier" && options && options.method === "POST",
+      repondre: async () => ({ status: 409, body: { erreur: messageServeur } }),
+    });
+
+    await bac.sandbox.surSoumissionEditionSpec({ preventDefault: () => {} });
+    await attendreMicrotaches();
+
+    const erreur = bac.$("tiroir-edition-erreur");
+    check("M5_409_affiche_le_message_exact_du_serveur : " + messageServeur,
+      erreur.hidden === false && erreur.textContent === messageServeur,
+      "obtenu : " + JSON.stringify(erreur.textContent));
+  }
+}
+
 async function main() {
   await testAucunRenduAvantUn200();
   await testPorteMotifPremierAcces();
@@ -857,6 +913,7 @@ async function main() {
   await testBandeauNommeSeulementLesAgentsAncres();
   await testReconnexionSeulementSiEventSource();
   await testIdentiteGateEtCycleTitle();
+  await testModifierSpec409AfficheLeMessageExactDuServeur();
 
   console.log("\n" + _tests + " cas, " + _echecs.length + " echec(s)");
   for (const e of _echecs) console.log("  - " + e);

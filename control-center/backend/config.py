@@ -240,12 +240,27 @@ class Config(dict):
         Une commande qui en porte un doit alors figurer dans la liste FERMÉE
         `[garde_fous].commandes_sans_permissions`, VIDE par défaut — sinon
         REFUS (503, avant tout `Popen`).
+
+        Revue de code du cycle `feature-021` (M1) : la comparaison PORTE SUR
+        CHAQUE TOKEN NORMALISÉ, pas sur le token brut — sinon
+        `--dangerously-skip-permissions=true` (forme `--flag=valeur`) et
+        `--permission-mode=BYPASSPERMISSIONS` (casse différente) échappent à
+        la liste fermée alors qu'ils portent le même contournement. La
+        normalisation retire tout suffixe `=valeur` avant de comparer le NOM
+        du drapeau en minuscules, et la recherche de `bypassPermissions` se
+        fait sur le token entier passé en minuscules — insensible à la casse
+        dans les deux cas.
         """
         argv = self.commande(cle)
         if argv is None:
             return True  # rien à autoriser : le 404 de clé inconnue prime
-        sensible = (any(d in argv for d in _DRAPEAUX_CONTOURNEMENT_PERMISSIONS)
-                    or any("bypassPermissions" in tok for tok in argv))
+        drapeaux_norm = {d.lower() for d in _DRAPEAUX_CONTOURNEMENT_PERMISSIONS}
+        sensible = False
+        for tok in argv:
+            nom = tok.split("=", 1)[0].strip().lower()
+            if nom in drapeaux_norm or "bypasspermissions" in tok.lower():
+                sensible = True
+                break
         if not sensible:
             return True
         bruts = self.section("garde_fous").get("commandes_sans_permissions", [])

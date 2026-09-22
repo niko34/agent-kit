@@ -1,7 +1,10 @@
 # Bug — La porte d'authentification laisse la page atteignable au clavier
 
 - **Type** : bug
-- **Statut** : doing — **absorbé dans le cycle `feature-021`** (lot 3), au titre d'`ADR-0017`
+- **Statut** : doing — **absorbé dans le cycle `feature-021`** (lot 3, correctif ;
+  lot 5, mesure chiffrée F4b), au titre d'`ADR-0017`. Tous les critères
+  d'acceptation sont cochés ; la clôture (déplacement vers `done/`) reste à
+  l'agent principal, avec celle de `feature-021`.
 - **Priorité** : normale
 - **Version cible** : [à fixer par l'agent qui reprend cette spec]
 - **Créée** : 2026-09-15 (passage GATE P2 de `feature-019`)
@@ -84,18 +87,29 @@ de toute section : ce sont deux conditions déjà établies et gardées par
 
 ## Critères d'acceptation
 
-- [ ] Porte ouverte : **aucun** contrôle hors de la modale n'est atteignable par
+- [x] Porte ouverte : **aucun** contrôle hors de la modale n'est atteignable par
       tabulation, vérifié **en HTTP** et non en `file://` — voir §10 des pièges
-- [ ] La barre de navigation en particulier ne permet plus de changer de section
-      sous la modale
-- [ ] À la fermeture, le focus revient à un endroit **nommé**, pas au hasard
-- [ ] La porte reste enfant direct du corps du document et au-dessus de toute
-      section — non-régression des conditions de `feature-019`
-- [ ] Un test **compte** les contrôles atteignables hors modale et exige zéro ;
-      il ne se contente pas de vérifier qu'un mécanisme est posé
-- [ ] Suite verte, compte de cas strictement supérieur à l'entrée
-- [ ] Validation par mutation : retirer le mécanisme d'inertie doit faire mourir
-      le test
+      (lot 5, `test_app_a11y_navigateur.py`,
+      `F4b_bug017_zero_controle_atteignable_hors_porte_quand_ouverte`)
+- [x] La barre de navigation en particulier ne permet plus de changer de section
+      sous la modale — sans objet depuis le lot 3 : la navigation par onglets a
+      disparu de l'écran tout entier (`ADR-0029`), il n'y a donc plus de section
+      à atteindre sous la modale
+- [x] À la fermeture, le focus revient à un endroit **nommé**, pas au hasard
+      (`dernierFocusAvantPorte`, repli nommé sur `#main-content` — lot 3,
+      vérifié au lot 5 par `F4b_focus_restaure_sur_un_element_nomme_a_la_fermeture`)
+- [x] La porte reste enfant direct du corps du document et au-dessus de toute
+      section — non-régression des conditions de `feature-019` (lot 3, revérifié
+      par mutation : envelopper la porte dans un `<div>` fait échouer
+      `A0_porte_est_enfant_direct_de_body`)
+- [x] Un test **compte** les contrôles atteignables hors modale et exige zéro ;
+      il ne se contente pas de vérifier qu'un mécanisme est posé (lot 5, F4b,
+      harnais navigateur avec focus réel — `document.activeElement`, jamais une
+      relecture d'attributs)
+- [x] Suite verte, compte de cas strictement supérieur à l'entrée
+- [x] Validation par mutation : retirer le mécanisme d'inertie doit faire mourir
+      le test (`fixerInerteAutourDeLaPorte` neutralisée → 3 cas meurent, nommant
+      les quatre frères concernés)
 
 ## Hors périmètre
 
@@ -130,3 +144,29 @@ prévue au **lot 5** du cycle (harnais HTTP + navigateur, seul moyen fiable de
 mesurer l'atteignabilité réelle). Ce lot livre le mécanisme structurel que
 cette garde mesurera, pas la mesure elle-même — les critères d'acceptation
 correspondants restent donc à cocher au lot 5, pas ici.
+
+## Notes d'implémentation (lot 5 de `feature-021`, cycle 2)
+
+`F4b` (contrat d'accessibilité, volet runtime) ferme le critère chiffré
+laissé ouvert au lot 3 : `control-center/web/test_app_a11y_navigateur.py`
+(harnais navigateur, `HARNAIS_NAVIGATEUR = True`) ouvre réellement
+`#porte-jeton` en HTTP, mesure `document.activeElement` après avoir simulé
+`Tab` à répétition (jamais une relecture des attributs `inert`/`hidden`,
+`PIEGES §15`/§38), et compte les contrôles atteignables. Deux assertions
+ferment directement les critères de cette spec :
+`F4b_bug017_zero_controle_atteignable_hors_porte_quand_ouverte` (0 exigé,
+0 mesuré) et `F4b_focus_restaure_sur_un_element_nomme_a_la_fermeture`.
+
+Ce même mécanisme a été **réutilisé, pas dupliqué**, pour fermer le
+dialogue de suppression de `feature-025` au lot 10
+(`test_app_feature025_a11y_navigateur.py`) — la sémantique modale native de
+`<dialog>` + `showModal()` s'est révélée être la même réutilisation que
+`inert` posé à la main, au niveau du moteur de rendu plutôt que du DOM,
+vérifié par la même méthode plutôt que supposé.
+
+Absorption au titre d'`ADR-0017` documentée en détail dans
+`ADR-0038` §3 (état mesuré du défaut, argument en quatre points, et
+pourquoi aucun ADR dédié n'a été créé — le patron déjà établi par les
+quatre absorptions précédentes du dépôt).
+
+**Tous les critères d'acceptation de cette spec sont désormais cochés.**

@@ -831,6 +831,32 @@ Construire le chemin final avec le témoin, appeler `realpath`, et **constater
 qu'il sort de la racine** — avant de s'en servir comme preuve. Un témoin qui
 ne s'échappe pas ne teste que lui-même.
 
+## 60. Un ratio de cases cochées n'est pas une mesure d'avancement
+
+Une spec Markdown porte des cases `- [ ]`/`- [x]` à plusieurs endroits qui ne
+sont **pas** des livrables : les blocs « Domaines touchés », « Agents
+requis », les cases de gabarit non retirées. Compter « cases cochées / cases
+totales » dans le fichier entier, dans l'idée d'en tirer un pourcentage
+d'avancement honnête (par opposition à un chiffre inventé), mesure en
+réalité **la forme du document**, pas le travail fait.
+
+Mesuré (lot 9 de `feature-021`, cycle 2) : une spec **jamais commencée**
+rend **36 %** par ce calcul — les cases des blocs de méta-données, cochées
+dès la rédaction de la spec, gonflent le numérateur sans qu'aucun livrable
+n'existe encore.
+
+**Conséquence** : ce ratio est aussi trompeur qu'un pourcentage inventé de
+toutes pièces — il a seulement l'apparence d'une donnée réelle, ce qui le
+rend plus dangereux à afficher, pas moins. `control-center/web/app.js`
+(`.progress-track`) l'a écarté au profit d'une grandeur discrète et déjà
+fiable : l'état de colonne de la spec (première / intermédiaire /
+dernière), à largeur fixe, décorative.
+
+**Règle** : si une grandeur mesurée dans un document texte doit alimenter un
+indicateur, vérifier qu'elle isole les cases qui sont **réellement** des
+livrables (une section dédiée, un marqueur distinct) — jamais compter sur
+la structure entière d'un gabarit partagé par toutes les specs.
+
 ## Voir aussi
 
 - `docs/DESIGN-SYSTEM.md` — règles de couleur, de surface et de typographie

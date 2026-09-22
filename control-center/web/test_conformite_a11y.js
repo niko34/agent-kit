@@ -172,6 +172,25 @@ const enfantsManquants = porte.enfants.filter((id) => !idsApp.has(id));
 check("F4a_ecart_declare_porte_authentification_enfants_presents", enfantsManquants.length === 0,
   enfantsManquants.join(", "));
 
+// Garde méta (feature-021, lot 13, D5) : LOTS_DEJA_LIVRES (module partagé,
+// même table que F3a) ne doit JAMAIS être EN RETARD sur ce qui est
+// réellement construit. Un id `adopte` dont le lot déclaré n'est PAS couvert
+// par `lotEstDejaLivre` (donc exclu d'`idsAdoptes` ci-dessus) mais pourtant
+// DÉJÀ posé dans index.html révèle le même trou que celui trouvé (et
+// corrigé) au lot 12 côté classes — sans cette assertion, l'omission d'un
+// jeton de lot clos dans LOTS_DEJA_LIVRES ne fait rougir aucun test.
+const idsConstruitsMaisLotNonCouvert = Object.entries(PARTITION_IDS)
+  .filter(([, [verdict]]) => verdict === ADOPTE)
+  .filter(([, [, , lot]]) => !lotEstDejaLivre(lot))
+  .filter(([id]) => !Object.prototype.hasOwnProperty.call(POSES_A_L_EXECUTION, id))
+  .filter(([id]) => idsApp.has(id))
+  .map(([id]) => id);
+check("F4a_LOTS_DEJA_LIVRES_ne_retarde_pas_sur_le_construit",
+  idsConstruitsMaisLotNonCouvert.length === 0,
+  idsConstruitsMaisLotNonCouvert.join(", ") +
+    " — posé(s) dans index.html, mais leur lot n'est couvert par aucun jeton "
+    + "de LOTS_DEJA_LIVRES : le registre partagé est en retard sur le code livré");
+
 // -- Note, non assertionnée : écart de contenu « SP, pas SR » --
 console.log("[note, hors périmètre id/role/aria-*] le sigle de spec-reader reste `SP` (pas `SR` " +
   "du prototype) — écart de CONTENU TEXTE, hors du contrat F4a ; à couvrir par une garde de " +

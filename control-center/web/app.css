@@ -759,7 +759,7 @@ dialog p { color: var(--muted); margin: 8px 0 18px; }
 .feature-dialog-body { padding: 0 22px 20px; overflow-y: auto; }
 .feature-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
 .feature-chip { min-height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 10px; background: var(--surface-low); color: var(--muted); font-size: 12px; }
-.feature-chip.todo { background: #fff0c8; color: #654b00; }
+.feature-chip.todo { background: var(--chip-todo-bg); color: var(--chip-todo-ink); }
 .feature-chip.high { background: var(--danger-soft); color: var(--chip-high-ink); }
 .feature-section { padding: 15px 0; border-top: 1px solid var(--line); }
 .feature-section h3 { font-size: 13px; margin: 0 0 7px; }
@@ -943,7 +943,7 @@ dialog p { color: var(--muted); margin: 8px 0 18px; }
 }
 
 .agent-node {
-  --state-color: #aaa6b0;
+  --state-color: var(--agent-state-pending);
   --progress: 0deg;
   position: absolute;
   left: 0;

@@ -12,7 +12,8 @@
 > il n'est pas versionné en `/api/v1`, et son contrat — y compris les codes
 > d'erreur et les cas limites, mutation-testés — est tenu dans
 > [`control-center/README.md`](../control-center/README.md), au fil de ses
-> étapes (A à E à ce jour). Aucune route de ce module n'a jamais figuré ici ;
+> étapes (A à E, puis H à J à ce jour — F et G restent à faire). Aucune
+> route de ce module n'a jamais figuré ici ;
 > ce fichier garde son exemple fictif tant que le projet n'a pas sa propre
 > ressource à documenter.
 

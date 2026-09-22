@@ -2,7 +2,9 @@
 
 ## Statut
 
-Accepté
+Accepté (`_ROUTES_ECRITURE` étendue de 4 à 8 entrées par [ADR-0040](0040-les-chemins-decriture-du-cockpit.md) —
+`/api/spec/lancer`, `/api/spec/modifier`, `/api/spec/supprimer`, `/api/conversation` ;
+le test d'introspection et la garantie structurelle décrits ici ne changent pas de forme)
 
 ## Date
 

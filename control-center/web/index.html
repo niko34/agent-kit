@@ -5,15 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Centre de contrôle</title>
 <link rel="stylesheet" href="/app.css">
-<!-- Amorçage synchrone (feature-019) : posait `data-section` sur <html>
-     AVANT le premier rendu. Depuis la structure mono-écran (feature-021,
-     cycle 2, lot 3, F7) il n'y a plus de section à masquer/afficher — ce
-     script tourne encore (fichier SERVI, inchangé, hors périmètre du lot 3)
-     mais son attribut n'a plus aucun lecteur côté app.js. Doit rester un
-     fichier SERVI (pas de `<script>` inline : la CSP `default-src 'self'`
-     interdit `unsafe-inline`, voir server.py). Thème sombre retiré
-     (ADR-0033, lot 1) : ce script ne pose plus `data-theme`. -->
-<script src="/theme.js"></script>
+<!-- `theme.js` (amorçage `data-section`, feature-019) N'EST PLUS CHARGÉ ICI
+     depuis la revue de code du cycle `feature-021` (M4) : la structure
+     mono-écran (cycle 2, lot 3, F7) a supprimé `sectionActuelle()`, le seul
+     lecteur côté app.js de l'attribut que ce script posait — un script
+     bloquant dans <head>, une lecture `localStorage` et un attribut posés
+     pour rien, sur toutes les pages. Le fichier reste sur disque et SERVI :
+     `backend/test_server.py` (E10, feature-015) vérifie encore son
+     atteignabilité HTTP, un correctif backend séparé est nécessaire pour le
+     retirer du dépôt. -->
 </head>
 <body>
 

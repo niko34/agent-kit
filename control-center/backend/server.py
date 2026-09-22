@@ -305,12 +305,35 @@ def _texte_conversation_valide(texte):
 
 
 def _chemin_conversation(lancement):
-    """`var/conversations/<pid>.jsonl` — UN fichier par lancement
+    """`var/conversations/<pid>-<debut_ms>.jsonl` — UN fichier par lancement
     (feature-022, S3.4/S3.7) : l'effacer efface le fil, il n'existe NULLE
-    PART ailleurs. `pid` est unique pour la durée de vie de CE lancement —
-    aucun autre identifiant stable n'existe sur `Lancement`.
+    PART ailleurs.
+
+    Revue de code du cycle `feature-021` (B2) : l'indexation par SEUL `pid`
+    laissait un lancement ultérieur dont le noyau RÉATTRIBUE le même pid
+    hériter du fichier — et donc du fil — d'un lancement antérieur sans
+    rapport. `pid` seul n'est unique que pour la durée de vie du processus,
+    jamais pour celle du fichier qui lui survit sur disque.
+
+    Choix retenu : indexation COMPOSITE `pid` + `debut` (`Lancement.debut`,
+    horodatage de CE lancement, déjà public via `/api/lancement`), plutôt
+    que les deux autres options envisagées :
+    - un effacement à la fin du lancement aurait fallu déclencher depuis
+      `sur_fin`/l'appelant, avec un risque de course contre une écriture ou
+      une lecture encore en vol sur le même fichier ;
+    - un refus de lire un fichier antérieur au lancement aurait exigé de
+      comparer un `mtime` (donnée du système de fichiers, pas du domaine) au
+      `debut` du lancement, sans empêcher la CONCATÉNATION à l'écriture —
+      seulement la lecture après coup.
+    La clé composite empêche la collision à la racine : deux lancements ne
+    partagent jamais `(pid, debut)`, donc jamais de fichier, quel que soit
+    l'ordre des opérations. Le fichier d'un lancement terminé reste sur
+    disque (aucune route ne le relit — `lancement_conversation()` ne
+    résout que le lancement COURANT) ; c'est un coût de rétention assumé,
+    pas un risque de contamination.
     """
-    return os.path.join(_RACINE_CONVERSATIONS, "%d.jsonl" % lancement.pid)
+    return os.path.join(_RACINE_CONVERSATIONS,
+                         "%d-%d.jsonl" % (lancement.pid, int(lancement.debut * 1000)))
 
 
 def _ecrire_message_conversation(chemin_journal, texte):
@@ -318,24 +341,66 @@ def _ecrire_message_conversation(chemin_journal, texte):
     0644 du collecteur d'événements : ce fichier porte du texte libre d'un
     utilisateur, potentiellement sensible), O_APPEND, UN SEUL `write()`.
 
-    Rend `True`/`False` — jamais d'exception : un fil qu'on ne peut pas
-    journaliser est un 500 pour l'appelant, JAMAIS un envoi silencieusement
-    non tracé (condition centrale de S3.4 : jamais « envoyé puis non
-    journalisé »). Appelé AVANT tout envoi sur le canal — dans cet ordre
-    précis, un échec ici empêche l'envoi plutôt que l'inverse.
+    Rend `(ok, position_envoye)` — jamais d'exception : un fil qu'on ne peut
+    pas journaliser est un 500 pour l'appelant, JAMAIS un envoi
+    silencieusement non tracé (condition centrale de S3.4 : jamais « envoyé
+    puis non journalisé »). Appelé AVANT tout envoi sur le canal — dans cet
+    ordre précis, un échec ici empêche l'envoi plutôt que l'inverse.
+    `ok` est `False`/`position_envoye` est `None` sur échec d'écriture.
+
+    Revue de code du cycle `feature-021` (B3) : la ligne porte désormais un
+    champ `"envoye": false`, écrit AVANT toute tentative d'envoi — donc avant
+    de savoir si elle réussira. Sur un refus ultérieur (503 : tube non vidé,
+    canal corrompu ou occupé), RIEN ne distingue plus aujourd'hui cette ligne
+    d'un message réellement remis ; côté écran, l'utilisateur voit son texte
+    dans le fil ET un bandeau disant qu'il n'est pas parti. `position_envoye`
+    (l'offset OCTET, dans le fichier, du début du littéral booléen sur CETTE
+    ligne) permet à l'appelant de le faire passer à `true` une fois l'envoi
+    confirmé, via `_marquer_message_envoye` — sans jamais réécrire la ligne
+    entière ni les lignes voisines.
     """
-    ligne = (json.dumps({"ts": _horodatage_ms(), "texte": texte},
-                        ensure_ascii=False) + "\n").encode("utf-8")
+    prefixe = (json.dumps({"ts": _horodatage_ms(), "texte": texte},
+                          ensure_ascii=False)[:-1] + ', "envoye": ')
+    prefixe_octets = prefixe.encode("utf-8")
+    ligne = prefixe_octets + b"false}\n"
     try:
         os.makedirs(os.path.dirname(chemin_journal), exist_ok=True)
         fd = os.open(chemin_journal, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
         try:
             os.write(fd, ligne)
+            # O_APPEND : le noyau positionne l'écriture à la fin réelle du
+            # fichier de façon atomique au moment du `write()`, quel que
+            # soit ce qu'un AUTRE écrivain a pu ajouter entre-temps — la
+            # position COURANTE du descripteur, lue juste après, reflète
+            # donc exactement où NOTRE ligne a atterri, sans course.
+            fin = os.lseek(fd, 0, os.SEEK_CUR)
         finally:
             os.close(fd)
-        return True
+        return True, fin - len(ligne) + len(prefixe_octets)
     except OSError:
-        return False
+        return False, None
+
+
+def _marquer_message_envoye(chemin_journal, position_envoye):
+    """Bascule `"envoye": false` -> `"envoye": true ` (même longueur en
+    octets — un espace insignifiant remplace le `e` de trop avant `}`) à
+    `position_envoye`, EN PLACE, jamais par réécriture de la ligne ni du
+    fichier entier (B3).
+
+    Best-effort DÉLIBÉRÉ : appelée seulement APRÈS un envoi confirmé réussi,
+    donc son échec (fichier disparu entre-temps, permissions) ne doit JAMAIS
+    transformer une réponse HTTP déjà décidée à 202 en erreur — au pire la
+    ligne reste à `false` alors que le message est bien parti, une
+    dégradation vers l'état d'avant ce correctif, jamais pire.
+    """
+    try:
+        fd = os.open(chemin_journal, os.O_WRONLY)
+        try:
+            os.pwrite(fd, b"true ", position_envoye)
+        finally:
+            os.close(fd)
+    except OSError:
+        pass
 
 
 def _lire_conversation(chemin_journal):
@@ -748,6 +813,14 @@ class Ecriture:
         Forme choisie pour ne RIEN changer à la signature (2-tuple) que les
         appelants existants (`_lancer()`, `_spec_lancer()`, et les tests qui
         appellent `Ecriture.lancer()` directement) unpackent déjà.
+
+        ⚠️ (revue de code, cycle `feature-021`) Cette forme est polymorphe et
+        DÉLIBÉRÉMENT laissée telle quelle (signature stable) — c'est
+        `Handler._erreur_lancement(raison)` qui porte l'UNIQUE traduction
+        `raison -> réponse HTTP`, et c'est elle qu'il faut appeler, jamais
+        réinventer le test `isinstance(raison, tuple)` dans un nouvel
+        appelant : un appelant qui l'oublie affiche `(503, "…")` tel quel
+        dans un corps de 409.
 
         `spec_id` (feature-025, GATE P1 S1.7) : `None` pour `/api/lancer`
         (clé fermée seule), la spec CIBLÉE pour `/api/spec/lancer` — mémorisé
@@ -1530,14 +1603,17 @@ class Handler(BaseHTTPRequestHandler):
         ecriture.interrompre_courant()
         return self._json({"interrompu": True}, 202)
 
-    def _corps_spec(self, corps):
-        """JSON attendu : `{type, titre, texte, minimal?}` pour
-        `/api/spec/brouillon`, `{type, titre, contenu}` pour
-        `/api/spec/ecrire` (reboucle étape 5a — `contenu` remplace
-        `{texte, minimal}` à l'écriture, voir `_spec_ecrire`). Rend
-        `(donnees, None)` ou `(None, (code, message))` — `400` pour un corps
-        illisible, jamais `422` (réservé aux erreurs de SAISIE une fois le
-        JSON compris)."""
+    def _corps_json(self, corps):
+        """Décode le CORPS BRUT en objet JSON `dict` — générique, PAS
+        spécifique aux specs malgré le nom historique `_corps_spec`
+        (revue de code, cycle `feature-021` : le nom et l'ancien docstring
+        ne décrivaient que `/api/spec/brouillon` et `/api/spec/ecrire`, alors
+        que la fonction sert aussi `_spec_lancer`, `_spec_modifier`,
+        `_spec_supprimer` et `_conversation_envoyer` — chacune valide ENSUITE
+        la forme précise qu'elle attend). Rend `(donnees, None)` ou
+        `(None, (code, message))` — `400` pour un corps illisible ou qui
+        n'est pas un objet JSON, jamais `422` (réservé aux erreurs de SAISIE
+        une fois le JSON compris, propre à chaque appelant)."""
         try:
             donnees = json.loads(corps.decode("utf-8")) if corps else {}
         except (ValueError, UnicodeDecodeError):
@@ -1550,7 +1626,7 @@ class Handler(BaseHTTPRequestHandler):
         """`POST /api/spec/brouillon` : produit un brouillon, n'écrit rien
         (feature-008). Champs attendus : `type`, `titre`, `texte`,
         `minimal` (booléen, dérogation vers le template minimal)."""
-        donnees, erreur = self._corps_spec(corps)
+        donnees, erreur = self._corps_json(corps)
         if erreur is not None:
             code, message = erreur
             return self._erreur(code, message)
@@ -1579,7 +1655,7 @@ class Handler(BaseHTTPRequestHandler):
         slug — donc le chemin — vient de `titre`, jamais de `contenu`) :
         GATE P1 condition 1 porte sur le CHEMIN, pas sur le contenu, et reste
         tenue à la lettre quel que soit ce que `contenu` renferme."""
-        donnees, erreur = self._corps_spec(corps)
+        donnees, erreur = self._corps_json(corps)
         if erreur is not None:
             code, message = erreur
             return self._erreur(code, message)
@@ -1608,7 +1684,7 @@ class Handler(BaseHTTPRequestHandler):
         substitution d'un placeholder DÉCLARÉ (`config.
         commande_pour_spec_id()`, S1.3) — jamais par concaténation.
         """
-        donnees, erreur = self._corps_spec(corps)
+        donnees, erreur = self._corps_json(corps)
         if erreur is not None:
             code, message = erreur
             return self._erreur(code, message)
@@ -1682,7 +1758,7 @@ class Handler(BaseHTTPRequestHandler):
         P1 S2.3). `empreinte` doit être celle rendue par le dernier
         `GET /api/spec?id=...` ; un écart — édition concurrente, hors du
         cockpit ou non — rend `409`, fichier intact."""
-        donnees, erreur = self._corps_spec(corps)
+        donnees, erreur = self._corps_json(corps)
         if erreur is not None:
             code, message = erreur
             return self._erreur(code, message)
@@ -1711,7 +1787,7 @@ class Handler(BaseHTTPRequestHandler):
         jamais lui-même, c'est le plan ÉCRIT que la Règle absolue n°4
         exige, pas un geste automatique de plus.
         """
-        donnees, erreur = self._corps_spec(corps)
+        donnees, erreur = self._corps_json(corps)
         if erreur is not None:
             code, message = erreur
             return self._erreur(code, message)
@@ -1753,8 +1829,15 @@ class Handler(BaseHTTPRequestHandler):
         indisponible, S3.9/S3.10) → 202 (« tube vidé, message écrit entier »,
         D3 — pas « traité » : le traitement se constate par le message
         utilisateur rejoué sur `/api/lancement`, `--replay-user-messages`).
+
+        Revue du cycle `feature-021` (B3) : la ligne journalisée porte un
+        champ `envoye`, `false` à l'écriture puis basculé à `true` UNIQUEMENT
+        après un envoi confirmé (`_marquer_message_envoye`) — sur un 503, la
+        ligne reste `false`, et c'est désormais ce qui la distingue d'un
+        message réellement remis (le volet client expose ce champ, cette
+        route ne fait que le poser correctement).
         """
-        donnees, erreur = self._corps_spec(corps)
+        donnees, erreur = self._corps_json(corps)
         if erreur is not None:
             code, message = erreur
             return self._erreur(code, message)
@@ -1774,12 +1857,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._erreur(404, "aucun agent en cours n'accepte de message")
 
         chemin = _chemin_conversation(lancement)
-        if not _ecrire_message_conversation(chemin, texte):
+        ok, position_envoye = _ecrire_message_conversation(chemin, texte)
+        if not ok:
             return self._erreur(500, "journalisation du message impossible")
 
         ok, motif = lancement.envoyer(texte)
         if not ok:
             return self._erreur(503, motif or "canal indisponible")
+        _marquer_message_envoye(chemin, position_envoye)
         return self._json({"envoye": True}, 202)
 
     def _conversation_lire(self):

@@ -2,7 +2,10 @@
 
 ## Statut
 
-Accepté
+Accepté (amendé par [ADR-0039](0039-la-fidelite-a-la-maquette-prime-sur-les-restrictions-anterieures.md) §3 —
+un cycle lancé depuis le cockpit via `POST /api/spec/lancer` connaît sa spec
+avec certitude, ce n'est plus une corrélation *a posteriori* ; le constat
+mesuré sur 14 cycles *observés* reste inchangé pour ce cas-là)
 
 ## Date
 
