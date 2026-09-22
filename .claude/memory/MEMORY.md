@@ -21,6 +21,7 @@
 
 ## Chantiers ouverts
 
+- ⭐ [Cycle 021 clos, mais rien n'est déployé](cycle-021-clos-mais-rien-de-deploye.md) — 18 commits verts ; le serveur du poste est celui du 2026-09-19, l'unité systemd reste à écrire
 - ⭐ [Centre de contrôle : état et pièges](centre-de-controle-etat-et-pieges.md) — `SessionEnd` ne se déclenche jamais, donc la prémisse de `bug-002` est à réétablir
 
 - [`update_kit.sh` : 71 tests](dette-update-kit-sans-tests.md) — 11 défauts corrigés ; `feature-013` et `014` restants
