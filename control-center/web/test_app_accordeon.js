@@ -114,11 +114,12 @@ class FakeNode {
 // tenus à jour à la main (même liste que `test_app_bug012.js`, ADR-0006).
 // Resynchronisée au lot 3 (feature-021, cycle 2, F7).
 const IDS = [
-  "a11y-announcement", "agents", "backlog-column-count", "backlog-count",
+  "a11y-announcement", "account-button", "agents", "avatar",
+  "backlog-column-count", "backlog-count",
   "backlog-title", "bandeau-hote", "bandeau-hote-bouton",
   "bandeau-hote-texte", "barre", "bouton-generer-brouillon",
   "compteur-prompt", "compteur-specs", "cycle-canvas", "cycle-indice",
-  "cycle-status", "derogation-minimale", "erreur-generer-brouillon",
+  "cycle-status", "cycle-title", "derogation-minimale", "erreur-generer-brouillon",
   "fichiers", "filtre", "filtre-divergences", "gabarits-adoptes",
   "horodatage", "jauge-flux", "jauge-git",
   "jauge-pilotage", "kanban", "legende-cycles", "link-front-sec",
@@ -132,9 +133,9 @@ const IDS = [
   "selected-task", "selected-title", "selected-tools", "sheet-metrics", "sheet-toggle", "status-dot",
   "summary-active", "summary-step", "summary-time", "systeme", "timeline",
   "tiroir", "tiroir-contenu", "tiroir-fermer", "tiroir-titre", "titre-agents",
-  "titre-besoin", "titre-cycle-surface", "titre-cycles", "titre-demande",
+  "titre-besoin", "titre-cycles", "titre-demande",
   "titre-evenements", "titre-fichiers", "titre-pilotage", "titre-systeme",
-  "workflows",
+  "user-name", "workflows",
 ];
 const CACHES_PAR_DEFAUT = new Set([
   "bandeau-hote", "tiroir", "porte-jeton", "porte-erreur",

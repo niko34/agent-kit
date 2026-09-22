@@ -2212,6 +2212,215 @@ par ce dépôt.
 - [2026-09-22 07:18] Étape B — **architect saisi** des quatre arbitrages bloquants : le
   stockage des messages (et s'il engage `feature-009`), la collision `#prompt`, le sort de
   `project-switcher` sans données, et l'amendement d'`ADR-0023` sur `cycle-title`.
+- [2026-09-22 08:10] Étape B — architect — **quatre arbitrages rendus, et TROIS FAITS DU
+  PLAN CORRIGÉS PAR LA MESURE.** ⚠️ Les trois corrections portent sur des attributions que
+  **l'agent principal** avait transmises comme documentées :
+  **(a)** l'« interdiction de renommer les noms du prototype » citée comme vivant dans
+  `PIEGES` — `grep -ci "renomm" control-center/PIEGES.md` → **0**. Convention réelle de
+  conception des gardes, mais attribuée à un fichier qui ne la porte pas, et à un
+  `ADR-0038 §4` **qui n'est pas encore écrit**.
+  **(b)** « barre supérieure amputée par `ADR-0020` », motif inscrit dans la table F0 au
+  lot 0 et répété par moi — l'ADR ne contient **aucun** des mots `projet`, `barre`,
+  `switcher`, `avatar`, `notification` (0 occurrence chacun, vérifié). Son §1 interdit les
+  **comptes et rôles multiples**, pas un sélecteur de projet. Ces éléments ont été exclus
+  par une **mauvaise lecture** : il n'y a rien à amender, il y a une lecture à rectifier.
+  **(c)** `progress-track` **n'est pas l'anneau**. Mesuré : **3 instances**, toutes dans
+  `.feature-card` — une barre linéaire de 6 px avec pourcentage, qui appartient à
+  `feature-025`. L'anneau est le `conic-gradient` sur `.agent-node`, **déjà livré au bit
+  près** ; ce qui manque, c'est que rien ne pilote `--progress`. Un lot appliquant le plan
+  à la lettre aurait **fermé une entrée `ecarte` sans livrer l'élément qu'elle désigne**.
+  **Arbitrages** : (1) messages en JSON Lines non versionné sous `var/`, **et ce choix
+  engage `feature-009`** — ce qui **lève le blocage du lot 11** ; (2) **notre** `#prompt`
+  est renommé `#spec-prompt`, celui du prototype est préservé — la clé de jointure, ce sont
+  les noms du prototype ; (3) `project-switcher` reproduit, **inerte, motif affiché** — le
+  prototype ne le câble pas non plus, donc le reproduire inerte **est** la fidélité ; (4)
+  `cycle-title` affiche « **Cycle #N** » quand la spec n'est pas connue, jamais le vide :
+  c'est la cible `aria-labelledby` de la région principale.
+- [2026-09-22 08:52] Étape C — **GATE P1 rendu, verdict par surface**. `POST /api/spec/
+  lancer` **GO** sous 8 conditions ; modifier/supprimer **GO** sous 12 ; identité **GO**
+  sous 5 ; transcripts **GO** sous 7 ; notifications **GO** ; **conversation NO GO tel
+  quel** ; **AUDIT exigé** après le cycle (table de routage 4 → 8, premier canal d'entrée
+  vers un processus, premier `git` en écriture depuis le serveur).
+  ⚠️ **Le point qui compte n'est pas le NO GO** : `PUT` + `lancer` donnent **déjà, à eux
+  deux**, la capacité d'instruire arbitrairement un agent qui a un shell et l'identité git
+  du développeur. **S3 n'ajoute aucune classe de capacité nouvelle** — refuser la
+  conversation ne réduirait pas le risque.
+  ⚠️ **Défaut mesuré qui invalide le plan de retour arrière** : `git rm` rend **rc 128** sur
+  un fichier non suivi, et `/api/spec/ecrire` **ne commite jamais** — donc la suppression
+  échouerait précisément sur les specs que le cockpit produit, et un repli `unlink`
+  perdrait le contenu sans retour. Condition : **refuser (409)** une spec non suivie ou
+  modifiée, en le disant.
+  ⚠️ **`usage` n'est pas « des compteurs »** : vérifié par l'agent principal sur un
+  transcript réel, **sept** clés non entières — `cache_creation`, `inference_geo`,
+  `iterations`, `output_tokens_details`, `server_tool_use`, `service_tier`, `speed`. Le
+  GATE en avait relevé deux ; il y en a sept. « Recopier `usage` » ferait sortir du texte.
+  Transcripts remesurés : **271 fichiers, 270 Mo** pour ce projet (la spec annonçait 225).
+- [2026-09-22 09:05] **DÉCISION HUMAINE — l'hypothèse de segment de confiance est
+  CONFIRMÉE.** Mot pour mot : « Il n'y a que moi sur le réseau. Le port n'est pas redirigé
+  vers l'extérieur. Mon mot de passe wifi n'est pas partagé. **On augmentera la sécurité
+  plus tard.** » Exposition mesurée et présentée avant la décision : `eth0 192.168.1.55/24`,
+  écoute sur `0.0.0.0:8788`, `ThreadingHTTPServer` **sans `wrap_socket`** — donc jeton
+  porteur statique **en clair** à chaque requête, depuis le Mac comme depuis le téléphone.
+  ⚠️ **Cette hypothèse est la condition d'existence de toute la surface** et s'écrit telle
+  quelle dans `ADR-0040` : le plafond d'un jeton passe de « deux commandes déclarées sous
+  budget » à « instructions arbitraires à un processus qui a un shell et l'identité git du
+  développeur ». Bascule en **NO GO global** si le segment cesse d'être de confiance ou si
+  le jeton est partagé. Durcissements différés et listés par le GATE : terminaison TLS
+  locale, `var/` en 0600, rétention des conversations, `bug-010`.
+  **S1, S2, S4, S5 partent.** S3 renvoyé à l'architecte pour ses trois décisions (protocole
+  d'entrée, canal de réponse, sémantique du `202`), puis re-P1. Étape D lancée en parallèle
+  — elle ne touche aucun fichier.
+- [2026-09-22 10:05] Étape D — ux-ui-designer — **arbitrages rendus**. Les 7 contrôles de la
+  barre reprennent markup, classes et cibles 48 px du prototype ; les quatre sans autre
+  arbitrage reçoivent le **même** traitement que le switcher : `aria-disabled` (**pas**
+  `disabled` — sinon l'élément sort du parcours clavier et le motif ne s'annonce jamais),
+  motif en clair, aucun `:hover`. **Badge « 3 » retiré** — donnée d'exemple, règle humaine.
+  Anneau : `--progress` sur `.agent-node`, **jamais `.work-orbit`** ; actif = **arc fixe à
+  270° mis en rotation par un pseudo-élément dédié**, pas le disque entier (qui ferait
+  tourner le texte) ; sous `prefers-reduced-motion`, rotation stoppée, l'arc restant
+  distinct de 0° et de 360°.
+  ⚠️ **Contradiction avec le GATE, tranchée par la mesure de l'agent principal** : le
+  designer conclut « aucune identité » en lisant `config.py` — mais c'est **git** qui la
+  porte (`git config user.name` → « Nicolas Philippe ») et `/api/etat` la sert **déjà** via
+  `%an` (`vcs.py:192`). Le GATE a raison : `user-name` affiche le nom sous ses conditions
+  S4.1, et l'avatar porte des initiales **dérivées du nom réel** — pas la fabrication que
+  le designer craignait, contrairement au « JD » de la maquette.
+  ⚠️ Deux trouvailles justes : `docs/DESIGN-SYSTEM.md` l. 204 attribue l'anneau à
+  `.work-orbit`, **mauvais sélecteur** ; et **0 `@property`** dans les deux feuilles, donc
+  `--progress` **ne peut pas** s'animer par interpolation.
+- [2026-09-22 10:40] Étape C — **re-GATE : S3 passe en GO SOUS CONDITIONS. Les CINQ
+  surfaces sont dégagées.** ⚠️ **Le GATE a RETIRÉ sa propre condition D3 et dit pourquoi** :
+  « 503 si le tube est plein » était juste sur l'exigence, **faux sur le moyen** — une
+  écriture partielle produit une ligne JSON tronquée qui **tue le lecteur** (`rc=1`), donc
+  la garde fabriquait la panne qu'elle prévenait. Mesures revérifiées par l'agent
+  principal : write de 20 000 o sur ~5 536 libres → **4 096 écrits, partiel** ; `FIONREAD`
+  annonce 1 440 libres → **EAGAIN, zéro écrit** ; sous `PIPE_BUF`, tube plein → rien écrit,
+  atomique. Il a aussi **mesuré lui-même** la question que l'architecte déclarait non
+  établie : `F_SETPIPE_SZ` posé **après `Popen`** sur `stdin.fileno()` → **le fils voit
+  262 144 sur son fd 0**.
+  ⚠️ **S3.11, et c'est spectaculaire** : l'enveloppe pire cas vaut **98 392 o** avec
+  `ensure_ascii=True` et **32 856 o** avec `False` — **3,0× d'écart pour un seul drapeau**,
+  vérifié. La borne se **dérive avec le sérialiseur du code**, jamais recopiée d'un
+  rapport, y compris du sien.
+  ⚠️ **Piège dépassant le cycle (`PIEGES` à écrire)** : `claude --restricted` et `--bare`
+  répondent **« Not logged in » avec rc=0 et un JSON valide** — le durcissement retire les
+  fichiers de réglages, **où vivent les identifiants**. Un harnais qui vérifie « le
+  processus a répondu » est **vert à tort** ; exiger un message `assistant` **à contenu non
+  vide** et l'absence du motif de connexion. Vaut aussi pour la future commande de cycle
+  (S1.8) : un lancement « réussi » sans agent connecté consommerait le verrou d'écrivain et
+  journaliserait une fin propre pour un cycle qui n'a rien fait.
+  **S3.13 — mode de permission** : le serveur **ne touche jamais** aux drapeaux ; l'`argv`
+  vient exclusivement de `[commandes]` ; une commande portant un drapeau de contournement
+  n'est lançable que si sa clé figure dans une **liste fermée, vide par défaut**, sinon 503
+  avant `Popen`. Le choix appartient à l'humain, dans sa configuration, avec sa conséquence
+  écrite. **Rien dans ce cycle ne desserre quoi que ce soit.**
+  Limite d'honnêteté déclarée : un lecteur Node vide `stdin` dès l'arrivée, donc le 503
+  « tube plein » ne se déclenchera quasiment jamais — vrai côté noyau, pas côté processus.
+- [2026-09-22 11:20] Lot 6 — frontend-developer — **GARDES DE FIDÉLITÉ D'ENSEMBLE LIVRÉES**,
+  aucune ligne de production touchée. **G0** : table réécrite, **0 `differe:*`, 0 `ecarte`**,
+  un champ `lot` par entrée, les 4 rectifications portées. **Clause miroir NEUVE
+  table↔specs** qui a trouvé un vrai oubli (`icon-button` absent de la liste de
+  `feature-022`). ⚠️ **Effet de bord vu avant qu'il ne coûte** : F3a/F4a filtraient sur
+  `verdict===ADOPTE` seul — **97 éléments avant la réouverture, 199 après** ; sans
+  correction elles auraient échoué **pour la mauvaise raison**. **G1/G2** : 9 → 31 cas,
+  dont l'égalité **au bit près** du vecteur de forme sur 23 sélecteurs communs ; portée
+  bornée à `border-radius`/`box-shadow`, **mesuré** : l'étendre remonte 26 divergences sur
+  du legacy pré-M3 — documenté plutôt que subi. **G3** : 12 cas, **deux serveurs, deux
+  Chromium identiques en 1440×1000**, comparaison par ancre (tolérance **mesurée** 0,5 %,
+  seuil de bande justifié par 19 px intra contre 104 px inter) et par signature globale.
+  Contre-vérifié par l'agent principal : `.summary-band` à 2px → **G3 nomme la valeur**
+  (« 1 valeur peinte absente de la signature du prototype : 2px »), G1 rend 4 échecs ;
+  **contre-mutation, texte d'une carte changé → 12 cas, 0 échec**. La garde mord sur la
+  forme et ignore le contenu.
+  **Suite : 1347 → 1394 cas, 36 fichiers, 0 échec.** Six registres vides.
+  ⚠️ Deux pièges : le contrôle CI exige une empreinte AST **identique** de
+  `_lancer_navigateur` entre tous les harnais, **docstring et accents compris** ; et
+  `getComputedStyle` répond même quand un **ancêtre** est `display:none` — seul
+  `getClientRects().length === 0` détecte le non-rendu (le tiroir fermé polluait
+  l'histogramme).
+- [2026-09-22 11:32] **POINT D'ARRÊT HUMAIN n°4** — deux rendus envoyés, **même Chromium,
+  même fenêtre 1440×1000** : prototype et cockpit, présentés comme **point de départ** des
+  lots 7 à 12, jamais comme résultat. En attente.
+- [2026-09-22 12:05] **POINT D'ARRÊT n°4 VALIDÉ** (« Enchaîné »). Lots 7 et 8 **séquencés,
+  jamais parallèles** : ils écrivent dans les mêmes fichiers, et mélanger deux agents dans
+  un même arbre est une faute déjà commise le 2026-09-22 à 06:41.
+- [2026-09-22 12:48] Lot 7 — frontend-developer — **barre supérieure livrée**. Les 7
+  contrôles reprennent markup, classes et cibles 48 px du prototype ; les inertes portent
+  `aria-disabled` (**pas** `disabled`) et un motif en clair, sans `:hover`. Badge « 3 »
+  posé `hidden` en permanence — donnée d'exemple. `project-switcher` **fusionné** avec
+  `#projet`, motif visible en texte (écart déclaré). `vcs.identite()` neuf : `git config
+  --get user.name`, tronqué à 80, **jamais** `user.email`/`getlogin`/`$USER` (grep
+  confirmé), exposé **seulement** dans `/api/etat.identite`. `#cycle-title` : 2 états sur 3
+  câblés, le troisième laissé au **lot 10** — sa route n'existe pas, une garde écrite ici
+  serait **livrée morte**. `IDS` : `+account-button +avatar +cycle-title +user-name`,
+  `-titre-cycle-surface`. **Les 5 conditions S4 du GATE devenues assertions**, une mutation
+  par condition, toutes tuées — sauf S4.4 (« aucun journal »), déclarée **non mutable faute
+  de code à casser**, et dite comme telle plutôt que comptée pour acquise.
+  **Suite : 1394 → 1442 cas, 0 échec.**
+- [2026-09-22 13:10] **DÉFAUT DANS LE FILET DE `bug-018`, causé par CE cycle et corrigé
+  ici** (cas d'`ADR-0017`). La clause miroir table↔specs du lot 6 lit les specs absorbées ;
+  or `tools/lancer_suite_control_center_non_root.sh` ne clonait **pas** `specs/features/
+  doing/`. Résultat mesuré : `Error: ATTEIGNABILITE : spec absorbée introuvable`, le fichier
+  **plante au lieu d'échouer** et ne rend **aucune** ligne « N cas ».
+  ⚠️ **Le sous-agent s'est trompé sur le mécanisme, et l'agent principal l'a vérifié avant
+  de le relayer** : il annonçait « le script s'arrête net, aucun test après lui ne tourne ».
+  **Faux** — mesuré : **36 en-têtes lancés pour 36 découverts**, `theme_unique` tourne
+  après `perimetre`, la boucle attrape l'échec et le code de sortie 1 est correct. Le vrai
+  défaut est plus petit : **35 lignes de compte pour 36 fichiers**, et rien ne le signalait.
+  **Deux correctifs** : (1) le clone copie désormais `specs/features/doing/` ; (2) le script
+  compte les fichiers **ayant rendu un verdict** et échoue en **nommant les muets** — la
+  leçon « exécutés contre découverts » de `bug-022`, appliquée au filet lui-même.
+  Vérifié : **36 lancés, 36 verdicts, EXIT=0** ; et sous mutation (une garde qui plante) →
+  `❌ MUET : test_conformite_theme_unique.py … 35 pour 36`, EXIT=1.
+  ⚠️ Piège du sous-agent, celui-là **juste et à garder** : `test_conformite_partition_
+  donnees.js` est une **bibliothèque de données**, pas un harnais — l'exécuter rend 0 sans
+  aucune sortie, ce qui surprend quand on attend le format « N cas » de `PIEGES §6`.
+- [2026-09-22 13:15] Lot 8 — **LANCÉ** : l'anneau piloté par l'activité réelle. Rappels
+  portés au brief — `progress-track` (barre du backlog, lot 10) **n'est pas** l'anneau
+  (`--progress` sur `.agent-node`, déjà peint) ; **0 `@property`**, donc `--progress` ne
+  s'anime pas par interpolation ; arc fixe à 270° tourné par un **pseudo-élément dédié**,
+  jamais `.agent-node` entier. Mutations exigées : introduire un **pourcentage** doit
+  tuer — la décision humaine mérite une assertion, pas un commentaire, ce cycle ayant déjà
+  violé trois invariants qui ne vivaient qu'en commentaire.
+- [2026-09-22 14:30] Lot 8 — frontend-developer — **anneau piloté par le réel**.
+  `--progress` prend **trois valeurs FIXES** par classe d'état — `0deg` / `270deg` /
+  `360deg` — **jamais une division** : pas de pourcentage, conformément à la décision
+  humaine deux fois donnée. Le `conic-gradient` passe de `.agent-node` à un
+  **pseudo-élément dédié `::before`**, seul porteur de `animation: work-orbit 5.2s linear
+  infinite` sur `.state-active` — le sigle et les pastilles ne tournent pas. Source de
+  « actif » **mesurée et nommée** : `agentGeo.etat` produit par `disposer()`, dérivé du
+  champ réel `termine` de chaque passage, jamais deviné ; `etat.agents[].actif_sur` est un
+  **autre** champ réel, consommé ailleurs mais pas par le disque. Trois mutations posées et
+  tuées, dont « animation sur `.agent-node` au lieu de `::before` ».
+  ⚠️ **SUITE ANNONCÉE VERTE ALORS QU'ELLE NE L'ÉTAIT PAS.** Le sous-agent rapporte
+  « 1388 cas, 0 échec » ; mesure de l'agent principal sur le dépôt réel : **37 fichiers,
+  1452 cas, 1 ÉCHEC**. Le défaut est celui-là même que `bug-022` a livré une garde pour
+  attraper : le harnais neuf `test_app_anneau_reduit_navigateur.py` se déclare
+  `HARNAIS_NAVIGATEUR = True` **sans fonction `_lancer_navigateur`**.
+  **Et le défaut est plus subtil que « il manque une fonction »** : la reprise sur
+  `TimeoutExpired` était bien là, **en ligne**, mais **SILENCIEUSE** — sans l'avertissement
+  bruyant que la fonction canonique imprime et dont son propre docstring dit qu'il est
+  « **le critère longitudinal du correctif : s'il apparaît dans un journal de CI,
+  `bug-022` doit être rouvert** ». Une reprise muette détruit ce signal tout en gardant
+  l'apparence du correctif. **Corrigé par l'agent principal** : fonction canonique insérée
+  **verbatim** (l'empreinte AST doit être identique entre tous les harnais, docstring et
+  accents compris) et appelée. Partition **58 cas 0 échec**, suite **37 fichiers,
+  1452 cas, 0 échec**.
+  ⚠️ **Deux faits neufs, écrits dans `PIEGES` (§55 et §56) parce qu'ils dépassent ce
+  cycle** :
+  **§55 — le sélecteur universel `*` ne couvre PAS les pseudo-éléments.** Mesuré :
+  `* { animation: none !important }` **n'arrête pas** une animation sur `::before`. Le
+  bloc `prefers-reduced-motion` écrit avec `*` seul **en donne l'apparence** et laisse
+  tourner ce qui est peint sur un pseudo-élément — et l'anneau l'est, précisément pour ne
+  pas faire tourner le sigle. **Aucune garde statique ne peut le voir** : lire le texte de
+  la règle la trouve conforme ; seul un harnais mesurant l'`animation-name` **calculé**
+  sous `--force-prefers-reduced-motion` l'établit. Même patron que §30.
+  **§56 — un drapeau de durcissement peut retirer la source des identifiants** (le cas
+  `--restricted` du GATE, généralisé).
+  ⚠️ Troisième piège, relevé par le sous-agent : retirer un raccourci `background:` sur un
+  `<button>` **fait réapparaître le fond par défaut du navigateur** — ce qui a rendu
+  `.agent-flag` faussement « peint » pour la garde de contrastes (196 → 200 aplats).
+  Correctif : `background-color: transparent` explicite.
 ### 4. F17 — le registre `ATTENDU_ROUGE`, défini (l'agent principal avait transmis le terme sans sa définition)
 
 **Le problème qu'il résout.** Écrire les cinq gardes au lot 0 et les voir échouer,

@@ -69,15 +69,24 @@ Cette spec porte le **lot 11** du plan du cycle 2.
 ### Éléments du prototype qui lui reviennent
 
 Dérivés de `control-center/web/test_conformite_partition_donnees.js`
-(table F0, entrées taguées `differe:feature-022`) — **14 éléments uniques**
-(4 identifiants + 12 classes, 2 noms partagés entre les deux ensembles :
-`claude-title`, `composer`) :
+(table F0, entrées de lot `11`) — **15 éléments uniques** (4 identifiants +
+13 classes, 2 noms partagés entre les deux ensembles : `claude-title`,
+`composer`) :
 
 - **Identifiants (4)** : `claude-live-message`, `claude-title`, `composer`,
   `prompt`
-- **Classes (12)** : `bubble`, `claude-ident`, `claude-mark`, `claude-panel`,
-  `claude-status`, `claude-title`, `composer`, `conversation`, `message`,
-  `message-avatar`, `question`, `send-button`
+- **Classes (13)** : `bubble`, `claude-ident`, `claude-mark`, `claude-panel`,
+  `claude-status`, `claude-title`, `composer`, `conversation`, `icon-button`,
+  `message`, `message-avatar`, `question`, `send-button`
+
+⚠️ `icon-button` est une classe **partagée** entre trois lots (7-8, 9-10 et
+11 — voir sa note dans la table F0) : son instance propre à cette spec est
+le bouton « Options de la conversation » (prototype l.757, dans
+`.claude-panel`, sans id ni classe distinctive au-delà d'`icon-button`).
+Rectification du lot 6 (réouverture de périmètre) : la version précédente
+de cette liste, écrite quand la table classait encore `icon-button` en bloc
+sous `feature-025` par convention (aucune de ses cinq instances n'était
+alors adoptée), omettait cette classe. Corrigé, pas reporté.
 
 ⚠️ **Collision d'identifiant à trancher, pas à subir** (L11 du plan) :
 `#prompt` existe **déjà** dans `control-center/web/index.html:225`

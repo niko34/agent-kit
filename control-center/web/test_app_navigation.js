@@ -34,6 +34,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const lib = require("./test_conformite_lib.js");
 
 let _tests = 0;
 const _echecs = [];
@@ -94,6 +95,81 @@ const APP_JS_PATH = path.join(ICI, "app.js");
   check("B_aucun_id_titre_section_residuel", !/id="titre-section-[a-z]+"/.test(HTML));
 })();
 
+/* Les 4 contrôles inertes de la barre supérieure (feature-021, cycle 2,
+ * lot 7, arbitrage designer 2026-09-22 10:05) : `aria-disabled="true"`,
+ * JAMAIS `disabled` (qui sortirait l'élément du parcours clavier — la
+ * garde exécutable de bug-017 le compterait alors correctement absent
+ * pour la MAUVAISE raison, un motif qui ne s'annoncerait jamais), et
+ * AUCUN `:hover` déclaré dans app.css (un survol actif suggérerait une
+ * affordance qu'ils n'ont pas). Repéré par CLASSE, pas par id (ces
+ * contrôles n'ont pas tous un id) — sur la balise ouvrante précise, jamais
+ * une sous-chaîne du document (PIEGES §27). */
+(function testControlesInertesDeLaBarreSuperieure() {
+  const corps = lib.extraireCorpsAvantScript(HTML);
+  function baliseParClasse(classe) {
+    const echappe = classe.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+    const re = new RegExp('<[a-zA-Z][^>]*\\bclass="[^"]*\\b' + echappe + '\\b[^"]*"[^>]*>');
+    const m = corps.match(re);
+    return m ? m[0] : null;
+  }
+  const CONTROLES = ["project-switcher", "notification-button", "account-button"];
+  for (const classe of CONTROLES) {
+    const balise = baliseParClasse(classe);
+    check("B_" + classe + "_present", !!balise, "classe absente de index.html");
+    check("B_" + classe + "_aria_disabled_true",
+      !!balise && /\baria-disabled="true"/.test(balise));
+    check("B_" + classe + "_jamais_disabled",
+      !!balise && !/\sdisabled\b/.test(balise));
+    check("B_" + classe + "_porte_un_aria_label",
+      !!balise && /\saria-label="[^"]+"/.test(balise));
+  }
+  // Le bouton « réglages » n'a NI id NI classe distinctive au-delà
+  // d'`icon-button` (F0, PARTITION_CLASSES) : repéré par son aria-label,
+  // seule ancre stable, sur la balise ouvrante précise.
+  const iReglages = corps.indexOf('aria-label="Réglages —');
+  check("B_reglages_present", iReglages !== -1);
+  if (iReglages !== -1) {
+    const debut = corps.lastIndexOf("<button", iReglages);
+    const fin = corps.indexOf(">", iReglages);
+    const baliseReglages = debut !== -1 && fin !== -1 ? corps.slice(debut, fin + 1) : "";
+    check("B_reglages_aria_disabled_true", /\baria-disabled="true"/.test(baliseReglages));
+    check("B_reglages_jamais_disabled", !/\sdisabled\b/.test(baliseReglages));
+  }
+
+  // Aucun `:hover` déclaré pour ces 4 sélecteurs (lecture PAR RÈGLE CSS
+  // parsée, jamais par sous-chaîne : un commentaire qui les CITE ne doit
+  // pas faire échouer cette garde à tort, PIEGES §26).
+  const regles = lib.reglesCss(CSS);
+  const HOVERS_INTERDITS = [
+    ".project-switcher:hover", ".icon-button:hover",
+    ".notification-button:hover", ".account-button:hover",
+  ];
+  for (const hover of HOVERS_INTERDITS) {
+    const trouve = regles.some((r) => !r.estAtRegle && !r.estKeyframes
+      && r.selecteur.split(",").map((s) => s.trim()).includes(hover));
+    check("B_aucun_hover_" + hover.replace(/[^a-z]+/gi, "_"), !trouve,
+      hover + " ne doit jamais être déclaré (contrôle inerte, lot 7)");
+  }
+})();
+
+/* Badge de notification : donnée d'exemple RETIRÉE (règle humaine
+ * 2026-09-22). Aucun compte fabriqué, l'élément reste `hidden`. */
+(function testBadgeNotificationSansDonneeFabriquee() {
+  check("B_aucun_badge_notification_3_fabrique",
+    !/class="notification-badge"[^>]*>\s*3\s*</.test(HTML));
+  check("B_notification_badge_hidden_par_defaut",
+    /class="notification-badge"[^>]*\bhidden\b/.test(HTML));
+})();
+
+/* Identité : AUCUNE donnée de la maquette (le « Jean Dupont »/« JD »
+ * d'exemple) ne doit être recopiée en dur — S4.1/S4.2 exigent une
+ * DÉRIVATION depuis `etat.identite`, jamais une fabrication statique. */
+(function testAucuneIdentiteFabriqueeDansLeHtml() {
+  check("B_aucun_jean_dupont_fabrique", !/Jean Dupont/.test(HTML));
+  check("B_aucun_jd_fabrique_dans_avatar",
+    !/class="avatar"[^>]*>\s*JD\s*</.test(HTML));
+})();
+
 /* Neuf blocs atteignables, une assertion épinglée par bloc — pas seulement
  * « neuf titres trouvés » (même défaut que l'ancien E5 : une prose voisine
  * qui MENTIONNE un libellé ferait passer l'assertion à tort si elle
@@ -103,7 +179,7 @@ const APP_JS_PATH = path.join(ICI, "app.js");
 (function testNeufBlocsAtteignablesEpinglesUnParUn() {
   function echapper(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
   const BLOCS = [
-    ["h1", "Centre de contrôle"],
+    ["h1", "Aucun cycle observé"],
     ["h2", "Agents"],
     ["h2", "Système"],
     ["h2", "Que souhaitez-vous développer"],

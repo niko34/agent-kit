@@ -162,6 +162,47 @@ function siglesAgents(nomsRoles) {
   return resultat;
 }
 
+/* ------------------------------------------------------------- identité -- *
+ * feature-021, cycle 2, lot 7, GATE S4. `etat.identite` (backend, `vcs.py`
+ * `identite()`, SEULE source autorisée : `git config --get user.name`) est
+ * soit une chaîne non vide, soit `null`/absente (dépôt sans identité
+ * déclarée, ou `git` indisponible). AUCUNE fabrication ici : pas d'email,
+ * pas de nom d'utilisateur système — S4.1 l'interdit explicitement. */
+function initialesDepuisNom(nom) {
+  if (typeof nom !== "string") return null;
+  const mots = nom.trim().split(/\s+/).filter(Boolean);
+  if (!mots.length) return null;
+  const initiales = mots.length === 1
+    ? mots[0].slice(0, 2)
+    : mots[0].slice(0, 1) + mots[mots.length - 1].slice(0, 1);
+  return initiales.toUpperCase() || null;
+}
+
+/* S4.2 : initiales dérivées CÔTÉ CLIENT du nom réel — jamais une image
+ * externe (la CSP `img-src 'self' data:` n'est pas assouplie pour ce lot).
+ * S4.5 : `account-button` reste `aria-disabled`, n'appelle jamais aucune
+ * route — cette fonction ne fait que POSER du texte, aucun `fetch`. Identité
+ * ABSENTE : dégradation avec motif, JAMAIS un nom inventé (règle absolue
+ * n°1, jamais de fabrication de données personnelles). */
+function rendreIdentite(etat) {
+  const identite = typeof etat.identite === "string" && etat.identite.trim()
+    ? etat.identite.trim() : null;
+  const avatar = $("avatar");
+  const nomAffiche = $("user-name");
+  const bouton = $("account-button");
+  if (identite) {
+    avatar.textContent = initialesDepuisNom(identite) || "…";
+    nomAffiche.textContent = identite;
+    bouton.setAttribute("aria-label",
+      "Compte de " + identite + " — aucune action de compte disponible depuis l'interface");
+  } else {
+    avatar.textContent = "?";
+    nomAffiche.textContent = "Identité inconnue";
+    bouton.setAttribute("aria-label",
+      "Compte — identité non disponible, aucune action de compte disponible depuis l'interface");
+  }
+}
+
 /* ---------------------------------------------------------------- agents -- */
 function rendreAgents(agents) {
   const liste = $("agents");
@@ -1089,12 +1130,23 @@ function rendreGrapheCyclePrincipal(etat) {
     $("summary-time").textContent = "00:00";
     $("motion-note").textContent = "aucun passage à afficher pour l'instant — invoquez un agent depuis la section Développer";
     $("cycle-indice").textContent = "—";
+    /* #cycle-title (F0, prototype l.687) : JAMAIS une chaîne vide — c'est la
+     * cible `aria-labelledby` de `.cycle-surface`. Aucun cycle observé :
+     * libellé factuel dédié, distinct de « Cycle #N » (lot 7). */
+    $("cycle-title").textContent = "Aucun cycle observé";
     return;
   }
   /* ADR-0023 : « Cycle #N » (indice_cycle, additif) est légitime — le TITRE
    * de spec ne l'est pas (corrélation cycle→spec, 2 cas sur 14 seulement). */
-  $("cycle-indice").textContent = typeof wf.indice_cycle === "number"
-    ? "Cycle #" + wf.indice_cycle : "—";
+  const libelleIndice = typeof wf.indice_cycle === "number"
+    ? "Cycle #" + wf.indice_cycle : null;
+  $("cycle-indice").textContent = libelleIndice || "—";
+  /* #cycle-title : TROIS états au total (F0) — ici, seuls les deux premiers
+   * sont câblés : « titre de spec connu » reste au lot 10 (la route qui le
+   * remplirait n'existe pas encore, une garde ici serait livrée morte) ;
+   * « pas de titre mais cycle observé » se lit sur la même donnée que la
+   * pastille `#cycle-indice` (`indice_cycle`), jamais fabriquée deux fois. */
+  $("cycle-title").textContent = libelleIndice || "Cycle en cours";
 
   const segments = wf.segments || wf.passages || [];
   const sigles = siglesAgents(Array.from(collecterRoles([wf])));
@@ -2703,6 +2755,7 @@ async function rafraichir() {
     if (!reponse.ok) throw new Error("HTTP " + reponse.status);
     const etat = await reponse.json();
     $("projet").textContent = etat.projet || "";
+    rendreIdentite(etat);
     $("horodatage").textContent = heure(etat.horodatage) + " UTC";
     const jaugeGit = $("jauge-git");
     jaugeGit.textContent = etat.git.depot ? "git " + (etat.git.branche || "?") : "git absent";

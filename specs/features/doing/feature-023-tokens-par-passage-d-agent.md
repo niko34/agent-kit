@@ -75,7 +75,7 @@ Cette spec porte le **lot 12** du plan du cycle 2.
 ### Éléments du prototype qui lui reviennent
 
 Dérivés de `control-center/web/test_conformite_partition_donnees.js`
-(table F0, entrées taguées `differe:feature-023`) — **3 éléments uniques**
+(table F0, entrées de lot `12`) — **3 éléments uniques**
 (2 identifiants + 1 classe, sans recouvrement de nom) :
 
 - **Identifiants (2)** : `selected-tokens`, `summary-tokens`

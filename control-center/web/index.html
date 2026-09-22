@@ -36,11 +36,28 @@
     <div class="brand-row">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-        <span class="titre">
-          <span class="marque">Centre de contrôle</span>
-          <span class="projet" id="projet">…</span>
-        </span>
+        <span class="marque">Centre de contrôle</span>
       </div>
+      <!-- `project-switcher` FUSIONNE avec `#projet` (feature-021, cycle 2,
+           lot 7, arbitrage architect 2026-09-22 08:10, point (3)) : le
+           prototype (l.651) ne câble ce bouton nulle part dans son script
+           (0 référence) — LE REPRODUIRE INERTE EST LA FIDÉLITÉ, pas un
+           compromis. `aria-disabled="true"`, JAMAIS `disabled` : `disabled`
+           sortirait l'élément du parcours clavier, et le motif ne
+           s'annoncerait alors jamais. Un SEUL projet configuré aujourd'hui
+           (`config.py`, défaut "Projet sans nom") : le motif est donc écrit
+           en TEXTE VISIBLE à côté du nom, pas seulement dans l'aria-label —
+           écart déclaré et assumé au prototype, qui ne montre qu'un
+           chevron. Deux états du nom : projet nommé, ou défaut backend
+           « Projet sans nom » — les deux sont déjà servis tels quels par
+           `etat.projet` (`app.js`), rien à ajouter côté frontend pour ce
+           second état. -->
+      <button class="project-switcher" type="button" aria-disabled="true"
+              aria-label="Changer de projet — un seul projet configuré">
+        <span class="projet" id="projet">…</span>
+        <span class="project-switcher-motif">un seul projet configuré</span>
+        <span aria-hidden="true">⌄</span>
+      </button>
     </div>
     <div class="top-actions">
       <div class="status-inline">
@@ -49,6 +66,43 @@
         <span class="jauge" id="jauge-git">git …</span>
         <span class="jauge lecture-seule" id="jauge-pilotage" title="chargement de l'état d'écriture…">lecture seule</span>
       </div>
+      <!-- Markup/classes/cible 48px repris TELS QUELS du prototype (l.655),
+           même traitement inerte que `project-switcher` : `aria-disabled`,
+           motif en clair dans l'aria-label, AUCUN `:hover` (un survol actif
+           suggérerait une affordance qui n'existe pas). Badge « 3 » RETIRÉ
+           (donnée d'exemple, décision humaine 2026-09-22) : aucune source de
+           données de notifications n'existe dans ce module — l'élément
+           reste dans le DOM (classe adoptée F0) mais `hidden`, jamais un
+           compte fabriqué. -->
+      <button class="icon-button notification-button" type="button" aria-disabled="true"
+              aria-label="Notifications — aucune notification disponible depuis l'interface">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path><path d="M10 21h4"></path></svg>
+        <span class="notification-badge" aria-hidden="true" hidden></span>
+      </button>
+      <!-- Prototype l.659 : « Ouvrir les réglages ». Aucun réglage n'est
+           exposé par ce module — pas de propriétaire fonctionnel — un
+           bouton mort étant interdit, le motif l'annonce en clair
+           (feature-021, cycle 2, lot 7). -->
+      <button class="icon-button" type="button" aria-disabled="true"
+              aria-label="Réglages — aucun réglage disponible depuis l'interface">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.09a2 2 0 0 1 1 1.74v.5a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+      </button>
+      <!-- Identité (feature-021, cycle 2, lot 7, GATE S4) : SEULE source
+           autorisée = `git config --get user.name`, exposée UNIQUEMENT par
+           `/api/etat.identite` (S4.1/S4.3, jamais `user.email`). Initiales
+           dérivées CÔTÉ CLIENT du nom réel (S4.2, `initialesDepuisNom`,
+           app.js) — jamais une image externe, la CSP `img-src 'self' data:`
+           n'est pas assouplie. `account-button` reste INERTE (S4.5) :
+           n'appelle AUCUNE route, même traitement `aria-disabled` que les
+           autres contrôles inertes de cette barre. Contenu initial neutre,
+           remplacé par `rendreIdentite()` (app.js) dès la première réponse
+           de `/api/etat`. -->
+      <button class="account-button" type="button" id="account-button" aria-disabled="true"
+              aria-label="Compte — identité non disponible, aucune action de compte disponible depuis l'interface">
+        <span class="avatar" id="avatar" aria-hidden="true">…</span>
+        <span class="user-name" id="user-name">…</span>
+        <span aria-hidden="true">⌄</span>
+      </button>
       <span class="horodatage" id="horodatage"></span>
     </div>
   </header>
@@ -85,7 +139,7 @@
          ABSENTES`). Le panneau de conversation permanente (`claude-panel`)
          est hors périmètre de ce cycle (feature-022, différé par F0). -->
     <div class="workspace">
-      <section class="cycle-surface" aria-labelledby="titre-cycle-surface">
+      <section class="cycle-surface" aria-labelledby="cycle-title">
         <div class="cycle-toolbar">
           <div class="cycle-tabs" role="group" aria-label="Vue des cycles">
             <button class="tab-button" type="button" aria-pressed="true">Cycle actif</button>
@@ -101,7 +155,16 @@
 
         <div class="cycle-heading-row">
           <div>
-            <h1 id="titre-cycle-surface">Centre de contrôle</h1>
+            <!-- id ADOPTÉ du prototype (l.687, PARTITION_IDS) — cible
+                 `aria-labelledby` de `.cycle-surface`, jamais une chaîne
+                 vide (feature-021, cycle 2, lot 7). TROIS états prévus
+                 (ADR-0023) : titre de spec connu (lot 10, pas encore
+                 câblé) ; pas de titre mais cycle OBSERVÉ → « Cycle #N »
+                 (`indice_cycle`, donnée réelle, `app.js`) ; aucun cycle
+                 observé → libellé factuel dédié, posé ici comme contenu
+                 initial et repris tel quel par `app.js` tant qu'aucun
+                 cycle n'est chargé. -->
+            <h1 id="cycle-title">Aucun cycle observé</h1>
             <p class="cycle-subtitle">
               <span class="live-label">vivant</span>
               <span id="cycle-status">Aucun cycle sélectionné</span>

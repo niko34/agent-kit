@@ -25,7 +25,7 @@
  */
 
 const lib = require("./test_conformite_lib.js");
-const { ADOPTE, PARTITION_IDS } = require("./test_conformite_partition_donnees.js");
+const { ADOPTE, PARTITION_IDS, lotEstDejaLivre } = require("./test_conformite_partition_donnees.js");
 
 // F4A_IDS_ARIA_MANQUANTS et F4A_ROLE_TAB_RESIDUEL : RETIRÉES du registre au
 // lot 3 (clôture réelle, feature-021 cycle 2) — index.html est réécrit en
@@ -60,9 +60,15 @@ const htmlPrototype = lib.lirePrototype();
 const htmlApp = lib.lireNonVide(lib.cheminWeb("index.html"), "control-center/web/index.html");
 console.log("[atteignabilité] prototype " + htmlPrototype.length + " o, index.html " + htmlApp.length + " o");
 
-// -- Cible dérivée : ids adoptés + leurs role/aria-* dans le prototype --
-const idsAdoptes = Object.entries(PARTITION_IDS).filter(([, [v]]) => v === ADOPTE).map(([id]) => id);
-console.log("[dérivé] " + idsAdoptes.length + " id(s) « adopté » requis (F0)");
+// -- Cible dérivée : ids adoptés ET DÉJÀ LIVRÉS (lots 0-5) + leurs
+// role/aria-* dans le prototype. Depuis la réouverture de périmètre, `ADOPTE`
+// seul désigne les 64 id du cycle ENTIER — filtrer sur le seul verdict
+// ferait échouer ce contrat pour des id légitimement pas encore écrits
+// (voir la note de `lotEstDejaLivre` dans test_conformite_partition_donnees.js).
+const idsAdoptes = Object.entries(PARTITION_IDS)
+  .filter(([, [v, , lot]]) => v === ADOPTE && lotEstDejaLivre(lot))
+  .map(([id]) => id);
+console.log("[dérivé] " + idsAdoptes.length + " id(s) « adopté, déjà livré » requis (F0)");
 
 const cibleParId = {};
 for (const id of idsAdoptes) {

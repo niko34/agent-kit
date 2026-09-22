@@ -179,6 +179,33 @@ def main():
 
         check("test_branche_lue", V.branche(racine) == "main")
 
+        # --- identité (feature-021, cycle 2, lot 7, GATE S4.1) ---------------
+        # SEULE source autorisée : `git config --get user.name`. `depot()`
+        # (en tête de fichier) pose déjà `user.name = "Test"`.
+        check("test_identite_lit_user_name", V.identite(racine) == "Test")
+        check("test_identite_jamais_d_arobase",
+              "@" not in (V.identite(racine) or ""),
+              "un `@` signalerait une fuite de `user.email`, jamais lu ici")
+
+        # Nom anormalement long : TRONQUÉ, jamais rejeté en bloc.
+        git(racine, "config", "user.name", "N" * 200)
+        identite_longue = V.identite(racine)
+        check("test_identite_tronquee_a_la_borne",
+              identite_longue is not None and len(identite_longue) == V._MAX_IDENTITE,
+              "obtenu %r caractère(s)" % (len(identite_longue) if identite_longue else None))
+
+        # `user.name` vide ou absent : dégrade sur `None`, jamais une chaîne
+        # vide ni une fabrication (règle absolue n°1).
+        git(racine, "config", "user.name", "")
+        check("test_identite_vide_rend_none", V.identite(racine) is None)
+        git(racine, "config", "--unset", "user.name")
+        check("test_identite_absente_rend_none", V.identite(racine) is None)
+
+        check("test_identite_repertoire_sans_depot_ne_leve_pas",
+              V.identite(dehors) is None or isinstance(V.identite(dehors), str))
+        check("test_identite_repertoire_inexistant_ne_leve_pas",
+              V.identite("/nexiste/pas") is None)
+
     print("\n%d cas, %d echec(s)" % (_tests, len(_echecs)))
     for echec in _echecs:
         print("  - %s" % echec)

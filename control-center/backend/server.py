@@ -432,6 +432,12 @@ class Etat:
 
         return {
             "projet": self.config.section("projet").get("nom"),
+            # Identité (feature-021, cycle 2, lot 7, GATE S4) : SEULE source
+            # autorisée `git config --get user.name` (`vcs.identite`, S4.1),
+            # exposée UNIQUEMENT ici — jamais dans `/` ni les statiques
+            # servis (S4.3). `None` si absente : le frontend DÉGRADE avec un
+            # motif, il n'invente jamais un nom.
+            "identite": V.identite(self.racine),
             "config_lue": self.config["_fichier_lu"],
             "colonnes": colonnes,
             "specs": specs,

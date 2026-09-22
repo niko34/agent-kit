@@ -29,7 +29,7 @@
  */
 
 const lib = require("./test_conformite_lib.js");
-const { ADOPTE, PARTITION_CLASSES } = require("./test_conformite_partition_donnees.js");
+const { ADOPTE, PARTITION_CLASSES, lotEstDejaLivre } = require("./test_conformite_partition_donnees.js");
 
 // F3A_CLASSE_POSEE_SANS_DECLARATION_PREEXISTANTE : RETIRÉE du registre au
 // lot 3 (clôture réelle) — le défaut préexistant (`class="bloc pilotage"`
@@ -72,10 +72,16 @@ const cssApp = lib.lireNonVide(lib.cheminWeb("app.css"), "control-center/web/app
 console.log("[atteignabilité] prototype " + htmlPrototype.length + " o, index.html " + htmlApp.length +
   " o, app.css " + cssApp.length + " o");
 
+// Depuis la réouverture de périmètre (lot 6), `ADOPTE` seul désigne les 199
+// éléments du cycle ENTIER — la cible de ce volet STATIQUE reste ce qui est
+// DÉJÀ construit (lots 0-5), filtré par `lotEstDejaLivre` (voir sa note dans
+// `test_conformite_partition_donnees.js`), jamais par le verdict seul.
 const classesRequisesAdoptees = new Set(
-  Object.entries(PARTITION_CLASSES).filter(([, [verdict]]) => verdict === ADOPTE).map(([c]) => c)
+  Object.entries(PARTITION_CLASSES)
+    .filter(([, [verdict, , lot]]) => verdict === ADOPTE && lotEstDejaLivre(lot))
+    .map(([c]) => c)
 );
-console.log("[dérivé] " + classesRequisesAdoptees.size + " classe(s) « adopté » requise(s) (F0)");
+console.log("[dérivé] " + classesRequisesAdoptees.size + " classe(s) « adopté, déjà livrée » requise(s) (F0)");
 
 const classesHtmlApp = lib.classesDeHtml(htmlApp);
 const classesCssApp = lib.classesDeclareesAvecCorps(cssApp);

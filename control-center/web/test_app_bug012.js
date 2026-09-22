@@ -145,11 +145,12 @@ class FakeNode {
 // graphe) et les nouveaux titres de bloc (`titre-agents`, `titre-systeme`,
 // `titre-fichiers`, `titre-evenements`) entrent.
 const IDS = [
-  "a11y-announcement", "agents", "backlog-column-count", "backlog-count",
+  "a11y-announcement", "account-button", "agents", "avatar",
+  "backlog-column-count", "backlog-count",
   "backlog-title", "bandeau-hote", "bandeau-hote-bouton",
   "bandeau-hote-texte", "barre", "bouton-generer-brouillon",
   "compteur-prompt", "compteur-specs", "cycle-canvas", "cycle-indice",
-  "cycle-status", "derogation-minimale", "erreur-generer-brouillon",
+  "cycle-status", "cycle-title", "derogation-minimale", "erreur-generer-brouillon",
   "fichiers", "filtre", "filtre-divergences", "gabarits-adoptes",
   "horodatage", "jauge-flux", "jauge-git",
   "jauge-pilotage", "kanban", "legende-cycles", "link-front-sec",
@@ -163,9 +164,9 @@ const IDS = [
   "selected-task", "selected-title", "selected-tools", "sheet-metrics", "sheet-toggle", "status-dot",
   "summary-active", "summary-step", "summary-time", "systeme", "timeline",
   "tiroir", "tiroir-contenu", "tiroir-fermer", "tiroir-titre", "titre-agents",
-  "titre-besoin", "titre-cycle-surface", "titre-cycles", "titre-demande",
+  "titre-besoin", "titre-cycles", "titre-demande",
   "titre-evenements", "titre-fichiers", "titre-pilotage", "titre-systeme",
-  "workflows",
+  "user-name", "workflows",
 ];
 // Cachés par défaut dans le HTML (attribut `hidden` présent sur le balisage
 // d'origine) — voir index.html. `section-*` retirés avec la navigation à
@@ -714,6 +715,73 @@ async function testReconnexionSeulementSiEventSource() {
     "obtenu : " + JSON.stringify(bac.$("jauge-flux").textContent));
 }
 
+// -- feature-021, cycle 2, lot 7 : identité (GATE S4) et #cycle-title -------
+async function testIdentiteGateEtCycleTitle() {
+  // Identité CONNUE : avatar + nom réels, jamais « JD »/« Jean Dupont ».
+  const bacConnue = await chargerAvecEtat({ identite: "Nicolas Philippe" });
+
+  // S4.2 — initiales dérivées CÔTÉ CLIENT, jamais recopiées d'un exemple.
+  // (`app.js` est chargé dans `bacConnue.sandbox` : PIEGES §39, une
+  // fonction déclarée `function` au premier niveau du script devient une
+  // propriété du sandbox `vm`, contrairement à `let`/`const`.)
+  check("S4_2_initiales_deux_mots",
+    bacConnue.sandbox.initialesDepuisNom("Nicolas Philippe") === "NP",
+    "obtenu : " + JSON.stringify(bacConnue.sandbox.initialesDepuisNom("Nicolas Philippe")));
+  check("S4_2_initiales_un_seul_mot", bacConnue.sandbox.initialesDepuisNom("Madonna") === "MA");
+  check("S4_2_initiales_espaces_multiples",
+    bacConnue.sandbox.initialesDepuisNom("  Ada   Lovelace  ") === "AL");
+  check("S4_2_initiales_absence_rend_null",
+    bacConnue.sandbox.initialesDepuisNom(null) === null
+    && bacConnue.sandbox.initialesDepuisNom("") === null
+    && bacConnue.sandbox.initialesDepuisNom("   ") === null);
+  check("S4_identite_connue_avatar_initiales",
+    bacConnue.$("avatar").textContent === "NP",
+    "obtenu : " + JSON.stringify(bacConnue.$("avatar").textContent));
+  check("S4_identite_connue_nom_affiche",
+    bacConnue.$("user-name").textContent === "Nicolas Philippe");
+  check("S4_identite_connue_aria_label_cite_le_nom",
+    String(bacConnue.$("account-button")["aria-label"] || "").indexOf("Nicolas Philippe") !== -1,
+    "obtenu : " + JSON.stringify(bacConnue.$("account-button")["aria-label"]));
+  check("S4_5_account_button_aucun_ecouteur_pose",
+    Object.keys(bacConnue.$("account-button")._listeners || {}).length === 0,
+    "S4.5 : account-button doit rester INERTE, n'appeler aucune route");
+
+  // Identité ABSENTE : dégrade avec motif, JAMAIS une fabrication.
+  const bacAbsente = await chargerAvecEtat({ identite: null });
+  check("S4_identite_absente_avatar_pas_dinitiales_fabriquees",
+    bacAbsente.$("avatar").textContent !== "NP" && bacAbsente.$("avatar").textContent !== "",
+    "obtenu : " + JSON.stringify(bacAbsente.$("avatar").textContent));
+  check("S4_identite_absente_nom_affiche_un_motif",
+    bacAbsente.$("user-name").textContent === "Identité inconnue");
+
+  // #cycle-title (F0) : JAMAIS une chaîne vide, cible aria-labelledby de
+  // `.cycle-surface`. Aucun cycle observé → libellé factuel dédié ; un
+  // cycle observé sans titre de spec connu (H4b reste au lot 10) →
+  // « Cycle #N », sur la MÊME donnée que la pastille `#cycle-indice`.
+  const bacSansCycle = await chargerAvecEtat({ workflows: [] });
+  check("cycle_title_aucun_cycle_jamais_vide",
+    !!bacSansCycle.$("cycle-title").textContent.trim(),
+    "obtenu : " + JSON.stringify(bacSansCycle.$("cycle-title").textContent));
+  check("cycle_title_aucun_cycle_libelle_dedie",
+    bacSansCycle.$("cycle-title").textContent === "Aucun cycle observé");
+
+  const workflowAvecIndice = {
+    session_id: "identite0001", fin_observee_absente: true, cycles_dans_la_session: 1,
+    indice_cycle: 42, debut: "2026-09-22T10:00:00.000Z", fin_observee: null,
+    fichiers: [], segments: [
+      { type: "sousagent", agent: "spec-reader", termine: false, etat: "en_cours",
+        duree_ms: null, fichiers: [], echecs: 0 },
+    ],
+    reprises: {}, commandes: {}, imbrication_suspectee: false, fermetures_orphelines: 0,
+  };
+  const bacAvecCycle = await chargerAvecEtat({ workflows: [workflowAvecIndice] });
+  check("cycle_title_cycle_observe_cycle_hash_n",
+    bacAvecCycle.$("cycle-title").textContent === "Cycle #42",
+    "obtenu : " + JSON.stringify(bacAvecCycle.$("cycle-title").textContent));
+  check("cycle_title_egale_la_pastille_cycle_indice",
+    bacAvecCycle.$("cycle-title").textContent === bacAvecCycle.$("cycle-indice").textContent);
+}
+
 async function main() {
   await testAucunRenduAvantUn200();
   await testPorteMotifPremierAcces();
@@ -725,6 +793,7 @@ async function main() {
   await testRebouclageAncreDansLaChaine();
   await testBandeauNommeSeulementLesAgentsAncres();
   await testReconnexionSeulementSiEventSource();
+  await testIdentiteGateEtCycleTitle();
 
   console.log("\n" + _tests + " cas, " + _echecs.length + " echec(s)");
   for (const e of _echecs) console.log("  - " + e);

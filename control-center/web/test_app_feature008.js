@@ -144,11 +144,12 @@ class FakeNode {
 // re-synchronisée pour cette feature. Resynchronisée au lot 3 (feature-021,
 // cycle 2, F7) : voir le commentaire de `test_app_bug012.js`.
 const IDS = [
-  "a11y-announcement", "agents", "backlog-column-count", "backlog-count",
+  "a11y-announcement", "account-button", "agents", "avatar",
+  "backlog-column-count", "backlog-count",
   "backlog-title", "bandeau-hote", "bandeau-hote-bouton",
   "bandeau-hote-texte", "barre", "bouton-generer-brouillon",
   "compteur-prompt", "compteur-specs", "cycle-canvas", "cycle-status",
-  "derogation-minimale", "erreur-generer-brouillon", "fichiers", "filtre",
+  "cycle-title", "derogation-minimale", "erreur-generer-brouillon", "fichiers", "filtre",
   "filtre-divergences", "horodatage", "jauge-flux", "jauge-git",
   "jauge-pilotage", "kanban", "legende-cycles", "link-front-sec",
   "link-front-tests", "link-front2-review", "link-reprise",
@@ -160,9 +161,9 @@ const IDS = [
   "selected-task", "selected-title", "selected-tools", "sheet-metrics", "sheet-toggle", "summary-active",
   "summary-step", "summary-time", "systeme", "timeline", "tiroir",
   "tiroir-contenu", "tiroir-fermer", "tiroir-titre", "titre-agents",
-  "titre-besoin", "titre-cycle-surface", "titre-cycles", "titre-demande",
+  "titre-besoin", "titre-cycles", "titre-demande",
   "titre-evenements", "titre-fichiers", "titre-pilotage", "titre-systeme",
-  "workflows",
+  "user-name", "workflows",
 ];
 
 // `section-*` retirés avec la navigation à onglets (lot 3, F7) : plus

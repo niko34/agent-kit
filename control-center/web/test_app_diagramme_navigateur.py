@@ -268,6 +268,14 @@ _PAGE = """<!doctype html><html><head><meta charset="utf-8">
       diametre: calc(noeud, 'width') + ' x ' + calc(noeud, 'height'),
       agent_boite: boiteAgent(noeud),
       canevas_boite: canevasBoite(),
+      // Anneau d'activite pilote par `--progress` (lot 8, ADR-0031 §5) :
+      // arc FIXE (jamais un pourcentage), peint sur le pseudo-element
+      // DEDIE `::before`, mis en mouvement SEUL -- jamais `.agent-node`
+      // lui-meme (le sigle et les pastilles tourneraient avec).
+      anneau_progress: calc(noeud, '--progress'),
+      anneau_avant_anime: pseudo(noeud, 'animation-name'),
+      disque_anime: calc(noeud, 'animation-name'),
+      anneau_avant_fond: pseudo(noeud, 'background-image'),
     };
 
     // --- scenario 2 : echec ------------------------------------------------
@@ -287,6 +295,12 @@ _PAGE = """<!doctype html><html><head><meta charset="utf-8">
       graduation_couleur: calc(noeud.querySelector('.tool-ticks i'), 'background-color'),
       agent_boite: boiteAgent(noeud),
       canevas_boite: canevasBoite(),
+      // Meme passage `termine: true` par defaut => etat "done" : l'anneau
+      // doit etre COMPLET et STABLE (360deg, aucune animation), meme en
+      // echec (l'echec ne fait que RECOLORER l'anneau, jamais varier son
+      // ouverture -- ADR-0031 §3/§5, deux dimensions distinctes).
+      anneau_progress: calc(noeud, '--progress'),
+      anneau_avant_anime: pseudo(noeud, 'animation-name'),
     };
 
     // --- scenario 3 : sans cloture ----------------------------------------
@@ -458,6 +472,26 @@ def main():
     check("F8_anneau_d_activite_REELLEMENT_anime", a["orbite_animation"] == "work-orbit",
           "animation-name calculé = %r (si `none`, le disque actif ne tourne pas, quoi "
           "que dise la feuille)" % a["orbite_animation"])
+
+    # ---------------------------------------------- F8bis (lot 8, ADR-0031 §5)
+    # L'anneau `--progress` : arc FIXE par état, jamais un pourcentage, mis
+    # en mouvement par un pseudo-élément DÉDIÉ (`::before`), jamais par
+    # `.agent-node` lui-même.
+    print("[dérivé] actif : --progress=%r, ::before animation-name=%r, "
+          ".agent-node animation-name=%r" %
+          (a["anneau_progress"], a["anneau_avant_anime"], a["disque_anime"]))
+    check("F8bis_anneau_progress_actif_arc_fixe_270deg", a["anneau_progress"] == "270deg",
+          "obtenu %r — ADR-0031 §5 : arc FIXE, jamais un pourcentage dérivé des tokens"
+          % a["anneau_progress"])
+    check("F8bis_anneau_avant_anime_sur_actif", a["anneau_avant_anime"] == "work-orbit",
+          "animation-name calculé du pseudo-élément = %r (si `none`, l'anneau ne bouge "
+          "plus pendant l'activité)" % a["anneau_avant_anime"])
+    check("F8bis_disque_lui_meme_JAMAIS_anime", a["disque_anime"] == "none",
+          "animation-name de `.agent-node` = %r — s'il tourne, le sigle et les "
+          "pastilles tournent avec lui (interdit, notes de brief)" % a["disque_anime"])
+    check("F8bis_anneau_avant_porte_bien_un_conic_gradient",
+          "conic-gradient" in a["anneau_avant_fond"],
+          "background-image calculé du pseudo-élément = %r" % a["anneau_avant_fond"])
     check("F8_douze_graduations_peintes", a["graduations"] == 12,
           "obtenu %d" % a["graduations"])
     check("F8_graduations_REELLEMENT_animees_sur_actif",
@@ -497,6 +531,16 @@ def main():
     check("F16_echec_recolore_REELLEMENT_le_disque",
           e["state_color"] != "" and e["state_color"] == e["danger"],
           "--state-color calculé %r, --danger %r" % (e["state_color"], e["danger"]))
+    check("F8bis_anneau_progress_termine_complet_360deg_meme_en_echec",
+          e["anneau_progress"] == "360deg",
+          "obtenu %r — l'échec RECOLORE l'anneau (--danger), il ne rouvre jamais son "
+          "arc (ADR-0031 §3 : deux dimensions distinctes, jamais la seule couleur)"
+          % e["anneau_progress"])
+    check("F8bis_anneau_avant_STABLE_sur_termine",
+          e["anneau_avant_anime"] == "none",
+          "animation-name du pseudo-élément sur un disque terminé = %r (devrait être "
+          "`none` : complet et stable, plus aucun mouvement, ADR-0031 §5)"
+          % e["anneau_avant_anime"])
     check("F16_echec_recolore_jusqu_aux_graduations",
           e["graduation_couleur"] not in ("", "rgba(0, 0, 0, 0)"),
           "background-color calculé des graduations : %r" % e["graduation_couleur"])

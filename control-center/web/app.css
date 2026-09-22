@@ -170,9 +170,66 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .brand-mark { display: inline-flex; gap: 3px; }
 .brand-mark i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
 .brand-mark i:nth-child(2), .brand-mark i:nth-child(3), .brand-mark i:nth-child(4) { opacity: .68; }
-.titre { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
 .marque { font-weight: 600; letter-spacing: -0.01em; }
 .projet { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+
+/* ---- les 7 contrôles de la barre supérieure (F0, feature-021, cycle 2,
+ * lot 7) : markup/classes/cibles 48px REPRIS TELS QUELS du prototype
+ * (l.111-153) quand le sélecteur existe — « l'intérêt d'une maquette HTML,
+ * c'est de récupérer du code utile » (retour humain 2026-09-22 06:35).
+ * ⚠️ `:hover` du prototype OMIS PARTOUT ICI, délibérément : ces 4 contrôles
+ * sont `aria-disabled` (jamais `disabled`, PIEGES-like : `disabled` sort
+ * l'élément du parcours clavier, le motif ne s'annoncerait jamais) — un
+ * survol qui change de fond suggérerait une affordance qu'ils n'ont pas.
+ * Prototype lui-même non câblé (0 référence dans son script), reproduire
+ * inerte EST la fidélité, pas un compromis. ---- */
+.project-switcher {
+  min-height: 48px; gap: 8px; color: var(--primary-ink); border: 0;
+  border-radius: 14px; background: transparent; cursor: pointer; padding: 0 10px;
+  display: flex; align-items: center; font: inherit;
+}
+/* Séparateur vertical avant le nom de projet — décoratif (`--line`, déjà
+ * classé DECOR, `test_conformite_contrastes_lib.js`), copié tel quel du
+ * prototype (l.113). Pseudo-élément : hors de portée de `el.matches()`
+ * dans F5b, jamais balayé (même famille que `.kanban-viewport::-webkit-
+ * scrollbar-thumb`). */
+.project-switcher::before { content: ""; height: 28px; width: 1px; background: var(--line); margin-right: 12px; }
+/* Écart déclaré et assumé (lot 7) : le motif de dégradation est en TEXTE
+ * VISIBLE, pas seulement dans l'aria-label — un seul projet est configurable
+ * aujourd'hui (`config.py`), et le prototype ne le dit qu'au survol/lecteur
+ * d'écran. `--muted` sur `--surface` (fond réel du bandeau) = 5,72:1, sous
+ * le seuil texte 4,65. */
+.project-switcher-motif { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.icon-button {
+  width: 48px; height: 48px; border-radius: 50%; border: 0;
+  display: grid; place-items: center; background: transparent; cursor: pointer;
+}
+.icon-button svg {
+  width: 24px; height: 24px; fill: none; stroke: currentColor;
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+.notification-button { position: relative; }
+/* Badge « 3 » RETIRÉ (donnée d'exemple, décision humaine 2026-09-22) :
+ * aucune source de notifications n'existe dans ce module. L'élément reste
+ * posé (classe adoptée F0) mais `hidden` en permanence — un compte fabriqué
+ * serait pire qu'une absence (PIEGES §16). `[hidden]` DOIT venir après cette
+ * règle `display` d'auteur, sinon elle ne le bat pas dans la cascade
+ * (PIEGES §15). */
+.notification-badge {
+  position: absolute; top: 2px; right: 1px; min-width: 20px; height: 20px;
+  padding: 0 5px; display: grid; place-items: center;
+  border: 2px solid var(--surface); border-radius: 999px;
+  background: var(--danger); color: white; font-size: 11px; font-weight: 500;
+}
+.notification-badge[hidden] { display: none; }
+.avatar {
+  width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--primary-soft); color: var(--primary-ink); font-weight: 500;
+}
+.account-button {
+  min-height: 48px; border: 0; border-radius: 24px; display: flex; align-items: center;
+  gap: 8px; padding: 0 10px 0 0; background: transparent; cursor: pointer; font: inherit; color: inherit;
+}
 .status-inline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 /* Classe adoptée `status-dot` (F0) — indicateur « vivant », câblé sur
  * `actifs` (F8/F9, `instantane()`), JAMAIS sur une absence de `SessionEnd`
@@ -389,6 +446,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .kanban-viewport::-webkit-scrollbar-track { background: transparent; }
 
 @media (max-width: 600px) {
+  /* Repris du prototype (l.618), sur le point de rupture DÉJÀ établi par ce
+   * fichier (600px) plutôt que le 760px du prototype — la structure mono-
+   * écran de ce module n'a pas adopté son échelle de points de rupture
+   * (feature-021, cycle 2, lot 3), donc le motif est repris, la valeur
+   * adaptée à l'existant (feature-021, cycle 2, lot 7). */
+  .project-switcher, .status-inline, .user-name { display: none; }
   .main { padding: 16px; }
   .summary-band { flex-direction: column; }
   .summary-item { border-right: 0; border-bottom: 1px solid var(--line); }
@@ -706,7 +769,18 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   transform: translate(-50%, -50%);
   border-radius: 50%;
   padding: 5px;
-  background: conic-gradient(var(--state-color) var(--progress), var(--line) 0);
+  /* Explicite, ne pas retirer : `.agent-node` est un `<button>`, et aucune
+   * règle globale ne réinitialise le fond par défaut des boutons dans
+   * cette feuille. Tant que le fond était posé ICI (`background:
+   * conic-gradient(...)`), le sous-produit du raccourci (remise à
+   * `transparent` de `background-color`) masquait ce défaut. Une fois ce
+   * fond déplacé sur `::before` (ci-dessous), l'omettre laisse le fond
+   * BOUTON PAR DÉFAUT du navigateur réapparaître sur `.agent-node` — measuré
+   * : ce fond non transparent devient alors le « derrière » que
+   * `test_app_contrastes_navigateur.py` (F5b) résout pour `.agent-flag`,
+   * un aplat jusque-là invisible « par identité » devenant faussement
+   * peint. */
+  background-color: transparent;
   color: var(--ink);
   box-shadow: 0 0 0 6px color-mix(in srgb, var(--state-color) 8%, transparent);
   transition:
@@ -719,6 +793,31 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 }
 .agent-node:hover { filter: brightness(.985); }
 .agent-node:focus-visible { outline: 3px solid var(--primary); }
+
+/* -- L'ANNEAU D'ACTIVITÉ (feature-021, cycle 2, lot 8, ADR-0031 §5).
+ * `--progress` était déjà déclaré sur `.agent-node` (bit-identique au
+ * prototype) mais rien ne le pilotait : la valeur restait à 0deg quel que
+ * soit l'état. Décision humaine du 2026-09-20/22 : l'anneau signale
+ * l'ACTIVITÉ, il n'encode JAMAIS un pourcentage — trois valeurs FIXES,
+ * jamais une division par un total inconnu ni une lecture de jetons :
+ *   - non lancé : 0deg (défaut ci-dessus, `.state-pending` le réaffirme) ;
+ *   - actif     : 270deg, arc FIXE — voir la mise en mouvement plus bas ;
+ *   - terminé   : 360deg, complet et STABLE, aucune animation.
+ * Peint sur un pseudo-élément DÉDIÉ (`::before`), jamais sur le fond
+ * propre de `.agent-node` : c'est ce qui permet de faire tourner CE SEUL
+ * calque pendant l'activité sans jamais faire tourner le disque entier
+ * (le sigle et les pastilles de fichiers tourneraient avec). `::before`
+ * est generé AVANT `::after` (qui masque le centre) : ordre de peinture
+ * correct sans z-index supplémentaire à négocier au-delà de celui déjà
+ * posé ici. */
+.agent-node::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  z-index: -2;
+  background: conic-gradient(var(--state-color) var(--progress), var(--line) 0);
+}
 
 .agent-node::after {
   content: "";
@@ -734,9 +833,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   width: 88px;
   height: 88px;
 }
-.agent-node.state-active { --state-color: var(--primary); }
+.agent-node.state-active { --state-color: var(--primary); --progress: 270deg; }
 .agent-node.state-active.parallel { --state-color: var(--teal); }
-.agent-node.state-done { --state-color: var(--agent-state-done); }
+/* Mise en mouvement de l'anneau, ÉTAT ACTIF SEUL : réutilise le
+ * `@keyframes work-orbit` déjà éprouvé par `.work-orbit` (ci-dessous,
+ * inchangé, fidèle au prototype) plutôt que d'en inventer un second —
+ * appliqué au pseudo-élément dédié ci-dessus, jamais à `.agent-node`. */
+.agent-node.state-active::before { animation: work-orbit 5.2s linear infinite; }
+.agent-node.state-done { --state-color: var(--agent-state-done); --progress: 360deg; }
 .agent-node.state-pending { --state-color: var(--agent-state-pending); --progress: 0deg; }
 
 /* -- F16, représentation 1/4 : l'ÉCHEC (absent du prototype, ADR-0031 §3).
@@ -1180,5 +1284,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
  * final (classe `state-active`/`state-done`, déjà posée AVANT toute
  * transition) reste intégralement lisible — ce n'est pas « tout couper », le
  * disque final, son nom, sa durée et ses drapeaux F16 restent tous peints.
- * Gardé par `test_conformite_animations.js` (guard additive, hors registre). */
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+ * Gardé par `test_conformite_animations.js` (guard additive, hors registre).
+ *
+ * ⚠️ `*` seul NE COUVRE PAS les pseudo-éléments (`::before`/`::after`) —
+ * mesuré au navigateur (Chromium, `--force-prefers-reduced-motion`) : un
+ * `animation` posé sur `.agent-node::before` (anneau d'activité, lot 8)
+ * survit à `* { animation: none !important }`, `animationName` calculé
+ * reste le nom de la keyframe au lieu de `none`. D'où `*::before`/
+ * `*::after` explicites ci-dessous — sans eux, l'anneau continuerait de
+ * tourner sous préférence réduite, silencieusement (aucun test existant ne
+ * le voyait, la garde F14 ne lisait que la PRÉSENCE du bloc). */
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }

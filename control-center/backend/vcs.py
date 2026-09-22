@@ -113,6 +113,31 @@ def branche(racine):
     return sortie.strip() if ok else None
 
 
+# Plafond de troncature de l'identité (feature-021, GATE S4.1) : une borne
+# nommée, jamais un littéral enfoui — un `user.name` anormalement long est
+# tronqué plutôt que rejeté, pour ne jamais faire dépendre l'affichage d'un
+# format que l'utilisateur ne maîtrise pas entièrement (config globale).
+_MAX_IDENTITE = 80
+
+
+def identite(racine):
+    """Nom déclaré par l'utilisateur pour git (`git config --get user.name`).
+
+    C'est la SEULE source autorisée (feature-021, GATE S4.1) : jamais
+    `user.email` (donnée personnelle plus sensible que le nom), jamais
+    `os.getlogin()` ni la variable d'environnement `$USER` (identité du
+    compte SYSTÈME, pas une déclaration de l'utilisateur pour ce projet).
+    Rend `None` si `git` est absent, si la commande échoue, ou si la valeur
+    est vide — l'appelant DÉGRADE dans ce cas, il n'invente jamais un nom
+    (règle absolue n°1, aucune fabrication de donnée personnelle).
+    """
+    ok, sortie = _git(racine, "config", "--get", "user.name")
+    if not ok:
+        return None
+    nom = sortie.strip()
+    return nom[:_MAX_IDENTITE] if nom else None
+
+
 def etat(racine):
     """Fichiers touchés dans l'arbre de travail.
 

@@ -66,7 +66,7 @@ Cette spec porte les **lots 9 et 10** du plan du cycle 2 (backend puis frontend)
 ### Éléments du prototype qui lui reviennent
 
 Dérivés de `control-center/web/test_conformite_partition_donnees.js`
-(table F0, entrées taguées `differe:feature-025`) — **71 éléments uniques**
+(table F0, entrées de lot `9-10`) — **71 éléments uniques**
 (32 identifiants + 44 classes, 5 noms partagés entre les deux ensembles :
 `add-item-dialog`, `add-item-form`, `context-menu`, `feature-dialog`,
 `feature-kind`) :
@@ -92,9 +92,13 @@ Dérivés de `control-center/web/test_conformite_partition_donnees.js`
   `primary`, `required-note`, `secondary`, `submit`, `todo`, `type-option`,
   `type-segment`
 
-⚠️ La table F0 note explicitement sur `icon-button` : « aucune instance
-adoptée » — nommer la classe ne garantit pas qu'un élément du prototype la
-porte réellement ; à vérifier au lot 10, pas à supposer.
+⚠️ Rectification du lot 6 (réouverture de périmètre) : la table F0 disait ici
+« aucune instance adoptée » sur `icon-button` — c'était FAUX, la classe
+n'avait simplement pas encore été relue contre le prototype. Mesuré :
+5 instances réelles, dont 2 appartiennent à cette spec (`close-feature`,
+`close-add-item`, discriminées par leur classe compagne). `icon-button` est
+**partagée** entre les lots 7-8, 9-10 et 11 — voir sa note complète dans la
+table F0 ; ne pas la compter deux fois dans un total cumulé entre specs.
 
 
 
