@@ -83,17 +83,8 @@ def main():
 
         # --- noms de fichiers hostiles ---------------------------------------
         ecrire(racine, "un fichier avec espaces.md")
-        ecrire(racine, "--stat")
         git(racine, "add", "-A")
         git(racine, "commit", "-q", "-m", "premier")
-
-        with open(os.path.join(racine, "--stat"), "a", encoding="utf-8") as f:
-            f.write("modif\n")
-        texte, _ = V.diff(racine, "--stat")
-        check("test_fichier_nomme_comme_une_option_reste_un_fichier",
-              texte is not None and "--stat" in texte and "diff --git" in texte,
-              "sans le séparateur `--`, git aurait lu le nom comme une option ; "
-              "obtenu %r" % (texte or "")[:60])
 
         with open(os.path.join(racine, "un fichier avec espaces.md"), "a",
                   encoding="utf-8") as f:
@@ -118,21 +109,10 @@ def main():
         check("test_fichier_non_suivi_repere",
               entrees.get("neuf.txt", {}).get("libelle") == "non suivi")
 
-        # --- diff tronqué : l'appelant DOIT pouvoir le dire -------------------
+        # --- historique : commit "gros", utilisé plus bas -----------------------
         ecrire(racine, "gros.txt", "ligne\n" * 5000)
         git(racine, "add", "-A")
         git(racine, "commit", "-q", "-m", "gros")
-        with open(os.path.join(racine, "gros.txt"), "a", encoding="utf-8") as f:
-            f.write("encore\n" * 5000)
-        texte, tronque = V.diff(racine, "gros.txt", taille_max=500)
-        check("test_diff_tronque_est_annonce", tronque is True and len(texte) == 500,
-              "un diff coupé en silence se lit comme un diff complet")
-        texte, tronque = V.diff(racine, "gros.txt")
-        check("test_diff_entier_n_est_pas_annonce_tronque", tronque is False)
-
-        check("test_diff_d_un_chemin_hors_depot_refuse",
-              V.diff(racine, "../dehors/secret.txt") == (None, False),
-              "le confinement s'applique AUSSI au diff, pas seulement à la lecture")
 
         # --- référence de commit : ne doit jamais devenir une option ----------
         for mauvaise in ("--help", "-n", "../autre", "a/b", "..", "; rm -rf /",
@@ -172,12 +152,48 @@ def main():
         # --- robustesse : pas de dépôt ---------------------------------------
         check("test_repertoire_sans_depot_ne_leve_pas",
               V.est_un_depot(dehors) is False and V.etat(dehors) == []
-              and V.journal(dehors) == [] and V.diff(dehors) == (None, False))
+              and V.journal(dehors) == [])
         check("test_repertoire_inexistant_ne_leve_pas",
               V.est_un_depot("/nexiste/pas") is False
               and V.branche("/nexiste/pas") is None)
 
+        # --- feature-028, GATE P1 condition C5 : `diff()` RETIRÉE avec son
+        # unique appelant (`/api/diff`) — la route ne se conserve pas comme
+        # code mort, la fonction non plus. Inversé en assertion d'ABSENCE
+        # (`PIEGES §30`), pas effacé : si `diff()` réapparaît un jour dans
+        # `vcs.py` sans qu'un appelant frontal ne le justifie à nouveau, ce
+        # cas doit le signaler plutôt que sauter en silence.
+        check("test_diff_retiree_du_module", not hasattr(V, "diff"),
+              "vcs.diff() est revenue sans appelant déclaré (GATE C5)")
+
         check("test_branche_lue", V.branche(racine) == "main")
+
+        # --- identité (feature-021, cycle 2, lot 7, GATE S4.1) ---------------
+        # SEULE source autorisée : `git config --get user.name`. `depot()`
+        # (en tête de fichier) pose déjà `user.name = "Test"`.
+        check("test_identite_lit_user_name", V.identite(racine) == "Test")
+        check("test_identite_jamais_d_arobase",
+              "@" not in (V.identite(racine) or ""),
+              "un `@` signalerait une fuite de `user.email`, jamais lu ici")
+
+        # Nom anormalement long : TRONQUÉ, jamais rejeté en bloc.
+        git(racine, "config", "user.name", "N" * 200)
+        identite_longue = V.identite(racine)
+        check("test_identite_tronquee_a_la_borne",
+              identite_longue is not None and len(identite_longue) == V._MAX_IDENTITE,
+              "obtenu %r caractère(s)" % (len(identite_longue) if identite_longue else None))
+
+        # `user.name` vide ou absent : dégrade sur `None`, jamais une chaîne
+        # vide ni une fabrication (règle absolue n°1).
+        git(racine, "config", "user.name", "")
+        check("test_identite_vide_rend_none", V.identite(racine) is None)
+        git(racine, "config", "--unset", "user.name")
+        check("test_identite_absente_rend_none", V.identite(racine) is None)
+
+        check("test_identite_repertoire_sans_depot_ne_leve_pas",
+              V.identite(dehors) is None or isinstance(V.identite(dehors), str))
+        check("test_identite_repertoire_inexistant_ne_leve_pas",
+              V.identite("/nexiste/pas") is None)
 
     print("\n%d cas, %d echec(s)" % (_tests, len(_echecs)))
     for echec in _echecs:

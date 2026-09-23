@@ -11,6 +11,93 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 
 ### Centre de contrôle
 
+- **Le panneau de conversation parle désormais à la vraie session Claude,
+  pas à un agent lancé par le cockpit.** Il lit le fil de la session
+  distante que vous pilotez déjà (téléphone, `tmux attach`) et tape vos
+  messages directement dans son terminal. Vous pouvez lui écrire **pendant
+  qu'elle travaille** : le message est mis en file, jamais perdu ni
+  entrelacé avec la réponse en cours — le composeur ne se bloque plus pour
+  cette raison. La pastille d'état (En ligne / Hors ligne / Injoignable)
+  affiche désormais aussi le **destinataire exact** du message, pour ne
+  jamais l'envoyer par erreur au mauvais terminal. Certains textes restent
+  refusés (caractères de contrôle, ou une ligne commençant par `/` ou `!`) :
+  des commandes comme `/clear` ou `/exit` ne peuvent pas être annulées
+  depuis le cockpit.
+- **Le bouton « + » du backlog crée enfin une spécification.** Il n'ouvrait
+  jusqu'ici qu'une boîte de dialogue sans effet ; il passe désormais par le
+  même chemin que la génération de brouillon assistée (relecture puis
+  confirmation avant toute écriture — jamais automatique).
+- **Interrompre un cycle se fait désormais depuis le menu `⋮` de sa propre
+  carte**, dans le backlog — l'action cible exactement ce cycle, jamais un
+  autre lancement en cours. Le panneau générique « Piloter par clé » a été
+  retiré : il ne servait plus, la configuration ne déclarant que des
+  commandes d'exemple.
+- **Sept cadres hérités de l'ancien tableau de bord ont disparu** :
+  Agents, Système, la demande de spécification en texte libre, Pilotage
+  générique, l'accordéon des Cycles, la liste des Fichiers touchés et le
+  flux d'Événements en continu. Le mono-écran livré par un cycle précédent
+  ne cohabite plus avec ce qu'il devait remplacer. Deux informations
+  n'ont plus d'écran d'accueil (propriétés agrégées d'un cycle, et la
+  consultation détaillée d'un diff) : retraits assumés, pas des oublis.
+- **La sélection d'un cycle passé se fait désormais par les onglets du
+  haut** (« Cycle actif » / « Historique »), qui remplacent l'accordéon
+  retiré ci-dessus.
+- **La boîte d'ajout d'une spécification reste utilisable clavier virtuel
+  affiché**, sur iPad comme sur tout appareil à clavier logiciel : elle ne
+  rétrécit plus jusqu'à rendre ses boutons inatteignables.
+- **Correction d'un défaut préexistant, jamais visible jusqu'ici** : l'heure
+  d'un message dans le panneau de conversation ne s'affichait **jamais**
+  (fonction qui comparait un horodatage texte à un type numérique qu'il
+  n'a jamais été) — corrigée au passage de l'unification des deux canaux
+  de conversation.
+- **La consultation du détail d'un diff de fichier a été retirée** (route
+  `/api/diff`) : elle n'avait plus d'écran l'appelant depuis le retrait de
+  la liste « Fichiers touchés » ci-dessus.
+- **Le diagramme du déroulé de chaque cycle est entièrement redessiné.**
+  Chaque agent est désormais un **disque** — sigle au centre, jusqu'à
+  3 pastilles de fichiers dessous — relié en séquence par un fil. Le disque
+  **grandit quand l'agent devient actif** (52 px non lancé → 88 px actif ou
+  terminé) et porte un **anneau d'activité** animé pendant le travail, stable
+  une fois terminé — l'anneau ne prétend jamais mesurer une avancée en
+  pourcentage, faute de savoir combien de temps il reste à un agent en cours.
+  Trois nouveaux états deviennent visibles d'un coup d'œil, sans lire le
+  texte : un **échec** (anneau recoloré + drapeau « ! »), un passage **sans
+  clôture observée** (contour pointillé + « ⋯ » — distinct d'un échec : une
+  fin non annoncée n'est pas un échec du travail), et l'**agent principal**
+  (anneau pointillé secondaire, sigle souligné). Les animations respectent
+  `prefers-reduced-motion` : si le mouvement est réduit, l'état d'un agent
+  reste lisible par sa taille, sa couleur et ses pastilles, sans qu'aucune
+  animation ne soit nécessaire pour le comprendre.
+- **La couleur cesse d'identifier un agent par son rôle.** Jusqu'ici, chaque
+  type d'agent (`spec-reader`, `frontend-developer`…) avait sa propre teinte
+  sur le diagramme et dans la liste des agents. Cette identité colorée
+  disparaît : un agent se reconnaît désormais uniquement à son **sigle** et à
+  son **nom**, écrits en toutes lettres. La couleur redevient exclusivement
+  un signal d'**état** (actif, terminé, en échec…), jamais de rôle.
+- **Le centre du disque affiche désormais le nombre de jetons consommés par
+  chaque agent** (entrée + sortie additionnées), quand cette donnée est
+  connue. Trois cas, jamais confondus : le chiffre est affiché ; il est
+  **absent** (aucun espace vide ne le signale, contrairement à un `0` qui
+  laisserait croire que l'agent n'a rien consommé) ; ou le relevé est
+  **partiel** (la lecture a été interrompue par un budget de temps ou de
+  volume, annoncé comme tel). Le nombre d'appels d'outils et le décompte
+  exact de fichiers restent mesurés dans le journal, sans être peints sur le
+  disque. Voir [ADR-0038](docs/adr/0038-la-methode-du-cycle-2-gardes-avant-code-registre-borne-bug-017-absorbe.md) §5
+  et [ADR-0041](docs/adr/0041-lecture-hors-racine-compteurs-seulement.md).
+- **Le tableau de bord devient un écran unique.** La navigation par onglets
+  (colonne de gauche, six sections, une seule affichée à la fois) disparaît :
+  tout ce que le centre de contrôle montre — agents, système, développement,
+  cycles, fichiers, événements — est désormais visible sur une seule page,
+  sans clic ni changement de section pour le consulter. Les cibles tactiles
+  (boutons de section, petits boutons) passent de 36 à 48 px de hauteur
+  minimale (`feature-021`, lot 3 ; voir `ADR-0029`).
+- **Correction d'accessibilité** : quand la porte d'authentification est
+  ouverte, le reste de la page n'est désormais **plus atteignable au
+  clavier**. Auparavant, le voile bloquait la souris mais pas la tabulation
+  — jusqu'à 6 contrôles restaient joignables sous la modale, dont le bouton
+  de lancement d'un cycle, ce qui permettait de changer de section pendant
+  que la porte était censée bloquer l'accès (`bug-017`, absorbée dans
+  `feature-021` au titre d'`ADR-0017`).
 - **Correction de sécurité** : un fichier de jeton dont le propriétaire n'a
   pas le bit de lecture (`0200`, `0300`, `0100`, `0000`) est désormais
   **refusé**, avec un motif nommé, quelle que soit l'identité qui lance le
@@ -63,6 +150,48 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
   cycle et la ligne `$ …` du journal d'événements peuvent donc changer
   d'apparence sur des cycles déjà observés, sans qu'aucune donnée ne soit
   supprimée du journal réel.
+- **Le thème sombre disparaît du centre de contrôle.** Le contrôle à trois
+  positions (clair / système / sombre), en haut à droite de la barre,
+  n'est plus affiché : l'interface n'a désormais plus qu'un seul thème,
+  clair. Le choix de thème mémorisé n'a plus d'effet visible. Voir
+  [ADR-0033](docs/adr/0033-le-theme-sombre-est-supprime.md) (lot 1 de
+  `feature-021`).
+- **Le centre de contrôle adopte l'habillage Material 3 de la maquette
+  fournie.** La palette, les élévations (ombres portées) et la typographie
+  changent sur toute l'interface — la disposition des sections, elle, ne
+  bouge pas encore. Les cibles tactiles (boutons d'action, pilotage
+  secondaire) passent de 44 px à 48 px, l'interlignage du texte se resserre
+  (1,45 → 1,35), et l'anneau de focus au clavier est désormais un trait
+  plein de 3 px, plus visible qu'avant. Voir
+  [ADR-0030](docs/adr/0030-material-design-3-ecrit-a-la-main-devient-le-systeme-visuel.md)
+  (lot 2 de `feature-021`). L'identité de couleur propre à chaque agent
+  (diagramme du déroulé, liste des agents) n'est pas encore retirée : elle
+  ne change qu'au lot 4 de ce même cycle.
+- **La barre supérieure retrouve son sélecteur de projet, ses notifications
+  et l'identité du développeur.** Le sélecteur de projet et le bouton de
+  notifications sont affichés mais **inertes**, avec leur motif écrit en
+  clair (un seul projet configuré aujourd'hui ; les notifications
+  n'existent pas encore) — un contrôle visible et expliqué plutôt que retiré
+  purement et simplement. Le compte affiché (nom, initiales) est désormais
+  celui du **développeur réel**, lu depuis `git config user.name`, jamais un
+  nom fabriqué. Voir [ADR-0039](docs/adr/0039-la-fidelite-a-la-maquette-prime-sur-les-restrictions-anterieures.md) §2.
+- **Le kanban des specs, avec ses actions, entre dans l'écran.** Les trois
+  colonnes du backlog (dont les noms viennent toujours de la configuration
+  du projet) s'affichent désormais avec leurs cartes, et chaque carte de la
+  première colonne peut être **lancée** en un clic, sans quitter le
+  tableau de bord. Une spec de la colonne intermédiaire peut être
+  **modifiée** directement dans le cockpit ; sa **suppression** — la seule
+  action destructive de l'écran — exige de retaper son nom en confirmation,
+  et le geste est refusé, expliqué, si git ne peut pas garantir un retour
+  arrière. Voir [ADR-0040](docs/adr/0040-les-chemins-decriture-du-cockpit.md).
+- **Un panneau de conversation permanent permet d'écrire à l'agent en cours
+  d'exécution**, sans quitter le tableau de bord ni ouvrir un terminal. Le
+  fil des messages envoyés reste affiché même après avoir fermé puis rouvert
+  l'onglet. Voir [ADR-0040](docs/adr/0040-les-chemins-decriture-du-cockpit.md) §3.
+- **Correction visuelle** : l'anneau d'activité du disque d'agent tourne
+  désormais seul, sans entraîner le sigle ni les pastilles de fichiers avec
+  lui — la rotation est portée par une couche dédiée, distincte du disque
+  qu'elle entoure.
 
 ### Exploitation
 
@@ -96,6 +225,48 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 
 ### Documentation
 
+- `docs/adr/0042-parler-a-une-session-quon-ne-detient-pas.md` [nouveau] :
+  pourquoi le cockpit tape dans le pty de la session Claude remote plutôt
+  que d'ouvrir un second processus, ce que ça verrouille (dépendance à
+  `tmux` et au format de transcript), et l'amendement d'`ADR-0041` (§7).
+- `docs/adr/0043-feature-028-absorbee-au-titre-dadr-0017.md` [nouveau] :
+  pourquoi la dette « U1 » de `feature-021` (cinq sections sur six jamais
+  retirées) a été traitée dans le même cycle que `feature-026`, au titre
+  d'`ADR-0017`, plutôt que reportée.
+- `docs/adr/0044-verifier-le-mecanisme-nest-pas-verifier-la-chose.md`
+  [nouveau] : les sept défauts de ce cycle, tous trouvés par l'usage humain
+  et aucun par la chaîne d'agents, et ce que ça impose aux clôtures futures.
+- `docs/adr/0019-jeton-comme-unique-barriere-et-table-des-routes-fermee.md` :
+  note additive datée — la mention d'`/api/diff` en « Alternatives
+  considérées » est une trace historique, la route n'existe plus.
+- `docs/adr/README.md` : trois lignes ajoutées à l'index (0042-0044) ; ligne
+  de statut d'`ADR-0041` amendée (corps intact).
+- `docs/DESIGN-SYSTEM.md` : §6 corrigé — le motif décrit (`role="tablist"`)
+  n'est pas celui implémenté par `feature-028` (deux boutons `role="group"`/
+  `aria-pressed`, pour ne réintroduire aucun `role="tab"`) ; note sur le
+  décalage entre l'annonce d'`ADR-0029` et son câblage réel.
+- `docs/features/page-centre-de-controle.md` : sept sections décrites comme
+  actuelles alors que retirées (« Liste des cycles en accordéon »,
+  « Conversation avec l'agent en cours » en sémantique `feature-022` seule,
+  `#add-item-dialog` décrit inerte) réécrites sur ce qui est réellement
+  servi ; nouvelle section sur les sept cadres hérités retirés et leurs
+  verdicts ; nouvelle section sur l'interruption depuis le menu `⋮`.
+- `control-center/README.md` : Étape B corrigée (la troncature de diff
+  documentée n'existe plus) ; table des trois familles de chemins mise à
+  jour (la ligne « diffs » retirée) ; Étape D précisée (`{spec_id}` optionnel
+  sur `/api/interrompre`) ; nouvelle sous-section Étape I+ documentant le
+  rebranchement du panneau de conversation sur la session Claude remote.
+- `control-center/PIEGES.md` : six entrées ajoutées (§63 à §68 — témoin
+  fabriqué, une mesure pour deux questions, registre d'ids inerte, code mort
+  derrière un bloc `__main__`, empreinte AST incluant le docstring, bornes
+  redondantes non documentées).
+- `docs/features/page-centre-de-controle.md` : la section « Commande de
+  thème » est retirée — le contrôle qu'elle décrivait n'existe plus dans
+  l'écran servi.
+- `docs/adr/0033-le-theme-sombre-est-supprime.md` : note d'implémentation
+  datée ajoutée — `theme.js` survit avec un rôle réduit (`data-section`
+  seul) au lieu d'être supprimé en entier comme l'ADR l'annonçait avant
+  implémentation.
 - `control-center/README.md` : section « La rédaction, et ce que le code
   fait maintenant » réécrite — trois formes admises pour le second jeton,
   et les deux résidus assumés (option longue à valeur collée, chemin après
@@ -140,6 +311,59 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
   21/09/2026, plafonds mesurés, procédure de reprise via
   `CLAUDE_KIT_ARGS`/`CLAUDE_POOL_ARGS` et l'obligation de vider le fichier
   après usage.
+- `docs/adr/0038-la-methode-du-cycle-2-gardes-avant-code-registre-borne-bug-017-absorbe.md`
+  [nouveau] : la méthode du cycle 2 (gardes de conformité écrites avant tout
+  code, registre `ATTENDU_ROUGE` borné par sa clause de non-amnistie,
+  absorption de `bug-017` au titre d'`ADR-0017`, les noms du prototype comme
+  clé de jointure de toutes les gardes), et le constat — écrit en constat,
+  pas en prédiction — que la branche « centre avec chiffre » est finalement
+  livrée au lot 12.
+- `docs/adr/0039-la-fidelite-a-la-maquette-prime-sur-les-restrictions-anterieures.md`
+  [nouveau] : 88 éléments sur 113 différés à tort au lot 0 ; correction
+  d'une mauvaise lecture d'`ADR-0020` (la barre supérieure n'y est jamais
+  mentionnée) plutôt qu'un amendement ; amendement réel d'`ADR-0023` pour un
+  cycle lancé depuis le cockpit ; pourquoi les trois specs absorbées ne le
+  sont pas au titre d'`ADR-0017` ; et la garde de fidélité d'ensemble
+  (couverture, emploi des jetons de forme, ressemblance rendue contre le
+  prototype **chargé**).
+- `docs/adr/0040-les-chemins-decriture-du-cockpit.md` [nouveau] : les trois
+  surfaces d'écriture ouvertes par la réouverture de périmètre (lancer,
+  modifier/supprimer une spec, converser avec un agent en cours), les
+  verdicts GATE par surface, l'hypothèse de segment de confiance
+  reconfirmée mot pour mot, le plan de retour arrière vérifié exécuté, et le
+  substrat de stockage des messages hors dépôt. Amende
+  [ADR-0005](docs/adr/0005-commandes-liste-fermee-par-cle.md) et
+  [ADR-0019](docs/adr/0019-jeton-comme-unique-barriere-et-table-des-routes-fermee.md) ;
+  précise (sans le remplacer) le §3 d'[ADR-0020](docs/adr/0020-un-centre-de-controle-appartient-a-un-developpeur.md).
+- `docs/adr/0041-lecture-hors-racine-compteurs-seulement.md` [nouveau] : le
+  lecteur de transcripts de sous-agent — modèle de menace distinct des
+  chemins d'écriture, filtre positif et typé sur les sept clés non entières
+  mesurées dans `usage`, confinement du chemin en deux temps, budget par
+  instantané (temps et octets), et la règle « jamais un zéro là où on ne
+  sait pas », appliquée pour la troisième fois dans ce cycle.
+- `docs/adr/README.md` : quatre lignes ajoutées à l'index (0038-0041) ;
+  lignes de statut d'`ADR-0005`, `ADR-0019`, `ADR-0020` et `ADR-0023`
+  amendées (corps intacts) pour pointer vers les ADR qui les précisent.
+- `docs/DESIGN-SYSTEM.md` : §5 corrigé — l'anneau d'activité était attribué
+  au sélecteur `.work-orbit`, qui n'est pas le bon (`--progress` sur
+  `.agent-node`, via un pseudo-élément dédié) ; le centre du disque
+  documente désormais ses trois états (chiffre connu/absent/partiel) ;
+  nouvelle ligne datée dans « Décisions consignées » pour la réouverture du
+  2026-09-22 ; description périmée corrigée sur le lien vers
+  `features/page-centre-de-controle.md` (renvoyait encore à la section
+  « Commande de thème », retirée depuis le lot 1).
+- `docs/features/page-centre-de-controle.md` : sections neuves « Barre
+  supérieure », « Kanban et actions du backlog » et « Conversation avec
+  l'agent en cours » ; encodage du centre du disque et de l'anneau mis à
+  jour sur ce qui est réellement livré ; note sur `#cycle-title` corrigée
+  (placée dans la zone de travail, pas la barre supérieure) et sur ce
+  qu'elle affiche pour un cycle lancé depuis le cockpit.
+- `control-center/README.md` : trois sections neuves — Étape H (actions du
+  backlog), Étape I (conversation permanente, distincte de l'Étape F
+  toujours à faire) et Étape J (tokens par passage, lecture hors racine) ;
+  table « État d'avancement » mise à jour.
+- `docs/API.md` : la note de renvoi vers `control-center/README.md` mise à
+  jour sur la plage d'étapes disponible (A à E, puis H à J).
 
 ---
 

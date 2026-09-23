@@ -134,3 +134,28 @@ abrogé et risquerait de le refaire à neuf, moins bien mesuré que la première
   (règle de précédence et exception nommée révoquées).
 - Spec : `specs/features/doing/feature-021-revenir-a-un-tableau-de-bord-unifie.md`
   — étape A du 2026-09-20 (« ADR-0022 révoqué (l'identité colorée disparaît) »).
+
+> **Note (2026-09-21)** : cette décision est écrite mais pas encore
+> pleinement appliquée au code. Le lot 2 de `feature-021` (adoption du
+> système visuel Material 3, `ADR-0030`) a réécrit `control-center/web/app.css`
+> et y a conservé les 19 jetons d'identité par agent (`--a-<rôle>`,
+> `--f-<rôle>`, plus `--rebouclage` qui en dépend) dans une **couche
+> transitoire explicitement nommée** (voir le commentaire d'en-tête du
+> fichier, section « couche transitoire »), gardée par
+> `F1_TRANSITOIRE_IDENTITE_AGENT` dans `control-center/web/test_conformite_jetons.js`.
+> Ils disparaissent au **lot 4** du même cycle, quand `diagramme.js` et
+> `app.js` — les seuls fichiers qui les consomment — seront réécrits à leur
+> tour. Jusque-là, le diagramme continue d'afficher une couleur par rôle
+> d'agent, sans changement visible sur ce point précis.
+
+> **Note (2026-09-21, seconde)** : le lot 4 de `feature-021` a appliqué la
+> décision ci-dessus. `control-center/web/diagramme.js` et
+> `control-center/web/app.js` ont été intégralement réécrits (nouveau
+> `disposer()`, nouvelle peinture du disque, `ADR-0031`) ; les 19 jetons
+> d'identité par agent et `--rebouclage` ont été retirés de
+> `control-center/web/app.css`, et la couche transitoire qui les portait est
+> vide (`F1_TRANSITOIRE_IDENTITE_AGENT` : registre vide, vérifié par mutation
+> — les jetons ont disparu de toute la feuille, pas seulement déplacés). Un
+> agent se reconnaît désormais uniquement par son sigle et son nom, jamais
+> par une teinte. Voir `docs/features/page-centre-de-controle.md` (section
+> « Diagramme du déroulé ») et `CHANGELOG.md`.

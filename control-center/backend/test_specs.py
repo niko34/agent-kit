@@ -193,6 +193,45 @@ def main():
         check("test_toutes_les_autres_sont_listees", len(listees) == 8,
               "attendu 8, obtenu %d : %r" % (len(listees), sorted(noms)))
 
+    # --- AUDIT feature-021 (A1) : lien symbolique planté dans une colonne --
+    with tempfile.TemporaryDirectory() as tmp_a1:
+        racine_a1 = os.path.join(tmp_a1, "features")
+        for colonne in ("todo", "doing", "done"):
+            os.makedirs(os.path.join(racine_a1, colonne))
+        contenu_cible = "# CIBLE-HORS-COLONNE\n\n## Métadonnées\n- **Statut** : done\n"
+        cible = os.path.join(tmp_a1, "CIBLE-HORS-COLONNE.md")
+        with open(cible, "w", encoding="utf-8") as fichier:
+            fichier.write(contenu_cible)
+        lien = os.path.join(racine_a1, "todo", "feature-998-lien.md")
+        os.symlink(cible, lien)
+
+        listees_a1 = S.lister_specs(racine_a1, COLONNES, VOC, 60)
+        ids_a1 = {s["id"] for s in listees_a1}
+        check("test_A1_lien_filtre_absent_de_la_liste",
+              "feature-998-lien" not in ids_a1, "obtenu %r" % sorted(ids_a1))
+
+        # --- MUTATION (PIEGES §37 : neutraliser la garde ELLE-MÊME, pas une
+        # fonction qu'elle appelle) : retirer le filtre `os.path.islink()`
+        # doit faire RÉAPPARAÎTRE le lien dans la liste — ET la lecture
+        # qu'exécute `lister_specs()` sur ce même chemin (`lire_spec()`)
+        # doit rendre le contenu de la CIBLE, pas un contenu de `todo/` :
+        # c'est exactement le défaut mesuré par l'AUDIT.
+        _islink_original = S.os.path.islink
+        S.os.path.islink = lambda _chemin: False
+        try:
+            listees_mutees = S.lister_specs(racine_a1, COLONNES, VOC, 60)
+        finally:
+            S.os.path.islink = _islink_original
+        lien_mute = next((s for s in listees_mutees if s["id"] == "feature-998-lien"), None)
+        check("test_A1_MUTATION_lien_reapparait_sans_le_filtre",
+              lien_mute is not None,
+              "obtenu ids=%r" % sorted(s["id"] for s in listees_mutees))
+        check("test_A1_MUTATION_lecture_a_travers_le_lien_rend_la_CIBLE",
+              lien_mute is not None and lien_mute["statut_texte"] == "done",
+              "sans le filtre, lister_specs() a lu la CIBLE (%r) au travers "
+              "du lien planté dans todo/ — c'est exactement le défaut "
+              "mesuré par l'AUDIT (A1)" % (lien_mute,))
+
     print("\n%d cas, %d echec(s)" % (_tests, len(_echecs)))
     for echec in _echecs:
         print("  - %s" % echec)

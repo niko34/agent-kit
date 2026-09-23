@@ -143,3 +143,26 @@ budget_max_usd = 5.0
 # avec sa raison (409), jamais mis en file en silence. Cette valeur est LUE par
 # backend/verrou.py (un fichier de verrou par écrivain autorisé).
 ecrivains_simultanes = 1
+
+# [session] — la session Claude remote PERSISTANTE que le cockpit parle
+# (feature-026), déjà authentifiée, déjà pilotée depuis un autre terminal
+# (téléphone, `tmux attach`). Le cockpit ne lance RIEN ici : il lit le
+# transcript de cette session et tape dans son pty via `tmux`.
+#
+# ⚠️ JAMAIS un champ de requête : si le porteur du jeton pouvait le choisir,
+# il choisirait dans quel terminal il tape. Bloc COMMENTÉ ET VIDE par
+# défaut — sans lui, `/api/conversation` retombe sur l'ancien canal
+# `json-lines` (feature-022), inchangé.
+#
+# [session]
+# Chemin ABSOLU du socket tmux (jamais dérivé de TMUX/TMUX_TMPDIR/TMUX_PANE
+# hérités de l'environnement — c'est le couplage accidentel qui a fait
+# fonctionner ce module « par erreur » avant que ce réglage n'existe) :
+# socket_tmux = "/run/tmux-kit/tmux-0/default"
+#
+# Nom de la session tmux à l'intérieur de ce socket :
+# nom = "claude-kit"
+#
+# Répertoire ABSOLU où vivent les transcripts (`<session-id>.jsonl`) de
+# CETTE session — typiquement sous `~/.claude/projects/<projet encodé>/` :
+# repertoire_transcripts = "/root/.claude/projects/-root-agent-kit"

@@ -27,6 +27,7 @@ from http.server import ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config as C  # noqa: E402
 import server as SRV  # noqa: E402
+import vcs as V  # noqa: E402
 
 _echecs = []
 _tests = 0
@@ -130,16 +131,20 @@ def main():
         #    est EXACTEMENT l'ensemble ci-dessous (feature-008 : ADR-0027 y
         #    ajoute `/api/spec/brouillon` et `/api/spec/ecrire` — la première
         #    n'écrit rien mais doit rester dans cette liste pour être
-        #    ATTEIGNABLE, `do_POST` n'en routant aucun chemin absent d'ici) :
-        #    y ajouter une route sans la déclarer ici (ou l'inverse) fait
-        #    échouer ce test.
+        #    ATTEIGNABLE, `do_POST` n'en routant aucun chemin absent d'ici ;
+        #    feature-025, GATE P1 S2.1, y ajoute `/api/spec/lancer`,
+        #    `/api/spec/modifier` et `/api/spec/supprimer` — TOUJOURS en
+        #    `POST`, PAS de `do_PUT` : `PIEGES §34`) : y ajouter une route
+        #    sans la déclarer ici (ou l'inverse) fait échouer ce test.
         methodes_do = {n for n in dir(SRV.Handler) if n.startswith("do_")}
         check("test_do_methodes_limitees_a_get_et_post",
               methodes_do == {"do_GET", "do_POST"},
               "trouvées : %r" % sorted(methodes_do))
         check("test_routes_ecriture_fermees",
               set(SRV._ROUTES_ECRITURE) == {"/api/lancer", "/api/interrompre",
-                                             "/api/spec/brouillon", "/api/spec/ecrire"},
+                                             "/api/spec/brouillon", "/api/spec/ecrire",
+                                             "/api/spec/lancer", "/api/spec/modifier",
+                                             "/api/spec/supprimer", "/api/conversation"},
               "trouvées : %r" % sorted(SRV._ROUTES_ECRITURE))
 
         # --- routes de lecture ----------------------------------------------
@@ -159,6 +164,35 @@ def main():
         check("test_etat_annonce_ecriture_raison_vide_local_sans_jeton",
               not etat.get("ecriture_raison"),
               "obtenu %r" % etat.get("ecriture_raison"))
+
+        # --- identité (feature-021, cycle 2, lot 7, GATE S4) -----------------
+        # S4.1 : `/api/etat.identite` est EXACTEMENT `V.identite(racine)` —
+        # même source, jamais recalculée ni approximée différemment côté
+        # serveur. Marche quel que soit l'environnement (`identite` peut
+        # valoir `None` ici) : la comparaison est auto-cohérente, pas une
+        # valeur récitée.
+        check("test_etat_porte_le_champ_identite", "identite" in etat)
+        check("test_etat_identite_egale_V_identite",
+              etat.get("identite") == V.identite(racine_reelle),
+              "obtenu %r, attendu %r" % (etat.get("identite"), V.identite(racine_reelle)))
+        check("test_etat_identite_jamais_une_adresse",
+              "@" not in (etat.get("identite") or ""),
+              "un `@` signalerait `user.email`, jamais `user.name` (S4.1)")
+
+        # S4.3 : l'identité n'est JAMAIS exposée par `/` (le document servi),
+        # seulement par `/api/etat`. Si l'environnement de test n'a aucune
+        # identité déclarée, l'assertion est structurellement vraie mais
+        # n'aurait rien à trouver — on ne la déclare donc concluante que si
+        # une identité RÉELLE existe à chercher.
+        identite_reelle = V.identite(racine_reelle)
+        if identite_reelle:
+            code_racine, corps_racine = appeler(base, "/")
+            check("test_racine_ne_sert_jamais_l_identite",
+                  code_racine != 200 or identite_reelle not in corps_racine,
+                  "l'identité fuiterait hors de /api/etat (S4.3)")
+        else:
+            saute("test_racine_ne_sert_jamais_l_identite",
+                  "aucune identité git déclarée dans cet environnement de test")
         # ⚠️ On vérifie le TYPE, pas le nombre. Affirmer `> 0` serait une
         # assertion sur le PROJET, pas sur le code : un dépôt neuf issu du
         # template n'a aucune spec, et c'est normal. Constaté en portant le
@@ -180,25 +214,28 @@ def main():
         code, _ = appeler(base, "/app.css")
         check("test_css_servi", code == 200)
 
-        # --- E10 (feature-015) : atteignabilité de `theme.js` ----------------
+        # --- E10 (feature-015) : atteignabilité d'un fichier servi ----------
+        # ⚠️ TÉMOIN CHANGÉ : `theme.js` était le fichier neuf de feature-015 ;
+        # supprimé au lot 13 de feature-021 (code mort, plus aucun lecteur
+        # depuis le lot 3). `diagramme.js` le remplace — la PROPRIÉTÉ prouvée
+        # est inchangée : un fichier de `web/` est réellement SERVI en HTTP,
+        # pas seulement lisible sur disque.
         # Un fichier neuf dans `web/` doit être RAMASSÉ par `_fichiers_servables()`
         # au démarrage réel du serveur, pas seulement lisible en `file://` — sinon
         # la garde CSP/amorçage-synchrone documentée par la spec est une garde
         # livrée mais inatteignable (404 en HTTP alors que le CSS reste 200).
         # Mesuré sur la VRAIE racine web (`serveur.servables` déjà calculé plus
         # haut par `_fichiers_servables()` sur le dépôt réel, pas un `faux_web`).
-        check("test_theme_js_dans_servables", "theme.js" in serveur.servables,
+        check("test_fichier_web_dans_servables", "diagramme.js" in serveur.servables,
               "clés trouvées : %r" % sorted(serveur.servables))
-        code, _ = appeler(base, "/theme.js")
-        check("test_theme_js_servi", code == 200, "obtenu %d" % code)
+        code, _ = appeler(base, "/diagramme.js")
+        check("test_fichier_web_servi", code == 200, "obtenu %d" % code)
 
         # --- ce qui doit refuser --------------------------------------------
         refus = [
             ("/api/spec?id=../../../etc/passwd", "spec par remontée"),
             ("/api/spec?id=", "spec sans identifiant"),
             ("/api/spec?id=nexiste-pas", "spec inconnue"),
-            ("/api/diff?chemin=../../etc/passwd", "diff par remontée"),
-            ("/api/diff?chemin=/etc/passwd", "diff par chemin absolu"),
             ("/server.py", "source du serveur"),
             ("/../backend/server.py", "remontée dans le statique"),
             ("/api/inconnu", "route inconnue"),
@@ -207,6 +244,21 @@ def main():
             code, _ = appeler(base, chemin)
             check("test_refus_%s" % libelle.replace(" ", "_"), code >= 400,
                   "%s a répondu %d au lieu d'un refus" % (chemin, code))
+
+        # --- feature-028, GATE P1 condition C5 : `/api/diff` RETIRÉE --------
+        # Elle exposait le diff de l'arbre de travail SANS appelant frontal
+        # (celui-ci a disparu, décision humaine) : une route de lecture
+        # confinée mais sans justification reste une surface exposée sans
+        # raison (Règle absolue n°1). INVERSÉ en assertion d'absence
+        # (`PIEGES §30`), pas effacé : les deux anciens témoins de
+        # confinement (`?chemin=../../etc/passwd`, `?chemin=/etc/passwd`)
+        # rendraient encore `>= 400` par PUR HASARD (route inconnue, 404)
+        # sans plus rien prouver sur le confinement — retirés du tableau
+        # `refus` ci-dessus pour ne pas laisser croire l'inverse, remplacés
+        # par ce cas dédié, sur le chemin NU, qui vérifie l'absence de la
+        # route elle-même.
+        code, _ = appeler(base, "/api/diff")
+        check("test_api_diff_retiree_404", code == 404, "obtenu %d" % code)
 
         # --- une spec réelle se lit ------------------------------------------
         # ⚠️ Ces deux cas dépendent du contenu du dépôt. Ils étaient SAUTÉS EN

@@ -5,11 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Centre de contrôle</title>
 <link rel="stylesheet" href="/app.css">
-<!-- Amorçage synchrone (feature-015) : pose `data-theme` sur <html> AVANT le
-     premier rendu, pour qu'aucune image ne montre le mauvais thème avant le
-     bon. Doit rester un fichier SERVI (pas de `<script>` inline : la CSP
-     `default-src 'self'` interdit `unsafe-inline`, voir server.py). -->
-<script src="/theme.js"></script>
+<!-- `theme.js` (amorçage `data-section`, feature-019) N'EST PLUS CHARGÉ ICI
+     depuis la revue de code du cycle `feature-021` (M4) : la structure
+     mono-écran (cycle 2, lot 3, F7) a supprimé `sectionActuelle()`, le seul
+     lecteur côté app.js de l'attribut que ce script posait — un script
+     bloquant dans <head>, une lecture `localStorage` et un attribut posés
+     pour rien, sur toutes les pages. Le fichier reste sur disque et SERVI :
+     `backend/test_server.py` (E10, feature-015) vérifie encore son
+     atteignabilité HTTP, un correctif backend séparé est nécessaire pour le
+     retirer du dépôt. -->
 </head>
 <body>
 
@@ -18,156 +22,374 @@
   <button type="button" id="bandeau-hote-bouton" class="action-ecriture">Réessayer</button>
 </div>
 
-<header class="barre" id="barre">
-  <div class="titre">
-    <span class="marque">Centre de contrôle</span>
-    <span class="projet" id="projet">…</span>
-  </div>
-  <div class="etat-barre">
-    <span class="jauge" id="jauge-flux" title="connexion au flux d'événements">flux …</span>
-    <span class="jauge" id="jauge-git">git …</span>
-    <span class="jauge lecture-seule" id="jauge-pilotage" title="chargement de l'état d'écriture…">lecture seule</span>
-    <span class="horodatage" id="horodatage"></span>
+<a class="skip-link" href="#main-content">Aller au contenu principal</a>
 
-    <!-- Trois positions, jamais deux (docs/DESIGN-SYSTEM.md §7) : « système »
-         est le défaut et annonce sa résolution — son icône et son libellé
-         accessible changent avec le thème auquel il aboutit. Roving
-         tabindex : un seul arrêt de tabulation, les flèches déplacent le
-         focus ET la sélection (app.js). -->
-    <div class="bascule-theme" id="bascule-theme" role="radiogroup" aria-label="Thème d'affichage">
-      <button type="button" id="theme-clair" class="theme-bouton" role="radio"
-              aria-checked="false" tabindex="-1" aria-label="Clair" title="Clair">
-        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false">
-          <circle cx="8" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="1.3"/>
-          <g stroke="currentColor" stroke-width="1.3" stroke-linecap="round">
-            <line x1="8" y1="0.6" x2="8" y2="2.4"/>
-            <line x1="8" y1="13.6" x2="8" y2="15.4"/>
-            <line x1="0.6" y1="8" x2="2.4" y2="8"/>
-            <line x1="13.6" y1="8" x2="15.4" y2="8"/>
-            <line x1="2.5" y1="2.5" x2="3.8" y2="3.8"/>
-            <line x1="12.2" y1="12.2" x2="13.5" y2="13.5"/>
-            <line x1="2.5" y1="13.5" x2="3.8" y2="12.2"/>
-            <line x1="12.2" y1="3.8" x2="13.5" y2="2.5"/>
-          </g>
-        </svg>
-      </button>
-      <button type="button" id="theme-systeme" class="theme-bouton" role="radio"
-              aria-checked="true" tabindex="0" aria-label="Suivre le système" title="Suivre le système">
-        <!-- L'icône ET le libellé accessible (aria-label ci-dessus) sont mis à
-             jour par app.js à chaque résolution — jamais via innerHTML. -->
-        <svg id="icone-systeme-clair" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false">
-          <circle cx="8" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="1.3"/>
-          <g stroke="currentColor" stroke-width="1.3" stroke-linecap="round">
-            <line x1="8" y1="0.6" x2="8" y2="2.4"/>
-            <line x1="8" y1="13.6" x2="8" y2="15.4"/>
-            <line x1="0.6" y1="8" x2="2.4" y2="8"/>
-            <line x1="13.6" y1="8" x2="15.4" y2="8"/>
-            <line x1="2.5" y1="2.5" x2="3.8" y2="3.8"/>
-            <line x1="12.2" y1="12.2" x2="13.5" y2="13.5"/>
-            <line x1="2.5" y1="13.5" x2="3.8" y2="12.2"/>
-            <line x1="12.2" y1="3.8" x2="13.5" y2="2.5"/>
-          </g>
-        </svg>
-        <svg id="icone-systeme-sombre" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false" hidden>
-          <path d="M13.2 10.1A6 6 0 1 1 5.9 2.8 4.7 4.7 0 0 0 13.2 10.1Z" fill="currentColor"/>
-        </svg>
-      </button>
-      <button type="button" id="theme-sombre" class="theme-bouton" role="radio"
-              aria-checked="false" tabindex="-1" aria-label="Sombre" title="Sombre">
-        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" focusable="false">
-          <path d="M13.2 10.1A6 6 0 1 1 5.9 2.8 4.7 4.7 0 0 0 13.2 10.1Z" fill="currentColor"/>
-        </svg>
+<!-- `#porte-jeton`, plus bas, doit rester ENFANT DIRECT DE <body> — c'est ce
+     qui permet à `app.js` de poser `inert` sur SES FRÈRES (ce
+     `.bandeau-hote`, ce lien, `.app-shell`, `.tiroir`) quand la porte est
+     ouverte, et de le retirer à la fermeture (bug-017, absorbée dans ce
+     cycle au titre d'ADR-0017 — voir ADR-0038). Ne pas envelopper ces
+     éléments dans un conteneur commun : cela romprait la liste des frères
+     que `app.js` parcourt. -->
+<div class="app-shell">
+  <header class="top-app-bar" id="barre">
+    <div class="brand-row">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <span class="marque">Centre de contrôle</span>
+      </div>
+      <!-- `project-switcher` FUSIONNE avec `#projet` (feature-021, cycle 2,
+           lot 7, arbitrage architect 2026-09-22 08:10, point (3)) : le
+           prototype (l.651) ne câble ce bouton nulle part dans son script
+           (0 référence) — LE REPRODUIRE INERTE EST LA FIDÉLITÉ, pas un
+           compromis. `aria-disabled="true"`, JAMAIS `disabled` : `disabled`
+           sortirait l'élément du parcours clavier, et le motif ne
+           s'annoncerait alors jamais. Un SEUL projet configuré aujourd'hui
+           (`config.py`, défaut "Projet sans nom") : le motif est donc écrit
+           en TEXTE VISIBLE à côté du nom, pas seulement dans l'aria-label —
+           écart déclaré et assumé au prototype, qui ne montre qu'un
+           chevron. Deux états du nom : projet nommé, ou défaut backend
+           « Projet sans nom » — les deux sont déjà servis tels quels par
+           `etat.projet` (`app.js`), rien à ajouter côté frontend pour ce
+           second état. -->
+      <button class="project-switcher" type="button" aria-disabled="true"
+              aria-label="Changer de projet — un seul projet configuré">
+        <span class="projet" id="projet">…</span>
+        <span class="project-switcher-motif">un seul projet configuré</span>
+        <span aria-hidden="true">⌄</span>
       </button>
     </div>
-  </div>
-</header>
+    <div class="top-actions">
+      <div class="status-inline">
+        <span class="status-dot" aria-hidden="true" id="status-dot"></span>
+        <span class="jauge" id="jauge-flux" title="connexion au flux d'événements">flux …</span>
+        <span class="jauge" id="jauge-git">git …</span>
+        <span class="jauge lecture-seule" id="jauge-pilotage" title="chargement de l'état d'écriture…">lecture seule</span>
+      </div>
+      <!-- Markup/classes/cible 48px repris TELS QUELS du prototype (l.655),
+           même traitement inerte que `project-switcher` : `aria-disabled`,
+           motif en clair dans l'aria-label, AUCUN `:hover` (un survol actif
+           suggérerait une affordance qui n'existe pas). Badge « 3 » RETIRÉ
+           (donnée d'exemple, décision humaine 2026-09-22) : aucune source de
+           données de notifications n'existe dans ce module — l'élément
+           reste dans le DOM (classe adoptée F0) mais `hidden`, jamais un
+           compte fabriqué. -->
+      <button class="icon-button notification-button" type="button" aria-disabled="true"
+              aria-label="Notifications — aucune notification disponible depuis l'interface">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"></path><path d="M10 21h4"></path></svg>
+        <span class="notification-badge" aria-hidden="true" hidden></span>
+      </button>
+      <!-- Prototype l.659 : « Ouvrir les réglages ». Aucun réglage n'est
+           exposé par ce module — pas de propriétaire fonctionnel — un
+           bouton mort étant interdit, le motif l'annonce en clair
+           (feature-021, cycle 2, lot 7). -->
+      <button class="icon-button" type="button" aria-disabled="true"
+              aria-label="Réglages — aucun réglage disponible depuis l'interface">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.09a2 2 0 0 1 1 1.74v.5a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+      </button>
+      <!-- Identité (feature-021, cycle 2, lot 7, GATE S4) : SEULE source
+           autorisée = `git config --get user.name`, exposée UNIQUEMENT par
+           `/api/etat.identite` (S4.1/S4.3, jamais `user.email`). Initiales
+           dérivées CÔTÉ CLIENT du nom réel (S4.2, `initialesDepuisNom`,
+           app.js) — jamais une image externe, la CSP `img-src 'self' data:`
+           n'est pas assouplie. `account-button` reste INERTE (S4.5) :
+           n'appelle AUCUNE route, même traitement `aria-disabled` que les
+           autres contrôles inertes de cette barre. Contenu initial neutre,
+           remplacé par `rendreIdentite()` (app.js) dès la première réponse
+           de `/api/etat`. -->
+      <button class="account-button" type="button" id="account-button" aria-disabled="true"
+              aria-label="Compte — identité non disponible, aucune action de compte disponible depuis l'interface">
+        <span class="avatar" id="avatar" aria-hidden="true">…</span>
+        <span class="user-name" id="user-name">…</span>
+        <span aria-hidden="true">⌄</span>
+      </button>
+      <span class="horodatage" id="horodatage"></span>
+    </div>
+  </header>
 
-<div class="mise-en-page">
+  <main class="main" id="main-content" tabindex="-1">
 
-  <!-- Colonne de navigation (feature-019, §5 du design system) : NAVIGUE,
-       ne porte aucun contenu. Motif WAI-ARIA `tablist` complet — roving
-       tabindex, les flèches déplacent le focus ET la sélection — repris du
-       motif déjà écrit pour `.bascule-theme` ci-dessus (app.js).
-       `section-agents` seule dépourvue de `hidden` : c'est l'état posé
-       STATIQUEMENT dans le HTML servi, qui tient le cas « sans JavaScript »
-       (rien n'est ajouté par app.js au chargement — voir app.css). -->
-  <nav class="nav-sections" id="nav-sections" role="tablist" aria-label="Sections du centre de contrôle">
-    <button type="button" class="nav-onglet" id="onglet-agents" role="tab"
-            aria-selected="true" aria-controls="section-agents" tabindex="0">Agents</button>
-    <button type="button" class="nav-onglet" id="onglet-systeme" role="tab"
-            aria-selected="false" aria-controls="section-systeme" tabindex="-1">Système</button>
-    <button type="button" class="nav-onglet" id="onglet-developper" role="tab"
-            aria-selected="false" aria-controls="section-developper" tabindex="-1">Développer</button>
-    <button type="button" class="nav-onglet" id="onglet-cycles" role="tab"
-            aria-selected="false" aria-controls="section-cycles" tabindex="-1">Cycles</button>
-    <button type="button" class="nav-onglet" id="onglet-fichiers" role="tab"
-            aria-selected="false" aria-controls="section-fichiers" tabindex="-1">Fichiers</button>
-    <button type="button" class="nav-onglet" id="onglet-evenements" role="tab"
-            aria-selected="false" aria-controls="section-evenements" tabindex="-1">Événements</button>
-  </nav>
+    <div class="visually-hidden" id="a11y-announcement" aria-live="polite" aria-atomic="true"></div>
 
-  <main class="contenu">
-
-    <section class="section" id="section-agents" data-section="agents" role="tabpanel" aria-labelledby="onglet-agents">
-      <p class="fil-ariane">Centre de contrôle</p>
-      <h1 class="section-titre" id="titre-section-agents" tabindex="-1">Agents</h1>
-
-      <section class="bloc">
-        <h2>Agents</h2>
-        <p class="note" id="note-agents">découverts dans le dépôt</p>
-        <ul class="agents" id="agents"></ul>
-      </section>
+    <!-- Bande de résumé (classe adoptée `summary-band`, F0) : coquille
+         statique — le câblage aux données réelles du cycle vient avec le
+         graphe d'agents (F8/F9, lot 4). -->
+    <section class="summary-band" aria-label="Résumé du centre de contrôle">
+      <div class="summary-item">
+        <span class="summary-icon" aria-hidden="true">◴</span>
+        <span class="summary-copy"><strong id="summary-step">—</strong><span>Étape en cours</span></span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-icon" aria-hidden="true">◷</span>
+        <span class="summary-copy"><strong id="summary-time">00:00</strong><span>Temps écoulé</span></span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-icon" aria-hidden="true">●</span>
+        <span class="summary-copy"><strong id="summary-active">—</strong><span>agents actifs</span></span>
+      </div>
+      <!-- feature-023 (lot 12) : agrégat des SEULS passages "connu" du cycle
+           affiché — `resumerTokensCycle`, app.js. Valeur initiale « — »,
+           jamais « 0 token » : le premier rafraîchissement peut mettre du
+           temps, et « 0 » se lirait comme une mesure. -->
+      <div class="summary-item">
+        <span class="summary-icon" aria-hidden="true">◫</span>
+        <span class="summary-copy"><strong id="summary-tokens">—</strong><span>consommés</span></span>
+      </div>
     </section>
 
-    <section class="section" id="section-systeme" data-section="systeme" hidden role="tabpanel" aria-labelledby="onglet-systeme">
-      <p class="fil-ariane">Centre de contrôle</p>
-      <h1 class="section-titre" id="titre-section-systeme" tabindex="-1">Système</h1>
-
-      <section class="bloc">
-        <h2>Système</h2>
-        <dl class="systeme" id="systeme"></dl>
-      </section>
-    </section>
-
-    <section class="section" id="section-developper" data-section="developper" hidden role="tabpanel" aria-labelledby="onglet-developper">
-      <p class="fil-ariane">Centre de contrôle</p>
-      <h1 class="section-titre" id="titre-section-developper" tabindex="-1">Développer</h1>
-
-      <section class="bloc demande" aria-labelledby="titre-demande">
-        <h2 id="titre-demande">Que souhaitez-vous développer&nbsp;?</h2>
-        <div class="champ-titre">
-          <label for="titre-besoin">Titre du besoin (résumé en une phrase — nomme le fichier)</label>
-          <input type="text" id="titre-besoin" maxlength="200" autocomplete="off"
-            placeholder="Ex. : Ajouter un export CSV des specs affichées">
+    <!-- Zone de travail (classe adoptée `workspace`) : le graphe d'agents
+         (disques, anneau, animations — F8/F9) est construit au LOT 4, pas
+         ici. Ce que ce lot livre est la COQUILLE structurelle, avec les 25
+         id adoptés par F0 présents et conformes (F4a) — `#cycle-canvas` ne
+         contient encore que les 7 connecteurs statiques du prototype,
+         aucun disque d'agent (`agent-node`/`agent-wrap`, classes adoptées
+         mais quarantinées jusqu'au lot 4 dans `F3A_CLASSES_ADOPTEES_
+         ABSENTES`). Le panneau de conversation permanente (`claude-panel`)
+         est câblé au LOT 11 (feature-022, absorbée) : markup et classes
+         repris par sélecteur du prototype (l.754-764), grille 72/28
+         `.workspace` réactivée (`minmax(0,1fr) 340px`, même valeur que le
+         prototype). -->
+    <div class="workspace">
+      <section class="cycle-surface" aria-labelledby="cycle-title">
+        <div class="cycle-toolbar">
+          <!-- Câblage réel (feature-028, lot A) : `cycle-tab-actif`/
+               `cycle-tab-historique` deux MODES d'affichage du même
+               `cycle-canvas`/`detail-sheet` — jamais deux panneaux, jamais
+               `role="tab"` (F7, mono-écran). `#cycle-indice` devient le
+               sélecteur RÉEL en mode Historique : un clic avance d'un cycle
+               vers le précédent (boucle après le plus ancien) — la LISTE
+               complète des cycles reste dans l'accordéon « Cycles »
+               (feature-016), que ce lot ne retire pas encore (voir le
+               journal de bord de `feature-028`). -->
+          <div class="cycle-tabs" role="group" aria-label="Vue des cycles">
+            <button class="tab-button" type="button" id="cycle-tab-actif" aria-pressed="true">Cycle actif</button>
+            <button class="tab-button" type="button" id="cycle-tab-historique" aria-pressed="false">Historique</button>
+            <button class="small-button" type="button" id="cycle-indice" aria-label="Cycle affiché" aria-disabled="true">—</button>
+          </div>
         </div>
-        <textarea id="prompt" rows="4"
-          placeholder="Décrire le besoin en détail…"></textarea>
-        <span class="compteur" id="compteur-prompt" aria-live="polite">0 caractère</span>
-        <p class="note avert">
-          Ce texte finit dans un fichier versionné&nbsp;: n'y collez ni secret
-          ni mot de passe. Il ne quitte pas ce poste — aucun appel de modèle.
-        </p>
-        <label class="bascule">
-          <input type="checkbox" id="derogation-minimale">
-          <span>Traiter comme bug simple / refactor ponctuel (template minimal)</span>
-        </label>
-        <p class="note">
-          Un mot-clé sensible (auth, permission, données personnelles,
-          paiement, migration) impose quand même le template complet.
-        </p>
-        <p class="note erreur" id="erreur-generer-brouillon" role="alert" hidden></p>
-        <div class="pilotage-boutons">
-          <button type="button" id="bouton-generer-brouillon" class="pilotage-secondaire">Générer le brouillon</button>
+
+        <div class="cycle-heading-row">
+          <div>
+            <!-- id ADOPTÉ du prototype (l.687, PARTITION_IDS) — cible
+                 `aria-labelledby` de `.cycle-surface`, jamais une chaîne
+                 vide (feature-021, cycle 2, lot 7). TROIS états prévus
+                 (ADR-0023) : titre de spec connu (lot 10, pas encore
+                 câblé) ; pas de titre mais cycle OBSERVÉ → « Cycle #N »
+                 (`indice_cycle`, donnée réelle, `app.js`) ; aucun cycle
+                 observé → libellé factuel dédié, posé ici comme contenu
+                 initial et repris tel quel par `app.js` tant qu'aucun
+                 cycle n'est chargé. -->
+            <h1 id="cycle-title">Aucun cycle observé</h1>
+            <p class="cycle-subtitle">
+              <span class="live-label">vivant</span>
+              <span id="cycle-status">Aucun cycle sélectionné</span>
+            </p>
+          </div>
+          <div class="legend" role="group" aria-label="Légende des états">
+            <span><i class="active"></i>Actif</span>
+            <span><i class="parallel"></i>Travail en parallèle</span>
+            <span><i class="reprise"></i>Reprise</span>
+            <span><i></i>Non lancé</span>
+          </div>
         </div>
-        <div id="redaction-corps"></div>
+
+        <p class="motion-note" id="motion-note">Le disque grandit et révèle ses données quand un agent s'active — construit au lot 4.</p>
+
+        <div class="cycle-canvas" id="cycle-canvas">
+          <svg class="connector-layer" viewBox="0 0 1000 388" preserveAspectRatio="none" aria-hidden="true">
+            <path id="link-spec-front" d="M100 190 C165 190 235 190 300 190"></path>
+            <path id="link-front-tests" d="M300 190 C385 190 415 102 500 102"></path>
+            <path id="link-front-sec" d="M300 190 C385 190 415 278 500 278"></path>
+            <path id="link-tests-front2" d="M500 102 C605 102 615 190 720 190"></path>
+            <path id="link-sec-front2" d="M500 278 C605 278 615 190 720 190"></path>
+            <path id="link-front2-review" d="M720 190 C785 190 835 190 900 190"></path>
+            <path id="link-reprise" d="M500 102 C575 28 690 42 720 190" opacity="0"></path>
+          </svg>
+        </div>
+
+        <!-- Bottom sheet de détail (classe adoptée `detail-sheet`, F11,
+             câblée au lot 5) : cliquer un disque du graphe la remplit ;
+             chaque valeur est légendée par le libellé du `.metric` qui la
+             porte (« Graduations · outils » dit ce que le chiffre compte,
+             §16 PIEGES) — valeurs « — » tant que rien n'est sélectionné. -->
+        <section class="detail-sheet" aria-labelledby="selected-title">
+          <div class="sheet-handle" aria-hidden="true"></div>
+          <div class="sheet-heading">
+            <div class="selected-agent">
+              <span class="selected-mark" id="selected-code">—</span>
+              <span class="selected-copy">
+                <h2 id="selected-title">Aucun passage sélectionné</h2>
+                <p id="selected-task">Cliquez un disque du graphe pour voir son détail.</p>
+              </span>
+            </div>
+            <button class="sheet-toggle" id="sheet-toggle" type="button" aria-expanded="true"
+                    aria-controls="sheet-metrics" aria-label="Replier le détail">
+              <span aria-hidden="true">⌄</span>
+            </button>
+          </div>
+          <div class="sheet-metrics" id="sheet-metrics">
+            <div class="metric"><span>Anneau · état</span><strong id="selected-state">—</strong></div>
+            <!-- feature-023 (lot 12) : `selectionnerPassage` (app.js) pose la
+                 VALEUR ; le libellé dit déjà ce qu'elle compte. Trois textes
+                 possibles : un chiffre (connu), « lecture partielle »
+                 (budget de lecture épuisé, S5.6) ou « indisponible »
+                 (absence propre) — jamais « 0 ». -->
+            <div class="metric"><span>Centre · tokens</span><strong id="selected-tokens">—</strong></div>
+            <div class="metric"><span>Graduations · outils</span><strong id="selected-tools">—</strong></div>
+            <div class="metric"><span>Points · fichiers</span><strong id="selected-files">—</strong></div>
+            <div class="metric"><span>Sous le disque · durée</span><strong id="selected-duration">—</strong></div>
+          </div>
+          <!-- F2 (feature-023) : la bottom sheet DIT ce que le chiffre
+               compte — texte FIXE, jamais recalculé (§16 PIEGES). -->
+          <p class="motion-note">Le compte de tokens additionne l'entrée et la sortie du passage : il mesure le travail produit, pas son coût.</p>
+          <!-- `evenements` (U1 de feature-021) : plus de flux brut permanent —
+               la tranche d'événements DE CE PASSAGE s'ouvre désormais dans le
+               tiroir existant (`#tiroir`), sur demande explicite plutôt qu'en
+               continu (feature-028, lot A1). Désactivé tant qu'aucun passage
+               n'est sélectionné, ou que le passage sélectionné n'a pas
+               d'`agent_id` exploitable (agent principal, backend ancien) —
+               un filtrage approximatif serait pire qu'une absence (§16 PIEGES). -->
+          <button type="button" class="pilotage-secondaire" id="voir-evenements-passage" disabled>
+            Voir les événements de ce passage
+          </button>
+        </section>
+
+        <!-- Fil d'état du dépôt (classe adoptée `repo-strip`, F0) — données
+             RÉELLES (`etat.git`), câblé dans `rafraichir()` (lot 4) : ni
+             décoratif ni figé, contrairement au reste de la coquille du
+             lot 3 (PIEGES §16, tout chiffre affiché vient des données). -->
+        <p class="repo-strip" id="repo-strip">
+          <span aria-hidden="true">◆</span><span id="repo-strip-texte">—</span>
+          <span class="ok" id="repo-strip-ok" hidden><span aria-hidden="true">●</span><span class="visually-hidden">dépôt accessible</span></span>
+        </p>
       </section>
 
-      <section class="bloc">
-        <div class="entete-bloc">
-          <h2>Spécifications</h2>
+      <!-- Panneau de conversation permanent (feature-022, absorbée, lot 11 ;
+           REBRANCHÉ sur la session Claude remote persistante par feature-026).
+           Markup/classes repris VERBATIM par sélecteur du prototype
+           (l.754-764) : `.claude-panel`/`.claude-title`/`.claude-ident`/
+           `.claude-mark`/`.claude-status`/`.conversation`/`.message`/
+           `.message-avatar`/`.bubble`/`.question`/`.composer`/
+           `.send-button` — tous classes ADOPTÉES (F0, lot 11). Le contenu
+           du fil (`#conversation`) est intégralement reconstruit par
+           `rendreConversation()` (app.js) : ce que ce fichier porte est le
+           SEUL contenu initial neutre, jamais affiché tel quel une fois le
+           premier `GET /api/conversation` répondu.
+           `#claude-destinataire-valeur`/`#conversation-portee` (feature-026,
+           ux-ui-designer étape 5) : ids STATIQUES ici (PIEGES §38), visibles
+           AVANT tout `GET /api/conversation` réussi — un basculement
+           silencieux de destinataire ferait atterrir un message dans le
+           mauvais terminal, la note sur la portée dit ce qui manque plutôt
+           que de le laisser deviner. -->
+      <aside class="claude-panel" aria-labelledby="claude-title">
+        <div class="claude-title">
+          <div class="claude-ident">
+            <span class="claude-mark" aria-hidden="true">✺</span>
+            <span>
+              <h2 id="claude-title">Claude</h2>
+              <span class="claude-status" id="claude-status">
+                <span aria-hidden="true">●</span> …
+              </span>
+            </span>
+          </div>
+          <!-- 5ᵉ et dernière instance d'`icon-button` (F0, lot 11, prototype
+               l.757) : « Options de la conversation ». Aucune fonctionnalité
+               d'options n'existe ce cycle (pas de propriétaire) — même
+               traitement inerte que les icon-button sans propriétaire du
+               lot 7 (`aria-disabled`, JAMAIS `disabled`, motif en clair,
+               aucun `:hover`, ADR-0039). -->
+          <button class="icon-button" type="button" aria-disabled="true"
+                  aria-label="Options de la conversation — aucune option disponible depuis l'interface">
+            <span aria-hidden="true">⋮</span>
+          </button>
+        </div>
+
+        <p class="claude-destinataire" id="claude-destinataire">
+          Destinataire : <span class="claude-destinataire-valeur" id="claude-destinataire-valeur">—</span>
+        </p>
+        <p class="note" id="conversation-portee">
+          Les étapes d'outils et le raisonnement interne de Claude ne sont pas
+          repris ici : seuls les messages échangés apparaissent.
+        </p>
+
+        <div class="conversation" id="conversation" aria-live="polite" tabindex="0"
+             role="region" aria-label="Fil de la conversation avec Claude">
+          <p class="vide">chargement…</p>
+        </div>
+
+        <!-- Question bloquante épinglée (F2 de la check-list de feature-022).
+             ⚠️ Écart déclaré, même motif que `.notification-badge`
+             (PIEGES §16) : AUCUNE source de données n'expose de « question
+             posée par l'agent » ce cycle — ni `/api/etat`, ni
+             `/api/conversation` (qui ne porte que les messages UTILISATEUR,
+             server.py `_conversation_lire`), ni `feature-009` (non
+             absorbée). L'élément reste dans le DOM (classe/id adoptés) mais
+             `hidden` en permanence : un texte fabriqué serait pire qu'une
+             absence. -->
+        <div class="question" id="claude-question" hidden>
+          <strong>Question en attente</strong>
+          <p id="claude-question-texte"></p>
+        </div>
+
+        <form class="composer" id="composer">
+          <label class="visually-hidden" for="prompt">Répondre à Claude</label>
+          <!-- `maxlength` = CONFORT client seul (S3.3) : le serveur reste
+               l'autorité, `POST /api/conversation` revalide la borne de
+               8192 caractères indépendamment (server.py,
+               `_TAILLE_MAX_TEXTE_CONVERSATION`) et la fait respecter même
+               si ce champ était contourné. -->
+          <input id="prompt" autocomplete="off" placeholder="Répondre à Claude…"
+                 maxlength="8192" disabled>
+          <!-- `id` ajouté (absent du prototype, qui ne cible ce bouton par
+               aucun script) : convention de ce module, AUCUN
+               `document.querySelector` n'est utilisé (app.js l.1429), le
+               bac à sable `vm` des harnais ne l'implémente pas non plus
+               (PIEGES §38 contexte). -->
+          <button class="send-button" id="envoyer-conversation" type="submit"
+                  aria-label="Envoyer le message" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path></svg>
+          </button>
+        </form>
+        <p class="note" id="composer-etat" aria-live="polite">chargement de la conversation…</p>
+        <p class="note erreur" id="conversation-erreur" role="alert" hidden></p>
+      </aside>
+    </div>
+
+    <!-- Kanban M3 câblé (F10, feature-021 cycle 2, lot 5) : `#kanban`
+         (`.kanban-grid`) est peuplé par `rendreKanban`, lu depuis
+         `etat.colonnes` (ADR-0003, jamais figé à Todo/Doing/Done) — une
+         colonne par entrée, `column-<classe>` pour l'accroche visuelle.
+         `#backlog-count`/`#backlog-column-count` (id adoptés, F4a) restent
+         `.visually-hidden` (discrets, `#compteur-specs` reste le compteur
+         visible) mais portent désormais la MÊME mesure que lui, jamais une
+         seconde source de vérité.
+         Remonté directement sous la feuille de détail (feature-021, cycle 2,
+         lot 6, reboucle de fidélité, F18) : le prototype place le Backlog en
+         second élément visible, juste après le graphe — cette section vivait
+         jusque-là enterrée sous Agents/Système/demande, que le prototype ne
+         positionne pas du tout (sections préexistantes du centre, conservées
+         mais reléguées APRÈS le kanban, feature-021 cycle 2 notes §2). -->
+    <section class="backlog" aria-labelledby="backlog-title">
+      <div class="kanban-heading">
+        <div class="kanban-title-row entete-bloc">
+          <h2 id="backlog-title">Spécifications</h2>
           <span class="compteur" id="compteur-specs"></span>
+          <span class="backlog-count visually-hidden" id="backlog-count">—</span>
         </div>
-        <div class="filtres">
+        <div class="kanban-actions filtres">
+          <!-- `open-add-item`/`add-item-button` repris du prototype (l.769,
+               feature-025, lots 9-10). ⚠️ Écart déclaré : le formulaire qu'il
+               ouvre reste INERTE à la soumission — `#add-item-dialog` fait
+               partie du périmètre visuel/structurel de ce lot (F0, table de
+               partition), mais la rédaction de la spec par Claude est
+               `feature-024`, hors périmètre (voir la section « Hors
+               périmètre » de cette spec). `surSoumissionAjoutInerte`
+               (app.js) le dit en clair plutôt que de fabriquer un appel
+               réseau que ce lot ne spécifie pas. -->
+          <button class="add-item-button" id="open-add-item" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14"></path></svg>
+            <span>Ajouter un élément</span>
+          </button>
           <input type="search" id="filtre" placeholder="Filtrer par identifiant, titre ou statut…"
                  autocomplete="off" spellcheck="false">
           <label class="bascule">
@@ -175,63 +397,148 @@
             <span>divergences seulement</span>
           </label>
         </div>
-        <div class="kanban" id="kanban"></div>
-      </section>
-
-      <section class="bloc pilotage" aria-labelledby="titre-pilotage">
-        <h2 id="titre-pilotage">Pilotage</h2>
-        <div id="pilotage-corps">
-          <p class="vide">chargement…</p>
-        </div>
-      </section>
+      </div>
+      <div class="kanban-viewport" tabindex="0" role="region" aria-label="Backlog, défilement vertical commun aux colonnes">
+        <div class="kanban-grid" id="kanban"></div>
+      </div>
+      <span id="backlog-column-count" class="visually-hidden">—</span>
     </section>
 
-    <section class="section" id="section-cycles" data-section="cycles" hidden role="tabpanel" aria-labelledby="onglet-cycles">
-      <p class="fil-ariane">Centre de contrôle</p>
-      <h1 class="section-titre" id="titre-section-cycles" tabindex="-1">Cycles</h1>
+    <!-- ⚠️ `agents` (U1 de feature-021) SUPPRIMÉE ICI — feature-028, lot A1.
+         La source de vérité reste `.claude/agents/<rôle>.md` ; l'identité
+         couleur/sigle survit dans la légende du diagramme. Verdict U1
+         appliqué : SUPPRIMÉE entière (aucun repli, aucune migration
+         déclarée pour cette section). -->
 
-      <section class="bloc" aria-labelledby="titre-cycles">
-        <div class="entete-bloc">
-          <h2 id="titre-cycles">Cycles</h2>
-        </div>
-        <!-- Légende fixe (feature-016) : les deux bornages — cycles affichés
-             sur le total, et ce qu'est un cycle. Remplie par app.js, jamais
-             statique : le compte dépend de l'état chargé. Remplace l'ancien
-             compteur-workflows (« N derniers événements »), retiré : plus
-             aucun écrivain depuis la bascule vers la liste en accordéon. -->
-        <p class="note" id="legende-cycles"></p>
-        <!-- Liste en accordéon : un seul détail déplié à la fois, le plus
-             récent par défaut (docs/DESIGN-SYSTEM.md §6). Chaque en-tête est un
-             <button aria-expanded aria-controls> dans un <h3> ; le détail est
-             un <div role="region" aria-labelledby hidden>. La chaîne de
-             maillons (diagramme, feature-017) vit dans le détail d'un cycle :
-             elle ne bouge pas avec cette refonte. -->
-        <ul id="workflows" class="cycles"></ul>
-        <p class="note" id="pied-cycles"></p>
-      </section>
-    </section>
+    <!-- ⚠️ `systeme` SUPPRIMÉE ICI — feature-028, décision humaine du
+         2026-09-23 : « Supprime système. Je ne souhaite pas que ça aille
+         ailleurs. » AU-DELÀ de `U1` de feature-021, qui exigeait une
+         MIGRATION (Divergences/Budget max/Écrivains en pastilles d'un
+         panneau « État du dépôt » — panneau qui n'existe toujours pas).
+         L'humain a tranché : pas de migration, retrait sec, aucune
+         destination. Dépôt/Fichiers touchés dupliqués dans `.repo-strip` ;
+         Divergences dupliquée dans `#compteur-specs`. ⚠️ Budget max/
+         Écrivains, dupliqués à l'origine dans la note de plafond du
+         panneau Pilotage, et Workflows, dupliqué à l'origine dans la
+         légende de l'accordéon Cycles, ont PERDU ce second porteur à leur
+         tour (feature-028, lots C1/pilotage dédié — accordéon puis panneau
+         retirés entiers) : ces deux informations ne sont plus affichées
+         nulle part. Seule « Configuration : lue/défauts » n'a jamais eu de
+         doublon — signalé, pas inventé (voir rapport du lot). -->
 
-    <section class="section" id="section-fichiers" data-section="fichiers" hidden role="tabpanel" aria-labelledby="onglet-fichiers">
-      <p class="fil-ariane">Centre de contrôle</p>
-      <h1 class="section-titre" id="titre-section-fichiers" tabindex="-1">Fichiers</h1>
+    <!-- ⚠️ `demande` (« Que souhaitez-vous développer ? ») SUPPRIMÉE ICI —
+         feature-028, lot C2 : câblée par B3, `#add-item-dialog` (le `+`) en
+         est désormais le SEUL point d'entrée — MÊME machine à états
+         (`redaction`, `SURFACES_REDACTION` dans `app.js`), jamais un second
+         chemin. `#titre-besoin`/`#spec-prompt`/`#bouton-generer-brouillon`/
+         `#redaction-corps` disparaissent avec elle. `#derogation-minimale`
+         (case « bug simple / refactor ponctuel (template minimal) ») a un
+         ÉQUIVALENT dans `#add-item-dialog` (`#item-derogation-minimale`,
+         feature-028, lot pilotage dédié — `CLAUDE.md` l'impose, ce n'était
+         pas une question de goût) : voir le commentaire sur
+         `#add-item-dialog`, plus bas, pour la différence de contrat avec
+         `demande` (`type`/`minimal` INDÉPENDANTS ici, jamais dérivés d'une
+         seule case). -->
 
-      <section class="bloc">
-        <h2>Fichiers touchés</h2>
-        <div id="fichiers"></div>
-      </section>
-    </section>
+    <!-- ⚠️ `pilotage` (le panneau générique « Piloter par clé », `#pilotage-
+         corps`) SUPPRIMÉE ICI — feature-028, lot pilotage dédié, décision
+         humaine du 2026-09-23 : « Pour le pilotage, lance le lot. » Le
+         lancement générique par clé ne pouvait de toute façon lancer QUE ce
+         que `[commandes]` déclare, et la configuration ne déclare que
+         `demo`/`lent`, deux commandes d'exemple sans usage réel (« Demo ou
+         lent n'ont pas de sens », décision humaine). ⚠️ SI une VRAIE
+         commande est un jour déclarée dans `[commandes]`, elle n'aura plus
+         AUCUN point d'accès générique — capacité retirée sous une CONDITION
+         D'ENVIRONNEMENT (la configuration actuelle ne déclare que des
+         exemples), pas sous une décision de conception : à re-corriger le
+         jour où cette condition change. Le lancement et l'interruption PAR
+         CARTE (menu `⋮` de chaque carte de spec) restent pleinement
+         fonctionnels — ils réutilisent l'état d'exécution partagé
+         (`pilotage`, `app.js`), pas ce panneau. `#jauge-pilotage` (barre du
+         haut) reste, lui aussi INCHANGÉ : ce badge n'a jamais fait partie
+         de cette section. -->
 
-    <section class="section" id="section-evenements" data-section="evenements" hidden role="tabpanel" aria-labelledby="onglet-evenements">
-      <p class="fil-ariane">Centre de contrôle</p>
-      <h1 class="section-titre" id="titre-section-evenements" tabindex="-1">Événements</h1>
+    <!-- ⚠️ `cycles` (l'accordéon « Cycles », `#workflows`) SUPPRIMÉE ICI —
+         feature-028, lot C1, décision humaine 1B (2026-09-23) : « L'accordéon
+         est retiré, ses deux informations sont PERDUES » (propriétés
+         agrégées du cycle — outils, fichiers écrits, rebouclages, agents
+         simultanés — et la chaîne textuelle des segments). Retrait ASSUMÉ,
+         même forme que le retrait des diffs. Les onglets « Cycle actif »/
+         « Historique » (`.cycle-tabs`, câblés au lot A de ce même cycle,
+         voir `.cycle-surface` plus haut) restent le SEUL endroit du DOM pour
+         voir un cycle, actif ou passé. ⚠️ Effet de bord signalé, PAS couvert
+         par la décision 1B : la légende (« N sur M cycles affichés ») et le
+         pied (« N événement(s) sans session associée ») disparaissent AVEC
+         l'accordéon — ce bornage n'est affiché nulle part ailleurs. -->
 
-      <section class="bloc">
-        <h2>Derniers événements</h2>
-        <ol class="timeline" id="timeline"></ol>
-      </section>
-    </section>
+    <!-- ⚠️ `fichiers` (« Fichiers touchés ») SUPPRIMÉE ICI — feature-028,
+         décision humaine du 2026-09-23 : « la consultation des diffs ne va
+         nulle part ». Retrait de capacité ASSUMÉ, pas une migration : la
+         liste des fichiers touchés du dépôt reste lisible via `.repo-strip`
+         (fil d'état du dépôt, bande de résumé), mais le détail par fichier
+         (diff) n'a plus de surface d'appel. `rendreFichiers`/`ouvrirDiff`
+         retirés d'`app.js` ; `/api/diff` n'a donc plus d'appelant frontal
+         (signalé à `doc-writer` et au GATE, feature-028). -->
+
+    <!-- ⚠️ `evenements` (U1 de feature-021) SUPPRIMÉE ICI comme panneau
+         PERMANENT — feature-028, lot A1. Le flux brut en continu disparaît ;
+         la tranche d'événements d'un passage reste accessible à la demande
+         via le bouton du détail (`#voir-evenements-passage`, plus haut), qui
+         ouvre `#tiroir`. `#timeline`/`rendreTimeline` retirés d'`app.js`. -->
 
   </main>
+</div>
+
+<!-- Gabarit statique du disque d'agent et de la carte kanban — posé ici
+     UNIQUEMENT pour fermer F3a (classes adoptées, structure complète du
+     prototype) : `app.js` NE LE LIT JAMAIS, il construit ses propres
+     éléments par `document.createElement` (PIEGES §38 : le bac à sable JS
+     de test ne connaît que les id/classes du HTML STATIQUE — un
+     `<template>` cloné à l'exécution y serait invisible, donc inutilisable
+     comme SOURCE de rendu ici). `hidden` : retiré du rendu ET de l'arbre
+     d'accessibilité — ce n'est ni un doublon visible ni un piège au clavier.
+     Le graphe réel est construit dans `#cycle-canvas` (F8/F9) ; le kanban
+     3-colonnes est câblé par `rendreKanban` (F10, lot 5) sur ces MÊMES
+     classes M3 (`kanban-grid`/`kanban-column`/`feature-card`/`column-*`) —
+     ce fragment garde seulement `active-card`, qu'aucune donnée réelle ne
+     pilote encore (aucun signal « spec en cours de lancement »), pour que
+     F3a continue de voir la classe posée quelque part dans le HTML statique. -->
+<div hidden aria-hidden="true" id="gabarits-adoptes">
+  <div class="agent-wrap">
+    <button class="agent-node state-pending" type="button">
+      <span class="work-orbit"></span>
+      <span class="work-dot"></span>
+      <span class="tool-ticks"></span>
+      <span class="agent-face">
+        <span class="agent-code">??</span>
+        <!-- feature-023 (lot 12) : `.token-value` adopté (F0, lot 12) — posé
+             ici en STATIQUE pour F3a (fidélité), comme `.file-dots` déjà ;
+             le rendu RÉEL, conditionnel, est construit par `app.js`
+             (`construireDisqueAgent`), jamais lu depuis ce gabarit. -->
+        <span class="agent-data"><span class="token-value">—</span><span class="file-dots"><i></i><i></i><i></i></span></span>
+      </span>
+    </button>
+    <span class="agent-name"><strong>—</strong></span>
+    <span class="agent-duration">—</span>
+  </div>
+  <div class="kanban-grid">
+    <section class="kanban-column column-todo">
+      <div class="column-title"><span class="column-label"><i></i>Todo</span><span>—</span></div>
+      <article class="feature-card active-card">
+        <button class="more-button" type="button" aria-haspopup="menu" aria-controls="context-menu" aria-expanded="false">⋮</button>
+        <h3><button class="card-title-button" type="button">—</button></h3>
+        <p>—</p>
+        <div class="progress-track" aria-hidden="true"><i></i></div>
+        <div class="card-footer"><span class="priority-high">—</span></div>
+      </article>
+    </section>
+    <section class="kanban-column column-doing">
+      <div class="column-title"><span class="column-label"><i></i>Doing</span><span>—</span></div>
+    </section>
+    <section class="kanban-column column-done">
+      <div class="column-title"><span class="column-label"><i></i>Done</span><span>—</span></div>
+    </section>
+  </div>
 </div>
 
 <div class="tiroir" id="tiroir" hidden>
@@ -240,6 +547,22 @@
     <button type="button" id="tiroir-fermer" aria-label="Fermer">✕</button>
   </div>
   <pre id="tiroir-contenu"></pre>
+  <!-- feature-025 (B2, lot 10) : surface de MODIFICATION d'une spec —
+       compare-and-write sur `POST /api/spec/modifier` (empreinte lue au
+       `GET`, GATE P1 S2.3). Aucune maquette dédiée n'a été produite pour
+       cet écran (`ux-ui-designer` explicitement non invoqué sur cette spec,
+       « le menu est spécifié par la maquette » — feature-025, Agents
+       requis) : réutilise le tiroir EXISTANT plutôt que d'inventer un
+       nouveau patron visuel (règle « sobriété UI »). -->
+  <form id="tiroir-edition" hidden>
+    <label class="visually-hidden" for="tiroir-edition-texte">Contenu Markdown de la spec</label>
+    <textarea id="tiroir-edition-texte" rows="20"></textarea>
+    <p class="note erreur" id="tiroir-edition-erreur" role="alert" hidden></p>
+    <div class="form-buttons">
+      <button type="button" class="cancel" id="tiroir-edition-annuler">Annuler</button>
+      <button type="submit" class="submit" id="tiroir-edition-enregistrer">Enregistrer</button>
+    </div>
+  </form>
 </div>
 
 <div class="porte" id="porte-jeton" role="dialog" aria-modal="true"
@@ -255,6 +578,182 @@
     <button type="button" id="porte-bouton" class="action-ecriture"></button>
   </div>
 </div>
+
+<!-- feature-025 (lots 9-10) — menu contextuel et les trois `<dialog>` du
+     prototype. ENFANTS DIRECTS DE `<body>`, comme `#porte-jeton` : quand la
+     porte s'ouvre, `fixerInerteAutourDeLaPorte` les traite déjà comme
+     n'importe quel autre frère (aucun code à dupliquer pour ce sens-là).
+     Dans l'AUTRE sens — un de CES éléments ouvert doit rendre le reste
+     inatteignable — les deux `<dialog>` s'appuient sur la sémantique modale
+     NATIVE du navigateur (`showModal()` place le reste du document en
+     dehors du top layer, donc hors de la portée du focus et du clic,
+     PIEGES §15 vérifié sur ce module au lot 5 pour `#porte-jeton`, qui n'est
+     PAS un `<dialog>` et a dû recevoir `fixerInerteAutourDeLaPorte` pour
+     cette raison précise) : aucune duplication du mécanisme, mesurée par
+     `test_app_feature025_navigateur.py` plutôt que supposée. `#context-menu`
+     n'est PAS un `<dialog>` (comme dans le prototype : un menu n'est pas une
+     modale plein-écran) — sa fermeture au clic extérieur/Échap/redimension-
+     nement est gérée par `app.js`, jamais par `inert`. -->
+<!-- `menu-interrupt-cycle` (feature-028, lot A, GATE C3) : n'apparaît QUE sur
+     la carte dont la spec est le lancement COURANT (`data-interrompable`,
+     posé par `rendreKanban` d'après `etat.lancement_spec_id === spec.id`),
+     jamais un item générique — `POST /api/interrompre` sans `spec_id` tue
+     le lancement courant, quel qu'il soit, et l'item mentirait sur une
+     autre carte. Groupé avec « Lancer un cycle » (même divider, `launch-
+     divider`, visible si L'UN OU L'AUTRE des deux est présent) : ce sont
+     les deux actions de contrôle du cycle, séparées de « Voir les
+     détails »/« Modifier »/« Supprimer » qui portent sur la SPEC, pas sur
+     un lancement. -->
+<div class="context-menu" id="context-menu" role="menu" hidden>
+  <button class="menu-item launch-action" id="menu-launch-cycle" type="button" role="menuitem"><span class="menu-icon" aria-hidden="true">▶</span><span>Lancer un cycle</span></button>
+  <button class="menu-item danger" id="menu-interrupt-cycle" type="button" role="menuitem"><span class="menu-icon" aria-hidden="true">■</span><span>Interrompre</span></button>
+  <div class="menu-divider" id="launch-divider"></div>
+  <button class="menu-item" id="view-details" type="button" role="menuitem"><span class="menu-icon" aria-hidden="true">◉</span><span>Voir les détails</span></button>
+  <button class="menu-item" id="edit-item" type="button" role="menuitem"><span class="menu-icon" aria-hidden="true">✎</span><span>Modifier</span></button>
+  <div class="menu-divider"></div>
+  <button class="menu-item danger" id="delete-item" type="button" role="menuitem"><span class="menu-icon" aria-hidden="true">⌫</span><span>Supprimer</span></button>
+</div>
+
+<dialog class="feature-dialog" id="feature-dialog" aria-labelledby="feature-title" aria-describedby="feature-description">
+  <div class="feature-dialog-header">
+    <div class="feature-dialog-heading"><span class="feature-kind" id="feature-kind">Feature</span><h2 id="feature-title">—</h2></div>
+    <button class="icon-button feature-close" id="close-feature" type="button" aria-label="Fermer le détail"><span aria-hidden="true">×</span></button>
+  </div>
+  <div class="feature-dialog-body">
+    <div class="feature-meta"><span class="feature-chip todo" id="feature-status">—</span><span class="feature-chip high" id="feature-priority">—</span><span class="feature-chip" id="feature-agent">Agent · —</span></div>
+    <section class="feature-section"><h3>Description</h3><p id="feature-description"></p></section>
+    <section class="feature-section"><h3>Critères d’acceptation</h3><ul id="feature-criteria"></ul></section>
+    <section class="feature-section"><div class="feature-facts"><div class="feature-fact"><span>Dépendance</span><strong id="feature-dependency"></strong></div><div class="feature-fact"><span>Dernière mise à jour</span><strong id="feature-updated"></strong></div></div></section>
+  </div>
+  <div class="feature-dialog-actions"><button class="secondary" id="feature-edit" type="button">Modifier</button><button class="primary" id="feature-done" type="button">Fermer</button></div>
+</dialog>
+
+<!-- `#add-item-dialog` : markup/classes repris du prototype (l.822-844, F0)
+     pour la fidélité structurelle, câblé au lot B (feature-028, GATE C1/C2) —
+     c'est désormais le SEUL point d'entrée du chemin de rédaction (`demande`
+     retirée en B4, une fois ce lot vérifié). Un seul AJOUT à la fidélité
+     (GATE C2, au minimum nécessaire) : le prototype n'a PAS de champ titre,
+     alors que le SLUG (donc le nom de fichier réel) en dérive — `#item-title`
+     AJOUTÉ, même libellé que `#titre-besoin` (`demande`, avant son retrait).
+     `#item-priority` (`select`, prototype) reste EN PLACE, fidélité intacte,
+     mais INERTE : `preparer_brouillon(config, genre, titre, texte, minimal)`
+     n'a aucun champ serveur pour une priorité, et le GATE interdit de la
+     concaténer à l'aveugle dans `contenu` côté client — MÊME traitement que
+     le 5ᵉ `icon-button` sans propriétaire (« Options de la conversation »,
+     `.claude-panel` ci-dessus, ADR-0039) : ni lu ni envoyé, `aria-disabled`
+     posé par `app.js`, motif en clair, jamais silencieux.
+     `#item-type` (feature/bug, DÉJÀ présent au prototype) est réutilisé TEL
+     QUEL pour `type` — aucun champ neuf pour lui.
+     `#item-derogation-minimale` AJOUTÉ (feature-028, lot pilotage dédié) :
+     `CLAUDE.md` IMPOSE le gabarit minimal pour un bug simple/refactor
+     ponctuel (« le format minimal specs/modele.md suffit ») — produire
+     systématiquement le gabarit complet depuis le `+` y contrevenait,
+     laissé par défaut sûr (pas une décision) au lot précédent, corrigé ici.
+     INDÉPENDANTE de `#item-type` (contrairement à `demande`, retirée, qui
+     dérivait `type` ET `minimal` d'UNE seule case) : un « bug » n'exige pas
+     forcément le gabarit minimal, ni l'inverse. Le fail-closed serveur sur
+     mot-clé sensible (`escalade_necessaire`) reste actif — la note en
+     dessous le dit, comme dans `demande`.
+     Machine à états PARTAGÉE avec l'ancien flux `demande` (`redaction`,
+     `surClicGenererBrouillon`/`rendreRedaction`, plus bas dans `app.js`) :
+     UN clic sur « Générer le brouillon » ici = `POST /api/spec/brouillon`
+     SEUL, jamais enchaîné à l'écriture (GATE C1 — la relecture humaine du
+     Markdown avant `/api/spec/ecrire` est la garde de `feature-008`, ce lot
+     ne la contourne pas). -->
+<dialog class="add-item-dialog" id="add-item-dialog" aria-labelledby="add-item-title" aria-describedby="add-item-intro">
+  <div class="feature-dialog-header">
+    <div class="feature-dialog-heading"><span class="feature-kind">Backlog</span><h2 id="add-item-title">Ajouter un élément</h2></div>
+    <button class="icon-button feature-close" id="close-add-item" type="button" aria-label="Fermer le formulaire"><span aria-hidden="true">×</span></button>
+  </div>
+  <form class="add-item-form" id="add-item-form">
+    <div class="add-item-body">
+      <p class="form-intro" id="add-item-intro">Décrivez le besoin. Un brouillon est généré depuis le template du projet — à relire avant toute écriture sur disque.</p>
+      <div class="form-grid">
+        <fieldset class="form-field full" style="border:0;padding:0;margin:0">
+          <legend class="field-label">Type d’élément</legend>
+          <div class="type-segment">
+            <label class="type-option"><input type="radio" name="item-type" id="item-type-feature" value="feature" checked><span>Feature</span></label>
+            <label class="type-option"><input type="radio" name="item-type" id="item-type-bug" value="bug"><span>Bug</span></label>
+          </div>
+        </fieldset>
+        <div class="form-field full">
+          <label for="item-title">Titre du besoin (résumé en une phrase — nomme le fichier)</label>
+          <input type="text" id="item-title" name="title" required maxlength="200" autocomplete="off"
+            placeholder="Ex. : Ajouter un export CSV des specs affichées">
+        </div>
+        <div class="form-field full"><label for="item-description">Description <span aria-hidden="true">*</span></label><textarea id="item-description" name="description" required placeholder="Décrivez le besoin ou le comportement observé…"></textarea><span class="field-help">Ce texte finit dans un fichier versionné : n’y collez ni secret ni mot de passe. Il ne quitte pas ce poste — aucun appel de modèle.</span></div>
+        <!-- M1 (revue de code, feature-028) : `aria-disabled` SEUL ne suffit
+             pas à un `<select>` (contrairement à un `<button>` inerte,
+             ADR-0039) — l'utilisateur peut changer sa valeur au clavier ou
+             à la souris, et ce choix serait jeté en silence (jamais lu par
+             `lireChampsSurface`). `disabled` réel, EN PLUS : le motif reste
+             en clair dans `.field-help`, jamais un contrôle inerte muet. -->
+        <div class="form-field full"><label for="item-priority">Priorité</label><select id="item-priority" name="priority" disabled aria-disabled="true"><option value="Moyenne" selected>Moyenne</option><option value="Haute">Haute</option><option value="Basse">Basse</option></select><span class="field-help">Non relié à l’écriture — aucun champ du template ne porte de priorité (voir le commentaire sur `#add-item-dialog`).</span></div>
+      </div>
+      <!-- `#item-derogation-minimale` (feature-028, lot pilotage dédié) :
+           reprend le libellé et la note de `demande` (retirée) TELS QUELS —
+           même contrat serveur (`minimal`), même avertissement fail-closed. -->
+      <label class="bascule">
+        <input type="checkbox" id="item-derogation-minimale">
+        <span>Traiter comme bug simple / refactor ponctuel (template minimal)</span>
+      </label>
+      <p class="note">
+        Un mot-clé sensible (auth, permission, données personnelles,
+        paiement, migration) impose quand même le template complet.
+      </p>
+      <!-- B2a (revue de code, feature-028) : DÉPLACÉS ICI, à l'INTÉRIEUR de
+           `.add-item-body` (ils vivaient en FRÈRES DE `.add-item-body`,
+           enfants directs de `.add-item-form` — donc hors de la seule
+           rangée de grille qui défile, `minmax(0,1fr)`) — voir le
+           commentaire sur `.add-item-form`, app.css, pour la mesure du
+           défaut et le choix entre les deux pistes de la revue. -->
+      <p class="note erreur" id="erreur-generer-item-brouillon" role="alert" hidden></p>
+      <div id="add-item-redaction-corps"></div>
+    </div>
+    <div class="add-item-actions"><span class="required-note"><span aria-hidden="true">*</span> Champs obligatoires</span><div class="form-buttons"><button class="cancel" id="cancel-add-item" type="button">Annuler</button><button class="submit" id="bouton-generer-item-brouillon" type="submit">Générer le brouillon</button></div></div>
+  </form>
+</dialog>
+
+<!-- `#delete-dialog` : DÉVIATION DÉLIBÉRÉE du prototype (l.846), qui ne
+     porte qu'un Oui/Non. Le backend (`gestion_spec.supprimer`, GATE P1
+     S2.8) exige une `confirmation_nom` EXACTE — l'ajout d'un champ de
+     saisie est la conséquence directe de ce contrat serveur, pas une
+     invention gratuite (feature-025, F3 : « confirmation nommant
+     précisément l'élément »). `delete-confirm-input`/`delete-confirm-
+     bouton` ne figurent pas dans la table F0 (le prototype ne les porte
+     pas) : ajoutés à `IDS` (test_app_bug012.js) comme tout autre id réel. -->
+<dialog id="delete-dialog" aria-labelledby="delete-title" aria-describedby="delete-copy">
+  <h2 id="delete-title">Supprimer cet élément ?</h2>
+  <p id="delete-copy">Cette action supprimera définitivement la feature.</p>
+  <div class="form-field full">
+    <label for="delete-confirm-input" id="delete-confirm-label">Tapez l’identifiant pour confirmer</label>
+    <input type="text" id="delete-confirm-input" autocomplete="off" aria-describedby="delete-confirm-aide">
+    <span class="field-help" id="delete-confirm-aide"></span>
+  </div>
+  <p class="note erreur" id="delete-erreur" role="alert" hidden></p>
+  <div class="dialog-actions">
+    <button class="cancel" id="cancel-delete" type="button">Annuler</button>
+    <button class="confirm" id="delete-confirm-bouton" type="button" disabled>Supprimer</button>
+  </div>
+</dialog>
+
+<!-- `#claude-compositeur-dialog` : forme RÉACTIVE (pas préventive) du `409`
+     `raison: "compositeur_introuvable"` (feature-026, reboucle « écrire
+     pendant que Claude travaille marche ») — patron de `#delete-dialog`
+     (`<h2>`, `<p>`, `.dialog-actions`), sans champ de saisie : rien à
+     confirmer, seulement à ACCUSER RÉCEPTION, d'où le bouton unique
+     `.cancel` (neutre, PAS `.confirm` — aucune action destructive ici,
+     aucune couleur neuve). Enfant direct de `<body>`, comme les trois
+     autres `<dialog>` : entre donc dans `FRERES_INERTES`
+     (test_app_bug017.js) au même titre qu'eux. Le texte reste dans le
+     composeur — jamais vidé, aucun réessai automatique. -->
+<dialog id="claude-compositeur-dialog" aria-labelledby="claude-compositeur-titre" aria-describedby="claude-compositeur-copie">
+  <h2 id="claude-compositeur-titre">Message non envoyé</h2>
+  <p id="claude-compositeur-copie">L’écran de la session semblerait porter une confirmation ou un dialogue — un message envoyé maintenant risquerait d’y répondre à votre place. Le texte n’a pas été envoyé et reste dans le composeur.</p>
+  <div class="dialog-actions">
+    <button class="cancel" id="claude-compositeur-fermer" type="button">Compris</button>
+  </div>
+</dialog>
 
 <!-- Module PUR du diagramme de déroulé (feature-017) — chargé AVANT app.js,
      qui appelle sa fonction `disposer()`. Zéro dépendance (ADR-0006), zéro

@@ -708,6 +708,292 @@ associé au défaut qu'il surveille doit explicitement s'exclure de sa propre
 analyse**, plutôt que de compter sur le hasard de son organisation interne
 (ordre des définitions, nom de variable) pour ne pas se détecter lui-même.
 
+## 55. Le sélecteur universel `*` ne couvre pas les pseudo-éléments
+
+`* { animation: none !important }` **n'arrête pas** une animation posée sur
+`::before` ou `::after`. Mesuré au navigateur (Chromium,
+`--force-prefers-reduced-motion`, lot 8 de `feature-021`) : un `animation`
+sur `.agent-node::before` **survit intégralement** au bloc universel, alors
+que le même test sur un élément réel confirme que `*` l'arrête bien.
+
+C'est la règle CSS, pas un bogue : un pseudo-élément n'est pas un élément, et
+`*` ne sélectionne que des éléments. Il faut écrire `*, *::before, *::after`.
+
+**Pourquoi ça compte ici.** Le bloc `@media (prefers-reduced-motion: reduce)`
+est un engagement d'accessibilité. Écrit avec `*` seul, il en donne
+l'apparence et laisse tourner tout ce qui est peint sur un pseudo-élément —
+et l'anneau d'activité du diagramme l'est, précisément pour ne pas faire
+tourner le sigle avec le disque.
+
+**Et aucune garde statique ne peut le voir** : une garde qui vérifie la
+*présence* du bloc, ou qui lit le *texte* de la règle, le trouve conforme.
+Seul un harnais qui **mesure l'`animation-name` calculé** sous
+`--force-prefers-reduced-motion` l'établit. C'est le même patron que §30 —
+une garde qui vérifie le mécanisme et non le résultat.
+
+## 56. Un drapeau de durcissement du binaire peut retirer la source des identifiants
+
+`claude --restricted` et `--bare` répondent **« Not logged in · Please run
+/login » avec `rc=0` et un JSON parfaitement formé**. `--restricted` ignore
+les fichiers de réglages, `--bare` saute les lectures de trousseau — or c'est
+là que vivent les identifiants. Le durcissement **supprime l'authentification**.
+
+Ce n'est pas un bogue du binaire : un drapeau qui retire les *settings*
+retire l'auth qui y vit.
+
+**Conséquence de test, et c'est elle qui coûte** : un harnais qui vérifie
+« le processus a répondu », ou « le code de retour est 0 », ou « la sortie est
+du JSON valide », est **vert à tort** — il mesure un agent qui n'a rien fait.
+Exiger un message `assistant` **à contenu non vide** et **l'absence du motif
+de connexion** dans le résultat.
+
+Vaut pour toute commande lancée par le centre de contrôle : un lancement qui
+« réussit » sans agent connecté consomme le verrou d'écrivain et journalise
+une fin propre pour un cycle qui n'a rien produit.
+
+## 57. `git rm` supprime en CASCADE tout répertoire parent devenu vide
+
+Retirer le dernier fichier d'un répertoire ne supprime pas seulement ce
+répertoire : git remonte et efface **tout parent qui devient vide à son tour**.
+
+Mesuré dans un dépôt jetable — une seule spec, une seule commande :
+
+```
+avant   specs/  specs/features/  specs/features/todo/
+git rm specs/features/todo/feature-900-seule.md
+après   (plus rien)
+```
+
+`specs/` **entier** a disparu, pas seulement `todo/`.
+
+**Pourquoi ça compte ici.** Le cockpit sait supprimer une spec. Supprimer la
+dernière d'une colonne fait perdre la colonne au kanban ; supprimer la dernière
+du dépôt fait perdre **l'arbre que `check_specs.sh`, `lister_specs` et le kanban
+tiennent pour acquis**. Le retour arrière (`git checkout <sha> -- <chemin>`)
+recrée le chemin, donc l'état est récupérable — mais entre les deux, des
+composants lisent un dépôt dont le socle n'existe plus.
+
+**Et aucun test ne le voit par construction** : chaque groupe de test garde
+d'autres specs dans `todo/`, donc le répertoire ne devient jamais vide. Il faut
+un cas qui supprime **la dernière**, sinon le comportement reste invisible.
+
+## 58. Mesurer un arbre pendant qu'un autre agent y écrit produit un faux « flaky »
+
+Deux agents lancés en parallèle sur le **même arbre de travail** produisent des
+signaux qui ressemblent à de l'instabilité et n'en sont pas. Constaté deux fois
+dans le même cycle, avec deux symptômes différents :
+
+- un clone `cp -a` pris à 19:51:13 **a manqué deux fichiers** créés à 19:51 et
+  19:52 par un pair — le compte annoncé était un minorant, découvert seulement
+  en comparant la liste du clone à celle du dépôt ;
+- une suite lancée pendant qu'un pair réécrivait `web/` a rendu **2 échecs**
+  qualifiés de « flaky d'un run à l'autre ». Rejoués une fois le pair terminé :
+  **8 exécutions, 8 vertes**. Il n'y avait aucune instabilité — l'arbre bougeait
+  sous la mesure.
+
+**La parade n'est pas de relancer jusqu'à obtenir du vert**, c'est de savoir qui
+écrit. Avant de conclure à une régression ou à une instabilité, établir qu'aucun
+pair ne travaille dans le même arbre. Et **séquencer** les lots qui touchent les
+mêmes fichiers plutôt que de les paralléliser : `backend/` et `web/` sont
+disjoints, deux lots qui réécrivent tous deux `app.css` ne le sont pas.
+
+⚠️ Corollaire : un total de suite mesuré pendant un travail concurrent **n'est
+pas reproductible**, et toute comparaison ultérieure à ce chiffre conclura à
+tort. Un écart inexpliqué se vérifie d'abord contre *qui écrivait*, avant d'être
+imputé au code.
+
+## 59. Un préfixe devant l'identifiant annule le témoin de traversée classique
+
+Quand un chemin se compose `<racine>/<prefixe><identifiant><suffixe>`, le
+témoin habituel `../../etc/passwd` **ne s'échappe pas** — parce que
+`prefixe..` n'est pas littéralement `..`, et que `realpath` ne le traite donc
+pas comme un composant de remontée.
+
+Mesuré, avec le motif `agent-%s.jsonl` :
+
+```
+agent_id = "../../etc/passwd"          →  <racine>/subagents/etc/passwd.jsonl   CONFINÉ
+agent_id = "x/../../../../etc/passwd"  →  /etc/passwd.jsonl                     S'ÉCHAPPE
+agent_id = ".."                        →  <racine>/subagents/agent-...jsonl     CONFINÉ
+```
+
+Seul un `/` **intercalé** réintroduit un `..` **pur** comme composant séparé,
+et c'est celui-là qui sort.
+
+**Conséquence de test, et c'est elle qui coûte** : un test de confinement bâti
+sur le témoin classique reste **vert même quand on retire entièrement la
+garde**. Il ne prouve rien, et il inspire confiance. Le cas a été trouvé en
+retirant vraiment la garde et en observant que le test ne bronchait pas —
+jamais en le relisant.
+
+**Règle** : un témoin de traversée se **vérifie**, il ne se suppose pas.
+Construire le chemin final avec le témoin, appeler `realpath`, et **constater
+qu'il sort de la racine** — avant de s'en servir comme preuve. Un témoin qui
+ne s'échappe pas ne teste que lui-même.
+
+## 60. Un ratio de cases cochées n'est pas une mesure d'avancement
+
+Une spec Markdown porte des cases `- [ ]`/`- [x]` à plusieurs endroits qui ne
+sont **pas** des livrables : les blocs « Domaines touchés », « Agents
+requis », les cases de gabarit non retirées. Compter « cases cochées / cases
+totales » dans le fichier entier, dans l'idée d'en tirer un pourcentage
+d'avancement honnête (par opposition à un chiffre inventé), mesure en
+réalité **la forme du document**, pas le travail fait.
+
+Mesuré (lot 9 de `feature-021`, cycle 2) : une spec **jamais commencée**
+rend **36 %** par ce calcul — les cases des blocs de méta-données, cochées
+dès la rédaction de la spec, gonflent le numérateur sans qu'aucun livrable
+n'existe encore.
+
+**Conséquence** : ce ratio est aussi trompeur qu'un pourcentage inventé de
+toutes pièces — il a seulement l'apparence d'une donnée réelle, ce qui le
+rend plus dangereux à afficher, pas moins. `control-center/web/app.js`
+(`.progress-track`) l'a écarté au profit d'une grandeur discrète et déjà
+fiable : l'état de colonne de la spec (première / intermédiaire /
+dernière), à largeur fixe, décorative.
+
+**Règle** : si une grandeur mesurée dans un document texte doit alimenter un
+indicateur, vérifier qu'elle isole les cases qui sont **réellement** des
+livrables (une section dédiée, un marqueur distinct) — jamais compter sur
+la structure entière d'un gabarit partagé par toutes les specs.
+
+## 61. Un chemin d'écriture dérivé de `__file__` pollue le dépôt réel dès le premier test
+
+Les constantes de ce module (`_CHEMIN_VERROU`, `_RACINE_VAR`, et désormais
+`_CHEMIN_SAUVEGARDES`) dérivent leur chemin de `__file__`. Un test qui appelle
+la fonction **sans** override écrit donc dans le `var/` du **dépôt réel**, pas
+dans un clone.
+
+Mesuré : le premier run d'un test de sauvegarde a déposé trois fichiers dans
+`control-center/var/sauvegardes-specs/` du dépôt courant. ⚠️ **`git status` ne
+le signale pas** — `var/` est gitignoré. Repéré seulement en listant `var/` par
+réflexe avant de conclure.
+
+**Règle** : tout **nouveau** chemin d'écriture dérivé de `__file__` reçoit un
+paramètre d'override testable **dès son premier appel de test**, jamais après
+coup. Le patron est connu pour les chemins existants ; il se re-perd à chaque
+chemin neuf, parce que celui qui l'introduit ne l'a pas encore payé.
+
+**Corollaire de vérification** : après une campagne de tests sur un module qui
+écrit, **lister `var/`** — l'absence de signal de `git status` sur un
+répertoire gitignoré n'est pas une preuve de propreté.
+
+## 62. Une garde qui lit une spec à une colonne FIGÉE casse le jour où le cycle se clôt
+
+`test_conformite_perimetre.js` lisait les specs absorbées à
+`specs/features/doing/<nom>.md` — chemin exact, colonne codée en dur. Il est
+resté vert pendant treize lots, parce que les specs étaient effectivement dans
+`doing/` pendant tout le cycle.
+
+Il a échoué à la **clôture**, au moment précis du `git mv` vers `done/` :
+`ATTEIGNABILITE : spec absorbée introuvable`. La garde n'a rien de faux — son
+assertion d'atteignabilité a fait exactement son travail, **bruyamment**, au
+lieu de sauter en silence. C'est le chemin qui supposait un état transitoire
+du cycle comme s'il était permanent.
+
+Le même défaut vivait dans `tools/lancer_suite_control_center_non_root.sh`,
+qui ne copiait que `doing/` dans le clone jetable : la correction de la garde
+l'aurait rendue muette là-bas.
+
+**Règle** : une donnée qui **traverse** les colonnes (`todo` → `doing` →
+`done`) se résout par son **nom**, dans les trois, avec `0 trouvé` ET
+`2 trouvés` traités comme des échecs distincts et nommés — jamais « prendre le
+premier », qui lirait une version périmée sans le dire. Le doublon est déjà
+interdit par `tools/check_specs.sh` ; la garde le redit pour ne pas dépendre
+d'un contrôle qu'elle n'appelle pas.
+
+**Plus général** : la fin d'un cycle est un **changement d'état du dépôt** que
+les gardes du cycle n'ont jamais traversé. Une suite verte pendant treize lots
+ne dit rien de ce qu'elle fera au `git mv` final.
+
+## 63. Un témoin fabriqué n'est pas une capture
+
+La première version d'`ecran_semble_au_prompt` (feature-026) s'appuyait sur
+trois témoins écrits par l'agent : un écran de composeur **dessiné à la main**
+(`cat` d'une chaîne bordée `│ ❯ … │`), jamais capturé sur un vrai `claude`. Les
+trois témoins étaient conformes à la consigne qui les demandait (session
+jetable, phrase-marqueur) — la consigne ne disait simplement pas qu'il fallait
+un **vrai** `claude` en face.
+
+Coût : une heuristique livrée, revue, et déclarée gardée par une campagne de
+mutation entière — **inatteignable sur sa cible réelle** dès le premier essai
+en service (`claude` 2.1.278 n'a aucune bordure verticale). Le défaut n'a été
+vu qu'au GATE P2, en recapturant un écran réel.
+
+**Règle** : un témoin qui représente la sortie d'un outil externe se
+**capture**, il ne se rédige jamais à la main — même quand la forme paraît
+évidente à reproduire.
+
+## 64. Une même mesure peut trancher deux questions et n'être lue que pour celle qui l'a motivée
+
+`promptSource: "queued"` a été mesuré et cité pour répondre à une seule
+question, au GATE P1 : « le cockpit peut-il tracer qu'un message vient de
+lui ? ». La même valeur répondait déjà, dans les mêmes données, à une question
+ergonomique distincte — « le compositeur doit-il rester actif pendant que
+Claude travaille ? » — et n'a traversé jusqu'à elle qu'après une question
+humaine directe, pas par relecture de spec ou de journal.
+
+Coût : une pastille à quatre états conçue puis rejetée (`ux-ui-designer`,
+étape 5 puis 5bis de `feature-026`), et une branche d'inertie du composeur
+livrée puis retirée.
+
+**Règle** : après toute mesure, se demander explicitement à quelles **autres**
+décisions en cours elle s'applique — pas seulement à celle qui l'a demandée.
+Une mesure écrite et citée n'est pas une mesure exploitée.
+
+## 65. Un registre d'ids tenu à la main peut être vert sans rien vérifier
+
+Six registres `IDS` tenus à la main existent dans les harnais web de ce
+module (`test_app_bug012.js`, `test_app_conversation_feature026.js`,
+`test_app_bug017.js`, et trois autres). Un id bidon inséré dans `index.html`
+n'a fait échouer **qu'un seul** des six (établi par exécution, lot A1 +
+B de `feature-028`) : les cinq autres sont des copies jamais confrontées au
+DOM réel — ils ne mesurent pas la synchronisation, ils la **supposent**.
+
+Un recoupement par `grep` a été tenté en amont pour trancher lesquels
+vérifient réellement ; il ne distingue pas « lit `index.html` » de
+« assertionne la couverture », donc il ne confirme ni n'infirme — seule
+l'injection d'un id bidon, suivie de l'exécution, tranche.
+
+**Règle** : « ce registre est vert » ne veut rien dire par soi-même — vérifier
+par injection qu'il **peut** rougir avant de le compter comme une garde.
+
+## 66. Un bloc `if __name__ == "__main__"` peut appeler du code mort qu'aucun test n'exécute
+
+En retirant `vcs.diff()` (feature-028, GATE C5), le bloc CLI de debug en fin
+de `vcs.py` continuait de l'appeler. Invisible à un `grep` centré sur les
+appelants de **production**, et invisible à la suite de tests — aucun test
+n'exécute ce bloc. Trouvé par `pyflakes`, pas par l'exécution des tests : le
+module aurait cassé au premier lancement en ligne de commande.
+
+**Règle** : avant de retirer une fonction publique d'un module qui porte un
+tel bloc, chercher **spécifiquement** ses appelants dans ce bloc — un `grep`
+sur les appelants « réels » ne le couvre pas.
+
+## 67. L'empreinte AST de synchronisation inclut le docstring
+
+La garde qui vérifie qu'une fonction copiée dans un second fichier reste
+identique à son original compare l'AST **du fichier entier**, docstring
+compris. Reformuler « en mieux » le commentaire d'une fonction copiée — sans
+toucher à sa logique — suffit à la faire échouer. Mesuré deux fois dans ce
+cycle (lots `feature-028`), les deux fois par surprise.
+
+**Règle** : une fonction dupliquée pour une garde de synchronisation se
+copie-colle **octet pour octet**, commentaires compris — jamais « en mieux ».
+
+## 68. Deux bornes redondantes non documentées font survivre une mutation qui semblait neutraliser une garde
+
+`fil.py` applique la même limite d'octets par deux mécanismes indépendants
+(troncature à la lecture, puis re-troncature après fusion avec le journal du
+cockpit). Muter l'un des deux ne casse rien, parce que l'autre absorbe le
+dépassement — et réciproquement : chaque mutation, prise seule, **survit**,
+en donnant l'impression que la borne n'est pas gardée.
+
+**Règle** : une mutation qui survit sur une borne numérique n'établit
+l'absence de garde qu'après avoir vérifié qu'aucun **second** mécanisme,
+même non documenté comme redondant, ne produit le même plafond par un autre
+chemin.
+
 ## Voir aussi
 
 - `docs/DESIGN-SYSTEM.md` — règles de couleur, de surface et de typographie

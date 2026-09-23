@@ -357,6 +357,113 @@ commandes_avec_budget = ["tests", "deja_borne", "inconnue"]
         check("test_budget_transmissible_sans_configuration_est_faux",
               c.budget_transmissible("nimporte_quoi") is False)
 
+        # --- feature-022 (GATE P1 re-passage, D1) : `entree()` -------------------
+        # Forme HISTORIQUE (liste directe) : `entree()` rend TOUJOURS "aucune",
+        # jamais autre chose — c'est le défaut sûr, identique à avant ce lot.
+        c_liste = C.charger(chemin=ecrire(tmp, '[commandes]\ndemo = ["ls", "-l"]\n'),
+                            racine_projet=tmp)
+        check("test_entree_forme_liste_vaut_aucune",
+              c_liste.entree("demo") == "aucune")
+        check("test_entree_cle_absente_vaut_aucune",
+              c_liste.entree("nexiste_pas") == "aucune")
+
+        # Forme TABLE, `entree` DÉCLARÉ : seule façon d'obtenir "json-lines".
+        c_table = C.charger(chemin=ecrire(tmp, '''[commandes.chat]
+argv = ["claude", "-p", "--output-format", "stream-json"]
+entree = "json-lines"
+
+[commandes.silencieux]
+argv = ["claude", "-p"]
+'''), racine_projet=tmp)
+        check("test_entree_table_json_lines_rendue",
+              c_table.entree("chat") == "json-lines")
+        check("test_commande_table_argv_resolu",
+              c_table.commande("chat") == ["claude", "-p", "--output-format", "stream-json"],
+              "obtenu %r" % c_table.commande("chat"))
+        check("test_entree_table_sans_champ_entree_vaut_aucune",
+              c_table.entree("silencieux") == "aucune",
+              "une table SANS `entree` doit retomber sur le défaut sûr, "
+              "PAS sur une absence de commande")
+        check("test_commande_table_silencieuse_argv_resolu",
+              c_table.commande("silencieux") == ["claude", "-p"])
+
+        # Mutation exigée (brief) : `entree` forcé à `"json-lines"` doit faire
+        # mourir un test « une commande sans déclaration reçoit `"aucune"` » —
+        # c'est exactement `test_entree_cle_absente_vaut_aucune` ci-dessus et
+        # celui-ci, sur une valeur explicitement invalide.
+        c_invalide = C.charger(chemin=ecrire(tmp, '''[commandes.casse]
+argv = ["ls"]
+entree = "texte-brut"
+'''), racine_projet=tmp)
+        check("test_entree_valeur_invalide_retombe_sur_aucune",
+              c_invalide.entree("casse") == "aucune",
+              "seuls 'aucune' et 'json-lines' sont acceptés, tout le reste "
+              "doit retomber sur le défaut SÛR")
+
+        # Table sans `argv` valide : pas une commande, `commande()` rend None,
+        # exactement comme une clé absente.
+        c_table_cassee = C.charger(
+            chemin=ecrire(tmp, '[commandes.vide]\nentree = "json-lines"\n'),
+            racine_projet=tmp)
+        check("test_commande_table_sans_argv_rend_none",
+              c_table_cassee.commande("vide") is None)
+        check("test_entree_table_sans_argv_reste_lisible",
+              c_table_cassee.entree("vide") == "json-lines",
+              "`entree` reste ce qui est DÉCLARÉ ; c'est `commande()` "
+              "(None) qui empêche tout lancement, ailleurs dans server.py")
+
+        # --- feature-022 (GATE P1 re-passage, S3.13) : `permissions_autorisees` -
+        c_permissions = C.charger(chemin=ecrire(tmp, '''[commandes]
+neutre = ["claude", "-p"]
+contournement = ["claude", "-p", "--dangerously-skip-permissions"]
+contournement_allow = ["claude", "-p", "--allow-dangerously-skip-permissions"]
+mode_bypass = ["claude", "-p", "--permission-mode=bypassPermissions"]
+contournement_egal_valeur = ["claude", "-p", "--dangerously-skip-permissions=true"]
+mode_bypass_casse = ["claude", "-p", "--permission-mode=BYPASSPERMISSIONS"]
+
+[garde_fous]
+commandes_sans_permissions = ["contournement"]
+'''), racine_projet=tmp)
+        check("test_permissions_autorisees_sans_drapeau_sensible",
+              c_permissions.permissions_autorisees("neutre") is True,
+              "une commande qui ne porte AUCUN drapeau sensible n'a besoin "
+              "de figurer dans aucune liste")
+        check("test_permissions_autorisees_drapeau_liste",
+              c_permissions.permissions_autorisees("contournement") is True)
+        check("test_permissions_refusees_drapeau_absent_de_la_liste",
+              c_permissions.permissions_autorisees("contournement_allow") is False,
+              "liste FERMÉE, VIDE par défaut : une clé absente REFUSE, même "
+              "si une AUTRE clé y figure")
+        check("test_permissions_refusees_bypass_par_sous_chaine",
+              c_permissions.permissions_autorisees("mode_bypass") is False,
+              "'bypassPermissions' cherché comme SOUS-CHAÎNE d'un token, pas "
+              "seulement comme token exact")
+        check("test_permissions_autorisees_cle_inconnue_est_vraie",
+              c_permissions.permissions_autorisees("n_existe_pas") is True,
+              "rien à autoriser : le 404 de clé inconnue prime, ailleurs")
+
+        # --- revue de code (feature-021, M1) : forme `--flag=valeur` ET casse
+        # différente doivent être reconnues comme le MÊME drapeau sensible —
+        # sinon la liste fermée se contourne par la FORME du token, pas son
+        # contenu (mesuré par le relecteur).
+        check("test_permissions_refusees_flag_egal_valeur_pas_liste",
+              c_permissions.permissions_autorisees("contournement_egal_valeur") is False,
+              "'--dangerously-skip-permissions=true' est le MÊME drapeau que "
+              "la forme nue, absente ici de commandes_sans_permissions -> refus")
+        check("test_permissions_refusees_bypass_casse_differente",
+              c_permissions.permissions_autorisees("mode_bypass_casse") is False,
+              "'BYPASSPERMISSIONS' doit être reconnu malgré la casse, comme "
+              "'bypassPermissions' l'est déjà")
+
+        c_sans_garde_fou = C.charger(
+            chemin=ecrire(tmp, '[commandes]\nx = ["claude", "-p", '
+                               '"--dangerously-skip-permissions"]\n'),
+            racine_projet=tmp)
+        check("test_permissions_defaut_vide_refuse",
+              c_sans_garde_fou.permissions_autorisees("x") is False,
+              "commandes_sans_permissions est VIDE par défaut : le serveur "
+              "ne desserre jamais rien tout seul")
+
         # --- accord des DEUX écrivains (bug-014, condition 5 du GATE P1) ----
         # `config.tetes_de_commande()` (via C.RC) et `server._lancer()` (via
         # SRV.RC) doivent appeler la MÊME fonction sur `" ".join(argv)` — sinon
@@ -375,6 +482,95 @@ commandes_avec_budget = ["tests", "deja_borne", "inconnue"]
               "config a rendu %r, server a rendu %r (attendu 'env' des deux "
               "côtés)" % (tete_config, tete_server))
 
+        # --- commande_pour_spec_id : placeholder DÉCLARÉ, ÉLÉMENT UNIQUE de
+        # l'argv (feature-025, GATE P1 S1.3 — `ADR-0005` amendé, pas révoqué)
+        c_spec = C.charger(chemin=ecrire(tmp, '''[commandes]
+avec_emplacement = ["claude", "-p", "{spec_id}", "--truc"]
+sans_emplacement = ["claude", "-p"]
+deux_emplacements = ["echo", "{spec_id}", "{spec_id}"]
+'''), racine_projet=tmp)
+        argv, erreur = c_spec.commande_pour_spec_id("avec_emplacement", "feature-025-x")
+        check("test_commande_pour_spec_id_substitue_un_element_unique",
+              erreur is None and argv == ["claude", "-p", "feature-025-x", "--truc"],
+              "obtenu argv=%r erreur=%r" % (argv, erreur))
+        # ⚠️ La CHAÎNE substituée ne doit JAMAIS être découpée en tokens : un
+        # `spec_id` contenant un espace doit rester UN SEUL élément de l'argv.
+        argv_espace, _ = c_spec.commande_pour_spec_id("avec_emplacement", "avec espace")
+        check("test_commande_pour_spec_id_jamais_de_decoupage",
+              argv_espace == ["claude", "-p", "avec espace", "--truc"]
+              and len(argv_espace) == 4,
+              "obtenu %r (4 éléments attendus, pas 5)" % argv_espace)
+
+        argv_none, erreur = c_spec.commande_pour_spec_id("sans_emplacement", "feature-025-x")
+        check("test_commande_pour_spec_id_sans_placeholder_400",
+              argv_none is None and erreur == (400, "commande sans emplacement déclaré pour spec_id"),
+              "obtenu %r" % (erreur,))
+
+        argv_double, erreur = c_spec.commande_pour_spec_id("deux_emplacements", "feature-025-x")
+        check("test_commande_pour_spec_id_deux_placeholders_400",
+              argv_double is None and erreur[0] == 400, "obtenu %r" % (erreur,))
+
+        argv_inconnue, erreur = c_spec.commande_pour_spec_id("cle_inexistante", "feature-025-x")
+        check("test_commande_pour_spec_id_cle_inconnue_404",
+              argv_inconnue is None and erreur == (404, "clé de commande inconnue"))
+
+        # --- feature-023 (GATE P1 S5.1/S5.6) : réglages de lecture des transcripts
+        c_defaut = C.charger(chemin=os.path.join(tmp, "absent6.toml"), racine_projet=tmp)
+        check("test_transcripts_racine_surcharge_absente_par_defaut",
+              c_defaut.transcripts_racine_surcharge() is None)
+        check("test_transcripts_budget_secondes_defaut", c_defaut.transcripts_budget_secondes() == 1.0)
+        check("test_transcripts_budget_octets_defaut", c_defaut.transcripts_budget_octets() == 20_000_000)
+
+        c_racine_absolue = C.charger(
+            chemin=ecrire(tmp, '[transcripts]\nracine = "/tmp/racine-declaree"\n'),
+            racine_projet=tmp)
+        check("test_transcripts_racine_surcharge_absolue_rendue",
+              c_racine_absolue.transcripts_racine_surcharge() == "/tmp/racine-declaree")
+
+        c_racine_relative = C.charger(
+            chemin=ecrire(tmp, '[transcripts]\nracine = "relatif/sous-repertoire"\n'),
+            racine_projet=tmp)
+        check("test_transcripts_racine_surcharge_relative_ignoree",
+              c_racine_relative.transcripts_racine_surcharge() is None,
+              "une racine relative ne peut pas remplacer un calcul de "
+              "confinement absolu — obtenu %r"
+              % c_racine_relative.transcripts_racine_surcharge())
+
+        for toml, nom in (
+            ('[transcripts]\nracine = ""\n', "test_transcripts_racine_vide_ignoree"),
+            ('[transcripts]\nracine = 42\n', "test_transcripts_racine_type_invalide_ignoree"),
+        ):
+            c = C.charger(chemin=ecrire(tmp, toml), racine_projet=tmp)
+            check(nom, c.transcripts_racine_surcharge() is None)
+
+        # `0` est une valeur VALIDE pour les deux budgets (S5.6 : « budget 0
+        # → champ partiel »), distincte d'une valeur absente ou invalide.
+        c_budget_zero = C.charger(
+            chemin=ecrire(tmp, "[transcripts]\nbudget_secondes = 0\nbudget_octets = 0\n"),
+            racine_projet=tmp)
+        check("test_transcripts_budget_secondes_zero_est_valide",
+              c_budget_zero.transcripts_budget_secondes() == 0.0)
+        check("test_transcripts_budget_octets_zero_est_valide",
+              c_budget_zero.transcripts_budget_octets() == 0)
+
+        for toml, nom in (
+            ("[transcripts]\nbudget_secondes = -1\n", "test_transcripts_budget_secondes_negatif_retombe"),
+            ('[transcripts]\nbudget_secondes = "vite"\n', "test_transcripts_budget_secondes_type_invalide_retombe"),
+            ("[transcripts]\nbudget_secondes = true\n", "test_transcripts_budget_secondes_booleen_retombe"),
+            ("[transcripts]\nbudget_secondes = nan\n", "test_transcripts_budget_secondes_nan_retombe"),
+            ("[transcripts]\nbudget_secondes = inf\n", "test_transcripts_budget_secondes_inf_retombe"),
+        ):
+            c = C.charger(chemin=ecrire(tmp, toml), racine_projet=tmp)
+            check(nom, c.transcripts_budget_secondes() == 1.0)
+
+        for toml, nom in (
+            ("[transcripts]\nbudget_octets = -1\n", "test_transcripts_budget_octets_negatif_retombe"),
+            ('[transcripts]\nbudget_octets = "beaucoup"\n', "test_transcripts_budget_octets_type_invalide_retombe"),
+            ("[transcripts]\nbudget_octets = true\n", "test_transcripts_budget_octets_booleen_retombe"),
+            ("[transcripts]\nbudget_octets = 1.5\n", "test_transcripts_budget_octets_flottant_retombe"),
+        ):
+            c = C.charger(chemin=ecrire(tmp, toml), racine_projet=tmp)
+            check(nom, c.transcripts_budget_octets() == 20_000_000)
 
     print("\n%d cas, %d echec(s)" % (_tests, len(_echecs)))
     for echec in _echecs:

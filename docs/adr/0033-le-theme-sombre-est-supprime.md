@@ -136,3 +136,19 @@ system.
   — « REFONDATION » du 2026-09-20, « Grandeurs mesurées » (lignes des fichiers
   perdant leur objet).
 - Bug absorbé au titre du contraste à remesurer : `specs/features/done/bug-016-*.md`.
+
+> **Note (2026-09-21)** : le lot 1 de `feature-021` a livré cette décision
+> avec un écart sur un point de mise en œuvre, sans revenir sur la décision
+> elle-même. Le tableau ci-dessus annonçait `control-center/web/theme.js`
+> **« retiré en entier »** ; le fichier livré est en réalité **modifié, pas
+> supprimé** (75 lignes → 57 lignes) : il ne pose plus `data-theme` ni ne
+> gère plus la bascule, mais il reste responsable de `data-section`, un rôle
+> distinct hérité de `feature-019` (persistance de la section active dans
+> `localStorage`, appliquée avant le premier rendu) qui n'a jamais dépendu du
+> thème et n'avait pas de raison de disparaître avec lui. Les autres lignes du
+> tableau (`test_app_theme.js`, `test_app_theme_navigateur.py`, les règles
+> `data-theme`/`prefers-color-scheme` dans `app.css`, les occurrences dans
+> `app.js`) sont retirées comme annoncé. Mesuré : suite de
+> `control-center/web/` à 1586 cas, 0 échec ; garde neuve
+> `test_conformite_theme_unique.{js,py}` (10 cas) qui échoue si `data-theme`
+> ou `@media (prefers-color-scheme: dark)` reviennent dans le code servi.

@@ -53,18 +53,9 @@ function duree(ms) {
   return texteDuree(ms, true);
 }
 
-/* Temps écoulé depuis `derniere_activite`, pour le SEUL registre « sans
- * clôture » (`etat` additif, bug-013/feature-010) : un segment mort depuis
- * des heures s'exprime en heures, jamais en minutes à quatre chiffres. */
-function dureeDepuisIso(iso) {
-  if (!iso) return null;
-  const debut = Date.parse(String(iso));
-  if (Number.isNaN(debut)) return null;
-  const ms = Date.now() - debut;
-  if (ms < 0) return null;
-  if (ms < 3600000) return Math.max(1, Math.round(ms / 60000)) + " min";
-  return Math.round(ms / 3600000) + " h";
-}
+/* `dureeDepuisIso` SUPPRIMÉE ICI (feature-028, lot C1) : ne servait plus
+ * que l'accordéon « Cycles » (registre « sans clôture », chaîne des
+ * segments), retiré entier — plus aucun appelant. */
 
 /* Le champ « Priorité » est du Markdown écrit à la main. Il arrivait brut dans
  * l'interface — « **Haute** — un crash n », « ~~Moyenne — fausse une » — avec
@@ -92,9 +83,10 @@ function nettoyerPriorite(brut) {
 /* ------------------------------------------------------- sigle d'agent ---
  * Deux lettres par rôle, déterministes et distinctes (feature-015 A7,
  * docs/DESIGN-SYSTEM.md §8). Livré par feature-015 SANS appelant ; feature-016
- * en est le premier — table des passages, désignation d'un cycle, et jetons
- * de couleur (`--a-<rôle>`/`--f-<rôle>`, app.css) appliqués au texte des
- * maillons (voir `construireIdentiteAgent`, `couleurIdentite` plus bas).
+ * en est le premier — table des passages, désignation d'un cycle et centre du
+ * disque d'agent (`.agent-code`, F8) le consomment. Plus de jeton de couleur
+ * par rôle (`--a-<rôle>`/`--f-<rôle>` retirés, ADR-0032) : seul le texte du
+ * sigle porte l'identité désormais (voir `construireIdentiteAgent`).
  *
  * Règle : les deux premières lettres du premier segment du nom, en
  * majuscules (« spec-reader » → SP, « security-reviewer » → SE). En cas de
@@ -161,66 +153,68 @@ function siglesAgents(nomsRoles) {
   return resultat;
 }
 
-/* ---------------------------------------------------------------- agents -- */
-function rendreAgents(agents) {
-  const liste = $("agents");
-  vider(liste);
-  if (!agents.length) {
-    /* État vide explicite, qui dit quoi faire (§8, feature-019) — pas une
-     * liste muette. */
-    liste.appendChild(el("li", "vide",
-      "aucun agent découvert — vérifiez que le dépôt déclare des agents "
-      + "sous .claude/agents/"));
-    $("note-agents").textContent = "";
-    return;
-  }
-  agents.forEach((agent) => {
-    const ligne = el("li", agent.actif_sur ? "actif" : "");
-    const gauche = el("div");
-    gauche.appendChild(el("span", "nom", agent.nom));
-    if (agent.actif_sur) gauche.appendChild(el("span", "plume", " ● en cours"));
-    ligne.appendChild(gauche);
-    const droite = el("div");
-    droite.appendChild(el("span", "modele", agent.modele || "—"));
-    droite.appendChild(el("span", "plume", agent.peut_ecrire ? " ✎" : " ·"));
-    ligne.appendChild(droite);
-    ligne.title = (agent.description || agent.nom) +
-      "\nOutils : " + (agent.outils.join(", ") || "—") +
-      (agent.peut_deleguer ? "\nPeut déléguer (Task)" : "\nNe peut pas déléguer (pas de Task)");
-    liste.appendChild(ligne);
-  });
-  $("note-agents").textContent =
-    agents.length + " agents découverts · ✎ = peut écrire";
+/* ------------------------------------------------------------- identité -- *
+ * feature-021, cycle 2, lot 7, GATE S4. `etat.identite` (backend, `vcs.py`
+ * `identite()`, SEULE source autorisée : `git config --get user.name`) est
+ * soit une chaîne non vide, soit `null`/absente (dépôt sans identité
+ * déclarée, ou `git` indisponible). AUCUNE fabrication ici : pas d'email,
+ * pas de nom d'utilisateur système — S4.1 l'interdit explicitement. */
+function initialesDepuisNom(nom) {
+  if (typeof nom !== "string") return null;
+  const mots = nom.trim().split(/\s+/).filter(Boolean);
+  if (!mots.length) return null;
+  const initiales = mots.length === 1
+    ? mots[0].slice(0, 2)
+    : mots[0].slice(0, 1) + mots[mots.length - 1].slice(0, 1);
+  return initiales.toUpperCase() || null;
 }
 
-/* --------------------------------------------------------------- système -- */
-/* Le suffixe « appliqué / non appliqué » vient du MÊME champ `ecriture_active`
- * que le badge d'en-tête (voir rendreBadgePilotage) — jamais d'une déduction
- * séparée sur `commandes_declarees.length` ou une constante. C'est le défaut
- * d'origine de ce module (app.js affichait les garde-fous comme s'ils étaient
- * en vigueur alors qu'aucun code ne les appliquait) ; le corriger ici sans
- * changer la source laisserait la moitié du mensonge intacte. */
-function rendreSysteme(etat) {
-  const dl = $("systeme");
-  vider(dl);
-  const suffixe = etat.ecriture_active ? "appliqué" : "non appliqué (lecture seule)";
-  const lignes = [
-    ["Dépôt", etat.git.depot ? (etat.git.branche || "?") : "absent", null],
-    ["Fichiers touchés", etat.git.touches.length, null],
-    ["Divergences", etat.divergences, null],
-    ["Workflows", etat.workflows.length, null],
-    ["Configuration", etat.config_lue ? "lue" : "défauts", null],
-    ["Commandes", etat.commandes_declarees.length, null],
-    ["Budget max", (etat.garde_fous.budget_max_usd ?? "—") + " $", suffixe],
-    ["Écrivains", etat.garde_fous.ecrivains_simultanes ?? "—", suffixe],
-  ];
-  lignes.forEach(([cle, valeur, suffixeLigne]) => {
-    dl.appendChild(el("dt", "", cle));
-    const dd = el("dd", "", valeur);
-    if (suffixeLigne) dd.appendChild(el("span", "suffixe-ecriture", " · " + suffixeLigne));
-    dl.appendChild(dd);
-  });
+/* S4.2 : initiales dérivées CÔTÉ CLIENT du nom réel — jamais une image
+ * externe (la CSP `img-src 'self' data:` n'est pas assouplie pour ce lot).
+ * S4.5 : `account-button` reste `aria-disabled`, n'appelle jamais aucune
+ * route — cette fonction ne fait que POSER du texte, aucun `fetch`. Identité
+ * ABSENTE : dégradation avec motif, JAMAIS un nom inventé (règle absolue
+ * n°1, jamais de fabrication de données personnelles). */
+function rendreIdentite(etat) {
+  const identite = typeof etat.identite === "string" && etat.identite.trim()
+    ? etat.identite.trim() : null;
+  const avatar = $("avatar");
+  const nomAffiche = $("user-name");
+  const bouton = $("account-button");
+  if (identite) {
+    avatar.textContent = initialesDepuisNom(identite) || "…";
+    nomAffiche.textContent = identite;
+    bouton.setAttribute("aria-label",
+      "Compte de " + identite + " — aucune action de compte disponible depuis l'interface");
+  } else {
+    avatar.textContent = "?";
+    nomAffiche.textContent = "Identité inconnue";
+    bouton.setAttribute("aria-label",
+      "Compte — identité non disponible, aucune action de compte disponible depuis l'interface");
+  }
 }
+
+/* ---------------------------------------------------------------- agents --
+ * `rendreAgents`/`#agents` SUPPRIMÉS (U1 de feature-021, feature-028 lot A1) :
+ * la section « Agents » du DOM a disparu entière. `etat.agents[].actif_sur`
+ * reste lu ailleurs (compte « agents actifs » de la bande de résumé) — ce
+ * n'est pas le rendu de liste qui disparaît, c'est la liste elle-même. */
+
+/* ---------------------------------------------------------------- système --
+ * `rendreSysteme`/`#systeme` SUPPRIMÉS (feature-028, décision humaine du
+ * 2026-09-23 : « Supprime système. Je ne souhaite pas que ça aille
+ * ailleurs. » — AU-DELÀ de U1 de feature-021, qui demandait une migration
+ * jamais réalisée). Dépôt/Fichiers touchés dupliqués dans `.repo-strip`
+ * (voir `rendreGrapheCyclePrincipal`) ; Divergences dupliquée dans
+ * `#compteur-specs` (voir plus bas). ⚠️ Budget max/Écrivains, dupliqués à
+ * l'origine dans `rendreNotePlafondPilotage`, et Workflows, dupliqué à
+ * l'origine dans `#legende-cycles`/`rendreCycles`, ont PERDU ce second
+ * porteur à leur tour (feature-028, lots C1/pilotage dédié — accordéon
+ * « Cycles » puis panneau « Piloter par clé » retirés entiers) : ces deux
+ * informations ne sont plus affichées NULLE PART. « Configuration :
+ * lue/défauts » n'a jamais eu de doublon — information perdue, signalée
+ * dans le rapport du lot, pas migrée (la spec l'interdit sans destination
+ * réelle). */
 
 /* ---------------------------------------------------------------- kanban -- */
 let dernierEtat = null;
@@ -232,9 +226,35 @@ function specCorrespond(spec, terme, divergencesSeules) {
   return champs.some((c) => c && String(c).toLowerCase().indexOf(terme) !== -1);
 }
 
+/* F10 (feature-021, cycle 2, lot 5) — grille M3 `kanban-grid`/`kanban-column`/
+ * `feature-card`, lue depuis `etat.colonnes` (ADR-0003) : jamais figée à
+ * Todo/Doing/Done, une configuration qui renomme ou réordonne ses colonnes
+ * change le rendu SANS toucher à ce fichier. `colonne.classe` (déclaré par
+ * `config.py`, PAS un nom choisi ici) porte le double rôle de sélecteur CSS
+ * (`kanban-column column-<classe>`) et de clé de filtrage des specs — c'est
+ * la MÊME donnée aux deux endroits, jamais recopiée.
+ *
+ * Remplace l'ancien rendu `.colonne`/`.carte` (feature-008) : les classes
+ * qu'il posait n'existent plus nulle part ailleurs dans ce fichier — les
+ * règles CSS correspondantes sont retirées d'`app.css` dans le même lot
+ * (sinon F3b, qui vérifie qu'aucune classe déclarée ne reste sans porteur,
+ * les trouverait orphelines). */
 function rendreKanban(etat) {
-  const kanban = $("kanban");
-  vider(kanban);
+  const grille = $("kanban");
+  vider(grille);
+  /* F12 : cas limite non traité par la maquette — aucune colonne déclarée
+   * (config absente ou vide). État vide explicite, jamais une grille
+   * silencieusement blanche. */
+  if (!etat.colonnes || !etat.colonnes.length) {
+    grille.appendChild(el("p", "vide",
+      "aucune colonne déclarée — vérifiez [colonnes] dans control-center.toml"));
+    $("compteur-specs").textContent = "0 spec";
+    const compteBacklogVide = $("backlog-count");
+    if (compteBacklogVide) compteBacklogVide.textContent = "0 spec";
+    const compteColonnesVide = $("backlog-column-count");
+    if (compteColonnesVide) compteColonnesVide.textContent = "0 colonne";
+    return;
+  }
   const terme = ($("filtre").value || "").trim().toLowerCase();
   const divergencesSeules = $("filtre-divergences").checked;
   let affichees = 0;
@@ -244,110 +264,145 @@ function rendreKanban(etat) {
     const specs = toutes.filter((s) => specCorrespond(s, terme, divergencesSeules));
     affichees += specs.length;
 
-    const bloc = el("div", "colonne");
-    const entete = el("div", "colonne-entete");
-    entete.appendChild(el("span", "", colonne.libelle));
+    const section = el("section", "kanban-column column-" + colonne.classe);
+    const titre = el("div", "column-title");
+    const label = el("span", "column-label");
+    label.appendChild(el("i"));
+    label.appendChild(document.createTextNode(colonne.libelle));
+    titre.appendChild(label);
     /* Quand un filtre est actif, on montre les DEUX nombres : cacher le total
      * ferait croire que la colonne a rétréci. */
-    entete.appendChild(el("span", "",
+    titre.appendChild(el("span", "",
       specs.length === toutes.length ? String(toutes.length)
                                      : specs.length + " / " + toutes.length));
-    bloc.appendChild(entete);
+    section.appendChild(titre);
 
-    const liste = el("div", "colonne-liste");
+    /* feature-025 (lots 9-10) : la MÊME position que `gestion_spec.
+     * role_colonne()` (ADR-0003 — jamais un nom de colonne codé en dur)
+     * décide ce qu'une carte de CETTE colonne peut proposer : lancer et
+     * supprimer seulement en première colonne, modifier partout sauf la
+     * dernière (close/immuable, GATE P1 S2.2). */
+    const role = roleColonneClient(etat, colonne.classe);
+    const eligibleLancement = role === "premiere";
+    const eligibleModification = role !== "derniere";
+    const eligibleSuppression = role === "premiere";
+
     specs.forEach((spec) => {
-      const carte = el("button", "carte" + (spec.divergence ? " divergente" : ""));
-      carte.type = "button";
-      carte.appendChild(el("div", "cid", spec.id));
-      if (spec.titre && spec.titre !== spec.id) {
-        carte.appendChild(el("div", "ctitre", spec.titre));
-      }
-      const bas = el("div", "cbas");
-      if (spec.divergence) {
-        const badge = el("span", "etiquette divergence", "≠ " + colonne.libelle);
-        /* Le statut brut est affiché TEL QUEL en infobulle, jamais réécrit :
-         * c'est une phrase écrite par un humain, pas un jeton. */
-        badge.title = "Le fichier annonce : " + (spec.statut_texte || "");
-        bas.appendChild(badge);
-      }
+      const carte = el("article", "feature-card");
+      carte.setAttribute("data-feature-id", spec.id);
+
+      /* `.more-button` (⋮) — ouvre `#context-menu`, markup repris du
+       * prototype l.774. `data-*` posés par `setAttribute`, jamais
+       * `.dataset` (absent du bac à sable `vm` de ce module). */
+      const plus = el("button", "more-button");
+      plus.type = "button";
+      plus.setAttribute("aria-label", "Actions pour " + spec.id);
+      plus.setAttribute("aria-haspopup", "menu");
+      plus.setAttribute("aria-controls", "context-menu");
+      plus.setAttribute("aria-expanded", "false");
+      plus.setAttribute("data-menu-for", spec.id);
+      plus.setAttribute("data-launchable", eligibleLancement ? "true" : "false");
+      plus.setAttribute("data-editable", eligibleModification ? "true" : "false");
+      plus.setAttribute("data-supprimable", eligibleSuppression ? "true" : "false");
+      /* GATE C3 (feature-028) : `etat.lancement_spec_id` est le `spec_id`
+       * que LE SERVEUR a mémorisé sur le lancement COURANT (voir le
+       * commentaire de `rendreGrapheCyclePrincipal` sur ce même champ) —
+       * jamais une corrélation reconstruite. Une seule carte peut donc
+       * porter `data-interrompable="true"` à la fois.
+       * ⚠️ M2 (revue de code, feature-028) : CAPACITÉ RETIRÉE SOUS CONDITION
+       * DE CONFIGURATION, pas une décision de conception — `lancement_spec_id`
+       * (server.py, `do_GET`) est SINGULIER : avec `ecrivains_simultanes > 1`
+       * dans `control-center.toml`, il ne porte que le PREMIER lancement actif
+       * trouvé parmi `lancements_actifs()`. Un second lancement, sur une autre
+       * carte, ne recevra JAMAIS `data-interrompable="true"` — et depuis le
+       * retrait du bouton générique « Interrompre » (panneau Pilotage), il
+       * devient ALORS inatteignable depuis l'interface, sans qu'aucune erreur
+       * ne le signale. Valeur par défaut `ecrivains_simultanes = 1` : ça ne se
+       * manifeste pas aujourd'hui. Si ce plafond est un jour relevé, cette
+       * carte doit exposer TOUS les `spec_id` de `lancements_actifs()` (champ
+       * serveur pluriel à ajouter, hors du périmètre frontend de ce lot) —
+       * ne pas relever le plafond sans le faire. */
+      plus.setAttribute("data-interrompable",
+        etat.lancement_spec_id === spec.id ? "true" : "false");
+      const plusIcone = el("span", "", "⋮");
+      plusIcone.setAttribute("aria-hidden", "true");
+      plus.appendChild(plusIcone);
+      plus.addEventListener("click", (evenement) => {
+        if (evenement && typeof evenement.stopPropagation === "function") evenement.stopPropagation();
+        ouvrirMenuContextuel(plus, spec.id);
+      });
+      carte.appendChild(plus);
+
+      const entete = el("h3");
+      const titreBouton = el("button", "card-title-button",
+        spec.titre && spec.titre !== spec.id ? spec.id + " · " + spec.titre : spec.id);
+      titreBouton.type = "button";
+      titreBouton.addEventListener("click", () => ouvrirDetailFeature(spec.id));
+      entete.appendChild(titreBouton);
+      carte.appendChild(entete);
+
+      /* `.progress-track` — ADOPTÉE REDÉFINIE (K4, table F0) : PAS un
+       * pourcentage, l'ÉTAT DE COLONNE (voir app.css pour la justification
+       * complète). Décoratif : `aria-hidden`, aucun `aria-valuenow`. */
+      const piste = el("div", "progress-track etat-" + (role || "intermediaire"));
+      piste.setAttribute("aria-hidden", "true");
+      piste.appendChild(el("i"));
+      carte.appendChild(piste);
+
+      const bas = el("div", "card-footer");
       const priorite = nettoyerPriorite(spec.priorite);
       if (priorite) {
         const p = priorite.toLowerCase();
-        const classe = p.indexOf("critique") === 0 ? "priorite-critique"
-          : p.indexOf("haute") === 0 ? "priorite-haute" : "";
-        const etiquette = el("span", "etiquette " + classe, priorite);
+        const estHaute = p.indexOf("critique") === 0 || p.indexOf("haute") === 0;
+        const etiquette = el("span", estHaute ? "priority-high" : "", priorite);
         etiquette.title = "Priorité, telle qu'écrite : " + spec.priorite;
         bas.appendChild(etiquette);
+      } else {
+        bas.appendChild(el("span"));
       }
-      if (bas.childNodes.length) carte.appendChild(bas);
-      carte.addEventListener("click", () => ouvrirSpec(spec.id));
-      liste.appendChild(carte);
+      if (spec.divergence) {
+        /* Jamais la seule couleur (§8, docs/DESIGN-SYSTEM.md) : le glyphe
+         * « ≠ » et le texte portent le signal, `.divergence-flag` ne fait que
+         * l'accentuer. Le statut brut est en infobulle TEL QUEL, jamais
+         * réécrit : c'est une phrase écrite par un humain, pas un jeton. */
+        const badge = el("span", "divergence-flag", "≠ " + colonne.libelle);
+        badge.title = "Le fichier annonce : " + (spec.statut_texte || "");
+        bas.appendChild(badge);
+      }
+      carte.appendChild(bas);
+      section.appendChild(carte);
     });
     if (!specs.length) {
-      liste.appendChild(el("div", "vide", toutes.length ? "aucune ne correspond" : "aucune"));
+      section.appendChild(el("p", "vide", toutes.length ? "aucune ne correspond" : "aucune"));
     }
-    bloc.appendChild(liste);
-    kanban.appendChild(bloc);
+    grille.appendChild(section);
   });
 
   const filtre_actif = terme || divergencesSeules;
-  $("compteur-specs").textContent =
-    (filtre_actif ? affichees + " sur " + etat.specs.length + " specs"
-                  : etat.specs.length + " specs") +
-    " · " + etat.divergences + " divergence" + (etat.divergences > 1 ? "s" : "") +
+  const resumeSpecs = filtre_actif ? affichees + " sur " + etat.specs.length + " specs"
+                                    : etat.specs.length + " specs";
+  const resumeDivergences = etat.divergences + " divergence" + (etat.divergences > 1 ? "s" : "") +
     " répertoire / champ Statut";
+  /* Une seule mesure (`resumeSpecs`/`resumeDivergences`), postée sur DEUX
+   * porteurs (`#compteur-specs`, existant, et `#backlog-count`, adopté F0
+   * mais laissé décoratif jusqu'ici) : pas une seconde source de vérité,
+   * la même phrase à deux endroits du DOM (§ « Pas de duplication d'état »). */
+  $("compteur-specs").textContent = resumeSpecs + " · " + resumeDivergences;
+  const compteBacklog = $("backlog-count");
+  if (compteBacklog) compteBacklog.textContent = resumeSpecs + " · " + resumeDivergences;
+  const compteColonnes = $("backlog-column-count");
+  if (compteColonnes) {
+    compteColonnes.textContent = etat.colonnes.length + " colonne" + (etat.colonnes.length > 1 ? "s" : "");
+  }
 }
 
-/* ------------------------------------------------------------- workflows -- */
-/* Ancrage visuel du rebouclage dans la chaîne (feature-010, §8) : un agent qui
- * réapparaît APRÈS qu'un AUTRE sous-agent l'a suivi. On ignore l'agent
- * principal dans ce calcul : il s'intercale entre chaque appel de sous-agent
- * par construction (c'est lui qui orchestre), sa présence seule ne signale
- * donc rien — c'est un AUTRE sous-agent intercalé qui distingue un vrai
- * rebouclage d'un enchaînement normal. Aucun appel réseau : tout vient de
- * `segments[]`, déjà transmis. */
-function indicesRepris(segments) {
-  const indices = new Set();
-  const sousAgents = [];
-  segments.forEach((segment, index) => {
-    if (segment.type !== "principal") sousAgents.push({ agent: segment.agent, index });
-  });
-  const dernierePosition = new Map();
-  sousAgents.forEach((entree, position) => {
-    const precedente = dernierePosition.get(entree.agent);
-    if (precedente !== undefined && position - precedente > 1) indices.add(entree.index);
-    dernierePosition.set(entree.agent, position);
-  });
-  return indices;
-}
-
-/* --------------------------------------------------------- identité d'agent
- * feature-016 : PREMIER appelant de `sigleAgent`/`siglesAgents` (ci-dessus) et
- * des jetons `--a-<rôle>`/`--f-<rôle>` (app.css, §2 du design system). Repli
- * achromatique (`neutre`) pour tout rôle sans teinte assignée — jamais une
- * teinte d'agent recyclée (ADR-0022). Précédence identité/état (§8) : cette
- * couleur ne va JAMAIS sur un contour ou une forme porteurs d'état, toujours
- * sur du texte ou un sigle qui porte une identité. */
-const ROLES_TEINTES = new Set([
-  "backend-developer", "security-reviewer", "test-engineer", "spec-reader",
-  "code-reviewer", "debugger", "doc-writer", "frontend-developer",
-]);
-function jetonIdentite(nomRole) { return ROLES_TEINTES.has(nomRole) ? nomRole : "neutre"; }
-function couleurIdentite(nomRole) { return "var(--a-" + jetonIdentite(nomRole) + ")"; }
-function remplissageIdentite(nomRole) { return "var(--f-" + jetonIdentite(nomRole) + ")"; }
-
-function construireIdentiteAgent(nom, sigles) {
-  const enveloppe = document.createDocumentFragment();
-  const sigle = el("span", "agent-sigle", (sigles && sigles.get(nom)) || "??");
-  sigle.style.color = couleurIdentite(nom);
-  sigle.style.background = remplissageIdentite(nom);
-  sigle.setAttribute("aria-hidden", "true");
-  const nomSpan = el("span", "agent-nom", nom);
-  nomSpan.style.color = couleurIdentite(nom);
-  enveloppe.appendChild(sigle);
-  enveloppe.appendChild(nomSpan);
-  return enveloppe;
-}
+/* ------------------------------------------------------------- workflows --
+ * `indicesRepris`/`construireIdentiteAgent` SUPPRIMÉES ICI (feature-028, lot
+ * C1) : elles ne servaient plus que l'accordéon « Cycles » (`rendreCycles`,
+ * ci-dessous), retiré entier — voir le commentaire au-dessus de son ancienne
+ * définition pour la décision et ce qui est PERDU (propriétés agrégées,
+ * chaîne textuelle des segments). `.agent-sigle`/`.agent-nom` (CSS)
+ * retirées avec elles, plus aucun producteur. */
 
 /* ------------------------------------------------------------ état — cycle
  * Tableau arrêté à QUATRE cases (feature-016), une seule teinte vive
@@ -362,15 +417,10 @@ const ETATS_CYCLE = {
 };
 function descripteurEtat(cle) { return ETATS_CYCLE[cle] || ETATS_CYCLE.indetermine; }
 
-function construireBadgeEtat(cle) {
-  const info = descripteurEtat(cle);
-  const badge = el("span", "cycle-etat " + info.classe);
-  const glyphe = el("span", "glyphe", info.glyphe);
-  glyphe.setAttribute("aria-hidden", "true");
-  badge.appendChild(glyphe);
-  badge.appendChild(document.createTextNode(" " + info.libelle));
-  return badge;
-}
+/* `construireBadgeEtat` SUPPRIMÉE ICI (feature-028, lot C1) : ne servait
+ * plus que l'en-tête de l'accordéon « Cycles », retiré entier. `.cycle-etat`
+ * (CSS) retirée avec elle. `descripteurEtat`/`ETATS_CYCLE` RESTENT : lus
+ * ailleurs (`#cycle-status`, `rendreGrapheCyclePrincipal`). */
 
 /* Dérivation de l'état d'un CYCLE (feature-016) — lit UNIQUEMENT `passages`
  * (les sous-agents) : le segment principal a `termine: true` par construction
@@ -387,29 +437,8 @@ function etatCycle(wf) {
   return "indetermine";
 }
 
-function idCycleDom(workflowId) {
-  /* workflow_id assaini avant usage en id HTML (item B) : format
-   * `<session_id>#<indice>`, le `#` et tout caractère hors [A-Za-z0-9_-]
-   * remplacés. */
-  return "cycle-" + String(workflowId).replace(/[^A-Za-z0-9_-]/g, "-");
-}
-
-/* Désignation d'un cycle (feature-016) — N'INVENTE AUCUN NOM : la donnée
- * « nom de spec » n'existe pas dans le journal. Trois formes seulement,
- * toutes dérivées de champs réellement présents. */
-function construireDesignation(wf, sigles) {
-  const frag = document.createDocumentFragment();
-  frag.appendChild(document.createTextNode(heure(wf.debut) + " — "));
-  if (wf.bornage === "marqueur-agent" && wf.borne_par) {
-    frag.appendChild(document.createTextNode("ouvert par "));
-    frag.appendChild(construireIdentiteAgent(wf.borne_par, sigles));
-  } else if (wf.bornage === "avant-premier-marqueur") {
-    frag.appendChild(document.createTextNode("avant le premier repère"));
-  } else {
-    frag.appendChild(document.createTextNode("session entière"));
-  }
-  return frag;
-}
+/* `idCycleDom`/`construireDesignation` SUPPRIMÉES ICI (feature-028, lot C1) :
+ * ne servaient plus que l'accordéon « Cycles », retiré entier. */
 
 function dureeIso(debutIso, finIso) {
   if (!debutIso || !finIso) return null;
@@ -420,358 +449,34 @@ function dureeIso(debutIso, finIso) {
   return ms >= 0 ? ms : null;
 }
 
-function construireResume(wf) {
-  const n = (wf.passages || []).length;
-  const d = duree(dureeIso(wf.debut, wf.fin_observee));
-  const ecoule = dureeDepuisIso(wf.fin_observee);
-  const morceaux = [n + " agent" + (n > 1 ? "s" : ""), d !== null ? d : "durée inconnue"];
-  if (ecoule) morceaux.push("il y a " + ecoule);
-  return morceaux.join(" · ");
-}
+/* `construireResume`/`cycleOuvert`/`construireEnteteCycle`/`construireProprietes`/`construireChaineEtNotes` SUPPRIMÉES ICI
+ * (feature-028, lot C1) : c'était l'accordéon « Cycles » tout entier —
+ * décision humaine 1B, 2026-09-23 : « L'accordéon est retiré, ses deux
+ * informations sont PERDUES » (propriétés agrégées du cycle : outils,
+ * fichiers écrits, rebouclages, agents simultanés ; et la chaîne
+ * textuelle des segments). Retrait ASSUMÉ, même forme que le retrait des
+ * diffs (feature-028, décision humaine du 2026-09-23) — pas une
+ * migration, pas un oubli.
+ * ⚠️ EFFET DE BORD non couvert par la décision 1B, signalé plutôt
+ * qu'inventé : la légende (« N sur M cycles affichés ») et le pied
+ * (« N événement(s) sans session associée ») de l'accordéon
+ * disparaissent AVEC lui — ce bornage n'est affiché NULLE PART ailleurs
+ * du DOM. `.cycles`/`.cycle-entete`/`.cycle-bouton`/`.cycle-designation`/
+ * `.cycle-resume`/`.cycle-detail`/`.cycle-proprietes`/`.chaine`/
+ * `.maillon`/`.fleche`/`.wf-notes` (CSS) retirées avec elles. */
 
-/* Dépliement exclusif (item C) : préférence d'affichage LOCALE, tenue HORS
- * DOM (clé = `workflow_id`) — elle survit à `vider()` + reconstruction
- * complète du sous-arbre à chaque rafraîchissement. `null` = tout replié
- * (un ré-clic sur l'en-tête ouvert le referme). */
-/* `null` seulement AVANT le tout premier rendu (aucun cycle encore vu) —
- * une fois un cycle affiché, un et un seul reste toujours ouvert : le
- * design (§6) décrit un dépliement EXCLUSIF, jamais un repli total, et
- * `rendreCycles` retombe de toute façon sur le plus récent si `cycleOuvert`
- * ne correspond plus à rien d'affiché. Autoriser le repli complet ferait
- * réapparaître le cycle par défaut au rafraîchissement suivant sans que
- * rien ne le signale — un aller-retour silencieux, pas un choix retenu. */
-let cycleOuvert = null;
-
-function construireEnteteCycle(wf, sigles, ouvert) {
-  const h3 = el("h3", "cycle-entete");
-  const bouton = el("button", "cycle-bouton");
-  bouton.type = "button";
-  const idBouton = idCycleDom(wf.workflow_id) + "-bouton";
-  const idDetail = idCycleDom(wf.workflow_id) + "-detail";
-  bouton.id = idBouton;
-  bouton.setAttribute("aria-expanded", ouvert ? "true" : "false");
-  bouton.setAttribute("aria-controls", idDetail);
-  bouton.appendChild(construireBadgeEtat(etatCycle(wf)));
-  const designation = el("span", "cycle-designation");
-  designation.appendChild(construireDesignation(wf, sigles));
-  bouton.appendChild(designation);
-  bouton.appendChild(el("span", "cycle-resume", construireResume(wf)));
-  bouton.addEventListener("click", () => {
-    /* Ré-cliquer l'en-tête déjà ouvert ne fait rien : « un seul cycle visible
-     * à la fois » (§6), jamais zéro — voir le commentaire sur `cycleOuvert`. */
-    if (cycleOuvert === wf.workflow_id) return;
-    cycleOuvert = wf.workflow_id;
-    rendreCycles(dernierEtat);
-  });
-  h3.appendChild(bouton);
-  return { h3, idBouton, idDetail };
-}
-
-/* Bloc de propriétés (item D) — chaque valeur RELIT une donnée déjà calculée,
- * n'invente aucun compte. « Agents simultanés » lit `imbrication_suspectee`
- * tel quel : c'est une SUSPICION, jamais un dénombrement (le journal ne
- * permet pas de compter des agents réellement concurrents). */
-function construireProprietes(wf) {
-  const dl = el("dl", "cycle-proprietes");
-  const ajouter = (cle, valeur) => {
-    dl.appendChild(el("dt", "", cle));
-    dl.appendChild(el("dd", "", valeur));
-  };
-  const info = descripteurEtat(etatCycle(wf));
-  ajouter("Statut", info.glyphe + " " + info.libelle);
-  const d = duree(dureeIso(wf.debut, wf.fin_observee));
-  ajouter("Durée", d !== null ? d : "inconnue");
-  const segments = wf.segments || wf.passages || [];
-  const outils = segments.reduce((total, s) => total + (s.outils || 0), 0);
-  ajouter("Appels d'outils", outils);
-  ajouter("Fichiers écrits", (wf.fichiers || []).length);
-  ajouter("Rebouclages", indicesRepris(wf.passages || []).size);
-  ajouter("Agents simultanés", wf.imbrication_suspectee ? "suspectés" : "aucun");
-  return dl;
-}
-
-/* Table des passages (item F) — agent, début, durée, outils, fichiers, état.
- * Au-delà de 40 lignes (item M, pire cas mesuré : 297), les plus anciennes
- * sont repliées via `hidden`, JAMAIS retirées du DOM. */
-const LIMITE_PASSAGES_VISIBLES = 40;
-
-function construireLignePassage(passage, sigles, repris) {
-  const tr = el("tr", repris ? "repris" : "");
-  const tdAgent = el("td");
-  const colonne = el("div", "colonne-agent");
-  colonne.appendChild(construireIdentiteAgent(passage.agent, sigles));
-  tdAgent.appendChild(colonne);
-  tr.appendChild(tdAgent);
-  tr.appendChild(el("td", "", heure(passage.debut)));
-  const d = duree(passage.duree_ms);
-  tr.appendChild(el("td", "", d !== null ? d : (passage.termine ? "durée invalide" : "en cours")));
-  tr.appendChild(el("td", "", passage.outils || 0));
-  tr.appendChild(el("td", "", (passage.fichiers || []).length));
-  const tdEtat = el("td");
-  tdEtat.appendChild(construireBadgeEtat(passage.etat));
-  tr.appendChild(tdEtat);
-  return tr;
-}
-
-function construireTablePassages(wf, sigles) {
-  const passages = wf.passages || [];
-  const enveloppe = document.createDocumentFragment();
-  if (!passages.length) {
-    /* Cas limite L : un cycle sans agent typé ne disparaît pas en silence. */
-    enveloppe.appendChild(el("p", "vide", "aucun agent typé n'est apparu dans ce cycle"));
-    return enveloppe;
-  }
-  const reprisesIdx = indicesRepris(passages);
-  const excedent = Math.max(0, passages.length - LIMITE_PASSAGES_VISIBLES);
-  const lignesRepliees = [];
-
-  const table = el("table", "table-passages");
-  const thead = document.createElement("thead");
-  const trEntete = document.createElement("tr");
-  ["Agent", "Début", "Durée", "Outils", "Fichiers", "État"].forEach((libelle) => {
-    trEntete.appendChild(el("th", "", libelle));
-  });
-  thead.appendChild(trEntete);
-  table.appendChild(thead);
-  const tbody = document.createElement("tbody");
-  passages.forEach((passage, index) => {
-    const ligne = construireLignePassage(passage, sigles, reprisesIdx.has(index));
-    if (excedent > 0 && index < excedent) {
-      ligne.hidden = true;
-      lignesRepliees.push(ligne);
-    }
-    tbody.appendChild(ligne);
-  });
-  table.appendChild(tbody);
-
-  if (excedent > 0) {
-    let ouvert = false;
-    const bouton = el("button", "pilotage-secondaire action-repli",
-      "Afficher les " + excedent + " passages plus anciens");
-    bouton.type = "button";
-    bouton.setAttribute("aria-expanded", "false");
-    bouton.addEventListener("click", () => {
-      ouvert = !ouvert;
-      lignesRepliees.forEach((ligne) => { ligne.hidden = !ouvert; });
-      bouton.textContent = ouvert
-        ? "Masquer les " + excedent + " passages plus anciens"
-        : "Afficher les " + excedent + " passages plus anciens";
-      bouton.setAttribute("aria-expanded", ouvert ? "true" : "false");
-    });
-    enveloppe.appendChild(bouton);
-  }
-  enveloppe.appendChild(table);
-  return enveloppe;
-}
-
-/* Chaîne des segments + notes (item E) — placeholder du diagramme visuel de
- * feature-017 : conservé À L'IDENTIQUE (aucune information perdue), les
- * libellés et infobulles ne changent pas. Seule modification (item H) : le
- * texte du maillon (`.mnom`) porte désormais l'identité de l'agent — l'état
- * reste au contour (CSS), jamais recoloré par-dessus. */
-function construireChaineEtNotes(wf) {
-  const enveloppe = document.createDocumentFragment();
-
-  /* La chaîne montre les SEGMENTS, agent principal compris. Sans lui, elle
-   * racontait un workflow plus creux qu'il n'est : sur un relevé réel, 108
-   * des 110 appels d'outils lui appartenaient et n'apparaissaient nulle part. */
-  const segments = wf.segments || wf.passages || [];
-  /* Seule source de vérité pour un VRAI rebouclage : un autre sous-agent
-   * intercalé entre deux passages du même agent (voir `indicesRepris`
-   * ci-dessus). `wf.reprises` ne fait que NOMMER les agents et leur
-   * compte pour le libellé — il ne décide plus, seul, de l'affichage :
-   * il comptait aussi une simple réapparition après l'agent principal,
-   * un enchaînement normal, comme un rebouclage. */
-  const reprisesChaine = indicesRepris(segments);
-  if (segments.length) {
-    const chaine = el("div", "chaine");
-    segments.forEach((segment, index) => {
-      if (index) chaine.appendChild(el("span", "fleche", "→"));
-      let classe = "maillon";
-      if (segment.type === "principal") classe += " principal";
-      /* `etat` est additif (bug-013) : sur un backend plus ancien, il est
-       * absent — on retombe alors sur le SEUL signal disponible avant lui
-       * (`termine`), jamais sur une affirmation nouvelle par défaut. */
-      const sansCloture = segment.etat === "sans_cloture";
-      if (sansCloture) classe += " sans-cloture";
-      else if (segment.etat === "en_cours") classe += " en-cours";
-      else if (segment.etat === undefined && !segment.termine) classe += " en-cours";
-      /* Jamais cumulée avec `.sans-cloture` : une fin sans annonce n'est ni
-       * un succès ni un échec du travail, l'accusation visuelle (bordure
-       * rouille, marqueur ✕) n'a pas sa place dessus. */
-      if (segment.echecs && !sansCloture) classe += " echec";
-      if (reprisesChaine.has(index)) classe += " repris";
-      const maillon = el("span", classe);
-      const mnom = el("span", "mnom", segment.agent);
-      /* Identité (item H, §8) : jamais sur le segment principal, qui garde
-       * son propre registre visuel (`.principal .mnom`, fond creusé + italique). */
-      if (segment.type !== "principal") mnom.style.color = couleurIdentite(segment.agent);
-      maillon.appendChild(mnom);
-      if (sansCloture) {
-        const ecoule = dureeDepuisIso(segment.derniere_activite);
-        maillon.appendChild(el("span", "mduree",
-          "⋯ fin non observée depuis " + (ecoule || "un temps inconnu")));
-      } else {
-        const d = duree(segment.duree_ms);
-        maillon.appendChild(el("span", "mduree",
-          d !== null ? d : (segment.termine ? "durée invalide" : "en cours")));
-      }
-      const detail = [];
-      if (segment.type === "principal" && segment.outils) detail.push(segment.outils + " outils");
-      if (segment.fichiers && segment.fichiers.length) detail.push(segment.fichiers.length + " fich.");
-      if (detail.length) maillon.appendChild(el("span", "mduree", detail.join(" · ")));
-      if (segment.echecs && !sansCloture) maillon.appendChild(el("span", "mduree", "✕" + segment.echecs));
-      maillon.title = segment.type === "principal"
-        ? "Agent principal — la session Claude Code elle-même, entre deux "
-          + "sous-agents.\nC'est elle qui orchestre : elle lit, écrit, lance "
-          + "les commandes et invoque les agents.\n"
-          + (segment.fichiers || []).join("\n")
-        : "Sous-agent " + segment.agent + "\n" + (segment.fichiers || []).join("\n");
-      chaine.appendChild(maillon);
-    });
-    enveloppe.appendChild(chaine);
-  }
-
-  const notes = [];
-  if (wf.commandes && Object.keys(wf.commandes).length) {
-    notes.push("commandes : " + Object.keys(wf.commandes)
-      .map((c) => c + " ×" + wf.commandes[c]).join(", "));
-  }
-  if (notes.length) enveloppe.appendChild(el("div", "wf-notes", notes.join(" · ")));
-
-  /* Le rebouclage a sa propre bande, distincte d'un enchaînement normal
-   * (feature-010, §8) : `wf.reprises` était affiché comme une ligne de
-   * texte neutre, indiscernable des autres notes. `.repris` sur les
-   * maillons concernés (voir `indicesRepris`, ci-dessus) ancre le même
-   * signal dans la chaîne.
-   * ⚠️ Le bandeau ne se déclenche QUE si `indicesRepris` a réellement
-   * marqué un maillon — jamais sur la seule présence de `wf.reprises`.
-   * Sans ce garde, le bandeau annonçait un rebouclage que la détection
-   * elle-même écartait : deux logiques sur le même fait, dans la même
-   * fonction, en désaccord. Une réapparition après le seul agent
-   * principal reste un fait qu'on signale — sobrement — pas une alerte :
-   * la taire serait un récit muet sur ce qu'il sait.
-   * ⚠️ feature-010 §A2 : ce garde portait sur le DÉCLENCHEMENT du bandeau, pas sur
-   * son CONTENU — `reprises.map(...)` recopiait `wf.reprises` en entier,
-   * y compris des agents que `indicesRepris` n'a marqué nulle part (un
-   * troisième agent reparu seulement après l'agent principal, pendant
-   * qu'un AUTRE agent portait, lui, un vrai rebouclage ailleurs dans la
-   * même chaîne). Le bandeau ne doit NOMMER que les agents dont au moins
-   * un maillon est réellement `.repris` ; les autres basculent dans la
-   * mention neutre — les deux pouvant coexister sur le même workflow. */
-  const agentsAncres = new Set();
-  segments.forEach((segment, index) => {
-    if (reprisesChaine.has(index)) agentsAncres.add(segment.agent);
-  });
-  const reprises = Object.keys(wf.reprises || {});
-  const reprisesAncrees = reprises.filter((a) => agentsAncres.has(a));
-  const reprisesNonAncrees = reprises.filter((a) => !agentsAncres.has(a));
-  if (reprisesAncrees.length) {
-    const bandeau = el("div", "wf-notes reboucle");
-    bandeau.appendChild(el("span", "",
-      "↻ reboucle — reprises : "
-      + reprisesAncrees.map((a) => a + " ×" + wf.reprises[a]).join(", ")));
-    enveloppe.appendChild(bandeau);
-  }
-  if (reprisesNonAncrees.length) {
-    const note = el("div", "wf-notes attendu");
-    note.appendChild(el("span", "",
-      "ℹ agent(s) repassé(s), sans rebouclage détecté : "
-      + reprisesNonAncrees.map((a) => a + " ×" + wf.reprises[a]).join(", ")));
-    note.title =
-      "Ces agents réapparaissent dans la chaîne, mais toujours "
-      + "immédiatement après l'agent principal — jamais après un AUTRE "
-      + "sous-agent. Ce n'est pas un rebouclage : c'est un enchaînement "
-      + "normal.";
-    enveloppe.appendChild(note);
-  }
-
-  /* Les incertitudes sont AFFICHÉES, pas masquées : un récit muet sur ce
-   * qu'il ignore se lit comme un récit complet. */
-  /* `imbrication_suspectee` (bug-013/feature-010, §9) : la mesure sur cycle
-   * réel a montré 9 workflows sur 12 le levant, TOUJOURS pour la même
-   * cause — l'orchestrator cesse son activité avant que le hook n'écrive
-   * sa fin, avec plusieurs secondes de retard. Aucun agent ne peut en
-   * invoquer un autre : ce n'est PAS une anomalie du récit, c'est un
-   * artefact connu de latence d'écriture. Rendu neutre (`.attendu`, comme
-   * les fins de tour du runtime ci-dessous), jamais en alerte — et le
-   * champ backend n'est PAS renommé, seuls le rendu et le libellé le
-   * sont. */
-  if (wf.imbrication_suspectee) {
-    const note = el("div", "wf-notes attendu");
-    const texte = el("span", "",
-      "ℹ ordre approximatif — fin de sous-agent journalisée en retard : "
-      + "l'ordre affiché peut ne pas refléter l'enchaînement réel");
-    texte.title =
-      "Le hook qui journalise la fin d'un sous-agent peut écrire plusieurs "
-      + "secondes après que l'agent a réellement cessé toute activité — un "
-      + "agent suivant peut démarrer avant que cette fermeture ne soit "
-      + "inscrite au journal.\n\n"
-      + "Ce n'est pas un agent qui en invoque un autre : le runtime ne "
-      + "permet pas ce chaînage. Ce drapeau signale un retard d'écriture "
-      + "du hook, pas une anomalie du récit.";
-    note.appendChild(texte);
-    enveloppe.appendChild(note);
-  }
-  if (wf.fermetures_orphelines) {
-    const note = el("div", "wf-notes attendu");
-    const texte = el("span", "",
-      "ℹ " + wf.fermetures_orphelines + " fin(s) de tour du runtime — "
-      + "ce ne sont pas des sous-agents");
-    texte.title =
-      "Claude Code émet un événement « fin de sous-agent » à chaque fois que "
-      + "l'agent principal termine un tour de conversation, avec un identifiant "
-      + "neuf et un nom vide.\n\n"
-      + "Ces événements ne correspondent à aucun sous-agent réel : ils n'ont pas "
-      + "de début associé, et rien ne leur est attribué.\n\n"
-      + "Ils sont comptés ici plutôt qu'ignorés en silence — un événement "
-      + "inexpliqué qu'on tait devient un écart invisible entre le journal et "
-      + "le récit qu'on en tire.";
-    note.appendChild(texte);
-    enveloppe.appendChild(note);
-  }
-  /* Un bornage sur `marqueur-agent` est une CONVENTION posée par la
-   * configuration, pas un fait relevé par le système. ⚠️ Ce commentaire
-   * opposait auparavant le bornage à `imbrication_suspectee`, « qui EST une
-   * anomalie du récit » — c'est FAUX, et le commentaire de ce champ, 35
-   * lignes plus haut, dit désormais l'inverse mesure à l'appui. Deux
-   * commentaires contradictoires sur le même champ valent moins qu'aucun :
-   * le lecteur croit celui qu'il rencontre en premier.
-   * Même registre visuel que les fermetures orphelines : un fait qu'on
-   * signale, pas une alerte. Absent sur un backend en retard : `wf.bornage`
-   * n'existe alors simplement pas. */
-  if (wf.bornage === "marqueur-agent" && wf.borne_par) {
-    const note = el("div", "wf-notes attendu");
-    note.appendChild(el("span", "",
-      "ℹ frontières posées sur l'invocation de " + wf.borne_par + " ; un "
-      + "cycle mené sans cet agent est rattaché au segment précédent"));
-    enveloppe.appendChild(note);
-  }
-  return enveloppe;
-}
-
-/* ------------------------------------------------------------- diagramme --
- * feature-017, docs/DESIGN-SYSTEM.md §5. La GÉOMÉTRIE (positions, rayons,
- * graduations, créneaux, liens, arcs) est calculée par le module PUR
- * `diagramme.js` (`disposer()`, chargé en `<script>` avant celui-ci — voir
- * index.html ; AUCUN import, AUCUNE dépendance : CSP `default-src 'self'`,
- * ADR-0006). Ce bloc ne fait que TRADUIRE cette géométrie en SVG et y poser
- * les jetons de couleur — il n'invente aucun nombre, aucune position.
- *
- * Vocabulaire du cercle, RENDU RÉEL (feature-020 D1/D4 — ce commentaire a
- * déjà égaré une revue une fois en affirmant l'inverse, ne pas y revenir) :
- * le contour est PLEIN, sauf l'état « sans clôture » qui prend le seul
- * motif restant, le pointillé. L'échec ajoute une croix et un contour
- * `--alerte`, en plus du reste. L'IDENTITÉ (couleur d'agent) va sur le
- * remplissage du disque et sur le sigle, TOUJOURS — y compris pour l'agent
- * `principal`, qui n'a pas de teinte de remplissage (fond `--creux`) mais
- * garde un sigle « AP » en couleur d'identité et un contour plein, sans
- * tirets (il n'est plus une exception visuelle, trop fréquent pour l'être).
- * SEULE exception au principe « l'identité ne va jamais sur le contour »
- * (§8) : l'état « en cours », dont le contour prend la couleur d'identité —
- * ce n'est pas un signal ajouté par ce cycle mais un comportement de la
- * maquette de référence elle-même (défaut K, arbitrage D4), nommé ici pour
- * qu'une future revue ne le prenne pas pour une régression.
+/* ------------------------------------------------------ graphe d'agents --
+ * feature-021, cycle 2, lot 4 (F8/F9/F14/F15/F16), ADR-0031/ADR-0032.
+ * RÉÉCRITURE COMPLÈTE : l'ancien diagramme SVG (feature-017/020, cercles à
+ * graduations data-dépendantes, identité colorée par agent) est retiré avec
+ * le jeu de jetons transitoire qui le peignait. Le disque Material 3 du
+ * prototype est reproduit à l'identique — classes ET noms de `@keyframes`
+ * COPIÉS AU BIT PRÈS (F2, clé de jointure = le nom littéral). `disposer()`
+ * (`diagramme.js`) reste l'UNIQUE autorité de géométrie (`ADR-0031 §4`) :
+ * ce bloc ne calcule AUCUNE position, il TRADUIT son contrat en éléments
+ * HTML/SVG. Utilisé pour DEUX surfaces : le graphe principal (`#cycle-
+ * canvas`, `rendreGrapheCyclePrincipal`) et le détail de chaque cycle de
+ * l'accordéon (`construireDiagramme`, appelé par `construireDetailCycle`).
  */
 const NS_SVG = "http://www.w3.org/2000/svg";
 
@@ -786,403 +491,470 @@ function svgAttrs(noeud, attrs) {
   return noeud;
 }
 
-/* Contour : rôle CALCULÉ PAR `disposer()` (contourRole/contourLargeur,
- * priorité échec > sans clôture > en cours > nominal, feature-020 D1/D4).
- * Seule la COULEUR reste décidée ici (ce module ignore tout jeton de
- * couleur) — l'identité ne va JAMAIS sur le contour, SAUF l'état « en
- * cours » : la maquette elle-même colore le contour de l'agent actif avec
- * sa couleur d'identité (défaut K, arbitrage D4 : la maquette prime, ce
- * n'est pas un signal ajouté par ce cycle mais un comportement du modèle de
- * référence, hors du périmètre de D1 qui ne porte que sur l'agent terminé
- * sans échec). */
-const COULEUR_CONTOUR_ROLE = {
-  echec: "var(--alerte)",
-  sansCloture: "var(--contour-etat)",
-  nominal: "var(--trait)",
-};
-function couleurContourRole(agentGeo) {
-  if (agentGeo.contourRole === "enCours") return couleurIdentite(agentGeo.agent);
-  return COULEUR_CONTOUR_ROLE[agentGeo.contourRole] || "var(--trait)";
+/* Propriété personnalisée CSS (`--x`, `--y`, `--i`) : `style.setProperty`
+ * est la voie standard (seule fiable pour un nom qui commence par `--`),
+ * mais certains harnais de test (`test_app_bug012.js`, `test_app_
+ * accordeon.js`) posent un `style` en simple objet nu, sans CSSOM — repli
+ * sur une affectation directe plutôt que de faire échouer tout le rendu sur
+ * un `TypeError` dans un bac à sable qui ne vérifie de toute façon aucune
+ * position peinte. */
+function definirVariable(noeud, nom, valeur) {
+  if (noeud.style && typeof noeud.style.setProperty === "function") {
+    noeud.style.setProperty(nom, valeur);
+  } else if (noeud.style) {
+    noeud.style[nom] = valeur;
+  }
 }
 
-/* Ordre de peinture (feature-020, défaut H) : guide → graduations → barres
- * du zéro → DISQUE → LISERÉ → anneau en cours → croix → sigle. Le liseré
- * DOIT venir après le disque opaque, sinon il est invisible dessous — c'est
- * le défaut mesuré (l'ancien code le peignait avant). Toute la GÉOMÉTRIE
- * (positions, rayons, angles, points de graduation) vient de `agentGeo` —
- * cette fonction ne fait plus aucun `Math.*`. */
-function construireCercleAgent(agentGeo, sigles) {
-  const g = svgEl("g", "dg-agent");
-  const c = couleurIdentite(agentGeo.agent);
+/* 12 graduations FIXES, purement décoratives (`ADR-0031 §2`) — AUCUNE
+ * géométrie data-dépendante (voir `diagramme.js`, en-tête du contrat) :
+ * posées ici en boucle constante, exactement comme le prototype lui-même
+ * (`for (let index = 0; index < 12; index += 1) tick.style.setProperty
+ * ('--i', index)`). */
+const NB_GRADUATIONS = 12;
+function construireGraduations() {
+  const conteneur = el("span", "tool-ticks");
+  conteneur.setAttribute("aria-hidden", "true");
+  for (let i = 0; i < NB_GRADUATIONS; i++) {
+    const tick = el("i");
+    definirVariable(tick, "--i", i);
+    conteneur.appendChild(tick);
+  }
+  return conteneur;
+}
 
-  // Anneau guide (§E, correction de l'inversion : le plus clair)
-  const guide = svgEl("circle", "dg-guide");
-  svgAttrs(guide, { cx: agentGeo.cx, cy: agentGeo.cy, r: agentGeo.rayonGuide, fill: "none" });
-  guide.style.stroke = "var(--trait-fin)";
-  g.appendChild(guide);
+function libelleEtatDisque(etat) {
+  if (etat === "active") return "actif";
+  if (etat === "done") return "terminé";
+  return "non lancé";
+}
 
-  // Graduations — coordonnées ENTIÈREMENT calculées par disposer()
-  agentGeo.graduations.forEach((grad) => {
-    const trait = svgEl("line", "dg-graduation");
-    svgAttrs(trait, { x1: grad.x1, y1: grad.y1, x2: grad.x2, y2: grad.y2 });
-    // §E : les graduations ÉTEINTES prennent --trait (le plus sombre),
-    // corrigeant l'inversion avec l'anneau guide ci-dessus.
-    trait.style.stroke = grad.allumee ? c : "var(--trait)";
-    trait.style.strokeWidth = grad.epaisseur;
-    g.appendChild(trait);
+/* feature-023 (lot 12) — trois états pour le compteur de tokens d'UN
+ * passage, jamais deux (décision du cycle, notes d'implémentation §5) :
+ *
+ *   "connu"   : `agentId` figure dans `tokens_par_passage.par_agent` — la
+ *               somme entrée+sortie est un FAIT mesuré.
+ *   "partiel" : `agentId` en est absent, mais la lecture GLOBALE a été
+ *               coupée par le budget (`tokens_par_passage.partiel === true`,
+ *               S5.6) — on ne SAIT PAS si ce passage a des tokens, ce qui
+ *               est différent d'« absent ».
+ *   "absent"  : `agentId` en est absent et la lecture n'a PAS été coupée
+ *               (agent inconnu du relevé, transcript introuvable/illisible
+ *               — S5.7 — ou backend plus ancien sans le champ du tout) :
+ *               absence PROPRE, jamais confondue avec un zéro.
+ *
+ * ⚠️ Ne dépend QUE de `tokensParPassage` — jamais de `agentGeo.etat` ni
+ * d'aucun autre champ de géométrie : l'anneau (`--progress`, `app.css`)
+ * reste piloté par l'état SEUL (ADR-0031 §5), ce compteur ne le recouple
+ * PAS. `agentId` peut être `null` (agent ouvrant, `diagramme.js`) : traité
+ * comme "absent", jamais comme une clé forgée. */
+function etatTokensAgent(agentId, tokensParPassage) {
+  const parAgent = (tokensParPassage && tokensParPassage.par_agent) || {};
+  if (agentId && Object.prototype.hasOwnProperty.call(parAgent, agentId)) {
+    const compteur = parAgent[agentId] || {};
+    const entree = typeof compteur.input_tokens === "number" ? compteur.input_tokens : 0;
+    const sortie = typeof compteur.output_tokens === "number" ? compteur.output_tokens : 0;
+    return { etat: "connu", total: entree + sortie };
+  }
+  if (tokensParPassage && tokensParPassage.partiel) return { etat: "partiel", total: null };
+  return { etat: "absent", total: null };
+}
+
+/* Formatage — repris du prototype (`formatCompact`/`formatNumber`,
+ * l.888-889 de la maquette), AUCUNE dépendance à `Intl` : absent du bac à
+ * sable `vm` des harnais `test_app_*.js` (PIEGES §38/§56 : une API globale
+ * non fournie par le harnais lève au premier appel, avant le premier cas —
+ * vérifié, `Intl` n'existe nulle part dans les sandbox de ce dépôt). */
+function formatTokensCompact(valeur) {
+  if (valeur >= 1000) return (valeur / 1000).toFixed(1).replace(".", ",") + "k";
+  return String(Math.round(valeur));
+}
+function formatTokensLong(valeur) {
+  return String(Math.round(valeur)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+}
+
+/* Résumé du cycle affiché (`summary-tokens`) : somme des SEULS passages
+ * "connu" parmi `geo.agents` — jamais une extrapolation sur les passages
+ * "absent"/"partiel". `partielGlobal` se dit TOUJOURS explicitement dans le
+ * texte plutôt que d'être tu (règle 5 des notes cycle 2 §5 : la bottom
+ * sheet — et ce résumé — disent ce qui manque). */
+function resumerTokensCycle(geo, tokensParPassage) {
+  const agents = (geo && geo.agents) || [];
+  let total = 0;
+  let connus = 0;
+  agents.forEach((a) => {
+    const info = etatTokensAgent(a.agentId, tokensParPassage);
+    if (info.etat === "connu") { total += info.total; connus += 1; }
   });
+  const partielGlobal = !!(tokensParPassage && tokensParPassage.partiel);
+  if (!connus) return partielGlobal ? "lecture partielle" : "aucun token mesuré";
+  return formatTokensCompact(total) + " token" + (total > 1 ? "s" : "") +
+    (partielGlobal ? " · lecture partielle" : "");
+}
 
-  // Barres du zéro (marqueur de départ des graduations) — épaisseur posée
-  // en CSS (feature-020 C2 : ne sert qu'au trait, ne réserve rien), d'où les
-  // deux classes distinctes (aucune épaisseur commune à factoriser).
-  const bzb = agentGeo.barreZeroBlanche;
-  const barreBlanche = svgEl("line", "dg-barre-zero-blanche");
-  svgAttrs(barreBlanche, { x1: bzb.x1, y1: bzb.y1, x2: bzb.x2, y2: bzb.y2 });
-  barreBlanche.style.stroke = "var(--creux)";
-  g.appendChild(barreBlanche);
+/* F11 (feature-021, cycle 2, lot 5) — la bottom sheet DIT ce que le chiffre
+ * compte : `#selected-task` porte une PHRASE, jamais un chiffre nu sans
+ * légende (§16 PIEGES). Un échec ne se lit jamais par-dessus « sans
+ * clôture » (même règle que le disque lui-même, `diagramme.js`). */
+function tacheDisque(agentGeo) {
+  if (agentGeo.principal) return "agent principal — orchestre le cycle";
+  if (agentGeo.sansCloture) return "sans clôture — aucune fin observée pour ce passage";
+  if (agentGeo.echec) return "en échec — au moins un appel d'outil a échoué";
+  return agentGeo.etat === "active" ? "en cours" : "terminé";
+}
 
-  const bzg = agentGeo.barreZeroGrise;
-  const barreGrise = svgEl("line", "dg-barre-zero-grise");
-  svgAttrs(barreGrise, { x1: bzg.x1, y1: bzg.y1, x2: bzg.x2, y2: bzg.y2 });
-  // §E : la barre grise porte --texte-faible (t3), pas --texte-doux.
-  barreGrise.style.stroke = "var(--texte-faible)";
-  g.appendChild(barreGrise);
+/* Passage actuellement affiché dans la bottom sheet — SEULE mémoire requise
+ * pour que `#voir-evenements-passage` (evenements, U1) sache quel passage
+ * interroger sans recalcul ; réinitialisée à `null` tant qu'aucun disque n'a
+ * été cliqué (bouton désactivé, voir plus bas). */
+let passageSelectionneCourant = null;
 
-  // Disque — contour plein sauf « sans clôture » (pointillé, seul motif
-  // restant : l'agent principal a quitté les tirets, D1).
-  const classeContour = agentGeo.contourRole === "sansCloture" ? "dg-contour-pointille" : "dg-contour-plein";
-  const cercle = svgEl("circle", "dg-cercle " + classeContour);
-  svgAttrs(cercle, { cx: agentGeo.cx, cy: agentGeo.cy, r: agentGeo.rayon });
-  cercle.style.fill = agentGeo.principal ? "var(--creux)" : remplissageIdentite(agentGeo.agent);
-  cercle.style.stroke = couleurContourRole(agentGeo);
-  cercle.style.strokeWidth = agentGeo.contourLargeur;
-  g.appendChild(cercle);
+/* Sélection LOCALE, aucun appel réseau : toute la donnée affichée est déjà
+ * dans `agentGeo`, le même objet que `disposer()` a produit pour PEINDRE le
+ * disque cliqué — la bottom sheet ne recalcule rien, elle relit. Chaque
+ * `.metric` du gabarit (index.html) porte déjà le libellé qui dit ce que le
+ * chiffre compte (« Graduations · outils », « Points · fichiers »…) ; ce
+ * qu'on pose ici est la VALEUR, jamais un chiffre sans le libellé qui
+ * l'accompagne dans le DOM. */
+function selectionnerPassage(agentGeo, sigle, infoTokens) {
+  $("selected-code").textContent = sigle;
+  $("selected-title").textContent = agentGeo.agent;
+  $("selected-task").textContent = tacheDisque(agentGeo);
+  $("selected-state").textContent = libelleEtatDisque(agentGeo.etat)
+    + (agentGeo.echec ? " · échec" : "") + (agentGeo.sansCloture ? " · sans clôture" : "");
+  /* F2 (feature-023, lot 12) : la VALEUR seule ici, le libellé du `.metric`
+   * (« Centre · tokens », index.html) dit déjà ce qu'elle compte ; la phrase
+   * qui dit COMMENT elle est comptée (entrée+sortie, travail pas coût) est
+   * un texte fixe du gabarit, pas recalculée à chaque sélection. */
+  const jetons = infoTokens || { etat: "absent", total: null };
+  $("selected-tokens").textContent = jetons.etat === "connu" ? formatTokensLong(jetons.total)
+    : jetons.etat === "partiel" ? "lecture partielle" : "indisponible";
+  $("selected-tools").textContent =
+    agentGeo.outils + " appel" + (agentGeo.outils > 1 ? "s" : "") + " d'outil enregistré" + (agentGeo.outils > 1 ? "s" : "");
+  $("selected-files").textContent = agentGeo.fichiersTotal
+    ? agentGeo.fichiersAllumes + " sur 3 pastille(s) allumée(s) · " + agentGeo.fichiersTotal +
+      " fichier" + (agentGeo.fichiersTotal > 1 ? "s" : "") + " touché" + (agentGeo.fichiersTotal > 1 ? "s" : "") + " au total"
+    : "aucun fichier touché";
+  $("selected-duration").textContent = agentGeo.duree.texte;
+  const annonce = $("a11y-announcement");
+  if (annonce) annonce.textContent = "Détail affiché : " + agentGeo.agent + ", " + tacheDisque(agentGeo);
 
-  // Liseré des fichiers — APRÈS le disque (défaut H), encodé par OPACITÉ
-  // seule (D2), épaisseur constante posée en CSS (feature-020 C2 : ne sert
-  // qu'au trait, ne réserve rien — voir `.dg-liseret`).
-  if (agentGeo.fichiers > 0) {
-    const liseret = svgEl("circle", "dg-liseret");
-    svgAttrs(liseret, { cx: agentGeo.cx, cy: agentGeo.cy, r: agentGeo.liseretRayon, fill: "none" });
-    liseret.style.stroke = c;
-    liseret.style.opacity = agentGeo.liseretOpacite;
-    g.appendChild(liseret);
-  }
+  /* evenements (U1) : le bouton n'est activé QUE si `agentId` est exploitable
+   * — l'agent principal et les backends anciens n'en portent pas, et un
+   * filtrage approximatif serait pire qu'une absence déclarée (§16 PIEGES). */
+  passageSelectionneCourant = agentGeo;
+  const boutonEvenements = $("voir-evenements-passage");
+  if (boutonEvenements) boutonEvenements.disabled = !agentGeo.agentId;
+}
 
-  if (agentGeo.enCours) {
-    const anneau = svgEl("circle", "dg-anneau-en-cours");
-    svgAttrs(anneau, { cx: agentGeo.cx, cy: agentGeo.cy, r: agentGeo.anneauEnCoursRayon, fill: "none" });
-    anneau.style.stroke = c;
-    anneau.style.opacity = agentGeo.anneauEnCoursOpacite;
-    g.appendChild(anneau);
-  }
+/* Traduit UN agent (`disposer().agents[i]`) en la structure DOM exacte du
+ * prototype (`.agent-wrap > .agent-node > … `, `.agent-name`, `.agent-
+ * duration` en frères directs — les sélecteurs `.state-active + .agent-name`
+ * et `.state-active ~ .agent-duration` du prototype en dépendent, F2). Les
+ * quatre représentations F16 (échec, sans clôture, agent principal) sont
+ * des AJOUTS de classe, jamais une variante des 3 états `state-*` — la
+ * grammaire du prototype n'a QUE ces 3 états (ADR-0031 §3). */
+function construireDisqueAgent(agentGeo, sigles, tokensParPassage) {
+  const wrap = el("div", "agent-wrap");
+  definirVariable(wrap, "--x", agentGeo.cx + "px");
+  definirVariable(wrap, "--y", agentGeo.cy + "px");
 
-  if (agentGeo.echec) {
-    const bras = agentGeo.croixBras;
-    const croix = svgEl("g", "dg-croix-echec");
-    [[-1, -1, 1, 1], [-1, 1, 1, -1]].forEach(([dx1, dy1, dx2, dy2]) => {
-      const trait = svgEl("line");
-      svgAttrs(trait, {
-        x1: agentGeo.cx + dx1 * bras, y1: agentGeo.cy + dy1 * bras,
-        x2: agentGeo.cx + dx2 * bras, y2: agentGeo.cy + dy2 * bras,
-      });
-      croix.appendChild(trait);
-    });
-    g.appendChild(croix);
-  }
-
-  // Sigle — couleur d'identité TOUJOURS (D1/B2), y compris l'agent principal.
-  const sigle = svgEl("text", "dg-sigle");
-  svgAttrs(sigle, { x: agentGeo.cx, y: agentGeo.sigleBaselineY, "text-anchor": "middle" });
-  sigle.style.fill = c;
-  // L'unité est explicite : `font-size: 11` sans unité est invalide en CSS.
-  // Chromium le coerce en `11px` (mesuré), un autre moteur a le droit de
-  // l'ignorer — et le texte retomberait alors sur la taille héritée.
-  sigle.style.fontSize = agentGeo.sigleTaillePx + "px";
-  sigle.textContent = (sigles && sigles.get(agentGeo.agent)) || "??";
-  g.appendChild(sigle);
-
-  const titre = svgEl("title");
-  titre.textContent = agentGeo.agent
-    + " — " + agentGeo.outils + " appel(s) d'outil, " + agentGeo.fichiers + " fichier(s) écrit(s)"
-    // `plafondAtteint` (§L1) : n'a plus de rendu visuel propre depuis le
-    // retrait du cran de plafond (défaut J) — exposé ici pour ne pas rester
-    // un champ mort.
-    + (agentGeo.plafondAtteint ? ", plafond d'appels d'outils atteint" : "")
+  const classes = ["agent-node", "state-" + agentGeo.etat];
+  if (agentGeo.echec) classes.push("has-echec");
+  if (agentGeo.sansCloture) classes.push("state-sans-cloture");
+  if (agentGeo.principal) classes.push("role-principal");
+  const noeud = el("button", classes.join(" "));
+  noeud.type = "button";
+  const sigle = (sigles && sigles.get(agentGeo.agent)) || "??";
+  /* feature-023 (lot 12) : calculé UNE FOIS ici, réutilisé pour le centre
+   * du disque ET pour la bottom sheet au clic (`selectionnerPassage`) — la
+   * seule source de vérité est `etatTokensAgent`, jamais un second calcul. */
+  const infoTokens = etatTokensAgent(agentGeo.agentId, tokensParPassage);
+  noeud.setAttribute("aria-label", agentGeo.agent + ", " + libelleEtatDisque(agentGeo.etat)
     + (agentGeo.echec ? ", en échec" : "")
     + (agentGeo.sansCloture ? ", sans clôture" : "")
-    + (agentGeo.enCours ? ", en cours" : "");
-  g.appendChild(titre);
+    + (agentGeo.principal ? ", agent principal" : "")
+    /* La VALEUR est portée à l'accessible name ici : le bouton porte un
+     * `aria-label` explicite, qui MASQUE le texte de ses descendants
+     * (`.token-value` compris) pour la technologie d'assistance — comme
+     * c'est déjà le cas pour `.agent-code` (le sigle). */
+    + (infoTokens.etat === "connu" ? ", " + formatTokensLong(infoTokens.total) + " tokens" : "")
+    + (infoTokens.etat === "partiel" ? ", lecture de tokens partielle" : ""));
+  /* F11 : cliquer le disque remplit la bottom sheet — voir
+   * `selectionnerPassage`, qui ne relit que `agentGeo`/`infoTokens`, déjà
+   * calculés. */
+  noeud.addEventListener("click", () => selectionnerPassage(agentGeo, sigle, infoTokens));
 
-  return g;
-}
-
-/* Classe posée par RÔLE (jamais par position, feature-020 §L) — trois rôles
- * pour un créneau simple (heure/durée/nom), deux pour un créneau empilé
- * (heureDuree/nom). C'est `.dg-socle-duree`/`.dg-socle-heure-duree` qui
- * portent la vedette (§8 : la DURÉE, pas le nom). */
-function classeSocleRole(role) {
-  if (role === "heure") return "dg-socle-heure";
-  if (role === "duree") return "dg-socle-duree";
-  if (role === "heureDuree") return "dg-socle-heure-duree";
-  return "dg-socle-nom";
-}
-
-/* Socle : cadre + libellé de groupe + lignes de texte — TOUTE la géométrie
- * (position du cadre, boîte du libellé, x/baselineY de chaque ligne) vient
- * de `disposer()` (feature-020 A5/A7) ; cette fonction ne calcule plus rien,
- * elle peint ce qu'on lui donne. */
-function construireSoclesCreneau(creneauGeo) {
-  const g = svgEl("g", "dg-socle");
-
-  // Le cadre est ajouté EN PREMIER (donc peint SOUS le reste). Rect PLEINE
-  // LARGEUR de créneau, `fill:none` (défaut O) — un filet suffit, ADR
-  // §9 : pas d'aplat là où un filet suffit.
-  if (creneauGeo.cadre) {
-    const cadre = svgEl("rect", "dg-cadre-simultane");
-    svgAttrs(cadre, {
-      x: creneauGeo.cadre.x, y: creneauGeo.cadre.y,
-      width: creneauGeo.cadre.largeur, height: creneauGeo.cadre.hauteur,
-      rx: creneauGeo.cadre.rx, fill: "none",
-    });
-    g.appendChild(cadre);
+  if (agentGeo.principal) {
+    const anneauRole = el("span", "role-ring");
+    anneauRole.setAttribute("aria-hidden", "true");
+    noeud.appendChild(anneauRole);
   }
-  if (creneauGeo.libelleCadre) {
-    const lc = creneauGeo.libelleCadre;
-    const masque = svgEl("rect", "dg-libelle-cadre-masque");
-    svgAttrs(masque, { x: lc.masque.x, y: lc.masque.y, width: lc.masque.largeur, height: lc.masque.hauteur });
-    masque.style.fill = "var(--creux)";
-    g.appendChild(masque);
-    const libelle = svgEl("text", "dg-libelle-cadre");
-    svgAttrs(libelle, { x: lc.texteX, y: lc.baselineY });
-    // `taillePx` participe à la réservation (`largeurTexte()`) : posé en
-    // `style`, jamais en attribut de présentation qu'une classe CSS pourrait
-    // écraser (feature-020, revue point 1).
-    libelle.style.fontSize = lc.taillePx + "px";
-    libelle.textContent = lc.texte;
-    g.appendChild(libelle);
+  const orbite = el("span", "work-orbit");
+  orbite.setAttribute("aria-hidden", "true");
+  noeud.appendChild(orbite);
+  const point = el("span", "work-dot");
+  point.setAttribute("aria-hidden", "true");
+  noeud.appendChild(point);
+  noeud.appendChild(construireGraduations());
+
+  const face = el("span", "agent-face");
+  face.appendChild(el("span", "agent-code", sigle));
+  /* F15 (feature-023, lot 12) — la branche « chiffre au centre » est
+   * maintenant ÉCRITE, mais SEULEMENT quand `infoTokens.etat === "connu"` :
+   *   - "connu"   : `.token-value` posé, texte = compte compact (§16 PIEGES,
+   *                 donnée réellement mesurée, jamais un zéro fabriqué) ;
+   *   - "partiel" : `.token-value` posé avec un glyphe DISTINCT (« … », pas
+   *                 un chiffre, pas le « ⋯ » de `.agent-flag--sans-cloture`
+   *                 — un mélange romprait la règle 1, notes cycle 2 §5 : la
+   *                 lecture ne doit JAMAIS confondre « on ne sait pas si ce
+   *                 passage a des tokens » avec un autre état) ;
+   *   - "absent"  : le nœud N'EXISTE PAS — comme avant ce lot — le disque
+   *                 reste DÉGRADABLE et JAMAIS à trous, `place-content:
+   *                 center` (`.agent-face`) recentre ce qui reste.
+   * `.agent-data` continue de porter les pastilles de fichiers (donnée
+   * réellement mesurée, PIEGES §16) que l'un des trois cas ci-dessus soit
+   * vrai ou non. */
+  const donnees = el("span", "agent-data");
+  if (infoTokens.etat === "connu") {
+    donnees.appendChild(el("span", "token-value", formatTokensCompact(infoTokens.total)));
+  } else if (infoTokens.etat === "partiel") {
+    donnees.appendChild(el("span", "token-value token-value--partiel", "…"));
+  }
+  const points = el("span", "file-dots");
+  for (let i = 0; i < 3; i++) {
+    points.appendChild(el("i", i < agentGeo.fichiersAllumes ? "on" : ""));
+  }
+  donnees.appendChild(points);
+  face.appendChild(donnees);
+  noeud.appendChild(face);
+
+  /* F16 : drapeau glyphé, jamais la seule couleur (`--state-color` déjà
+   * recolorée par `.has-echec`/`.state-sans-cloture` ci-dessus porte la
+   * PREMIÈRE dimension, le glyphe du drapeau porte la SECONDE). */
+  if (agentGeo.echec || agentGeo.sansCloture) {
+    const drapeau = el("span", "agent-flag " + (agentGeo.echec ? "agent-flag--echec" : "agent-flag--sans-cloture"));
+    drapeau.setAttribute("aria-hidden", "true");
+    noeud.appendChild(drapeau);
   }
 
-  creneauGeo.agents.forEach((agentGeo) => {
-    agentGeo.socle.lignes.forEach((ligne) => {
-      // Vedette (§8, item L) : la ligne DURÉE (simple) ou HEURE·DURÉE
-      // (empilé) grossit et se colore quand l'agent est en cours — jamais
-      // le nom.
-      const vedetteActive = agentGeo.enCours && (ligne.role === "duree" || ligne.role === "heureDuree");
-      const texte = svgEl("text", classeSocleRole(ligne.role) + (vedetteActive ? " actif" : ""));
-      svgAttrs(texte, { x: ligne.x, y: ligne.baselineY, "text-anchor": ligne.ancrage });
-      // `taillePx` participe à la réservation (`largeurTexte()`) et diffère
-      // selon créneau simple/empilé pour un MÊME rôle (le nom : 10,5 vs 11) :
-      // posé en `style`, jamais en attribut, jamais redéclaré en CSS
-      // (feature-020, revue point 1 — PIEGES §25).
-      texte.style.fontSize = ligne.taillePx + "px";
-      if (vedetteActive) texte.style.fill = couleurIdentite(agentGeo.agent);
-      texte.textContent = ligne.texte;
-      g.appendChild(texte);
-    });
-  });
+  wrap.appendChild(noeud);
 
-  if (creneauGeo.repliLibelle) {
-    const rl = creneauGeo.repliLibelle;
-    const plus = svgEl("text", "dg-repli");
-    svgAttrs(plus, { x: rl.x, y: rl.baselineY, "text-anchor": rl.ancrage });
-    // Même règle : `taillePx` participe à la réservation, posé en `style`.
-    plus.style.fontSize = rl.taillePx + "px";
-    plus.textContent = rl.texte;
-    const titre = svgEl("title");
-    titre.textContent = creneauGeo.repli.masques + " agent(s) supplémentaire(s), repliés";
-    plus.appendChild(titre);
-    g.appendChild(plus);
-  }
-  return g;
+  /* Ordre du DOM = celui du prototype : `.agent-name` frère DIRECT de
+   * `.agent-node` (sélecteur `+`), `.agent-duration` ensuite (sélecteur
+   * `~`, général) — ne pas intervertir. */
+  const nom = el("span", "agent-name");
+  nom.appendChild(el("strong", "", agentGeo.agent));
+  wrap.appendChild(nom);
+  wrap.appendChild(el("span", "agent-duration", agentGeo.duree.texte));
+
+  return wrap;
 }
 
-/* Liens entre créneaux : extrémités RÉELLES (bords de créneau, défaut P) et
- * gabarit de pastille FIXE (correction de mesure, jamais mesuré au rendu) —
- * tout vient de `lien` (feature-020 A4/A8), aucune moyenne ni aucun rayon
- * recalculé ici. */
-function construireLiensDiagramme(geo) {
-  const g = svgEl("g", "dg-liens");
-  geo.liens.forEach((lien) => {
-    const trait = svgEl("line", "dg-lien");
-    svgAttrs(trait, { x1: lien.x1, y1: lien.y1, x2: lien.x2, y2: lien.y2 });
-    g.appendChild(trait);
-
-    const pts = lien.pointe.points;
-    const pointe = svgEl("path", "dg-lien-pointe");
-    svgAttrs(pointe, {
-      d: "M " + pts[0][0] + " " + pts[0][1]
-        + " L " + pts[1][0] + " " + pts[1][1]
-        + " L " + pts[2][0] + " " + pts[2][1],
-      fill: "none",
-    });
-    g.appendChild(pointe);
-
-    if (lien.pastille) {
-      const p = lien.pastille;
-      const pastille = svgEl("g", "dg-pastille-attente");
-      const fond = svgEl("rect");
-      svgAttrs(fond, {
-        x: p.x - p.largeur / 2, y: p.y - p.hauteur / 2,
-        width: p.largeur, height: p.hauteur, rx: p.rx,
-      });
-      pastille.appendChild(fond);
-      const texte = svgEl("text");
-      svgAttrs(texte, { x: p.texteX, y: p.baselineY, "text-anchor": "middle" });
-      texte.textContent = p.texte;
-      pastille.appendChild(texte);
-      g.appendChild(pastille);
-    }
-  });
-  return g;
+function classeConnecteur(etat) {
+  if (etat === "flowing") return "is-flowing";
+  if (etat === "complete") return "is-complete";
+  if (etat === "reprise") return "is-reprise";
+  return "";
 }
 
-/* Rebouclage : arc reliant une reprise à l'OCCURRENCE PRÉCÉDENTE du MÊME
- * agent (§5). Sommet ABSOLU (`arc.sommetY`, défaut R/bug-020) — plus de
- * recalcul de hauteur ici ; couleur FIXE (jeton `--rebouclage`, décision R —
- * plus de couleur d'identité) ; AUCUNE pointe (décision R). */
-function construireArcsDiagramme(geo) {
-  const g = svgEl("g", "dg-arcs");
-  geo.arcs.forEach((arc) => {
-    const chemin = svgEl("path", "dg-arc-rebouclage");
-    svgAttrs(chemin, {
-      d: "M " + arc.depart.x + " " + arc.depart.y
-        + " C " + arc.controle1.x + " " + arc.controle1.y
-        + ", " + arc.controle2.x + " " + arc.controle2.y
-        + ", " + arc.arrivee.x + " " + arc.arrivee.y,
-      fill: "none",
-    });
-    const titre = svgEl("title");
-    titre.textContent = "Rebouclage — reprise de " + arc.agent;
-    chemin.appendChild(titre);
-    g.appendChild(chemin);
-
-    const texte = svgEl("text", "dg-arc-libelle");
-    svgAttrs(texte, { x: arc.libelle.x, y: arc.libelle.baselineY, "text-anchor": "middle" });
-    // Même règle que le socle : `taillePx` vient du contrat et participe à la
-    // réservation, donc en `style` avec unité — la dernière taille encore
-    // posée en attribut, relevée en revue (feature-020).
-    texte.style.fontSize = arc.libelle.taillePx + "px";
-    texte.textContent = arc.libelle.texte;
-    g.appendChild(texte);
-  });
-  return g;
-}
-
-/* Légende (§8, item T) : DIX entrées, rien de plus, rien de moins que ce que
- * le code peut réellement produire — alignée sur `pose()`/`graphe()` et sur
- * les décisions D1/D2/D4/R de feature-020. */
-function construireLegendeDiagramme() {
-  const dl = el("dl", "diagramme-legende");
-  const ajouter = (forme, sens) => { dl.appendChild(el("dt", "", forme)); dl.appendChild(el("dd", "", sens)); };
-  ajouter("Diamètre du cercle", "durée de l'agent");
-  ajouter("Graduations", "appels d'outils (échelle de 70)");
-  ajouter("Liseré intérieur", "fichiers écrits");
-  ajouter("Pastille", "attente entre deux agents");
-  ajouter("Cadre", "agents simultanés");
-  ajouter("Contour pointillé", "sans clôture");
-  ajouter("Croix + contour d'alerte", "échec");
-  ajouter("Identité sur le contour et l'anneau", "en cours");
-  ajouter("Fond neutre + sigle dédié", "agent principal");
-  ajouter("Arc pointillé", "rebouclage vers l'occurrence précédente du même agent");
-  return dl;
-}
-
-/* Défilement au clavier (§6, §8) : `tabindex="0"` sur le conteneur, les
- * flèches gauche/droite (et Origine/Fin) le parcourent — la molette SEULE
- * fait défiler la PAGE (comportement natif, rien à faire ici) ; `Maj` +
- * molette ou le glissement font défiler la ZONE (comportement natif d'un
- * conteneur `overflow-x: auto`, également rien à coder). */
-function brancherDefilementClavier(conteneur) {
-  conteneur.setAttribute("tabindex", "0");
-  conteneur.setAttribute("role", "group");
-  conteneur.setAttribute("aria-label", "Diagramme du déroulé — parcourir avec les flèches");
-  conteneur.addEventListener("keydown", (evenement) => {
+/* Traduit le contrat COMPLET de `disposer()` (positions, connecteurs) en
+ * DOM — AUCUN calcul de position ici (`ADR-0031 §4`) : `geo.agents[].cx/cy`
+ * et `geo.connecteurs[].d` sont utilisés TELS QUELS. Le conteneur porte une
+ * taille EXPLICITE en pixels (`geo.largeur`×`geo.hauteur`) : contrairement
+ * au prototype (démo fixe à 388px), la largeur réelle dépend du nombre de
+ * créneaux — `.graphe-scroll` défile horizontalement plutôt que de tasser
+ * les disques (écart assumé, voir app.css). */
+function construireGrapheAgents(geo, sigles, tokensParPassage) {
+  const scroll = el("div", "graphe-scroll");
+  scroll.setAttribute("tabindex", "0");
+  scroll.setAttribute("role", "group");
+  scroll.setAttribute("aria-label", "Graphe d'agents — " + geo.agents.length + " agent(s)");
+  scroll.addEventListener("keydown", (evenement) => {
     const PAS = 80;
-    if (evenement.key === "ArrowRight") { conteneur.scrollLeft += PAS; evenement.preventDefault(); }
-    else if (evenement.key === "ArrowLeft") { conteneur.scrollLeft -= PAS; evenement.preventDefault(); }
-    else if (evenement.key === "Home") { conteneur.scrollLeft = 0; evenement.preventDefault(); }
-    else if (evenement.key === "End") { conteneur.scrollLeft = conteneur.scrollWidth; evenement.preventDefault(); }
+    if (evenement.key === "ArrowRight") { scroll.scrollLeft += PAS; evenement.preventDefault(); }
+    else if (evenement.key === "ArrowLeft") { scroll.scrollLeft -= PAS; evenement.preventDefault(); }
+    else if (evenement.key === "Home") { scroll.scrollLeft = 0; evenement.preventDefault(); }
+    else if (evenement.key === "End") { scroll.scrollLeft = scroll.scrollWidth; evenement.preventDefault(); }
   });
+
+  const plan = el("div");
+  plan.style.position = "relative";
+  plan.style.width = geo.largeur + "px";
+  plan.style.height = geo.hauteur + "px";
+
+  const svg = svgEl("svg", "connector-layer");
+  svg.setAttribute("aria-hidden", "true");
+  svgAttrs(svg, { viewBox: "0 0 " + geo.largeur + " " + geo.hauteur });
+  svg.style.width = geo.largeur + "px";
+  svg.style.height = geo.hauteur + "px";
+  geo.connecteurs.forEach((c) => {
+    const chemin = svgEl("path", classeConnecteur(c.etat));
+    svgAttrs(chemin, { d: c.d });
+    svg.appendChild(chemin);
+  });
+  plan.appendChild(svg);
+
+  geo.agents.forEach((a) => plan.appendChild(construireDisqueAgent(a, sigles, tokensParPassage)));
+  scroll.appendChild(plan);
+  return scroll;
 }
 
-/* Point d'entrée (branché dans `construireDetailCycle`, AVANT la table des
- * passages). `wf.segments` (agent principal compris) si disponible, repli
- * sur `wf.passages` sur un backend plus ancien — même convention que
- * `construireChaineEtNotes`. Un cycle sans aucun segment retombe sur `null`
- * : l'appelant garde alors le seul état vide déjà affiché par la table. */
-function construireDiagramme(wf, sigles) {
+/* `construireDiagramme` SUPPRIMÉE ICI (feature-028, lot C1) : ne servait
+ * plus que l'accordéon « Cycles », retiré entier. */
+
+/* ------------------------------------------------ graphe principal (F8/F9)
+ * `#cycle-canvas` (zone de travail, mono-écran) : reconstruit à CHAQUE
+ * rafraîchissement — pas de diff incrémental, `disposer()` est un module pur
+ * bon marché à rappeler et le nombre de passages par cycle reste modeste.
+ *
+ * Deux MODES d'affichage du même `#cycle-canvas`/`.detail-sheet` (feature-028,
+ * lot A, câblage des onglets `#cycle-tab-actif`/`#cycle-tab-historique`) —
+ * jamais deux panneaux, jamais `role="tab"` (F7, mono-écran) : « Historique »
+ * ne fait QUE changer quel `wf` alimente le MÊME rendu. `cycleHistoriqueChoisi`
+ * survit à `vider()` + reconstruction (même patron que `cycleOuvert` de
+ * l'accordéon, ci-dessous) : un choix déjà fait reste tant que le cycle
+ * choisi existe encore dans `etat.workflows`. */
+let modeCycleAffiche = "actif"; // "actif" | "historique"
+let cycleHistoriqueChoisi = null; // workflow_id retenu en mode "historique"
+
+function choisirCycleAffiche(etat) {
+  const workflows = (etat.workflows || []).slice().reverse();   // le plus récent en tête
+  if (!workflows.length) return null;
+  if (modeCycleAffiche === "historique") {
+    const trouve = workflows.find((wf) => wf.workflow_id === cycleHistoriqueChoisi);
+    if (trouve) return trouve;
+    // Le cycle retenu a disparu de la liste affichée (bornage, PIEGES §19) —
+    // retombe sur le plus récent, jamais sur une exception ni un cycle fantôme.
+    cycleHistoriqueChoisi = workflows[0].workflow_id;
+    return workflows[0];
+  }
+  return workflows.find((wf) => etatCycle(wf) === "en_cours") || workflows[0];
+}
+
+/* État des TROIS contrôles de `.cycle-tabs`, dérivé du mode ET du nombre de
+ * cycles CONNUS — jamais recalculé à la main ailleurs (une seule source de
+ * vérité, cf. skill dev-workflow). `#cycle-indice` n'est un sélecteur RÉEL
+ * qu'en mode « historique », ET seulement s'il y a plus d'un cycle à
+ * parcourir : avec un seul cycle connu, le bouton reste `aria-disabled`,
+ * jamais un clic qui ne changerait jamais rien. */
+function actualiserControleCycleTabs(workflowsTries) {
+  const ongletActif = $("cycle-tab-actif");
+  const ongletHistorique = $("cycle-tab-historique");
+  const indice = $("cycle-indice");
+  if (ongletActif) ongletActif.setAttribute("aria-pressed", modeCycleAffiche === "actif" ? "true" : "false");
+  if (ongletHistorique) ongletHistorique.setAttribute("aria-pressed", modeCycleAffiche === "historique" ? "true" : "false");
+  if (!indice) return;
+  const parcourable = modeCycleAffiche === "historique" && workflowsTries.length > 1;
+  indice.setAttribute("aria-disabled", parcourable ? "false" : "true");
+  indice.setAttribute("aria-label", parcourable
+    ? "Cycle affiché — cliquer pour voir le cycle précédent"
+    : "Cycle affiché");
+}
+
+function formatEcoule(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  const mm = Math.floor(s / 60);
+  const ss = s % 60;
+  return String(mm).padStart(2, "0") + ":" + String(ss).padStart(2, "0");
+}
+
+function rendreGrapheCyclePrincipal(etat) {
+  const zone = $("cycle-canvas");
+  vider(zone);
+
+  /* Indicateur « vivant » (§16 des notes cycle 1, PIEGES §17) : branché sur
+   * `etat.agents[].actif_sur` (`instantane()`, backend/server.py), JAMAIS
+   * sur une absence de `SessionEnd` — ~85 % des cycles la portent, sans que
+   * cela signale une activité réelle. */
+  const nbActifs = (etat.agents || []).filter((a) => a.actif_sur).length;
+  /* `classList.className = ` plutôt que `.classList.toggle(...)` : le bac à
+   * sable de `test_app_bug012.js` n'implémente que `add`/`contains`
+   * (FakeNode), pas `toggle` — cette forme reste correcte dans un vrai
+   * navigateur ET dans ce bac à sable. */
+  $("status-dot").className = "status-dot" + (nbActifs > 0 ? " actif" : "");
+  $("summary-active").textContent = nbActifs + " agent" + (nbActifs > 1 ? "s" : "") + " actif" + (nbActifs > 1 ? "s" : "");
+
+  const repoTexte = $("repo-strip-texte");
+  const repoOk = $("repo-strip-ok");
+  if (etat.git && etat.git.depot) {
+    const touches = (etat.git.touches || []).length;
+    repoTexte.textContent = (etat.git.branche || "?") + " · " + touches + " fichier(s) modifié(s)";
+    repoOk.hidden = false;
+  } else {
+    repoTexte.textContent = "pas un dépôt git";
+    repoOk.hidden = true;
+  }
+
+  const workflowsTries = (etat.workflows || []).slice().reverse(); // le plus récent en tête
+  const wf = choisirCycleAffiche(etat);
+  actualiserControleCycleTabs(workflowsTries);
+  if (!wf) {
+    $("cycle-status").textContent = "Aucun cycle sélectionné";
+    $("summary-step").textContent = "—";
+    $("summary-time").textContent = "00:00";
+    $("summary-tokens").textContent = "—";
+    $("motion-note").textContent = "aucun passage à afficher pour l'instant — invoquez un agent depuis la section Développer";
+    $("cycle-indice").textContent = "—";
+    /* #cycle-title (F0, prototype l.687) : JAMAIS une chaîne vide — c'est la
+     * cible `aria-labelledby` de `.cycle-surface`. Aucun cycle observé :
+     * libellé factuel dédié, distinct de « Cycle #N » (lot 7). */
+    $("cycle-title").textContent = "Aucun cycle observé";
+    return;
+  }
+  /* ADR-0023 : « Cycle #N » (indice_cycle, additif) est légitime — le TITRE
+   * de spec ne l'est pas EN GÉNÉRAL (corrélation cycle→spec après coup, 2 cas
+   * sur 14 seulement). Le lot 10 ouvre une troisième branche, mais PAS par
+   * corrélation : `etat.lancement_spec_id` (server.py, GATE P1 S1.7) est le
+   * `spec_id` que LE SERVEUR a lui-même mémorisé sur le `Lancement` au
+   * moment où CE lancement a été demandé via `/api/spec/lancer` — un fait
+   * causal, jamais une reconstitution après coup. Il ne vaut d'ailleurs
+   * QUE tant que ce lancement `toujours_en_cours()` (server.py) ; il
+   * redevient `null` dès la fin du cycle, et `#cycle-title` retombe alors
+   * sur « Cycle #N », jamais sur un titre périmé. */
+  const libelleIndice = typeof wf.indice_cycle === "number"
+    ? "Cycle #" + wf.indice_cycle : null;
+  $("cycle-indice").textContent = libelleIndice || "—";
+  let titreSpecConnu = null;
+  if (etat.lancement_spec_id) {
+    const specCorrespondante = (etat.specs || []).find((s) => s.id === etat.lancement_spec_id);
+    if (specCorrespondante) {
+      titreSpecConnu = specCorrespondante.titre && specCorrespondante.titre !== specCorrespondante.id
+        ? specCorrespondante.id + " · " + specCorrespondante.titre
+        : specCorrespondante.id;
+    }
+  }
+  $("cycle-title").textContent = titreSpecConnu || libelleIndice || "Cycle en cours";
+
   const segments = wf.segments || wf.passages || [];
-  if (!segments.length) return null;
-  // Garde (bug-020) : `diagramme.js` est chargé en `<script>` séparé
-  // (index.html, AVANT ce fichier) — s'il est absent (404, cache, oubli de
-  // relancer le serveur après un fichier neuf — PIEGES.md §8), `disposer`
-  // n'existe pas et l'exception remonterait jusqu'au `catch` global de
-  // `rafraichir()`, qui l'afficherait à tort comme « serveur injoignable ».
-  // Se rabattre ici sur l'absence de diagramme, comme un cycle sans segment.
-  if (typeof disposer !== "function") return null;
+  const sigles = siglesAgents(Array.from(collecterRoles([wf])));
+  const cle = etatCycle(wf);
+  const info = descripteurEtat(cle);
+  $("cycle-status").textContent = info.libelle.charAt(0).toUpperCase() + info.libelle.slice(1);
+  const dernier = segments.length ? segments[segments.length - 1] : null;
+  $("summary-step").textContent = dernier ? dernier.agent : "—";
+  const finIso = cle === "en_cours" ? new Date().toISOString() : wf.fin_observee;
+  const ecouleMs = dureeIso(wf.debut, finIso);
+  $("summary-time").textContent = ecouleMs !== null ? formatEcoule(ecouleMs) : "00:00";
+  $("motion-note").textContent = cle === "en_cours"
+    ? "un agent est actif : son disque grandit et révèle ses données"
+    : "cycle " + info.libelle;
 
+  if (!segments.length || typeof disposer !== "function") {
+    $("summary-tokens").textContent = "—";
+    return;
+  }
   const geo = disposer(segments);
-  const enveloppe = document.createDocumentFragment();
-
-  // Titre de zone + phrase d'avertissement (item S/B15) : construits ici,
-  // PAS dans index.html — le bandeau vit dans le détail de cycle dynamique,
-  // pas dans un gabarit statique.
-  const entete = el("div", "dg-entete");
-  entete.appendChild(el("span", "dg-entete-titre", "Déroulé"));
-  entete.appendChild(el("span", "dg-entete-phrase",
-    "l'écart horizontal sert la lisibilité, il ne mesure pas le temps"));
-  enveloppe.appendChild(entete);
-
-  const conteneur = el("div", "diagramme-scroll");
-  brancherDefilementClavier(conteneur);
-
-  const svg = svgEl("svg", "dg-svg");
-  svgAttrs(svg, {
-    // `segments.length` est déjà garanti ≥ 1 ci-dessus : `disposer()` ne
-    // renvoie `largeur`/`hauteur` à 0 que pour une liste VIDE, jamais
-    // atteinte ici — pas de clamp défensif qui dupliquerait sa décision.
-    viewBox: "0 0 " + geo.largeur + " " + geo.hauteur,
-    width: geo.largeur, height: geo.hauteur, role: "img",
-    "aria-label": "Diagramme du déroulé — " + segments.length + " agent(s)",
-  });
-
-  // Ordre de dessin (peinture SVG = ordre d'apparition) : liens et arcs
-  // D'ABORD (toujours sous les cercles) ; puis le cadre des créneaux
-  // empilés AVEC leurs socles (le cadre, lui, doit rester SOUS les cercles
-  // qu'il entoure) ; les cercles en dernier — jamais masqués par un cadre
-  // ou un lien. Le socle et les cercles n'occupent de toute façon jamais le
-  // même point (texte à côté ou en dessous, jamais superposé au disque).
-  svg.appendChild(construireLiensDiagramme(geo));
-  svg.appendChild(construireArcsDiagramme(geo));
-  geo.creneaux.forEach((creneau) => {
-    svg.appendChild(construireSoclesCreneau(creneau));
-  });
-  geo.creneaux.forEach((creneau) => {
-    creneau.agents.forEach((agentGeo) => {
-      svg.appendChild(construireCercleAgent(agentGeo, sigles));
-    });
-  });
-
-  conteneur.appendChild(svg);
-  const piste = el("div", "dg-piste");
-  piste.appendChild(conteneur);
-  piste.appendChild(el("div", "dg-voile g"));
-  piste.appendChild(el("div", "dg-voile d"));
-  enveloppe.appendChild(piste);
-  enveloppe.appendChild(construireLegendeDiagramme());
-  return enveloppe;
+  /* feature-023 (lot 12) : `etat.tokens_par_passage` est additif — absent
+   * sur un backend plus ancien, `resumerTokensCycle`/`etatTokensAgent`
+   * dégradent alors vers "absent" pour chaque passage, jamais une erreur. */
+  $("summary-tokens").textContent = resumerTokensCycle(geo, etat.tokens_par_passage);
+  zone.appendChild(construireGrapheAgents(geo, sigles, etat.tokens_par_passage));
 }
 
-function construireDetailCycle(wf, sigles) {
-  const detail = document.createDocumentFragment();
-  detail.appendChild(construireProprietes(wf));
-  const diagramme = construireDiagramme(wf, sigles);
-  if (diagramme) detail.appendChild(diagramme);
-  detail.appendChild(construireTablePassages(wf, sigles));
-  detail.appendChild(construireChaineEtNotes(wf));
-  return detail;
-}
+
+/* `construireDetailCycle` SUPPRIMÉE ICI (feature-028, lot C1) : ne
+ * servait plus que l'accordéon « Cycles », retiré entier. */
 
 /* Rôles apparaissant dans les cycles AFFICHÉS (passages + agents ouvrants
  * cités en désignation) : `siglesAgents` calcule tous les sigles d'un coup,
@@ -1203,195 +975,682 @@ function collecterRoles(workflows) {
   return roles;
 }
 
-/* Liste des cycles en accordéon (feature-016, docs/DESIGN-SYSTEM.md §6). */
-function rendreCycles(etat) {
-  const zone = $("workflows");
-  vider(zone);
-  const workflows = (etat.workflows || []).slice().reverse();   // le plus récent en tête
+/* `rendreCycles` SUPPRIMÉE ICI (feature-028, lot C1) : c'était
+ * l'accordéon « Cycles » (`#workflows`) lui-même — voir le commentaire
+ * au-dessus de l'ancienne `construireResume` pour la décision humaine
+ * (1B) et ce qui est PERDU. `.cycles`/`#workflows` (markup), `#legende-
+ * cycles`/`#pied-cycles` retirés d'`index.html` avec elle. */
 
-  if (!workflows.length) {
-    /* Cas limite : état vide explicite, qui dit quoi faire — pas une liste
-     * muette. */
-    zone.appendChild(el("li", "vide",
-      "aucun cycle observé pour l'instant — invoquez un agent depuis la "
-      + "section Développer (bloc Pilotage) pour en amorcer un"));
-    cycleOuvert = null;
-    $("legende-cycles").textContent = "";
-    $("pied-cycles").textContent = "";
-    return;
-  }
+/* `rendreFichiers`/`ouvrirDiff` SUPPRIMÉS ICI (feature-028, décision humaine
+ * du 2026-09-23) : « Fichiers touchés » retirée, retrait de capacité assumé
+ * — « la consultation des diffs ne va nulle part ». `ouvrirDiff` n'avait
+ * qu'un seul appelant dans tout ce fichier (la ligne ci-dessus, retirée avec
+ * elle) : code mort sans elle, retiré au même lot (`/api/diff` n'a donc plus
+ * d'appelant frontal — signalé à `doc-writer` et au GATE). La liste des
+ * fichiers touchés du dépôt reste lisible ailleurs, via `.repo-strip`
+ * (`rendreGrapheCyclePrincipal`). */
 
-  /* Dépliement exclusif (item C) : le dernier cycle est ouvert par défaut ;
-   * un choix déjà fait survit tant que le cycle choisi reste présent dans la
-   * liste affichée. */
-  const idsPresents = new Set(workflows.map((wf) => wf.workflow_id));
-  if (cycleOuvert === null || !idsPresents.has(cycleOuvert)) {
-    cycleOuvert = workflows[0].workflow_id;
-  }
-
-  const sigles = siglesAgents(Array.from(collecterRoles(workflows)));
-
-  workflows.forEach((wf) => {
-    const li = el("li", "cycle");
-    const ouvert = wf.workflow_id === cycleOuvert;
-    const { h3, idDetail } = construireEnteteCycle(wf, sigles, ouvert);
-    li.appendChild(h3);
-    const detail = el("div", "cycle-detail");
-    detail.id = idDetail;
-    detail.setAttribute("role", "region");
-    detail.setAttribute("aria-labelledby", idCycleDom(wf.workflow_id) + "-bouton");
-    detail.hidden = !ouvert;
-    /* Le contenu est construit que le cycle soit ouvert ou non (item M/C :
-     * jamais retiré du DOM) — coûte une reconstruction de plus au clic, en
-     * échange d'un état de dépliement qui ne perd jamais rien au clavier. */
-    detail.appendChild(construireDetailCycle(wf, sigles));
-    li.appendChild(detail);
-    zone.appendChild(li);
-  });
-
-  /* Légende fixe au-dessus de la liste (item, comportement attendu) : les
-   * DEUX bornages — combien sont affichés sur le total, et ce qu'est un
-   * cycle. `etat.cycles_total` est additif (feature-016, item K) : absent
-   * sur un backend plus ancien, on retombe sur le seul compte affiché. */
-  const total = typeof etat.cycles_total === "number" ? etat.cycles_total : workflows.length;
-  $("legende-cycles").textContent =
-    workflows.length + (total > workflows.length ? " sur " + total : "")
-    + " cycle" + (total > 1 ? "s" : "") + " affiché" + (total > 1 ? "s" : "") + " — "
-    + "un cycle commence à l'invocation d'un agent ouvrant configuré ; sans "
-    + "agent ouvrant, une session reste un seul cycle, dit « session entière ».";
-
-  /* Pied de liste (item K) : `evenements_hors_session` était calculé puis
-   * jeté — des événements écrits avant qu'une session ne soit connue, jamais
-   * absorbés dans un cycle fabriqué pour l'occasion. */
-  const horsSession = typeof etat.evenements_hors_session === "number"
-    ? etat.evenements_hors_session : 0;
-  $("pied-cycles").textContent = horsSession
-    ? horsSession + " événement(s) sans session associée — ne forment aucun cycle"
-    : "";
+/* -------------------------------------------------------- événements/passage --
+ * `rendreTimeline`/`#timeline` SUPPRIMÉS (U1 de feature-021, feature-028
+ * lot A1) : plus de flux brut affiché en continu. La tranche d'événements
+ * D'UN PASSAGE reste accessible à la demande, dans le tiroir EXISTANT
+ * (`#tiroir`) — jamais un second panneau. `libelleEvenement` reprend TEL
+ * QUEL le classement déjà éprouvé de l'ancienne `rendreTimeline`. */
+function libelleEvenement(e) {
+  let quoi = e.hook_event_name || "?";
+  if (e.hook_event_name === "SubagentStart") quoi = "▶ " + (e.agent_type || "?");
+  else if (e.hook_event_name === "SubagentStop") quoi = "■ fin de sous-agent";
+  else if (e.failed) quoi = "✕ " + (e.tool || "outil") + " en échec";
+  else if (e.command_head) quoi = "$ " + e.command_head;
+  else if (e.file) quoi = (e.tool || "fichier") + " " + e.file;
+  return quoi;
 }
 
-/* -------------------------------------------------------------- fichiers -- */
-function rendreFichiers(etat) {
-  const zone = $("fichiers");
-  vider(zone);
-  if (!etat.git.depot) {
-    zone.appendChild(el("div", "vide", "pas un dépôt git"));
-    return;
-  }
-  if (!etat.git.touches.length) {
-    zone.appendChild(el("div", "vide", "arbre de travail propre"));
-  }
-  etat.git.touches.forEach((entree) => {
-    const ligne = el("button", "fichier");
-    ligne.type = "button";
-    ligne.appendChild(el("span", "fcode", entree.libelle));
-    ligne.appendChild(el("span", "fchemin",
-      entree.ancien ? entree.ancien + " → " + entree.chemin : entree.chemin));
-    ligne.addEventListener("click", () => ouvrirDiff(entree.chemin));
-    zone.appendChild(ligne);
-  });
-
-  (etat.git.commits || []).slice(0, 4).forEach((commit) => {
-    const ligne = el("div", "fichier");
-    ligne.appendChild(el("span", "fcode", commit.hash));
-    // `.fsujet`, pas `.fchemin` (feature-019) : `commit.sujet` est une phrase
-    // écrite par un humain, jamais un chemin — la chasse fixe de `.fchemin`
-    // n'a rien à y faire.
-    ligne.appendChild(el("span", "fsujet", commit.sujet));
-    zone.appendChild(ligne);
-  });
+/* Filtre sur `agent_id` SEUL, jamais sur une fenêtre de temps devinée : c'est
+ * la même computation que la géométrie du diagramme (`disposer`, ADR-0031
+ * §4), pas la corrélation événement→spec qu'§16 PIEGES dit non fiable (2 cas
+ * sur 14) — `agent_id` est un identifiant d'invocation, pas une hypothèse. */
+function evenementsDuPassage(agentId) {
+  const tous = (dernierEtat && dernierEtat.evenements) || [];
+  return tous.filter((e) => e.agent_id === agentId);
 }
 
-/* -------------------------------------------------------------- timeline -- */
-function rendreTimeline(etat) {
-  const liste = $("timeline");
-  vider(liste);
-  const evenements = etat.evenements.slice().reverse();
+function ouvrirEvenementsPassage(agentGeo) {
+  if (!agentGeo || !agentGeo.agentId) return;
+  const titre = "Événements — " + agentGeo.agent;
+  const evenements = evenementsDuPassage(agentGeo.agentId);
   if (!evenements.length) {
-    liste.appendChild(el("li", "vide",
-      "journal vide — aucun événement observé pour l'instant ; il se "
-      + "remplit dès qu'un agent est invoqué"));
+    ouvrirTiroir(titre, "aucun événement associé à ce passage pour l'instant.");
     return;
   }
-  evenements.forEach((e) => {
-    let classe = "";
-    let quoi = e.hook_event_name || "?";
-    if (e.hook_event_name === "SubagentStart") { classe = "agent"; quoi = "▶ " + (e.agent_type || "?"); }
-    else if (e.hook_event_name === "SubagentStop") { classe = "agent"; quoi = "■ fin de sous-agent"; }
-    else if (e.failed) { classe = "echec"; quoi = "✕ " + (e.tool || "outil") + " en échec"; }
-    else if (e.command_head) { quoi = "$ " + e.command_head; }
-    else if (e.file) { quoi = (e.tool || "fichier") + " " + e.file; }
-    const ligne = el("li", classe);
-    ligne.appendChild(el("span", "heure", heure(e.ts)));
-    ligne.appendChild(el("span", "quoi", quoi));
-    liste.appendChild(ligne);
-  });
+  const lignes = evenements.map((e) => heure(e.ts) + "  " + libelleEvenement(e));
+  ouvrirTiroir(titre, lignes.join("\n"));
 }
 
 /* ---------------------------------------------------------------- tiroir -- */
 function ouvrirTiroir(titre, contenu) {
+  /* feature-025 : le tiroir sert aussi de surface d'édition (B2) — l'ouvrir
+   * en mode LECTURE (diff, ou détail de secours) doit toujours quitter le
+   * mode édition, jamais laisser un formulaire orphelin affiché derrière un
+   * nouveau contenu. */
+  if (typeof fermerEditionTiroir === "function") fermerEditionTiroir();
   $("tiroir-titre").textContent = titre;
   $("tiroir-contenu").textContent = contenu;
   $("tiroir").hidden = false;
   $("tiroir-fermer").focus();
 }
 
-function fermerTiroir() { $("tiroir").hidden = true; }
-
-async function ouvrirSpec(identifiant) {
-  ouvrirTiroir(identifiant, "chargement…");
-  try {
-    const reponse = await fetch("/api/spec?id=" + encodeURIComponent(identifiant),
-      { headers: enTeteAuthPilotage() });
-    if (reponse.status === 401) {
-      sur401Lecture();
-      return ouvrirTiroir(identifiant, "Authentification requise — reconnectez-vous.");
-    }
-    const donnees = await reponse.json();
-    if (donnees.erreur) return ouvrirTiroir(identifiant, "Erreur : " + donnees.erreur);
-    const entete = [
-      "colonne   : " + donnees.colonne,
-      "statut    : " + (donnees.statut_texte || "(absent)"),
-      "classé    : " + donnees.statut_classe +
-        (donnees.divergence ? "   ⚠ DIVERGENCE avec le répertoire" : ""),
-      "priorité  : " + (donnees.priorite || "—"),
-      "".padEnd(60, "─"),
-      "",
-    ].join("\n");
-    ouvrirTiroir(identifiant, entete + donnees.contenu);
-  } catch (erreur) {
-    ouvrirTiroir(identifiant, "Erreur réseau : " + erreur.message);
-  }
+function fermerTiroir() {
+  $("tiroir").hidden = true;
+  if (typeof fermerEditionTiroir === "function") fermerEditionTiroir();
 }
 
-async function ouvrirDiff(chemin) {
-  ouvrirTiroir(chemin, "chargement…");
-  try {
-    const reponse = await fetch("/api/diff?chemin=" + encodeURIComponent(chemin),
-      { headers: enTeteAuthPilotage() });
-    if (reponse.status === 401) {
-      sur401Lecture();
-      return ouvrirTiroir(chemin, "Authentification requise — reconnectez-vous.");
-    }
-    const donnees = await reponse.json();
-    if (donnees.erreur) return ouvrirTiroir(chemin, "Erreur : " + donnees.erreur);
-    const avis = donnees.tronque
-      ? "⚠ DIFF TRONQUÉ — la suite n'est pas affichée\n" + "".padEnd(60, "─") + "\n\n"
-      : "";
-    ouvrirTiroir(chemin, avis + (donnees.diff || "(aucune différence)"));
-  } catch (erreur) {
-    ouvrirTiroir(chemin, "Erreur réseau : " + erreur.message);
-  }
-}
-
-/* --------------------------------------------------------------- pilotage -- */
-/* Lancer un workflow déclaré, suivre sa sortie en direct, l'interrompre.
+/* ---------------------------------------------------- backlog : actions -- *
+ * feature-025 (cycle 2, lots 9-10) : menu ⋮, dialogue de détail M3, lancer /
+ * modifier / supprimer une spec DÉSIGNÉE. Markup et classes REPRIS du
+ * prototype (`index.html`, voir son commentaire au-dessus de `#context-
+ * menu`) — ce bloc les branche à `GET /api/spec` et aux trois routes du
+ * lot 9 (`gestion_spec.py`).
  *
- * Invariant central : `ecriture_active` (et `ecriture_raison`) est LU depuis
- * `/api/etat`, jamais redéduit ici d'une autre donnée (longueur de
- * `commandes_declarees`, constante, etc.) — c'est le même champ que celui qui
- * alimente les lignes « Budget max » / « Écrivains » du bloc Système
- * (rendreSysteme, ci-dessus).
+ * ⚠️ Contrainte du bac à sable : plusieurs harnais `test_app_*.js` chargent
+ * ce fichier ENTIER dans un `document` minimal qui ne connaît pas tous ces
+ * `id` et n'implémente ni `showModal`/`close`, ni `querySelector`, ni
+ * `getBoundingClientRect`, ni `.dataset`. En conséquence :
+ *   - AUCUN `document.querySelector*` — les collections nécessaires sont
+ *     tenues à la main, comme le reste du fichier ;
+ *   - tout `$("id")` susceptible d'être absent d'un harnais plus ancien est
+ *     GARDÉ (`if (élément) { … }`) avant tout appel de méthode : un accès
+ *     direct ferait tomber TOUS les harnais qui chargent `app.js`, pas
+ *     seulement ce fichier ;
+ *   - `showModal()`/`close()`/`getBoundingClientRect()` sont appelés
+ *     seulement si la méthode existe (`typeof … === "function"`), avec un
+ *     repli sur `.hidden` — le même degré de tolérance qu'un `<dialog>`
+ *     natif offre au navigateur réel et qu'un `FakeNode` générique n'offre
+ *     pas ;
+ *   - `data-*` est posé par `setAttribute`/lu par `getAttribute`, jamais
+ *     `.dataset` (absent du bac à sable).
+ */
+
+// -- éligibilité, dérivée de la MÊME position que le serveur
+// (`gestion_spec.role_colonne`) : jamais un nom de colonne codé en dur
+// (ADR-0003). `null` si la colonne n'est pas (ou plus) déclarée. --------
+function roleColonneClient(etat, classeColonne) {
+  const classes = ((etat && etat.colonnes) || []).map((c) => c.classe);
+  const index = classes.indexOf(classeColonne);
+  if (index === -1) return null;
+  if (index === 0) return "premiere";
+  if (index === classes.length - 1) return "derniere";
+  return "intermediaire";
+}
+
+function ouvrirDialogue(dialogue) {
+  if (!dialogue) return;
+  if (typeof dialogue.showModal === "function") dialogue.showModal();
+  else dialogue.hidden = false;
+}
+
+function fermerDialogue(dialogue) {
+  if (!dialogue) return;
+  if (typeof dialogue.close === "function") dialogue.close();
+  else dialogue.hidden = true;
+}
+
+// -- menu contextuel (⋮) ----------------------------------------------------
+let menuTargetSpec = null;
+let menuBoutonActif = null;
+
+// Constantes de positionnement (revue de code, cycle `feature-021`) : le
+// menu n'a pas de rendu à lire au moment du calcul (`menu.hidden = false`
+// vient d'être posé, aucun reflow garanti côté bac à sable), donc sa
+// géométrie est nommée ici plutôt que mesurée en direct. `LARGEUR_PX` doit
+// rester égale à `.context-menu { width: … }` (`app.css`) ; les deux
+// hauteurs sont mesurées à la main (3 items + séparateur, ou 2 items) et se
+// désynchroniseront du CSS au premier changement de gabarit — à revoir
+// ensemble si le menu change.
+const MENU_CONTEXTUEL_LARGEUR_PX = 190; // .context-menu { width: 190px }
+const MENU_CONTEXTUEL_MARGE_VIEWPORT_PX = 12; // espace minimal laissé au bord droit du viewport
+const MENU_CONTEXTUEL_HAUTEUR_AVEC_LANCER_PX = 226; // « lancer » + séparateur + « modifier » + « supprimer »
+const MENU_CONTEXTUEL_HAUTEUR_SANS_LANCER_PX = 174; // « modifier » + « supprimer », sans « lancer »
+// Item de plus (feature-028, lot A, GATE C3) : « Interrompre » partage
+// `launch-divider` avec « Lancer un cycle » plutôt que d'en ouvrir un à lui
+// seul. Deux incréments, REMESURÉS (Chromium sans tête, script de mesure
+// jetable, jamais devinés — PIEGES) plutôt que la simple hauteur d'un item :
+// quand `launchable` est déjà vrai, `launch-divider` est déjà compté dans
+// `MENU_CONTEXTUEL_HAUTEUR_AVEC_LANCER_PX`, donc seul l'item s'ajoute
+// (48px, confirmé 226 -> 274). Quand `launchable` est faux, le séparateur
+// passe de caché à visible EN MÊME TEMPS que l'item : l'incrément mesuré
+// est l'item ET le séparateur (59px, confirmé 167 -> 226 et 119 -> 178).
+const MENU_CONTEXTUEL_HAUTEUR_ITEM_INTERROMPRE_SEUL_PX = 48;
+const MENU_CONTEXTUEL_HAUTEUR_ITEM_INTERROMPRE_AVEC_SEPARATEUR_PX = 59;
+
+function elementsMenuVisibles() {
+  const menu = $("context-menu");
+  if (!menu) return [];
+  return ["menu-launch-cycle", "menu-interrupt-cycle", "view-details", "edit-item", "delete-item"]
+    .map((id) => $(id))
+    .filter((n) => n && !n.hidden);
+}
+
+function fermerMenuContextuel(rendreFocus) {
+  const menu = $("context-menu");
+  if (!menu || menu.hidden) return;
+  menu.hidden = true;
+  if (menuBoutonActif) {
+    menuBoutonActif.setAttribute("aria-expanded", "false");
+    if (rendreFocus && typeof menuBoutonActif.focus === "function") menuBoutonActif.focus();
+  }
+  menuBoutonActif = null;
+}
+
+function ouvrirMenuContextuel(bouton, specId) {
+  const menu = $("context-menu");
+  if (!menu) return;
+  const dejaOuvertPourCetteCarte = menuBoutonActif === bouton && !menu.hidden;
+  fermerMenuContextuel(false);
+  if (dejaOuvertPourCetteCarte) return;
+
+  menuBoutonActif = bouton;
+  menuTargetSpec = specId;
+
+  const launchable = bouton.getAttribute("data-launchable") === "true";
+  const editable = bouton.getAttribute("data-editable") === "true";
+  const supprimable = bouton.getAttribute("data-supprimable") === "true";
+  /* GATE C3 : n'apparaît que sur la carte dont la spec est le lancement
+   * COURANT (`data-interrompable`, posé par `rendreKanban` d'après
+   * `etat.lancement_spec_id === spec.id`). */
+  const interrompable = bouton.getAttribute("data-interrompable") === "true";
+  const lancer = $("menu-launch-cycle");
+  const interrompre = $("menu-interrupt-cycle");
+  const separateur = $("launch-divider");
+  if (lancer) lancer.hidden = !launchable;
+  if (interrompre) interrompre.hidden = !interrompable;
+  if (separateur) separateur.hidden = !(launchable || interrompable);
+  const modifier = $("edit-item");
+  if (modifier) modifier.hidden = !editable;
+  const supprimer = $("delete-item");
+  if (supprimer) supprimer.hidden = !supprimable;
+
+  menu.hidden = false;
+  if (typeof bouton.getBoundingClientRect === "function") {
+    const rect = bouton.getBoundingClientRect();
+    const largeurVue = (typeof window !== "undefined" && window.innerWidth) || 1024;
+    const hauteurVue = (typeof window !== "undefined" && window.innerHeight) || 768;
+    const hauteurBase = launchable
+      ? MENU_CONTEXTUEL_HAUTEUR_AVEC_LANCER_PX : MENU_CONTEXTUEL_HAUTEUR_SANS_LANCER_PX;
+    const incrementInterrompre = !interrompable ? 0
+      : (launchable ? MENU_CONTEXTUEL_HAUTEUR_ITEM_INTERROMPRE_SEUL_PX
+                    : MENU_CONTEXTUEL_HAUTEUR_ITEM_INTERROMPRE_AVEC_SEPARATEUR_PX);
+    const hauteurMenu = hauteurBase + incrementInterrompre;
+    menu.style.left = Math.min(
+      largeurVue - (MENU_CONTEXTUEL_LARGEUR_PX + MENU_CONTEXTUEL_MARGE_VIEWPORT_PX),
+      Math.max(8, rect.right - MENU_CONTEXTUEL_LARGEUR_PX)
+    ) + "px";
+    menu.style.top = Math.min(
+      hauteurVue - hauteurMenu,
+      rect.bottom + 4
+    ) + "px";
+  }
+  bouton.setAttribute("aria-expanded", "true");
+  const items = elementsMenuVisibles();
+  const premier = items[0];
+  if (premier && typeof premier.focus === "function") premier.focus();
+}
+
+(function cablerMenuContextuelUneFois() {
+  const menu = $("context-menu");
+  if (!menu) return;
+  menu.addEventListener("keydown", (evenement) => {
+    const items = elementsMenuVisibles();
+    if (!items.length) return;
+    const indexActuel = items.indexOf(document.activeElement);
+    if (evenement.key === "Escape") {
+      evenement.preventDefault();
+      fermerMenuContextuel(true);
+    } else if (evenement.key === "ArrowDown" || evenement.key === "ArrowUp") {
+      evenement.preventDefault();
+      const direction = evenement.key === "ArrowDown" ? 1 : -1;
+      const suivant = items[(indexActuel + direction + items.length) % items.length];
+      if (suivant && typeof suivant.focus === "function") suivant.focus();
+    } else if (evenement.key === "Home") {
+      evenement.preventDefault();
+      if (typeof items[0].focus === "function") items[0].focus();
+    } else if (evenement.key === "End") {
+      evenement.preventDefault();
+      const dernier = items[items.length - 1];
+      if (typeof dernier.focus === "function") dernier.focus();
+    }
+  });
+  if (typeof document.addEventListener === "function") {
+    document.addEventListener("click", (evenement) => {
+      if (menu.hidden) return;
+      if (typeof menu.contains === "function" && menu.contains(evenement.target)) return;
+      if (evenement.target && typeof evenement.target.getAttribute === "function" &&
+          evenement.target.getAttribute("data-menu-for")) return; // le clic qui OUVRE ne doit pas la refermer aussitôt
+      fermerMenuContextuel(false);
+    });
+  }
+})();
+
+// -- dialogue de détail (feature-dialog) -------------------------------------
+// Extraction BORNÉE d'une section markdown (« ## Titre » jusqu'au prochain
+// « ## » ou fin de texte) : le contenu affiché reste ce que la spec PORTE
+// réellement, jamais une invention — dégradable (section absente → « — »),
+// jamais à trous (PIEGES §16, F15 du même cycle).
+function extraireSectionMarkdown(contenu, titre) {
+  if (!contenu) return null;
+  const motif = new RegExp("^##\\s+" + titre.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*$", "m");
+  const m = motif.exec(contenu);
+  if (!m) return null;
+  const debut = m.index + m[0].length;
+  const suite = contenu.indexOf("\n## ", debut);
+  const morceau = (suite === -1 ? contenu.slice(debut) : contenu.slice(debut, suite)).trim();
+  return morceau || null;
+}
+
+function extraireListeMarkdown(section) {
+  if (!section) return [];
+  return section.split("\n")
+    .map((l) => l.replace(/^\s*[-*]\s*\[[ xX]\]\s*/, "").replace(/^\s*[-*]\s+/, "").trim())
+    .filter(Boolean);
+}
+
+async function ouvrirDetailFeature(specId) {
+  const dialogue = $("feature-dialog");
+  if (!dialogue) return;
+  try {
+    const reponse = await fetch("/api/spec?id=" + encodeURIComponent(specId), { headers: enTeteAuthPilotage() });
+    if (reponse.status === 401) { sur401Lecture(); return; }
+    const donnees = await reponse.json();
+    if (donnees.erreur) {
+      if ($("feature-description")) $("feature-description").textContent = "Erreur : " + donnees.erreur;
+      return;
+    }
+    const genre = (donnees.type || "").toLowerCase();
+    if ($("feature-kind")) $("feature-kind").textContent = genre.indexOf("bug") === 0 ? "Bug" : "Feature";
+    if ($("feature-title")) $("feature-title").textContent = donnees.titre && donnees.titre !== donnees.id
+      ? donnees.id + " · " + donnees.titre : donnees.id;
+    const statut = $("feature-status");
+    if (statut) {
+      const estTodo = donnees.statut_classe === "todo" || (!donnees.statut_texte && !donnees.divergence);
+      statut.className = "feature-chip" + (estTodo ? " todo" : "");
+      statut.textContent = donnees.statut_texte || donnees.statut_classe || "—";
+    }
+    const priorite = $("feature-priority");
+    if (priorite) {
+      const p = nettoyerPriorite(donnees.priorite);
+      const estHaute = !!p && (p.toLowerCase().indexOf("haute") === 0 || p.toLowerCase().indexOf("critique") === 0);
+      priorite.className = "feature-chip" + (estHaute ? " high" : "");
+      priorite.textContent = p || "—";
+    }
+    // L'agent responsable N'EST PAS exposé par `specs.py` (B4, lot 9 :
+    // « aucune grandeur de progression exposée », et l'agent responsable
+    // n'a pas été défini/mesuré non plus) — DÉGRADABLE, jamais inventé.
+    if ($("feature-agent")) $("feature-agent").textContent = "Agent · non déterminé par le dépôt";
+    if ($("feature-description")) {
+      $("feature-description").textContent = extraireSectionMarkdown(donnees.contenu, "Description")
+        || "(aucune section « Description » dans cette spec)";
+    }
+    const criteres = $("feature-criteria");
+    if (criteres) {
+      vider(criteres);
+      const liste = extraireListeMarkdown(extraireSectionMarkdown(donnees.contenu, "Critères d.acceptation"));
+      if (!liste.length) criteres.appendChild(el("li", "vide", "aucun critère listé"));
+      else liste.forEach((item) => criteres.appendChild(el("li", "", item)));
+    }
+    if ($("feature-dependency")) {
+      $("feature-dependency").textContent = extraireSectionMarkdown(donnees.contenu, "Contexte") || "—";
+    }
+    if ($("feature-updated")) $("feature-updated").textContent = donnees.maj || "—";
+
+    const boutonModifier = $("feature-edit");
+    if (boutonModifier) boutonModifier.onclick = () => { fermerDialogue(dialogue); ouvrirEditionSpec(specId); };
+    ouvrirDialogue(dialogue);
+  } catch (erreur) {
+    if ($("feature-description")) $("feature-description").textContent = "Erreur réseau : " + erreur.message;
+  }
+}
+
+// -- modification (B2) : réutilise le tiroir existant en mode édition -------
+let editionCourante = null; // { specId, empreinte }
+
+function fermerEditionTiroir() {
+  const form = $("tiroir-edition");
+  if (form) form.hidden = true;
+  const contenu = $("tiroir-contenu");
+  if (contenu) contenu.hidden = false;
+  editionCourante = null;
+}
+
+async function ouvrirEditionSpec(specId) {
+  ouvrirTiroir(specId, "chargement…");
+  try {
+    const reponse = await fetch("/api/spec?id=" + encodeURIComponent(specId), { headers: enTeteAuthPilotage() });
+    if (reponse.status === 401) { sur401Lecture(); return ouvrirTiroir(specId, "Authentification requise — reconnectez-vous."); }
+    const donnees = await reponse.json();
+    if (donnees.erreur) return ouvrirTiroir(specId, "Erreur : " + donnees.erreur);
+    if (!donnees.empreinte) return ouvrirTiroir(specId, "Cette spec ne porte pas d'empreinte — modification impossible.");
+    editionCourante = { specId, empreinte: donnees.empreinte };
+    const contenu = $("tiroir-contenu");
+    if (contenu) contenu.hidden = true;
+    const texte = $("tiroir-edition-texte");
+    if (texte) texte.value = donnees.contenu || "";
+    const erreur = $("tiroir-edition-erreur");
+    if (erreur) { erreur.hidden = true; erreur.textContent = ""; }
+    const form = $("tiroir-edition");
+    if (form) { form.hidden = false; }
+    if (texte && typeof texte.focus === "function") texte.focus();
+  } catch (erreur) {
+    ouvrirTiroir(specId, "Erreur réseau : " + erreur.message);
+  }
+}
+
+async function surSoumissionEditionSpec(evenement) {
+  if (evenement && typeof evenement.preventDefault === "function") evenement.preventDefault();
+  if (!editionCourante) return;
+  const texte = $("tiroir-edition-texte");
+  const erreur = $("tiroir-edition-erreur");
+  const bouton = $("tiroir-edition-enregistrer");
+  if (bouton) bouton.disabled = true;
+  try {
+    const reponse = await fetch("/api/spec/modifier", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, enTeteAuthPilotage()),
+      body: JSON.stringify({
+        spec_id: editionCourante.specId,
+        empreinte: editionCourante.empreinte,
+        contenu: texte ? texte.value : "",
+      }),
+    });
+    const donnees = await reponse.json().catch(() => ({}));
+    if (reponse.status === 200) {
+      editionCourante = { specId: editionCourante.specId, empreinte: donnees.empreinte };
+      fermerEditionTiroir();
+      fermerTiroir();
+      rafraichir();
+      return;
+    }
+    if (reponse.status === 401) { sur401Lecture(); return; }
+    // Le serveur rend trois 409 sémantiquement distincts (spec close,
+    // lancement en cours, empreinte périmée) — CHACUN avec son message
+    // exact (`gestion_spec.py`, `modifier`). Le client ne diagnostique
+    // JAMAIS à sa place : il affiche `donnees.erreur` tel quel, jamais un
+    // texte fabriqué qui suppose UNE cause précise (revue de code, M5).
+    if (erreur) {
+      erreur.hidden = false;
+      erreur.textContent = donnees.erreur || ("Erreur du serveur (" + reponse.status + ").");
+    }
+  } catch (e) {
+    if (erreur) { erreur.hidden = false; erreur.textContent = "Erreur réseau : " + e.message; }
+  } finally {
+    if (bouton) bouton.disabled = false;
+  }
+}
+
+// -- suppression (B3) : confirmation par le nom, VÉRIFIÉE CÔTÉ SERVEUR ------
+let suppressionCourante = null; // { specId }
+
+function fermerDialogueSuppression() {
+  fermerDialogue($("delete-dialog"));
+  suppressionCourante = null;
+}
+
+function ouvrirDialogueSuppression(specId) {
+  const dialogue = $("delete-dialog");
+  if (!dialogue) return;
+  suppressionCourante = { specId };
+  if ($("delete-copy")) {
+    $("delete-copy").textContent = "Cette action supprimera définitivement " + specId + " du backlog. "
+      + "Cette suppression n'est possible que si " + specId + " est déjà suivi par git et sans modification locale — "
+      + "sinon le serveur la refuse et le dit (« commit ou stash d'abord »).";
+  }
+  if ($("delete-confirm-label")) $("delete-confirm-label").textContent = "Tapez « " + specId + " » pour confirmer";
+  if ($("delete-confirm-aide")) $("delete-confirm-aide").textContent = "La suppression est REFUSÉE tant que le texte ne correspond pas exactement.";
+  const champ = $("delete-confirm-input");
+  if (champ) champ.value = "";
+  const bouton = $("delete-confirm-bouton");
+  if (bouton) bouton.disabled = true;
+  const erreur = $("delete-erreur");
+  if (erreur) { erreur.hidden = true; erreur.textContent = ""; }
+  ouvrirDialogue(dialogue);
+  if (champ && typeof champ.focus === "function") champ.focus();
+}
+
+function surSaisieConfirmationSuppression() {
+  if (!suppressionCourante) return;
+  const champ = $("delete-confirm-input");
+  const bouton = $("delete-confirm-bouton");
+  if (!champ || !bouton) return;
+  // Confort client SEULEMENT (règle du projet : jamais à la place du
+  // serveur) — `gestion_spec.supprimer()` revalide l'égalité stricte
+  // avant tout effet, GATE P1 S2.8. Désactiver ce bouton ne protège rien
+  // en soi ; c'est `POST /api/spec/supprimer` qui protège.
+  bouton.disabled = champ.value !== suppressionCourante.specId;
+}
+
+async function surClicConfirmerSuppression() {
+  if (!suppressionCourante) return;
+  const specId = suppressionCourante.specId;
+  const champ = $("delete-confirm-input");
+  const erreur = $("delete-erreur");
+  const bouton = $("delete-confirm-bouton");
+  if (bouton) bouton.disabled = true;
+  try {
+    const reponse = await fetch("/api/spec/supprimer", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, enTeteAuthPilotage()),
+      body: JSON.stringify({ spec_id: specId, confirmation_nom: champ ? champ.value : "" }),
+    });
+    const donnees = await reponse.json().catch(() => ({}));
+    if (reponse.status === 200) {
+      fermerDialogueSuppression();
+      if ($("a11y-announcement")) $("a11y-announcement").textContent = specId + " supprimée du backlog.";
+      rafraichir();
+      return;
+    }
+    if (reponse.status === 401) { sur401Lecture(); return; }
+    if (erreur) {
+      erreur.hidden = false;
+      erreur.textContent = donnees.erreur || ("Erreur du serveur (" + reponse.status + ").");
+    }
+  } catch (e) {
+    if (erreur) { erreur.hidden = false; erreur.textContent = "Erreur réseau : " + e.message; }
+  } finally {
+    surSaisieConfirmationSuppression();
+  }
+}
+
+// -- lancement pour une spec désignée (B1) -----------------------------------
+async function surClicLancerCyclePourSpec(specId) {
+  /* `pilotage.cleChoisie` est désormais TOUJOURS auto-choisie (première
+   * commande déclarée, `actualiserPilotage`/`initialiserPilotage`) — plus
+   * aucune UI ne permet d'en choisir une autre depuis le retrait du panneau
+   * générique « Piloter par clé » (feature-028, lot pilotage dédié). `null`
+   * ici signifie donc UNIQUEMENT « aucune commande n'est déclarée dans
+   * `[commandes]` », jamais « pas encore choisie ». */
+  if (!pilotage.cleChoisie) {
+    if ($("a11y-announcement")) {
+      $("a11y-announcement").textContent = "Aucune commande déclarée sous [commandes] dans la configuration — impossible de lancer un cycle pour " + specId + ".";
+    }
+    return;
+  }
+  try {
+    const reponse = await fetch("/api/spec/lancer", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, enTeteAuthPilotage()),
+      body: JSON.stringify({ cle: pilotage.cleChoisie, spec_id: specId }),
+    });
+    if (reponse.status === 202) {
+      pilotage.lancement = {
+        cle: pilotage.cleChoisie, etat: "en_cours", curseur: 0, tronque: false,
+        derniereActivite: Date.now() / 1000, debutClient: Date.now(),
+        texteSortie: "", syntheticMessage: null,
+      };
+      pilotage.phase = "lancement";
+      demarrerSondagePilotage();
+      if ($("a11y-announcement")) $("a11y-announcement").textContent = "Cycle lancé pour " + specId + ".";
+      rafraichir();
+      return;
+    }
+    const donnees = await reponse.json().catch(() => ({}));
+    if (reponse.status === 401) { sur401Lecture(); return; }
+    if ($("a11y-announcement")) {
+      $("a11y-announcement").textContent = "Lancement refusé pour " + specId + " : " + (donnees.erreur || reponse.status);
+    }
+  } catch (e) {
+    if ($("a11y-announcement")) $("a11y-announcement").textContent = "Erreur réseau au lancement de " + specId + " : " + e.message;
+  }
+}
+
+// -- interruption d'un lancement DÉSIGNÉ (feature-028, lot A, GATE C3) ------
+// Historiquement distincte de `surClicInterromprePilotage` (bloc Pilotage
+// générique, RETIRÉ au lot pilotage dédié, feature-028) qui n'envoyait AUCUN
+// `spec_id` et tuait donc `lancement_courant()`, quel qu'il soit. Ici, le
+// `spec_id` de LA CARTE est envoyé explicitement — le serveur
+// (`_interrompre`, feature-028) cherche ce lancement PARMI
+// `lancements_actifs()` et ne touche à aucun autre.
+async function surClicInterromprePourSpec(specId) {
+  try {
+    const reponse = await fetch("/api/interrompre", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, enTeteAuthPilotage()),
+      body: JSON.stringify({ spec_id: specId }),
+    });
+    if (reponse.status === 202) {
+      if ($("a11y-announcement")) $("a11y-announcement").textContent = "Interruption demandée pour " + specId + ".";
+      rafraichir();
+      return;
+    }
+    if (reponse.status === 401) { sur401Lecture(); return; }
+    const donnees = await reponse.json().catch(() => ({}));
+    if ($("a11y-announcement")) {
+      $("a11y-announcement").textContent = "Interruption refusée pour " + specId + " : " + (donnees.erreur || reponse.status);
+    }
+  } catch (e) {
+    if ($("a11y-announcement")) $("a11y-announcement").textContent = "Erreur réseau à l'interruption de " + specId + " : " + e.message;
+  }
+}
+
+// -- câblage des éléments STATIQUES du menu/dialogues (une fois) ------------
+(function cablerActionsBacklogUneFois() {
+  const fermer1 = $("close-feature");
+  if (fermer1) fermer1.addEventListener("click", () => fermerDialogue($("feature-dialog")));
+  const fermer2 = $("feature-done");
+  if (fermer2) fermer2.addEventListener("click", () => fermerDialogue($("feature-dialog")));
+
+  const menuLancer = $("menu-launch-cycle");
+  if (menuLancer) menuLancer.addEventListener("click", () => {
+    const cible = menuTargetSpec;
+    fermerMenuContextuel(false);
+    if (cible) surClicLancerCyclePourSpec(cible);
+  });
+  const menuInterrompre = $("menu-interrupt-cycle");
+  if (menuInterrompre) menuInterrompre.addEventListener("click", () => {
+    const cible = menuTargetSpec;
+    fermerMenuContextuel(false);
+    if (cible) surClicInterromprePourSpec(cible);
+  });
+  const menuDetails = $("view-details");
+  if (menuDetails) menuDetails.addEventListener("click", () => {
+    const cible = menuTargetSpec;
+    fermerMenuContextuel(false);
+    if (cible) ouvrirDetailFeature(cible);
+  });
+  const menuModifier = $("edit-item");
+  if (menuModifier) menuModifier.addEventListener("click", () => {
+    const cible = menuTargetSpec;
+    fermerMenuContextuel(false);
+    if (cible) ouvrirEditionSpec(cible);
+  });
+  const menuSupprimer = $("delete-item");
+  if (menuSupprimer) menuSupprimer.addEventListener("click", () => {
+    const cible = menuTargetSpec;
+    fermerMenuContextuel(false);
+    if (cible) ouvrirDialogueSuppression(cible);
+  });
+
+  const annulerSuppression = $("cancel-delete");
+  if (annulerSuppression) annulerSuppression.addEventListener("click", fermerDialogueSuppression);
+  const champConfirmation = $("delete-confirm-input");
+  if (champConfirmation) champConfirmation.addEventListener("input", surSaisieConfirmationSuppression);
+  const boutonSupprimer = $("delete-confirm-bouton");
+  if (boutonSupprimer) boutonSupprimer.addEventListener("click", surClicConfirmerSuppression);
+
+  const formeEdition = $("tiroir-edition");
+  if (formeEdition) formeEdition.addEventListener("submit", surSoumissionEditionSpec);
+  const annulerEdition = $("tiroir-edition-annuler");
+  if (annulerEdition) annulerEdition.addEventListener("click", () => { fermerEditionTiroir(); fermerTiroir(); });
+
+  // `#open-add-item`/`#add-item-dialog` (feature-028, lot B, GATE C1/C2) :
+  // câblé dans la MÊME machine `redaction` que l'ancien flux `demande` —
+  // voir le commentaire au-dessus de `SURFACES_REDACTION`, plus bas dans ce
+  // fichier.
+  const ouvrirAjout = $("open-add-item");
+  if (ouvrirAjout) ouvrirAjout.addEventListener("click", () => {
+    /* Un brouillon `dialogue` déjà en cours (l'utilisateur a fermé la boîte
+     * SANS l'avoir écrit) survit à la réouverture — `forme.reset()` ne
+     * s'applique qu'à une saisie FRAÎCHE, sinon il effacerait les champs
+     * qu'un « Régénérer » ultérieur relit, sans toucher au brouillon déjà
+     * affiché (qui, lui, ne dépend plus des champs une fois généré). */
+    const repriseEnCours = redaction.surface === "dialogue" && redaction.phase !== "saisie";
+    if (!repriseEnCours) {
+      const forme = $("add-item-form");
+      if (forme && typeof forme.reset === "function") forme.reset();
+    }
+    ouvrirDialogue($("add-item-dialog"));
+    if (!repriseEnCours) {
+      const champ = $("item-title");
+      if (champ && typeof champ.focus === "function") champ.focus();
+    }
+  });
+  const fermerAjout = $("close-add-item");
+  if (fermerAjout) fermerAjout.addEventListener("click", () => fermerDialogue($("add-item-dialog")));
+  const annulerAjout = $("cancel-add-item");
+  if (annulerAjout) annulerAjout.addEventListener("click", () => fermerDialogue($("add-item-dialog")));
+  const formeAjout = $("add-item-form");
+  if (formeAjout) formeAjout.addEventListener("submit", (evenement) => {
+    if (evenement && typeof evenement.preventDefault === "function") evenement.preventDefault();
+    /* GATE C1 : UN clic ici = `POST /api/spec/brouillon` SEUL — jamais
+     * enchaîné à `/api/spec/ecrire`. `surClicGenererBrouillon` s'arrête à la
+     * phase "brouillon" ; c'est la relecture humaine du Markdown, PUIS un
+     * second clic explicite (« Écrire dans todo/… », dans
+     * `#add-item-redaction-corps`) qui atteint l'écriture — jamais ce
+     * gestionnaire de soumission. */
+    surClicGenererBrouillon("dialogue");
+  });
+})();
+
+/* --------------------------------------------------------------- pilotage --
+ * ⚠️ CE BLOC N'EST PLUS UN PANNEAU (feature-028, lot pilotage dédié,
+ * 2026-09-23) : le panneau générique « Piloter par clé » (`#pilotage-corps`,
+ * `#titre-pilotage`, son `<select>` de commandes, ses boutons Lancer/
+ * Confirmer/Interrompre/Nouveau lancement) a été RETIRÉ ENTIER — voir le
+ * commentaire à l'endroit de son ancienne définition, plus bas dans ce
+ * fichier, pour la décision et ce qui est PERDU avec lui. Ce qui SUBSISTE
+ * ici n'est plus « le pilotage », c'est l'ÉTAT D'EXÉCUTION PARTAGÉ dont
+ * dépendent DIRECTEMENT le lancement et l'interruption PAR CARTE
+ * (`surClicLancerCyclePourSpec`/`surClicInterromprePourSpec`, plus haut) :
+ *   - le jeton d'authentification (`enTeteAuthPilotage` et consorts) — sert
+ *     à TOUT appel authentifié de ce fichier, pas seulement au pilotage,
+ *     déjà avant ce lot ;
+ *   - `pilotage.lancement`/`pilotage.phase` — le suivi du lancement EN
+ *     COURS (sondage `demarrerSondagePilotage`/`sonderLancementPilotage`,
+ *     badge d'en-tête `rendreBadgePilotage`/`#jauge-pilotage`) ;
+ *   - `pilotage.cleChoisie` — la commande utilisée par TOUT lancement
+ *     déclenché depuis une carte, désormais TOUJOURS auto-choisie (la
+ *     première déclarée sous `[commandes]`, jamais plus choisie par un
+ *     humain depuis que le `<select>` qui permettait ce choix a disparu
+ *     avec le panneau).
+ * Renommer l'identifiant `pilotage` lui-même a été ENVISAGÉ (~80 usages
+ * dans ce fichier, plusieurs harnais de test l'invoquent aussi PAR SON NOM,
+ * `bac.sandbox.pilotage`/`rendreBadgePilotage`) et ÉCARTÉ : le risque d'un
+ * renommage mécanique sous ce volume dépassait le bénéfice d'un nom plus
+ * exact, pour une clarté que ce commentaire porte déjà. Décision de ce
+ * lot, pas un oubli — si un futur lecteur bute encore sur le nom, le
+ * renommage reste à faire, avec le temps qu'il mérite.
+ *
+ * Invariant central : `ecriture_active` est LU depuis `/api/etat`, jamais
+ * redéduit ici d'une autre donnée (longueur de `commandes_declarees`,
+ * constante, etc.).
  *
  * Le jeton ne va JAMAIS en query string (il finirait dans des journaux
  * d'accès) : toujours dans l'en-tête `Authorization: Bearer …`. Il n'est posé
@@ -1401,14 +1660,9 @@ async function ouvrirDiff(chemin) {
 const CLE_JETON_PILOTAGE = "pilotage_jeton";
 
 let pilotage = {
-  phase: "chargement",     // chargement | inactif | pret | confirmation | occupe | lancement
-  raison: null,
-  commandes: [],
-  budgetMaxUsd: null,
-  ecrivains: null,
-  cleChoisie: null,
-  confirmation: null,      // { cle, plafond, ecrivains, besoinJeton, erreur, enCours }
-  occupe: null,            // { texte }
+  phase: "chargement",     // chargement | inactif | pret | lancement
+  commandes: [],           // déclarées sous [commandes] — pour l'auto-sélection de cleChoisie
+  cleChoisie: null,        // commande utilisée par TOUT lancement déclenché depuis une carte
   lancement: null,         // { cle, etat, curseur, tronque, derniereActivite, debutClient, texteSortie, syntheticMessage }
 };
 
@@ -1462,6 +1716,44 @@ function texteHorodatageAffiche() {
   return heure(new Date().toISOString());
 }
 
+/* bug-017 (absorbée dans ce cycle au titre d'ADR-0017, feature-021 cycle 2,
+ * lot 3 — voir ADR-0038) : la porte doit rendre le RESTE DU DOCUMENT
+ * INERTE, pas seulement reprendre un focus qui s'en échappe. La rétention
+ * de focus ci-dessous (`keydown` sur Tab) reste en place, EN COMPLÉMENT —
+ * elle ne suffisait pas seule, mesuré par l'auditeur le 2026-09-15 (jusqu'à
+ * 6 contrôles atteignables hors modale, dont le bouton de lancement).
+ *
+ * `#porte-jeton` reste ENFANT DIRECT DE <body> (index.html, condition déjà
+ * établie par feature-019, préservée ici) : ses FRÈRES — tout ce qui vit au
+ * même niveau qu'elle — reçoivent `inert` à l'ouverture, le perdent à la
+ * fermeture. `inert` retire un sous-arbre ENTIER de l'arbre d'accessibilité
+ * ET de l'ordre de tabulation — ce qu'aucune des alternatives de PIEGES §15
+ * (`opacity`, hors-écran, hauteur nulle, détourage) ne fait pour un
+ * sous-arbre. Le comptage des contrôles atteignables hors modale (0 exigé)
+ * est le critère de F4b, lot 5 — ce correctif est structurel : il pose le
+ * mécanisme que F4b viendra mesurer.
+ *
+ * Focus au retour : mémorisé à l'ouverture, restauré à la fermeture — « un
+ * endroit NOMMÉ, pas au hasard » (critère du bug). Repli sur `#main-content`
+ * (skip-link, tabindex="-1") si rien n'était mémorisé ou si l'élément a
+ * disparu du DOM entre-temps (ex. rafraîchissement complet d'une liste) —
+ * jamais `document.body`, qui ne nomme rien. */
+let dernierFocusAvantPorte = null;
+
+function freresDeLaPorte() {
+  const porte = $("porte-jeton");
+  const parent = porte && porte.parentNode;
+  if (!parent || !parent.children) return [];
+  return Array.prototype.filter.call(parent.children, (noeud) => noeud !== porte);
+}
+
+function fixerInerteAutourDeLaPorte(inerte) {
+  freresDeLaPorte().forEach((frere) => {
+    if (inerte) frere.setAttribute("inert", "");
+    else frere.removeAttribute("inert");
+  });
+}
+
 function ouvrirPorte(motif) {
   const porte = $("porte-jeton");
   const titre = $("porte-titre");
@@ -1489,11 +1781,38 @@ function ouvrirPorte(motif) {
     bouton.textContent = "Ouvrir le tableau de bord";
   }
 
+  dernierFocusAvantPorte = (document.activeElement && document.activeElement !== document.body)
+    ? document.activeElement : null;
+  /* ⚠️ Mesuré en écrivant F4b (feature-021, cycle 2, lot 5), Chromium
+   * 152.0.7977.75 : poser `inert` sur un ANCÊTRE d'un élément DÉJÀ actif ne
+   * lui retire PAS le focus — il reste `document.activeElement`, et reste
+   * même re-focalisable par un appel `.focus()` explicite ultérieur, bien
+   * qu'il soit désormais dans un sous-arbre inerte. Sans ce `blur()`
+   * explicite, un utilisateur qui a le focus dans la page au moment où la
+   * porte se rouvre (401 tardif via `sur401Lecture`, pas seulement au tout
+   * premier chargement où rien n'est encore focalisé) garderait un contrôle
+   * RÉELLEMENT atteignable sous la modale — exactement le défaut que
+   * bug-017 corrige. */
+  if (dernierFocusAvantPorte && typeof dernierFocusAvantPorte.blur === "function") {
+    dernierFocusAvantPorte.blur();
+  }
+  fixerInerteAutourDeLaPorte(true);
   porte.hidden = false;
   requestAnimationFrame(() => { champ.focus(); });
 }
 
-function fermerPorte() { $("porte-jeton").hidden = true; }
+function fermerPorte() {
+  $("porte-jeton").hidden = true;
+  fixerInerteAutourDeLaPorte(false);
+  const cible = dernierFocusAvantPorte;
+  dernierFocusAvantPorte = null;
+  if (cible && typeof cible.focus === "function") {
+    cible.focus();
+  } else {
+    const repli = $("main-content");
+    if (repli && repli.focus) repli.focus();
+  }
+}
 
 /* Point d'entrée UNIQUE pour toute lecture qui essuie un 401 après le
  * premier chargement : arrête les minuteurs actifs, oublie le jeton
@@ -1638,14 +1957,6 @@ async function verifierEtatAuth() {
   }
 }
 
-function dureeLisiblePilotage(ms) {
-  if (ms === null || ms === undefined || ms < 0 || Number.isNaN(ms)) return null;
-  if (ms < 1000) return Math.round(ms) + " ms";
-  if (ms < 60000) return Math.round(ms / 1000) + " s";
-  const minutes = Math.floor(ms / 60000);
-  return minutes + " min " + Math.round((ms % 60000) / 1000) + " s";
-}
-
 function arreterSondagePilotage() {
   if (minuteurSondagePilotage) { clearInterval(minuteurSondagePilotage); minuteurSondagePilotage = null; }
 }
@@ -1670,419 +1981,41 @@ function rendreBadgePilotage(etat) {
   }
 }
 
-/* -- construction du DOM, entièrement redessiné à chaque changement de phase -- */
-function rendreSelecteurPilotage() {
-  const conteneur = el("div", "pilotage-select");
-  const label = el("label", "", "Commande à lancer");
-  label.htmlFor = "commande-lancer";
-  const select = document.createElement("select");
-  select.id = "commande-lancer";
-  pilotage.commandes.forEach((cle) => {
-    const option = el("option", "", cle);
-    option.value = cle;
-    if (cle === pilotage.cleChoisie) option.selected = true;
-    select.appendChild(option);
-  });
-  select.addEventListener("change", () => { pilotage.cleChoisie = select.value; });
-  conteneur.appendChild(label);
-  conteneur.appendChild(select);
-  return conteneur;
-}
-
-function rendreNotePlafondPilotage(budget, ecrivains) {
-  return el("p", "note",
-    "Plafond appliqué : " + (budget ?? "—") + " $ · Écrivains : " + (ecrivains ?? "—"));
-}
-
-function rendreConfirmationPilotage() {
-  const conf = pilotage.confirmation;
-  const enveloppe = document.createDocumentFragment();
-  enveloppe.appendChild(el("p", "note", "Commande sélectionnée : " + conf.cle));
-
-  const conteneur = el("div", "pilotage-confirmation");
-  const titre = el("p", "");
-  titre.appendChild(document.createTextNode("Lancer "));
-  titre.appendChild(el("strong", "", conf.cle));
-  titre.appendChild(document.createTextNode(" ?"));
-  conteneur.appendChild(titre);
-  conteneur.appendChild(el("p", "note",
-    "Plafond réellement appliqué : " + conf.plafond + " $ (relu à l'instant du serveur) · "
-    + "Écrivains : " + conf.ecrivains));
-
-  let champJeton = null;
-  if (conf.besoinJeton) {
-    const bloc = el("div", "pilotage-jeton");
-    const label = el("label", "", "Jeton de pilotage");
-    label.htmlFor = "confirmation-jeton";
-    champJeton = document.createElement("input");
-    champJeton.type = "password";
-    champJeton.id = "confirmation-jeton";
-    champJeton.autocomplete = "off";
-    champJeton.setAttribute("aria-describedby", "jeton-aide");
-    champJeton.disabled = conf.enCours;
-    const aide = el("p", "note",
-      "Jeton partagé du serveur — jamais mémorisé au-delà de cet onglet.");
-    aide.id = "jeton-aide";
-    bloc.appendChild(label);
-    bloc.appendChild(champJeton);
-    bloc.appendChild(aide);
-    conteneur.appendChild(bloc);
-  }
-
-  if (conf.erreur) {
-    const erreur = el("p", "note", conf.erreur);
-    erreur.setAttribute("role", "alert");
-    conteneur.appendChild(erreur);
-  }
-
-  const boutons = el("div", "pilotage-boutons");
-  const annuler = el("button", "pilotage-secondaire", "Annuler");
-  annuler.type = "button";
-  annuler.disabled = conf.enCours;
-  annuler.addEventListener("click", surClicAnnulerConfirmationPilotage);
-  const confirmer = el("button", "action-ecriture", "Confirmer le lancement");
-  confirmer.type = "button";
-  confirmer.id = "bouton-confirmer";
-  confirmer.disabled = conf.enCours;
-  confirmer.addEventListener("click", surClicConfirmerPilotage);
-  boutons.appendChild(annuler);
-  boutons.appendChild(confirmer);
-  conteneur.appendChild(boutons);
-  enveloppe.appendChild(conteneur);
-
-  /* Le sous-panneau REMPLACE le bouton in situ : le focus s'y pose, sur le
-   * premier contrôle utile (le champ jeton s'il est demandé, sinon
-   * directement la confirmation). */
-  requestAnimationFrame(() => { (champJeton || confirmer).focus(); });
-
-  return enveloppe;
-}
-
-function rendreOccupePilotage() {
-  const conteneur = el("div", "pilotage-occupe");
-  const texte = el("p", "note avert", pilotage.occupe.texte);
-  texte.setAttribute("role", "status");
-  texte.setAttribute("aria-live", "polite");
-  conteneur.appendChild(texte);
-  /* Modèle de permission binaire assumé (voir spec) : tout porteur du jeton
-   * peut interrompre, quel que soit celui qui a lancé. */
-  const bouton = el("button", "action-ecriture", "Interrompre");
-  bouton.type = "button";
-  bouton.addEventListener("click", surClicInterromprePilotage);
-  conteneur.appendChild(bouton);
-  return conteneur;
-}
-
-function construireLigneEtatPilotage(l) {
-  const ligne = el("p", "pilotage-ligne");
-  ligne.id = "pilotage-ligne-etat";
-  ligne.setAttribute("role", "status");
-  ligne.setAttribute("aria-live", "polite");
-
-  if (l.etat === "en_cours") {
-    const inactiviteMs = Date.now() - l.derniereActivite * 1000;
-    const bloque = inactiviteMs > 30000;
-    ligne.classList.add(bloque ? "bloque" : "en-cours");
-    const ecoule = dureeLisiblePilotage(inactiviteMs) || "0 s";
-    ligne.textContent = bloque
-      ? "● en cours — bloqué depuis " + ecoule
-      : "● en cours · dernière sortie il y a " + ecoule;
-  } else if (l.etat === "termine") {
-    ligne.classList.add("termine");
-    const dureeTxt = l.debutClient ? dureeLisiblePilotage(Date.now() - l.debutClient) : null;
-    ligne.textContent = "✓ terminé" + (dureeTxt ? " · durée " + dureeTxt : "");
-  } else if (l.etat === "echec") {
-    ligne.classList.add("echec");
-    const dureeTxt = l.debutClient ? dureeLisiblePilotage(Date.now() - l.debutClient) : null;
-    ligne.textContent = "✕ échoué"
-      + (l.syntheticMessage ? " · " + l.syntheticMessage : "")
-      + (dureeTxt ? " · durée " + dureeTxt : "");
-  } else if (l.etat === "interrompu") {
-    ligne.classList.add("interrompu");
-    ligne.textContent = "■ interrompu par l'utilisateur";
-  } else {
-    ligne.textContent = String(l.etat || "");
-  }
-  return ligne;
-}
-
-function rendreLancementPilotage() {
-  const l = pilotage.lancement;
-  const conteneur = el("div", "pilotage-lancement");
-  conteneur.appendChild(construireLigneEtatPilotage(l));
-
-  if (l.tronque) {
-    conteneur.appendChild(el("div", "pilotage-tronque",
-      "⚠ SORTIE TRONQUÉE — le début n'est pas affiché"));
-  }
-
-  const pre = document.createElement("pre");
-  pre.id = "sortie-lancement";
-  pre.textContent = l.texteSortie || "";
-  conteneur.appendChild(pre);
-
-  const boutons = el("div", "pilotage-boutons");
-  if (l.etat === "en_cours") {
-    const interrompre = el("button", "pilotage-secondaire", "Interrompre");
-    interrompre.type = "button";
-    interrompre.addEventListener("click", surClicInterromprePilotage);
-    boutons.appendChild(interrompre);
-  } else {
-    const nouveau = el("button", "action-ecriture", "Nouveau lancement");
-    nouveau.type = "button";
-    nouveau.addEventListener("click", surClicNouveauLancementPilotage);
-    boutons.appendChild(nouveau);
-  }
-  conteneur.appendChild(boutons);
-
-  requestAnimationFrame(() => { pre.scrollTop = pre.scrollHeight; });
-  return conteneur;
-}
-
-function rendrePilotage() {
-  const corps = $("pilotage-corps");
-  vider(corps);
-
-  if (pilotage.phase === "chargement") {
-    corps.appendChild(el("p", "vide", "chargement…"));
-  } else if (pilotage.phase === "inactif") {
-    const note = el("p", "note avert");
-    note.appendChild(document.createTextNode("Écriture non activée : "));
-    note.appendChild(el("strong", "", pilotage.raison || "raison inconnue"));
-    corps.appendChild(note);
-  } else if (pilotage.phase === "pret") {
-    if (!pilotage.commandes.length) {
-      corps.appendChild(el("p", "vide",
-        "aucune commande déclarée — ajoutez-en une sous [commandes] dans la "
-        + "configuration pour activer le pilotage"));
-      return;
-    }
-    corps.appendChild(rendreSelecteurPilotage());
-    corps.appendChild(rendreNotePlafondPilotage(pilotage.budgetMaxUsd, pilotage.ecrivains));
-    const bouton = el("button", "action-ecriture", "Lancer…");
-    bouton.type = "button";
-    bouton.id = "bouton-lancer";
-    bouton.addEventListener("click", surClicLancerPilotage);
-    corps.appendChild(bouton);
-  } else if (pilotage.phase === "confirmation") {
-    corps.appendChild(rendreConfirmationPilotage());
-  } else if (pilotage.phase === "occupe") {
-    corps.appendChild(rendreOccupePilotage());
-  } else if (pilotage.phase === "lancement") {
-    corps.appendChild(rendreLancementPilotage());
-  }
-}
-
-/* -- actions ------------------------------------------------------------- */
-async function surClicLancerPilotage() {
-  const bouton = $("bouton-lancer");
-  if (bouton) bouton.disabled = true;
-  try {
-    /* Plafond relu ICI, frais — jamais une valeur mise en cache par un sondage
-     * antérieur (SSE ou autre). */
-    const reponse = await fetch("/api/etat", { headers: enTeteAuthPilotage() });
-    if (reponse.status === 401) {
-      if (bouton) bouton.disabled = false;
-      return sur401Lecture();
-    }
-    const etat = await reponse.json();
-    dernierEtat = etat;
-    if (!etat.ecriture_active) {
-      pilotage.phase = "inactif";
-      pilotage.raison = etat.ecriture_raison;
-      rendrePilotage();
-      rendreBadgePilotage(etat);
-      return;
-    }
-    pilotage.commandes = etat.commandes_declarees || [];
-    pilotage.budgetMaxUsd = etat.garde_fous.budget_max_usd;
-    pilotage.ecrivains = etat.garde_fous.ecrivains_simultanes;
-    pilotage.confirmation = {
-      cle: pilotage.cleChoisie,
-      plafond: pilotage.budgetMaxUsd,
-      ecrivains: pilotage.ecrivains,
-      besoinJeton: modeAuth === "requis" && !jetonPilotageStocke(),
-      erreur: null,
-      enCours: false,
-    };
-    pilotage.phase = "confirmation";
-    rendrePilotage();
-  } catch (erreur) {
-    if (bouton) bouton.disabled = false;
-  }
-}
-
-function surClicAnnulerConfirmationPilotage() {
-  pilotage.confirmation = null;
-  pilotage.phase = "pret";
-  rendrePilotage();
-  const bouton = $("bouton-lancer");
-  if (bouton) bouton.focus();
-}
-
-async function surClicConfirmerPilotage() {
-  const conf = pilotage.confirmation;
-  if (!conf || conf.enCours) return;
-  let jeton = jetonPilotageStocke();
-  if (!jeton) {
-    const champ = $("confirmation-jeton");
-    jeton = champ ? champ.value : "";
-  }
-  if (!jeton) {
-    conf.erreur = "Jeton requis.";
-    rendrePilotage();
-    return;
-  }
-
-  conf.enCours = true;
-  conf.erreur = null;
-  rendrePilotage();
-
-  try {
-    const reponse = await fetch("/api/lancer", {
-      method: "POST",
-      headers: Object.assign({ "Content-Type": "application/json" }, enTeteAuthPilotage(jeton)),
-      body: JSON.stringify({ cle: conf.cle }),
-    });
-
-    if (reponse.status === 202) {
-      stockerJetonPilotage(jeton);
-      pilotage.lancement = {
-        cle: conf.cle, etat: "en_cours", curseur: 0, tronque: false,
-        derniereActivite: Date.now() / 1000, debutClient: Date.now(),
-        texteSortie: "", syntheticMessage: null,
-      };
-      pilotage.confirmation = null;
-      pilotage.phase = "lancement";
-      rendrePilotage();
-      rendreBadgePilotage(dernierEtat);
-      demarrerSondagePilotage();
-      return;
-    }
-
-    const donnees = await reponse.json().catch(() => ({}));
-
-    if (reponse.status === 401) {
-      oublierJetonPilotage();
-      conf.enCours = false;
-      conf.besoinJeton = true;
-      conf.erreur = "Jeton refusé.";
-      rendrePilotage();
-      return;
-    }
-    if (reponse.status === 403) {
-      pilotage.confirmation = null;
-      pilotage.phase = "inactif";
-      rendrePilotage();
-      const r = await fetch("/api/etat", { headers: enTeteAuthPilotage() });
-      const etat = await r.json();
-      dernierEtat = etat;
-      pilotage.raison = etat.ecriture_raison;
-      rendrePilotage();
-      rendreBadgePilotage(etat);
-      return;
-    }
-    if (reponse.status === 409) {
-      stockerJetonPilotage(jeton);
-      pilotage.occupe = { texte: donnees.erreur || "un écrivain occupe déjà la place" };
-      pilotage.confirmation = null;
-      pilotage.phase = "occupe";
-      rendrePilotage();
-      return;
-    }
-    if (reponse.status === 503) {
-      /* Aucun processus n'a été créé : le bouton ne repasse JAMAIS en
-       * « en cours » dans ce cas. */
-      stockerJetonPilotage(jeton);
-      pilotage.lancement = {
-        cle: conf.cle, etat: "echec", curseur: 0, tronque: false,
-        derniereActivite: Date.now() / 1000, debutClient: null,
-        texteSortie: "", syntheticMessage: donnees.erreur || "plafond de dépense non transmissible",
-      };
-      pilotage.confirmation = null;
-      pilotage.phase = "lancement";
-      rendrePilotage();
-      return;
-    }
-    if (reponse.status === 404) {
-      conf.enCours = false;
-      conf.erreur = "Clé de commande inconnue — la liste a peut-être changé.";
-      rendrePilotage();
-      return;
-    }
-    conf.enCours = false;
-    conf.erreur = "Erreur du serveur (" + reponse.status + ").";
-    rendrePilotage();
-  } catch (erreur) {
-    conf.enCours = false;
-    conf.erreur = "Erreur réseau : " + erreur.message;
-    rendrePilotage();
-  }
-}
-
-async function surClicInterromprePilotage() {
-  try {
-    /* Corps VIDE mais explicite : sans lui, certains clients HTTP n'émettent
-     * aucun `Content-Length`, que `do_POST` exige avant toute autre garde
-     * (411 sinon) — vérifié par exécution sur ce module (`curl -X POST` sans
-     * `--data` échoue en 411, `--data ''` réussit). */
-    const reponse = await fetch("/api/interrompre", {
-      method: "POST",
-      headers: enTeteAuthPilotage(),
-      body: "",
-    });
-    if (reponse.status === 202) {
-      if (pilotage.phase === "occupe") {
-        /* On ne connaît ni la clé exacte ni un curseur pertinent pour ce
-         * lancement qu'on n'a pas soi-même démarré : on repart de 0, comme au
-         * chargement de page — c'est ce qui rend la reconnexion possible sans
-         * état persistant côté client. */
-        pilotage.lancement = {
-          cle: null, etat: "en_cours", curseur: 0, tronque: false,
-          derniereActivite: Date.now() / 1000, debutClient: null,
-          texteSortie: "", syntheticMessage: null,
-        };
-        pilotage.occupe = null;
-        pilotage.phase = "lancement";
-        rendrePilotage();
-        rendreBadgePilotage(dernierEtat);
-        demarrerSondagePilotage();
-      }
-      return;
-    }
-    if (reponse.status === 401) {
-      oublierJetonPilotage();
-      return;
-    }
-    if (reponse.status === 403) {
-      pilotage.phase = "inactif";
-      rendrePilotage();
-      const r = await fetch("/api/etat", { headers: enTeteAuthPilotage() });
-      const etat = await r.json();
-      dernierEtat = etat;
-      pilotage.raison = etat.ecriture_raison;
-      rendrePilotage();
-      rendreBadgePilotage(etat);
-      return;
-    }
-    if (reponse.status === 404 && pilotage.phase === "occupe") {
-      pilotage.occupe = null;
-      pilotage.phase = "pret";
-      rendrePilotage();
-    }
-  } catch (erreur) {
-    /* Réessayable : le bouton reste affiché, rien n'est changé côté état. */
-  }
-}
-
-function surClicNouveauLancementPilotage() {
-  arreterSondagePilotage();
-  pilotage.lancement = null;
-  pilotage.phase = "pret";
-  rendrePilotage();
-  const bouton = $("bouton-lancer");
-  if (bouton) bouton.focus();
-}
+/* `rendreSelecteurPilotage`/`rendreNotePlafondPilotage`/
+ * `rendreConfirmationPilotage`/`rendreOccupePilotage`/
+ * `construireLigneEtatPilotage`/`rendreLancementPilotage`/`rendrePilotage`/
+ * `surClicLancerPilotage`/`surClicAnnulerConfirmationPilotage`/
+ * `surClicConfirmerPilotage`/`surClicInterromprePilotage`/
+ * `surClicNouveauLancementPilotage` SUPPRIMÉES ICI (feature-028, lot
+ * pilotage dédié, décision humaine du 2026-09-23 : « Pour le pilotage,
+ * lance le lot ») — c'était le panneau générique « Piloter par clé »
+ * (`#pilotage-corps`, `#titre-pilotage`), retiré entier. Le lancement
+ * générique par clé ne pouvait de toute façon lancer QUE ce que
+ * `[commandes]` déclare, et la configuration ne déclare que `demo` et
+ * `lent`, deux commandes d'exemple sans usage réel (« Demo ou lent
+ * n'ont pas de sens », décision humaine). ⚠️ SI une VRAIE commande est un
+ * jour déclarée dans `[commandes]`, elle n'aura plus AUCUN point d'accès
+ * générique — c'est une capacité retirée sous une CONDITION
+ * D'ENVIRONNEMENT (la configuration actuelle ne déclare que des
+ * exemples), pas sous une décision de conception : à re-corriger le jour
+ * où cette condition change, pas à re-découvrir.
+ * ⚠️ EFFET DE BORD signalé (pas dans le périmètre de la décision
+ * ci-dessus, mais découvert en la préparant) : `rendreNotePlafondPilotage`
+ * était le DERNIER porteur de « Budget max » / « Écrivains » — leur
+ * PREMIER porteur, la section `systeme`, avait déjà disparu (feature-028,
+ * décision humaine antérieure, retrait sec sans migration). Cette
+ * information n'est donc plus affichée NULLE PART après ce lot.
+ * `pilotage.confirmation`/`pilotage.occupe`/`pilotage.budgetMaxUsd`/
+ * `pilotage.ecrivains`/`pilotage.raison` retirés de l'état partagé avec
+ * elles, plus aucun lecteur.
+ * `dureeLisiblePilotage` retirée plus haut, seule appelante
+ * (`construireLigneEtatPilotage`) disparue avec le reste.
+ * L'INFRASTRUCTURE PARTAGÉE SURVIT (voir le commentaire d'introduction du
+ * bloc « pilotage », plus haut) : `pilotage` (objet), `arreterSondagePilotage`,
+ * `rendreBadgePilotage`, `demarrerSondagePilotage`/`sonderLancementPilotage`,
+ * `initialiserPilotage`/`actualiserPilotage` restent — le lancement et
+ * l'interruption PAR CARTE (`surClicLancerCyclePourSpec`/
+ * `surClicInterromprePourSpec`) en dépendent directement. */
 
 /* -- sondage de la sortie, ~1 s, PENDANT un lancement seulement -- */
 function demarrerSondagePilotage() {
@@ -2109,7 +2042,6 @@ async function sonderLancementPilotage() {
       pilotage.lancement.derniereActivite = donnees.derniere_activite;
       pilotage.lancement.etat = donnees.etat;
       if (donnees.etat !== "en_cours") arreterSondagePilotage();
-      rendrePilotage();
       rendreBadgePilotage(dernierEtat);
     } else if (reponse.status === 401) {
       sur401Lecture();
@@ -2119,8 +2051,6 @@ async function sonderLancementPilotage() {
       const r = await fetch("/api/etat", { headers: enTeteAuthPilotage() });
       const etat = await r.json();
       dernierEtat = etat;
-      pilotage.raison = etat.ecriture_raison;
-      rendrePilotage();
       rendreBadgePilotage(etat);
     } else if (reponse.status === 404) {
       arreterSondagePilotage();
@@ -2161,22 +2091,17 @@ async function initialiserPilotage(etat) {
       /* Reconnexion ratée : on retombe simplement sur l'état « pret ». */
     }
   }
-  rendrePilotage();
   rendreBadgePilotage(dernierEtat);
 }
 
 function actualiserPilotage(etat) {
-  pilotage.budgetMaxUsd = etat.garde_fous.budget_max_usd;
-  pilotage.ecrivains = etat.garde_fous.ecrivains_simultanes;
   pilotage.commandes = etat.commandes_declarees || [];
-  pilotage.raison = etat.ecriture_raison;
 
   if (!etat.ecriture_active) {
     /* Un lancement réellement en cours survit côté serveur : l'interface
      * cesse seulement de prétendre pouvoir le piloter depuis cet onglet. */
     arreterSondagePilotage();
     pilotage.phase = "inactif";
-    rendrePilotage();
     rendreBadgePilotage(etat);
     return;
   }
@@ -2187,13 +2112,12 @@ function actualiserPilotage(etat) {
   }
 
   /* Les autres phases ne se réinitialisent jamais depuis `/api/etat` : ce
-   * champ ne porte que `ecriture_active` / `ecriture_raison` et les
-   * garde-fous affichés — jamais l'état d'un lancement, qui vient
+   * champ ne porte que `ecriture_active` et `commandes_declarees` (pour
+   * l'auto-sélection ci-dessous) — jamais l'état d'un lancement, qui vient
    * exclusivement de `/api/lancement`. */
   if (pilotage.phase === "pret" && !pilotage.cleChoisie && pilotage.commandes.length) {
     pilotage.cleChoisie = pilotage.commandes[0];
   }
-  rendrePilotage();
   rendreBadgePilotage(etat);
 }
 
@@ -2210,11 +2134,23 @@ function actualiserPilotage(etat) {
  * plus une erreur qui NE QUITTE JAMAIS la phase où elle survient — jamais de
  * reset du texte du besoin, du brouillon ou du contenu édité.
  *
- * Design arrêté (ux-ui-designer, feature-008) : panneau en FLUX normal dans
- * `.demande`, aucune surface `role="dialog"`/`.porte` pour ce flux tant que
- * bug-017 (la porte d'authentification ne rend pas le reste du document
- * inerte au clavier) n'est pas corrigé — rebâtir une modale ici exposerait
- * le même défaut sur une action plus grave (écriture de fichier sur disque).
+ * Design arrêté à l'origine (ux-ui-designer, feature-008) : panneau en FLUX
+ * normal dans `.demande`, aucune surface `role="dialog"`/`.porte` POUR CE
+ * FLUX tant que bug-017 (la porte d'authentification ne rendait pas le
+ * reste du document inerte au clavier) n'était pas corrigé — rebâtir une
+ * modale À LA `#porte-jeton` (un `div[role=dialog]` maison) ici aurait
+ * exposé le même défaut sur une action plus grave.
+ * ⚠️ ÉCART DÉCLARÉ (feature-028, lot B, GATE C1/C2) : le flux vit désormais
+ * AUSSI dans `#add-item-dialog`, un `<dialog>` NATIF (`showModal()`), jamais
+ * un second `div[role=dialog]` maison. `test_app_feature025_a11y_
+ * navigateur.py` a mesuré, sur `#delete-dialog`, que la sémantique modale
+ * NATIVE du navigateur place déjà le reste du document hors de portée du
+ * focus et du clic — c'est exactement la protection que bug-017 exigeait,
+ * obtenue par un mécanisme DIFFÉRENT (le moteur de rendu, pas un `inert`
+ * posé à la main). Le risque que la conception d'origine écartait
+ * (`#porte-jeton` qui ne rendrait pas le reste inerte) ne se reproduit donc
+ * pas ici. Machine à états et fonctions PARTAGÉES entre les deux surfaces
+ * (`SURFACES_REDACTION` ci-dessous) — jamais un second chemin, GATE C1.
  *
  * `ecriture_active` / `ecriture_raison` sont lus depuis le MÊME `dernierEtat`
  * que le bloc Pilotage (aucun nouvel appel réseau) : le bouton « Écrire… »
@@ -2238,7 +2174,69 @@ let redaction = {
   compteRemplir: 0,
   derogationIgnoree: false, // dérogation cochée mais template complet imposé
   ecrit: null,              // { chemin, numero }
+  /* "demande" | "dialogue" | null — QUELLE surface a produit ce brouillon,
+   * posé au premier "Générer" et relu par "Régénérer"/"Écrire…"/"Nouveau
+   * brouillon" pour cibler le bon corps (`SURFACES_REDACTION`) SANS relire
+   * un id figé. `null` avant toute génération : aucune des deux ne rend
+   * quoi que ce soit tant que `phase === "saisie"`. */
+  surface: null,
 };
+
+/* SEUL point d'entrée du flux (`#add-item-dialog`, le `+`) — `demande`
+ * (« Que souhaitez-vous développer ? ») portait un second point d'entrée,
+ * RETIRÉ (feature-028, lot C2, une fois B3 vérifié). La table reste une
+ * table (plutôt que des constantes en dur) : c'était déjà la forme choisie
+ * pour partager la machine à états entre DEUX surfaces (GATE C1, jamais un
+ * second chemin), et rien n'empêche qu'une autre en rejoigne un jour.
+ * `typeBugId`/`typeFeatureId` (radios Feature/Bug, déjà au prototype, F0)
+ * pilotent `type` ; `derogationId` (feature-028, lot pilotage dédié — ajout
+ * requis par `CLAUDE.md` : « pour un bug simple ou un refactor ponctuel, le
+ * format minimal specs/modele.md suffit », pas une question de goût) pilote
+ * `minimal`, INDÉPENDAMMENT du type choisi — contrairement à `demande`
+ * (retirée), qui dérivait les deux d'UNE SEULE case. Un « bug » n'exige pas
+ * forcément le gabarit minimal, ni l'inverse : les deux réglages restent
+ * des choix séparés sur cette surface. */
+const SURFACES_REDACTION = {
+  dialogue: {
+    corps: "add-item-redaction-corps",
+    erreurBrouillonId: "erreur-generer-item-brouillon",
+    boutonGenererId: "bouton-generer-item-brouillon",
+    titreId: "item-title",
+    texteId: "item-description",
+    derogationId: "item-derogation-minimale",
+    typeBugId: "item-type-bug",
+    typeFeatureId: "item-type-feature",
+  },
+};
+
+/* Rend `{ titre, texte, type, minimal }` ou `null` si un champ requis est
+ * absent de CE bac à sable (harnais plus ancien, PIEGES §38) — jamais une
+ * exception qui remonterait jusqu'à l'appelant. `type` (radio) et `minimal`
+ * (case de dérogation) sont lus INDÉPENDAMMENT l'un de l'autre — voir le
+ * commentaire sur `SURFACES_REDACTION` ci-dessus. */
+function lireChampsSurface(nomSurface) {
+  const conf = SURFACES_REDACTION[nomSurface];
+  if (!conf) return null;
+  const champTitre = $(conf.titreId);
+  const champTexte = $(conf.texteId);
+  if (!champTitre || !champTexte) return null;
+
+  let type = "feature";
+  if (conf.typeBugId) {
+    const radioBug = $(conf.typeBugId);
+    if (!radioBug) return null;
+    type = radioBug.checked ? "bug" : "feature";
+  }
+
+  let minimal = false;
+  if (conf.derogationId) {
+    const champDerogation = $(conf.derogationId);
+    if (!champDerogation) return null;
+    minimal = champDerogation.checked;
+  }
+
+  return { titre: champTitre.value, texte: champTexte.value, type: type, minimal: minimal };
+}
 
 let minuteurCompteRemplir = null;
 
@@ -2270,23 +2268,28 @@ function texteCompteRemplir(n) {
   return n + (n === 1 ? " bloc [remplir] restant" : " blocs [remplir] restants");
 }
 
-function actualiserCompteurPrompt() {
-  const champ = $("prompt");
-  const compteur = $("compteur-prompt");
-  if (!champ || !compteur) return;
-  const n = champ.value.length;
-  compteur.textContent = n + (n === 1 ? " caractère" : " caractères");
-}
+/* `actualiserCompteurPrompt`/`#compteur-prompt` SUPPRIMÉS (U1 de
+ * feature-021, feature-028 lot A1) : il comptait un textarea sans limite
+ * déclarée, donc ne prévenait d'aucun plafond réel. */
 
-function afficherErreurGenerationStatique(message) {
-  const p = $("erreur-generer-brouillon");
+/* `nomSurface` : celle qui a déclenché l'appel — retombe sur
+ * `redaction.surface` (déjà posé par `surClicGenererBrouillon`) si omis,
+ * jamais sur "demande" en dur (sinon un message d'erreur de la surface
+ * `dialogue` s'afficherait dans le panneau de l'AUTRE, invisible côté
+ * dialogue). */
+function afficherErreurGenerationStatique(message, nomSurface) {
+  const conf = SURFACES_REDACTION[nomSurface || redaction.surface];
+  if (!conf) return;
+  const p = $(conf.erreurBrouillonId);
   if (!p) return;
   p.textContent = message;
   p.hidden = false;
 }
 
-function masquerErreurGenerationStatique() {
-  const p = $("erreur-generer-brouillon");
+function masquerErreurGenerationStatique(nomSurface) {
+  const conf = SURFACES_REDACTION[nomSurface || redaction.surface];
+  if (!conf) return;
+  const p = $(conf.erreurBrouillonId);
   if (!p) return;
   p.hidden = true;
   p.textContent = "";
@@ -2345,7 +2348,10 @@ function rendreBrouillonRedaction() {
   const regenerer = el("button", "pilotage-secondaire", "Régénérer");
   regenerer.type = "button";
   regenerer.disabled = redaction.enCoursBrouillon;
-  regenerer.addEventListener("click", surClicGenererBrouillon);
+  /* SANS argument : relit `redaction.surface`, déjà posé au premier
+   * « Générer » — jamais l'objet Event que `addEventListener` fournirait
+   * en premier paramètre si la fonction était passée directement ici. */
+  regenerer.addEventListener("click", () => surClicGenererBrouillon());
   boutons.appendChild(regenerer);
 
   const ecritureActive = Boolean(dernierEtat && dernierEtat.ecriture_active);
@@ -2441,7 +2447,17 @@ function rendreEcritRedaction() {
 
 function rendreRedaction() {
   clearTimeout(minuteurCompteRemplir);
-  const corps = $("redaction-corps");
+  /* Vide l'AUTRE surface si elle porte un résidu — coexistence TRANSITOIRE
+   * de `demande` et `dialogue` (feature-028, lot B ; `demande` retirée juste
+   * après, lot C2) : jamais un contenu périmé affiché à côté du flux
+   * réellement actif. */
+  Object.keys(SURFACES_REDACTION).forEach((nom) => {
+    if (nom === redaction.surface) return;
+    const autre = $(SURFACES_REDACTION[nom].corps);
+    if (autre) vider(autre);
+  });
+  const conf = SURFACES_REDACTION[redaction.surface];
+  const corps = conf && $(conf.corps);
   if (!corps) return;
   vider(corps);
   if (redaction.phase === "brouillon") {
@@ -2456,31 +2472,37 @@ function rendreRedaction() {
 
 /* -- actions ------------------------------------------------------------- */
 
-/* Sert à la fois « Générer le brouillon » (phase saisie) et « Régénérer »
- * (phase brouillon) : les deux relisent les MÊMES champs (`#titre-besoin`,
- * `#prompt`, `#derogation-minimale`) — Régénérer n'agit jamais sur le texte
- * édité du brouillon, seulement sur le besoin d'origine (voir message du
- * 409). La case « bug simple / refactor ponctuel » pilote À LA FOIS le
- * PRÉFIXE de fichier demandé (`type` : "bug" plutôt que "feature") et
- * la RICHESSE de template demandée (`minimal`) — le serveur peut honorer
- * l'un sans l'autre (fail-closed sur la richesse seulement, voir
- * `contenuEstGabaritMinimal`), jamais l'inverse : le frontend ne décide
- * rien, il relit ce que le contenu renvoyé révèle. */
-async function surClicGenererBrouillon() {
-  const champTitre = $("titre-besoin");
-  const champPrompt = $("prompt");
-  const champDerogation = $("derogation-minimale");
-  if (!champTitre || !champPrompt || !champDerogation) return;
-  const titre = champTitre.value;
-  const texte = champPrompt.value;
-  const derogationDemandee = champDerogation.checked;
-  const type = derogationDemandee ? "bug" : "feature";
+/* Sert à la fois « Générer le brouillon » (phase saisie, sur L'UNE DES DEUX
+ * surfaces) et « Régénérer » (phase brouillon, TOUJOURS sur la surface déjà
+ * engagée — GATE C1, jamais un second chemin) : les trois relisent les
+ * MÊMES champs de LA MÊME surface (`SURFACES_REDACTION`, `lireChampsSurface`)
+ * — Régénérer n'agit jamais sur le texte édité du brouillon, seulement sur
+ * le besoin d'origine (voir message du 409).
+ *
+ * `nomSurfaceExplicite` : fourni SEULEMENT par les deux boutons "Générer"
+ * (un par surface) ; omis par "Régénérer" (relit `redaction.surface`, déjà
+ * posé au premier appel). Un appelant qui passerait un objet Event par
+ * erreur (patron `addEventListener(type, fn)`) ne casse rien : une chaîne
+ * absente de `SURFACES_REDACTION` retombe silencieusement sur
+ * `redaction.surface`. */
+async function surClicGenererBrouillon(nomSurfaceExplicite) {
+  const surface = (typeof nomSurfaceExplicite === "string" && SURFACES_REDACTION[nomSurfaceExplicite])
+    ? nomSurfaceExplicite : redaction.surface;
+  const conf = SURFACES_REDACTION[surface];
+  if (!conf) return;
+  const champs = lireChampsSurface(surface);
+  if (!champs) return;
+  const titre = champs.titre;
+  const texte = champs.texte;
+  const type = champs.type;
+  const minimal = champs.minimal;
   const enRegeneration = redaction.phase === "brouillon";
 
+  redaction.surface = surface;
   redaction.enCoursBrouillon = true;
   redaction.erreurBrouillon = null;
-  masquerErreurGenerationStatique();
-  const boutonInitial = $("bouton-generer-brouillon");
+  masquerErreurGenerationStatique(surface);
+  const boutonInitial = $(conf.boutonGenererId);
   if (boutonInitial) boutonInitial.disabled = true;
   if (enRegeneration) rendreRedaction();
 
@@ -2488,7 +2510,7 @@ async function surClicGenererBrouillon() {
     const reponse = await fetch("/api/spec/brouillon", {
       method: "POST",
       headers: Object.assign({ "Content-Type": "application/json" }, enTeteAuthPilotage()),
-      body: JSON.stringify({ type: type, titre: titre, texte: texte, minimal: derogationDemandee }),
+      body: JSON.stringify({ type: type, titre: titre, texte: texte, minimal: minimal }),
     });
 
     if (reponse.status === 401) {
@@ -2510,7 +2532,7 @@ async function surClicGenererBrouillon() {
         genre: donnees.genre,
         titre: titre,
         texte: texte,
-        minimal: derogationDemandee,
+        minimal: minimal,
         slug: donnees.slug,
         nomFichierPrevu: donnees.nom_fichier_prevu,
         substitutions: donnees.substitutions || [],
@@ -2521,7 +2543,7 @@ async function surClicGenererBrouillon() {
        * mais non honorée par le serveur (mot-clé sensible détecté côté
        * serveur, fail-closed) se voit — `genre` n'est qu'un écho de `type`,
        * la seule preuve fiable est dans le CONTENU renvoyé. */
-      redaction.derogationIgnoree = derogationDemandee && !contenuEstGabaritMinimal(redaction.contenu);
+      redaction.derogationIgnoree = minimal && !contenuEstGabaritMinimal(redaction.contenu);
       redaction.enCoursBrouillon = false;
       redaction.phase = "brouillon";
       rendreRedaction();
@@ -2540,12 +2562,12 @@ async function surClicGenererBrouillon() {
     }
     redaction.erreurBrouillon = message;
     if (enRegeneration) rendreRedaction();
-    else afficherErreurGenerationStatique(message);
+    else afficherErreurGenerationStatique(message, surface);
   } catch (erreur) {
     redaction.enCoursBrouillon = false;
     redaction.erreurBrouillon = "Erreur réseau : " + erreur.message;
     if (enRegeneration) rendreRedaction();
-    else afficherErreurGenerationStatique(redaction.erreurBrouillon);
+    else afficherErreurGenerationStatique(redaction.erreurBrouillon, surface);
   } finally {
     if (boutonInitial) boutonInitial.disabled = false;
   }
@@ -2660,21 +2682,488 @@ async function surClicConfirmerEcriture() {
 }
 
 function surClicNouveauBrouillon() {
+  const surface = redaction.surface;
+  const conf = SURFACES_REDACTION[surface];
   redaction = {
     phase: "saisie", enCoursBrouillon: false, enCoursEcriture: false,
     erreurBrouillon: null, erreurEcriture: null, brouillon: null,
     contenu: "", compteRemplir: 0, derogationIgnoree: false, ecrit: null,
+    surface: surface,
   };
-  masquerErreurGenerationStatique();
-  const champTitre = $("titre-besoin");
-  const champPrompt = $("prompt");
-  const champDerogation = $("derogation-minimale");
-  if (champTitre) champTitre.value = "";
-  if (champPrompt) champPrompt.value = "";
-  if (champDerogation) champDerogation.checked = false;
-  actualiserCompteurPrompt();
+  masquerErreurGenerationStatique(surface);
+  if (conf) {
+    const champTitre = $(conf.titreId);
+    const champTexte = $(conf.texteId);
+    if (champTitre) champTitre.value = "";
+    if (champTexte) champTexte.value = "";
+    if (conf.derogationId) {
+      const champDerogation = $(conf.derogationId);
+      if (champDerogation) champDerogation.checked = false;
+    }
+    if (conf.typeBugId) {
+      const radioBug = $(conf.typeBugId);
+      if (radioBug) radioBug.checked = false;
+    }
+    if (conf.typeFeatureId) {
+      const radioFeature = $(conf.typeFeatureId);
+      if (radioFeature) radioFeature.checked = true;
+    }
+  }
   rendreRedaction();
-  if (champTitre) champTitre.focus();
+  if (conf) {
+    const champTitre = $(conf.titreId);
+    if (champTitre) champTitre.focus();
+  }
+}
+
+/* ------------------------------------------------------------ conversation --
+ * feature-022 (absorbée, lot 11), REBRANCHÉE par feature-026 sur la session
+ * Claude remote persistante quand `[session]` est déclarée en configuration.
+ * DEUX canaux distincts, jamais fusionnés côté backend (`server.py`) :
+ *  - ancien canal (`feature-022`, `[session]` absente) : `GET /api/conversation`
+ *    ne porte QUE les messages UTILISATEUR persistés par le cockpit lui-même
+ *    (`_conversation_lire`) — aucun `etat`/`destinataire` dans le corps ;
+ *  - nouveau canal (`feature-026`, `[session]` déclarée) : le fil vient du
+ *    TRANSCRIPT réel de la session tmux persistante, DEUX rôles
+ *    (`user`/`assistant`, `fil.py`), et le corps porte `etat`/`destinataire`
+ *    BRUTS — c'est le backend qui fait foi sur l'état affiché, jamais une
+ *    dérivation locale d'un code HTTP (voir `libellePastilleClaude`).
+ * Ce panneau n'affiche donc AUCUNE bulle « Claude » fabriquée : tout texte
+ * assistant vient soit du transcript réel (canal feature-026), soit — sur
+ * l'ancien canal — du seul fait `etat.agents[].actif_sur` (PIEGES §16).
+ *
+ * Trois états de lecture (chargement/erreur/vide), comme partout ailleurs
+ * dans ce module :
+ *  - chargement : avant la première réponse de `GET /api/conversation` ;
+ *  - erreur : le serveur ne répond pas — le fil déjà affiché N'EST PAS
+ *    effacé (« il ne fige pas un fil périmé » ≠ « il l'efface »), un bandeau
+ *    dit l'incertitude ;
+ *  - vide : réponse 200, aucun message — état vide explicite, jamais un
+ *    panneau blanc.
+ *
+ * Le rafraîchissement suit le MÊME rythme que le reste du tableau de bord
+ * (signal SSE `/api/flux`, ou le sondage 10 s de repli) — aucun minuteur
+ * séparé, pour ne pas surcharger l'API (skill frontend-developer).
+ */
+let conversation = {
+  phase: "chargement",   // chargement | disponible | indisponible | erreur
+  etat: null,            // libellé BRUT du backend (feature-026, `_LIBELLES_ETAT_SESSION`) :
+                          // "En ligne"/"Occupée"/"Hors ligne"/"Injoignable" — fait FOI quand
+                          // présent, jamais redérivé d'un code HTTP (voir `libellePastilleClaude`).
+  destinataire: null,    // texte BRUT du backend (`"session tmux %r" % nom`), jamais reformulé.
+  messages: [],
+  tronque: false,
+  erreurLecture: null,
+  envoiEnCours: false,
+};
+
+/* Le backend fait FOI sur l'état affiché (feature-026, ux-ui-designer étape 5 :
+ * « le libellé vient du backend, le JS ne le redérive plus d'un code HTTP »).
+ * `conversation.etat` n'est renseigné QUE quand le corps de réponse le porte
+ * (chemin session tmux persistante) ; l'ANCIEN canal (`feature-022`, aucune
+ * `[session]` déclarée) n'en a jamais porté et retombe sur la dérivation
+ * locale ci-dessous — seul repli légitime, puisqu'aucune donnée backend
+ * n'existe à faire foi dans ce cas. */
+function libellePastilleClaude() {
+  if (conversation.etat) return conversation.etat;
+  if (conversation.phase === "chargement") return "…";
+  if (conversation.phase === "disponible") return "En ligne";
+  if (conversation.phase === "indisponible") return "Hors ligne";
+  return "Injoignable";
+}
+
+/* TROIS entrées (correction ux-ui-designer, étape 5bis) — « Occupée »
+ * DISPARAÎT du badge : la maquette normative ne code qu'UN SEUL état, et
+ * cette entrée servait à BLOQUER l'envoi. `appliquerEtatComposer` PLIE
+ * « Occupée » sur « En ligne » avant de lire cette table (voir
+ * `libelleBadge`) — l'objet lui-même ne porte donc plus jamais cette clé.
+ * L'information n'est pas perdue : elle vit dans le FIL, voir
+ * `rendreMessageActiviteClaude`/`texteActiviteClaude` ci-dessous. Le
+ * `title` d'incertitude (`_TITRE_HEURISTIQUE_PASTILLE`, SUPPRIMÉ) quitte le
+ * badge avec elle et se redépose sur ce même indicateur de fil. */
+const _CLASSE_ETAT_PASTILLE = {
+  "En ligne": "is-en-ligne",
+  "Hors ligne": "is-hors-ligne", "Injoignable": "is-injoignable",
+};
+
+/* Construit UN message. `role` ("assistant" ou tout le reste, traité comme
+ * "utilisateur") distingue le glyphe de l'avatar ET le palier tonal de la
+ * bulle — `--surface-high` (utilisateur) contre `--surface-low` (assistant,
+ * inchangé, seul rôle codé par le prototype). Aucune couleur neuve, aucun
+ * alignement inventé : même colonne, même alignement (piège trouvé par
+ * l'ux-ui-designer, journal de bord étape 5). Le rôle est porté à
+ * l'accessibilité par `aria-label` sur l'article, le glyphe restant
+ * `aria-hidden`.
+ *
+ * `promptSource` (`"queued"`/`"typed"`, feature-026) affiché BRUT, sans
+ * traduction, juste après l'horodatage — absent (canal `feature-022`, ou
+ * champ manquant) : rien n'est affiché, jamais une valeur inventée.
+ *
+ * `envoye === false` (revue de code, cycle `feature-021`, B3) : le serveur
+ * écrit désormais `"envoye": false` AVANT toute tentative, basculé à `true`
+ * seulement après remise confirmée (`server.py`, `_ecrire_message_
+ * conversation`). Sans marque à l'écran, un message resté à `false` (503,
+ * refus du canal) apparaît identique à un message réellement remis — le fil
+ * contredirait alors le bandeau d'erreur affiché au moment de l'envoi. La
+ * marque réutilise `.note.erreur` (AUCUNE classe neuve) : même texte,
+ * jamais porté par la seule couleur. */
+function rendreMessageConversation(role, texteMessage, ts, promptSource, envoye) {
+  const estAssistant = role === "assistant";
+  const article = el("article", "message");
+  article.setAttribute("aria-label", estAssistant ? "Message de l'assistant" : "Message de l'utilisateur");
+  article.appendChild(el("span", "message-avatar", estAssistant ? "✺" : "→")).setAttribute("aria-hidden", "true");
+  const bulle = el("div", "bubble" + (estAssistant ? "" : " is-utilisateur"));
+  // `ts` : ISO-8601 UTC BRUT (backend, jamais fabriqué) — `heure()` (l.25)
+  // en extrait `HH:MM:SS` sans conversion, même helper que le reste du
+  // tableau de bord. Absent (`null`) : aucune heure affichée, jamais une
+  // heure de LECTURE qui se ferait passer pour une heure d'ÉMISSION.
+  const heureTexte = heure(ts);
+  if (heureTexte) bulle.appendChild(el("time", "", heureTexte));
+  if (typeof promptSource === "string" && promptSource) {
+    bulle.appendChild(el("span", "prompt-source", promptSource));
+  }
+  bulle.appendChild(document.createTextNode(texteMessage));
+  if (envoye === false) {
+    bulle.appendChild(el("p", "note erreur", "Non envoyé — réessayez."));
+  }
+  article.appendChild(bulle);
+  return article;
+}
+
+function texteActiviteClaude(etat) {
+  if (!etat || !Array.isArray(etat.agents)) return null;
+  const actifs = etat.agents.filter((a) => a.actif_sur);
+  if (!actifs.length) return null;
+  if (actifs.length === 1) return actifs[0].nom + " est actif.";
+  return actifs.map((a) => a.nom).join(", ") + " sont actifs.";
+}
+
+/* Bulle « statut réel de Claude » (jamais un message fabriqué) : porte
+ * `#claude-live-message` (id adopté, F0) autour d'un texte DÉRIVÉ — soit de
+ * `etat.agents[].actif_sur` (ancien canal, feature-022), soit de
+ * `conversation.etat === "Occupée"` (canal session tmux, feature-026,
+ * correction ux-ui-designer étape 5bis : « Claude travaille… » va DANS LE
+ * FIL, jamais dans le badge, comme le vrai client) — jamais inventé.
+ * Reconstruite à chaque rendu, comme le reste de `#conversation` (PIEGES
+ * §38 : un id créé dynamiquement n'existe qu'après ce rendu).
+ * `titre`, s'il est fourni, porte la même mise en garde que le badge
+ * portait AVANT cette correction (« Déterminé par lecture de l'écran
+ * (heuristique). ») — elle ne s'applique qu'au signal `Occupée`, lu sur
+ * l'écran de la session, jamais à l'ancien canal `etat.agents`. */
+function rendreMessageActiviteClaude(texteActivite, titre) {
+  const article = el("article", "message");
+  article.appendChild(el("span", "message-avatar", "✺")).setAttribute("aria-hidden", "true");
+  const bulle = el("div", "bubble");
+  const portee = el("span", "", texteActivite);
+  portee.id = "claude-live-message";
+  if (titre) portee.title = titre;
+  bulle.appendChild(portee);
+  article.appendChild(bulle);
+  return article;
+}
+
+/* `#claude-compositeur-dialog` (feature-026, correction ux-ui-designer étape
+ * 5bis) : forme RÉACTIVE du `409` `raison: "compositeur_introuvable"` —
+ * patron de `#delete-dialog` (`ouvrirDialogue`/`fermerDialogue`, mêmes
+ * fonctions génériques). Le texte reste dans le composeur : cette fonction
+ * ne le touche jamais. */
+function ouvrirDialogueCompositeurIntrouvable() {
+  ouvrirDialogue($("claude-compositeur-dialog"));
+}
+
+/* Ancrage en bas (correctif « hauteur du panneau », rapporté depuis un
+ * iPad — `.claude-panel` est désormais borné, `#conversation` défile pour
+ * de vrai) : posé APRÈS la réécriture du DOM, SEULEMENT si `etaitEnBas`
+ * (lu AVANT, dans `rendreConversation`) — quelqu'un qui a remonté
+ * l'historique garde sa position, jamais de saut forcé. `scrollTop` posé
+ * DIRECTEMENT, jamais `scroll-behavior: smooth` : un repositionnement de
+ * contenu, pas une décoration. */
+function restaurerScrollDeConversation(conteneur, etaitEnBas) {
+  if (etaitEnBas) conteneur.scrollTop = conteneur.scrollHeight;
+}
+
+function rendreConversation() {
+  const conteneur = $("conversation");
+  if (!conteneur) return;
+  // Lu AVANT `vider()` — contre le fil ENCORE affiché, pas le futur. 24px de
+  // tolérance : un défilement au pixel près (sous-pixel, barre de défilement)
+  // ne doit pas faire passer un utilisateur réellement en bas pour « remonté ».
+  const etaitEnBas = conteneur.scrollTop + conteneur.clientHeight >= conteneur.scrollHeight - 24;
+  vider(conteneur);
+
+  if (conversation.phase === "chargement") {
+    conteneur.appendChild(el("p", "vide", "chargement…"));
+    restaurerScrollDeConversation(conteneur, etaitEnBas);
+    appliquerEtatComposer();
+    return;
+  }
+
+  if (conversation.erreurLecture) {
+    const p = el("p", "note erreur",
+      "Serveur injoignable — dernier fil connu affiché, peut-être périmé (" +
+      conversation.erreurLecture + ").");
+    p.setAttribute("role", "alert");
+    conteneur.appendChild(p);
+  }
+
+  /* Statut réel de l'agent (jamais un message fabriqué) — seulement quand
+   * le canal est disponible ET qu'une activité réelle existe. Deux sources
+   * MUTUELLEMENT EXCLUSIVES par canal : `conversation.etat === "Occupée"`
+   * (session tmux persistante, feature-026 — l'information que le badge ne
+   * porte plus, correction étape 5bis) prime sur `etat.agents[].actif_sur`
+   * (ancien canal, feature-022, qui ne renseigne jamais `conversation.etat`).
+   * Seule la première porte le `title` d'incertitude : c'est la seule des
+   * deux à venir d'une lecture heuristique de l'écran. */
+  const claudeOccupee = conversation.phase === "disponible" && conversation.etat === "Occupée";
+  const activite = claudeOccupee
+    ? "Claude travaille…"
+    : (conversation.phase === "disponible" ? texteActiviteClaude(dernierEtat) : null);
+  if (activite) {
+    conteneur.appendChild(rendreMessageActiviteClaude(
+      activite, claudeOccupee ? "Déterminé par lecture de l'écran (heuristique)." : ""));
+  }
+
+  if (conversation.phase === "indisponible" && !conversation.messages.length) {
+    conteneur.appendChild(el("p", "vide", "Aucun agent en cours n'accepte de message."));
+  } else if (!activite && !conversation.messages.length) {
+    conteneur.appendChild(el("p", "vide", "Aucun message pour l'instant."));
+  }
+
+  if (conversation.tronque) {
+    // Bornes RÉELLES du backend (`fil.py`, `lire_fil`, feature-026, A7/D2),
+    // jamais une formule inventée : 40 messages, 4 Mio.
+    conteneur.appendChild(el("p", "note",
+      "Fil tronqué : au-delà de 40 messages ou 4 Mio, les messages les plus "
+      + "anciens ne sont plus disponibles."));
+  }
+
+  conversation.messages.forEach((msg) => {
+    // `envoye` absent vaut « remis » — seule une valeur EXPLICITEMENT
+    // `false` marque un message non parti (B3, feature-021). ⚠️ Corrigé
+    // (revue de code, feature-026) : le canal `feature-026` sert AUSSI des
+    // lignes du journal propre du cockpit fusionnées au transcript
+    // (`server._fusionner_avec_journal_cockpit`), où `envoye` PEUT valoir
+    // `false` — l'ancien commentaire affirmait le contraire. L'invariant
+    // qui rend `envoye` absent fiable ici n'est plus « ce canal ne porte
+    // jamais ce champ » : c'est que le backend IGNORE désormais toute
+    // entrée `envoye: false` avant fusion (B1a) — une tentative refusée
+    // n'atteint donc jamais ce fil, `envoye` reste absent PARCE QUE tout ce
+    // qui en sort est réellement parti, pas parce que le canal l'ignore.
+    const envoyeMsg = !msg || msg.envoye !== false;
+    const role = msg && msg.role === "assistant" ? "assistant" : "utilisateur";
+    conteneur.appendChild(rendreMessageConversation(
+      role, String((msg && msg.texte) || ""), msg && msg.ts,
+      msg && msg.prompt_source, envoyeMsg));
+  });
+
+  // Question bloquante épinglée (F2) : AUCUNE source de données ce cycle —
+  // reste `hidden`, jamais un texte fabriqué (voir le commentaire HTML sur
+  // `#claude-question`, PIEGES §16).
+
+  const destinataireEl = $("claude-destinataire-valeur");
+  if (destinataireEl) destinataireEl.textContent = conversation.destinataire || "—";
+
+  restaurerScrollDeConversation(conteneur, etaitEnBas);
+  appliquerEtatComposer();
+}
+
+async function actualiserConversation() {
+  try {
+    const reponse = await fetch("/api/conversation", { headers: enTeteAuthPilotage() });
+    if (reponse.status === 401) {
+      sur401Lecture();
+      return;
+    }
+    const donnees = await reponse.json().catch(() => null);
+    // Le backend fait foi (feature-026) : `etat`/`destinataire` sont lus
+    // AVANT de discriminer sur le code HTTP, présents aussi bien sur un 200
+    // que sur un 404/503 du chemin session tmux — ABSENTS sur l'ancien canal
+    // `feature-022` (repli local ci-dessous, seul cas légitime).
+    if (donnees && typeof donnees.etat === "string" && donnees.etat) {
+      conversation.etat = donnees.etat;
+    }
+    if (donnees && typeof donnees.destinataire === "string" && donnees.destinataire) {
+      conversation.destinataire = donnees.destinataire;
+    }
+    if (reponse.status === 200) {
+      conversation.phase = "disponible";
+      conversation.messages = Array.isArray(donnees && donnees.messages) ? donnees.messages : [];
+      conversation.tronque = !!(donnees && donnees.tronque);
+      conversation.erreurLecture = null;
+    } else if (reponse.status === 404) {
+      conversation.phase = "indisponible";
+      conversation.messages = [];
+      conversation.tronque = false;
+      conversation.erreurLecture = null;
+    } else {
+      // 503 (socket/transcript indisponible, feature-026) ou tout autre code
+      // inattendu : le fil déjà affiché N'EST PAS effacé, un bandeau dit
+      // l'incertitude (mêmes trois états de lecture que partout ailleurs).
+      conversation.erreurLecture = (donnees && donnees.erreur)
+        || ("réponse inattendue (" + reponse.status + ")");
+    }
+  } catch (erreur) {
+    // Aucune réponse du tout (réseau/serveur injoignable) : `etat` n'est
+    // PLUS une donnée backend fraîche, la pastille retombe sur la dérivation
+    // locale « Injoignable » (`libellePastilleClaude`) plutôt que d'afficher
+    // un état potentiellement périmé comme s'il tenait encore.
+    conversation.etat = null;
+    conversation.phase = "erreur";
+    conversation.erreurLecture = "hors ligne";
+  }
+  rendreConversation();
+}
+
+function afficherErreurConversation(message) {
+  const p = $("conversation-erreur");
+  if (!p) return;
+  p.textContent = message;
+  p.hidden = false;
+}
+function masquerErreurConversation() {
+  const p = $("conversation-erreur");
+  if (!p) return;
+  p.hidden = true;
+  p.textContent = "";
+}
+
+/* Inerte visiblement (jamais absent, §skill frontend-developer) tant que
+ * l'écriture n'est pas active, qu'aucun agent n'accepte de message, ou
+ * qu'un envoi est en cours — la RAISON est répétée en texte (`#composer-etat`,
+ * lu par un lecteur d'écran) ET dans le `placeholder`/`title`, jamais la
+ * couleur seule. Le backend REVALIDE tout : ceci est un confort, pas une
+ * garde (skill frontend-developer, « le frontend n'est jamais une barrière
+ * de sécurité »). */
+function appliquerEtatComposer() {
+  const champ = $("prompt");
+  const bouton = $("envoyer-conversation");
+  const note = $("composer-etat");
+  if (!champ || !bouton) return;
+
+  const ecritureActive = Boolean(dernierEtat && dernierEtat.ecriture_active);
+  const libelle = libellePastilleClaude();
+  let raison = null;
+  if (conversation.phase === "chargement") {
+    raison = "chargement de la conversation…";
+  } else if (!ecritureActive) {
+    raison = "écriture non activée" +
+      ((dernierEtat && dernierEtat.ecriture_raison) ? " : " + dernierEtat.ecriture_raison : "");
+  } else if (libelle === "Injoignable") {
+    raison = "session injoignable";
+  } else if (libelle === "Hors ligne" || conversation.phase === "indisponible") {
+    raison = "aucun agent en cours n'accepte de message";
+  } else if (conversation.envoiEnCours) {
+    raison = "envoi en cours…";
+  }
+  // ⚠️ Branche « Occupée » RETIRÉE (feature-026, correction ux-ui-designer
+  // étape 5bis) : mesuré sur session jetable réelle, un texte tapé pendant
+  // que Claude travaille est MIS EN FILE par `claude` lui-même
+  // (`promptSource: "queued"`), jamais perdu — le compositeur ne doit donc
+  // plus jamais être inerte pour cette seule raison. Cas d'inertie
+  // restants, exactement : chargement initial, écriture non activée, Hors
+  // ligne, Injoignable, envoi en cours.
+
+  const inerte = raison !== null;
+  champ.disabled = inerte;
+  bouton.disabled = inerte;
+  champ.placeholder = inerte
+    ? raison.charAt(0).toUpperCase() + raison.slice(1)
+    : "Répondre à Claude…";
+  champ.title = inerte ? raison : "";
+  if (note) note.textContent = inerte ? raison.charAt(0).toUpperCase() + raison.slice(1) : "";
+
+  const statut = $("claude-status");
+  if (statut) {
+    // « Occupée » disparaît du BADGE (reste lisible dans le fil, voir
+    // `rendreConversation`/`rendreMessageActiviteClaude`) : PLIÉ sur
+    // « En ligne » ici seulement — `conversation.etat`, lui, garde sa
+    // valeur brute pour le reste du panneau (fil, 409). Le badge ne code
+    // plus que TROIS états, et ne porte plus aucun `title` heuristique
+    // (déposé sur l'indicateur de fil à la place).
+    const libelleBadge = libelle === "Occupée" ? "En ligne" : libelle;
+    vider(statut);
+    statut.className = "claude-status " + (_CLASSE_ETAT_PASTILLE[libelleBadge] || "");
+    statut.appendChild(el("span", "", "●")).setAttribute("aria-hidden", "true");
+    statut.appendChild(document.createTextNode(" " + libelleBadge));
+  }
+}
+
+async function surSoumissionConversation(evenement) {
+  evenement.preventDefault();
+  const champ = $("prompt");
+  if (!champ || champ.disabled) return;
+  const texte = champ.value;
+  if (!texte.trim() || conversation.envoiEnCours) return;
+
+  masquerErreurConversation();
+  conversation.envoiEnCours = true;
+  appliquerEtatComposer();
+
+  try {
+    const reponse = await fetch("/api/conversation", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, enTeteAuthPilotage()),
+      body: JSON.stringify({ texte }),
+    });
+    if (reponse.status === 202) {
+      champ.value = "";
+      conversation.envoiEnCours = false;
+      await actualiserConversation();
+      return;
+    }
+    if (reponse.status === 401) {
+      conversation.envoiEnCours = false;
+      sur401Lecture();
+      return;
+    }
+    const donnees = await reponse.json().catch(() => ({}));
+    if (donnees && typeof donnees.destinataire === "string" && donnees.destinataire) {
+      conversation.destinataire = donnees.destinataire;
+    }
+    /* 503 « canal occupé » (S3.9/S3.10) : normal et attendu tant que l'agent
+     * n'a pas lu le message précédent — on le DIT à l'écran, on ne réessaie
+     * JAMAIS en silence (feature-022, cas limites). Le texte reste dans le
+     * champ : rien n'est perdu, l'utilisateur choisit de réessayer. */
+    if (reponse.status === 503) {
+      afficherErreurConversation("Canal occupé — " +
+        (donnees.erreur || "l'agent n'a pas encore lu le message précédent") +
+        ". Le message n'a pas été envoyé, réessayez.");
+    } else if (reponse.status === 409) {
+      /* Heuristique (D5, condition 6 du GATE P1) : la lecture d'écran AVANT
+       * `send-keys` n'est PAS une garantie — vocabulaire au CONDITIONNEL,
+       * jamais « bloqué », jamais un mot de garde. Aucun réessai automatique,
+       * texte laissé dans le champ dans LES TROIS CAS (même discipline que
+       * le 503 ci-dessus). Réactif, discriminé par `donnees.raison`
+       * (feature-026, correction ux-ui-designer étape 5bis — le 409
+       * n'est plus jamais préventif, « Occupée » n'en fait plus partie). */
+      const raison409 = donnees && donnees.raison;
+      if (raison409 === "compositeur_introuvable") {
+        ouvrirDialogueCompositeurIntrouvable();
+      } else if (raison409 === "brouillon_present") {
+        afficherErreurConversation(
+          "Le message n'aurait pas pu être envoyé sans se mélanger à un texte déjà présent "
+          + "dans le terminal — réessayez une fois qu'il semble vide.");
+      } else {
+        // `interrompu_apres_collage`, ou toute raison future non répertoriée
+        // ici : le libellé du BACKEND fait foi, jamais un troisième texte
+        // inventé côté client (`donnees.erreur`, déjà rédigé par le
+        // serveur — voir `server.py`, `_conversation_envoyer`).
+        afficherErreurConversation(
+          donnees.erreur || "le message n'a pas été envoyé.");
+      }
+    } else if (reponse.status === 404) {
+      conversation.phase = "indisponible";
+      afficherErreurConversation(donnees.erreur || "aucun agent en cours n'accepte de message");
+      rendreConversation();
+    } else {
+      afficherErreurConversation(donnees.erreur || ("réponse inattendue (" + reponse.status + ")"));
+    }
+  } catch (erreur) {
+    afficherErreurConversation("Serveur injoignable — le message n'a pas été envoyé.");
+  } finally {
+    conversation.envoiEnCours = false;
+    appliquerEtatComposer();
+  }
 }
 
 /* ------------------------------------------------------------------ flux -- */
@@ -2696,18 +3185,32 @@ async function rafraichir() {
     if (!reponse.ok) throw new Error("HTTP " + reponse.status);
     const etat = await reponse.json();
     $("projet").textContent = etat.projet || "";
+    rendreIdentite(etat);
     $("horodatage").textContent = heure(etat.horodatage) + " UTC";
     const jaugeGit = $("jauge-git");
     jaugeGit.textContent = etat.git.depot ? "git " + (etat.git.branche || "?") : "git absent";
     jaugeGit.className = "jauge " + (etat.git.depot ? "ok" : "ko");
     dernierEtat = etat;
-    rendreAgents(etat.agents);
-    rendreSysteme(etat);
+    /* `rendreAgents`/`rendreTimeline` SUPPRIMÉS ICI (U1 de feature-021,
+     * feature-028 lot A1) — sections retirées, voir les commentaires sur
+     * leurs anciennes définitions. `rendreSysteme` SUPPRIMÉ ICI (feature-028,
+     * décision humaine du 2026-09-23, AU-DELÀ de U1) — section retirée
+     * entière, voir le commentaire sur son ancienne définition.
+     * `rendreFichiers` SUPPRIMÉ ICI (feature-028, décision humaine du
+     * 2026-09-23) — « Fichiers touchés » retirée, la consultation des diffs
+     * ne va nulle part ; voir le commentaire sur son ancienne définition.
+     * `rendreCycles` SUPPRIMÉ ICI (feature-028, lot C1) — l'accordéon
+     * « Cycles » a disparu entier (décision humaine 1B), voir le
+     * commentaire sur son ancienne définition. */
+    rendreGrapheCyclePrincipal(etat);
     rendreKanban(etat);
-    rendreCycles(etat);
-    rendreFichiers(etat);
-    rendreTimeline(etat);
     actualiserPilotage(etat);
+    /* `ecriture_active` vient de rafraîchir : réapplique l'état du composer
+     * immédiatement (raison à jour), sans attendre `actualiserConversation`
+     * ci-dessous — même cadence que le reste du tableau de bord (signal SSE
+     * ou sondage 10 s), AUCUN minuteur séparé (pas de polling agressif). */
+    appliquerEtatComposer();
+    actualiserConversation();
   } catch (erreur) {
     const jauge = $("jauge-flux");
     jauge.textContent = "serveur injoignable";
@@ -2729,281 +3232,21 @@ function brancherFlux() {
   };
 }
 
-/* --------------------------------------------------------------- thème ---
- * Bascule à trois positions — clair, système, sombre (feature-015,
- * docs/DESIGN-SYSTEM.md §7). `theme.js`, chargé SYNCHRONE dans <head>, a
- * déjà posé — ou pas — `data-theme` sur `<html>` avant que ce fichier ne
- * s'exécute. Ce module commande les trois boutons, écrit le choix, et suit
- * `matchMedia` seulement en position « système ».
- *
- * `document.documentElement` est ABSENT du bac à sable Node de
- * `test_app_bug012.js` (le faux `document` n'y modélise pas l'élément
- * racine) : chaque accès est donc gardé par un test de vérité, jamais
- * déréférencé directement — c'est ce qui permet à ce module de charger sans
- * exception dans ce harnais comme dans un navigateur réel. Même prudence
- * pour `matchMedia`, absent du bac à sable : vérifié par `typeof` avant tout
- * appel, jamais réclamé nu. */
-const CLE_THEME = "theme";
-
-function attributeThemeActuel() {
-  const racine = document.documentElement;
-  return racine ? racine.getAttribute("data-theme") : null;
-}
-
-function memoriserTheme(choix) {
-  try {
-    if (choix === "systeme") localStorage.removeItem(CLE_THEME);
-    else localStorage.setItem(CLE_THEME, choix);
-  } catch (erreur) {
-    // `localStorage` indisponible (fenêtre privée, données bloquées, quota) :
-    // le choix ne survit pas au rechargement, la page reste correcte quand
-    // même — aucune exception ne doit remonter à l'appelant (C2/C3).
-  }
-}
-
-const mqSombre = (typeof matchMedia === "function")
-  ? matchMedia("(prefers-color-scheme: dark)")
-  : null;
-
-/* L'OS sans préférence exprimée vaut clair (D2) : `mqSombre` absent ou
- * `matches` faux mènent tous deux à "clair". */
-function themeResolu() {
-  const choix = attributeThemeActuel();
-  if (choix === "clair" || choix === "sombre") return choix;
-  return (mqSombre && mqSombre.matches) ? "sombre" : "clair";
-}
-
-function positionActiveTheme() {
-  const choix = attributeThemeActuel();
-  if (choix === "clair") return "theme-clair";
-  if (choix === "sombre") return "theme-sombre";
-  return "theme-systeme";
-}
-
-function appliquerTheme(choix) {
-  const racine = document.documentElement;
-  if (racine) {
-    if (choix === "clair" || choix === "sombre") racine.setAttribute("data-theme", choix);
-    else racine.removeAttribute("data-theme");
-  }
-  memoriserTheme(choix);
-  rafraichirCommandeTheme();
-}
-
-const BOUTONS_THEME = ["theme-clair", "theme-systeme", "theme-sombre"];
-function idVersChoix(id) {
-  return id === "theme-clair" ? "clair" : id === "theme-sombre" ? "sombre" : "systeme";
-}
-
-/* La position « système » annonce sa résolution (B2) : son icône ET son
- * libellé accessible suivent le thème auquel elle aboutit À CET INSTANT. Les
- * deux autres positions gardent un libellé fixe (posé une fois dans le
- * HTML). Aucun `innerHTML` : uniquement `setAttribute`/`hidden`/`title`. */
-function rafraichirCommandeTheme() {
-  const active = positionActiveTheme();
-  BOUTONS_THEME.forEach((id) => {
-    const bouton = $(id);
-    if (!bouton) return;
-    const coche = id === active;
-    bouton.setAttribute("aria-checked", coche ? "true" : "false");
-    bouton.tabIndex = coche ? 0 : -1;
-  });
-  const resolu = themeResolu();
-  const iconeClair = $("icone-systeme-clair");
-  const iconeSombre = $("icone-systeme-sombre");
-  if (iconeClair) iconeClair.hidden = resolu !== "clair";
-  if (iconeSombre) iconeSombre.hidden = resolu !== "sombre";
-  const boutonSysteme = $("theme-systeme");
-  if (boutonSysteme) {
-    const libelle = "Suivre le système (actuellement " + resolu + ")";
-    boutonSysteme.setAttribute("aria-label", libelle);
-    boutonSysteme.title = libelle;
-  }
-}
-
-BOUTONS_THEME.forEach((id, index) => {
-  const bouton = $(id);
-  if (!bouton) return;
-  bouton.addEventListener("click", () => appliquerTheme(idVersChoix(id)));
-  /* Roving tabindex : le motif WAI-ARIA `radiogroup` complet — flèches
-   * gauche/droite ET haut/bas (un groupe peut se présenter en ligne comme en
-   * colonne selon la mise en page), plus Origine/Fin pour atteindre le
-   * premier et le dernier bouton d'un coup. Le focus suit la sélection dans
-   * tous les cas (B3 — clavier seul, focus visible via
-   * `.theme-bouton:focus-visible` dans app.css). */
-  bouton.addEventListener("keydown", (evenement) => {
-    const touche = evenement.key;
-    let indexSuivant;
-    if (touche === "ArrowRight" || touche === "ArrowDown") {
-      indexSuivant = (index + 1) % BOUTONS_THEME.length;
-    } else if (touche === "ArrowLeft" || touche === "ArrowUp") {
-      indexSuivant = (index - 1 + BOUTONS_THEME.length) % BOUTONS_THEME.length;
-    } else if (touche === "Home") {
-      indexSuivant = 0;
-    } else if (touche === "End") {
-      indexSuivant = BOUTONS_THEME.length - 1;
-    } else {
-      return;
-    }
-    evenement.preventDefault();
-    const suivant = BOUTONS_THEME[indexSuivant];
-    appliquerTheme(idVersChoix(suivant));
-    const boutonSuivant = $(suivant);
-    if (boutonSuivant && boutonSuivant.focus) boutonSuivant.focus();
-  });
-});
-
-if (mqSombre) {
-  /* Actif SEULEMENT en position « système » (D1) : un choix explicite ne
-   * doit pas se remettre à suivre l'OS parce que l'OS a changé d'avis. */
-  mqSombre.addEventListener("change", () => {
-    if (positionActiveTheme() === "theme-systeme") rafraichirCommandeTheme();
-  });
-}
-
-rafraichirCommandeTheme();
-
-/* ============================================================ navigation ==
- * Colonne de navigation à onglets (feature-019, §5/§6) : une section visible
- * à la fois, `hidden` réel comme SEUL mécanisme de masquage. Même motif
- * WAI-ARIA que `.bascule-theme` ci-dessus — roving tabindex, les flèches
- * déplacent le focus ET la sélection — dupliqué plutôt que factorisé : les
- * deux groupes ont des tailles et des sémantiques différentes (radiogroup à
- * trois choix mutuellement exclusifs vs tablist à six sections).
+/* ==================================================== structure mono-écran
+ * feature-021, cycle 2, lot 3 (F7) : la colonne de navigation à onglets
+ * (feature-019, §5/§6, ADR-0024 §1 amendé par ADR-0029) est RETIRÉE — 0
+ * `role="tab"`, plus de section masquée, tout le contenu est empilé et
+ * lisible sans navigation. `SECTIONS`/`CLE_SECTION`/`sectionActuelle`/
+ * `memoriserSection`/`appliquerSection` et les gestionnaires clavier
+ * (roving tabindex ArrowLeft/Right/Home/End) sont SUPPRIMÉS avec elle —
+ * `index.html` ne porte plus aucun `#section-*`/`#onglet-*`/
+ * `#titre-section-*` à piloter (retirer ce code, pas seulement le laisser
+ * no-op sur des ids absents, évite qu'une suite continue d'exercer une
+ * fonctionnalité qu'aucune page réelle ne peut plus atteindre — un vert à
+ * tort, PIEGES §21/§33). `theme.js` a été SUPPRIMÉ (lot 13) ; plus rien ne pose `data-section` sur
+ * `<html>` (fichier hors périmètre de ce lot) : cet attribut n'a plus AUCUN
+ * lecteur ici, volontairement.
  * ========================================================================= */
-
-const SECTIONS = ["agents", "systeme", "developper", "cycles", "fichiers", "evenements"];
-const CLE_SECTION = "section";
-
-/* RELAIS D'AMORÇAGE, pas un état vivant (revue) : `theme.js` écrit
- * `data-section` sur `<html>` UNE SEULE FOIS, avant que ce fichier ne
- * s'exécute, en relisant `localStorage` sous son propre `try/catch` — c'est
- * ce relais qui évite à `app.js` de relire `localStorage` une seconde fois
- * juste pour cette valeur. Lu ICI, une seule fois, à l'appel initial
- * (voir plus bas `appliquerSection(sectionActuelle(), false)`).
- * `appliquerSection` ne réécrit PLUS cet attribut à chaque navigation
- * (retiré en revue : app.css n'a aucune règle qui en dépend depuis que la
- * garde `.section[hidden]` a cessé d'être concurrencée — la réécriture ne
- * pilotait plus rien, seulement `hidden` et `localStorage` comptent après
- * le chargement). Ne pas le reprendre pour « tenir l'attribut à jour » :
- * ce serait remettre en circulation un état qui n'a plus de lecteur. */
-function sectionActuelle() {
-  const racine = document.documentElement;
-  const valeur = racine && racine.getAttribute("data-section");
-  return SECTIONS.indexOf(valeur) !== -1 ? valeur : SECTIONS[0];
-}
-
-/* Lecture ET écriture protégées (feature-019) : `localStorage` peut échouer
- * (fenêtre privée, données bloquées, quota) — jamais d'exception remontée à
- * l'appelant. Miroir de `memoriserTheme` ci-dessus. */
-function memoriserSection(slug) {
-  try {
-    localStorage.setItem(CLE_SECTION, slug);
-  } catch (erreur) {
-    // localStorage indisponible : la préférence ne survit pas au
-    // rechargement, la page reste par ailleurs pleinement fonctionnelle.
-  }
-}
-
-/* `deplacerFocus` : false lors de la synchronisation initiale (la page vient
- * de se charger, rien à annoncer — voler le focus au chargement serait une
- * régression d'accessibilité) ; true sur toute activation ultérieure
- * (clic ou clavier), où la spec exige le focus programmatique sur le titre
- * de la section nouvellement visible. */
-function appliquerSection(slug, deplacerFocus) {
-  if (SECTIONS.indexOf(slug) === -1) slug = SECTIONS[0];
-  // Pas de `racine.setAttribute("data-section", slug)` ici : `data-section`
-  // n'est plus qu'un relais d'amorçage lu une fois par `sectionActuelle()`
-  // (voir son commentaire) — le réécrire à chaque navigation n'a plus aucun
-  // lecteur depuis que la garde `.section[hidden]` a cessé d'être
-  // concurrencée en CSS. `hidden`, ci-dessous, est désormais la SEULE
-  // source de vérité de l'affichage ; `memoriserSection`, plus bas, celle
-  // de la persistance.
-
-  SECTIONS.forEach((s) => {
-    const section = $("section-" + s);
-    const onglet = $("onglet-" + s);
-    if (section) section.hidden = s !== slug;   // condition de sécurité 1 : `hidden`, rien d'autre
-    if (onglet) {
-      const actif = s === slug;
-      onglet.setAttribute("aria-selected", actif ? "true" : "false");
-      onglet.tabIndex = actif ? 0 : -1;
-    }
-  });
-
-  memoriserSection(slug);
-
-  if (deplacerFocus) {
-    const titre = $("titre-section-" + slug);
-    if (titre && titre.focus) titre.focus();
-  }
-}
-
-/* Le focus suit la SECTION, pas l'onglet (§6 : « focus programmatique sur le
- * titre de la section nouvellement visible », à chaque changement — clic
- * COMME clavier). Différence assumée avec `.bascule-theme` ci-dessus (qui
- * ramène le focus sur le bouton) : ici la navigation change de PAGE, pas
- * seulement de réglage — le motif accessible établi pour un changement de
- * route est de poser le focus sur le titre de la page arrivée. */
-SECTIONS.forEach((slug, index) => {
-  const onglet = $("onglet-" + slug);
-  if (!onglet) return;
-  onglet.addEventListener("click", () => appliquerSection(slug, true));
-  onglet.addEventListener("keydown", (evenement) => {
-    const touche = evenement.key;
-    let indexSuivant;
-    if (touche === "ArrowRight" || touche === "ArrowDown") {
-      indexSuivant = (index + 1) % SECTIONS.length;
-    } else if (touche === "ArrowLeft" || touche === "ArrowUp") {
-      indexSuivant = (index - 1 + SECTIONS.length) % SECTIONS.length;
-    } else if (touche === "Home") {
-      indexSuivant = 0;
-    } else if (touche === "End") {
-      indexSuivant = SECTIONS.length - 1;
-    } else {
-      return;
-    }
-    evenement.preventDefault();
-    appliquerSection(SECTIONS[indexSuivant], true);
-  });
-});
-
-/* Synchronisation initiale, SANS déplacer le focus (§6) : `theme.js` a pu
- * poser `data-section` avant le premier rendu (préférence retrouvée dans
- * `localStorage`) — mais `app.css` n'a AUCUNE règle qui affiche une section
- * d'après cet attribut (retiré en revue : il entrait en concurrence de
- * spécificité avec `.section[hidden]{display:none}`, la garde de sécurité,
- * et pouvait la faire perdre — voir app.css). `hidden` est donc encore à
- * son état statique du HTML servi à cet instant (seule « agents » visible) ;
- * cet appel pose le VRAI `hidden` sur chaque section dès que le DOM existe,
- * sans attendre d'autre événement. Si aucune préférence n'était posée,
- * `sectionActuelle()` retombe sur « agents » : no-op. */
-appliquerSection(sectionActuelle(), false);
-
-/* ------------------------------------------------ hauteur réelle de .barre
- * `--hauteur-barre` (app.css) fixe le repli de `.nav-sections` (`position:
- * sticky; top`) à 62px, la hauteur de `.barre` sur UNE ligne. `.barre` porte
- * `flex-wrap: wrap` : à une largeur intermédiaire, elle peut passer sur
- * deux lignes et dépasser 62px — la nav collante se retrouverait alors
- * SOUS la barre repliée (revue). `ResizeObserver` mesure la hauteur
- * RÉELLEMENT rendue et corrige la variable en conséquence, dans les deux
- * sens (une barre qui repasse sur une ligne doit aussi redescendre). Repli
- * silencieux si l'API est absente (navigateur ancien, ou bac à sable de
- * test) : la valeur par défaut d'app.css reste en vigueur. */
-(function observerHauteurBarre() {
-  if (typeof ResizeObserver !== "function") return;
-  const barre = $("barre");   // pas de querySelector (convention du module)
-  const racine = document.documentElement;
-  if (!barre || !racine || !racine.style) return;
-  const observateur = new ResizeObserver((entrees) => {
-    const entree = entrees[entrees.length - 1];
-    const hauteur = entree && entree.borderBoxSize && entree.borderBoxSize[0]
-      ? entree.borderBoxSize[0].blockSize
-      : barre.offsetHeight;
-    if (hauteur) racine.style.setProperty("--hauteur-barre", hauteur + "px");
-  });
-  observateur.observe(barre);
-})();
 
 /* Filtrer ne redemande RIEN au serveur : on redessine l'état déjà chargé. Une
  * requête par frappe ferait tourner `git status` et relire 167 fichiers à chaque
@@ -3012,14 +3255,87 @@ function refiltrer() { if (dernierEtat) rendreKanban(dernierEtat); }
 $("filtre").addEventListener("input", refiltrer);
 $("filtre-divergences").addEventListener("change", refiltrer);
 
-/* feature-008 : compteur de caractères, purement local (aucune requête). */
-$("prompt").addEventListener("input", actualiserCompteurPrompt);
-$("bouton-generer-brouillon").addEventListener("click", surClicGenererBrouillon);
+/* feature-008 : compteur de caractères — SUPPRIMÉ (U1, feature-028 lot A1),
+ * voir le commentaire sur l'ancienne `actualiserCompteurPrompt`.
+ * `demande` (« Que souhaitez-vous développer ? ») SUPPRIMÉE ICI (feature-028,
+ * lot C2, une fois B3 vérifié) : `#bouton-generer-brouillon` n'existe plus,
+ * `#add-item-dialog` (le `+`) est désormais le SEUL point d'entrée — voir
+ * `SURFACES_REDACTION`. */
+
+/* feature-022 (lot 11) : composeur de conversation — `#composer`/`#prompt`
+ * reprennent les noms du PROTOTYPE (clé de jointure des gardes de fidélité),
+ * `#spec-prompt` ci-dessus a cédé le sien. Inerte par défaut dans le HTML
+ * (`disabled`) tant que `rendreConversation`/`appliquerEtatComposer` n'a pas
+ * tourné au moins une fois — jamais un bouton actif avant la première
+ * réponse connue. */
+$("composer").addEventListener("submit", surSoumissionConversation);
+rendreConversation();
+
+/* `#claude-compositeur-dialog` (feature-026, étape 5bis) : câblage statique,
+ * une fois, même discipline que `cablerActionsBacklogUneFois` ci-dessus. */
+const claudeCompositeurFermer = $("claude-compositeur-fermer");
+if (claudeCompositeurFermer) {
+  claudeCompositeurFermer.addEventListener("click",
+    () => fermerDialogue($("claude-compositeur-dialog")));
+}
 
 document.addEventListener("keydown", (evenement) => {
   if (evenement.key === "Escape") fermerTiroir();
 });
 $("tiroir-fermer").addEventListener("click", fermerTiroir);
+
+/* Câblage des onglets de cycle (feature-028, lot A) : `if (élément)` GARDÉ
+ * avant tout appel de méthode — plusieurs harnais `test_app_*.js` chargent ce
+ * fichier ENTIER dans un bac à sable qui ne connaît que les id tenus à la
+ * main dans leur propre liste `IDS` (PIEGES §38) ; un accès direct ferait
+ * tomber TOUS ces harnais au chargement, pas seulement ceux qui exercent
+ * cette fonctionnalité — même précaution que le bloc feature-025 plus haut. */
+const ongletCycleActif = $("cycle-tab-actif");
+const ongletCycleHistorique = $("cycle-tab-historique");
+const boutonCycleIndice = $("cycle-indice");
+if (ongletCycleActif) {
+  ongletCycleActif.addEventListener("click", () => {
+    if (modeCycleAffiche === "actif") return;
+    modeCycleAffiche = "actif";
+    if (dernierEtat) rendreGrapheCyclePrincipal(dernierEtat);
+  });
+}
+if (ongletCycleHistorique) {
+  ongletCycleHistorique.addEventListener("click", () => {
+    if (modeCycleAffiche === "historique") return;
+    modeCycleAffiche = "historique";
+    if (dernierEtat) rendreGrapheCyclePrincipal(dernierEtat);
+  });
+}
+if (boutonCycleIndice) {
+  boutonCycleIndice.addEventListener("click", () => {
+    if (modeCycleAffiche !== "historique" || !dernierEtat) return;
+    const workflows = (dernierEtat.workflows || []).slice().reverse();
+    if (workflows.length < 2) return; // rien à parcourir, cf. actualiserControleCycleTabs
+    const idsPresents = workflows.map((wf) => wf.workflow_id);
+    let indexActuel = idsPresents.indexOf(cycleHistoriqueChoisi);
+    if (indexActuel === -1) indexActuel = 0;
+    cycleHistoriqueChoisi = workflows[(indexActuel + 1) % workflows.length].workflow_id;
+    rendreGrapheCyclePrincipal(dernierEtat);
+  });
+}
+
+/* F11 : replier/déplier la bottom sheet — un état PUREMENT visuel (le
+ * détail reste dans le DOM, `aria-expanded` porte l'état pour qui n'y voit
+ * rien, le glyphe n'est jamais la seule information — §8). */
+$("sheet-toggle").addEventListener("click", () => {
+  const repliee = $("sheet-metrics").hidden = !$("sheet-metrics").hidden;
+  $("sheet-toggle").setAttribute("aria-expanded", repliee ? "false" : "true");
+  $("sheet-toggle").setAttribute("aria-label", repliee ? "Déplier le détail" : "Replier le détail");
+});
+
+/* evenements (U1 de feature-021, feature-028 lot A1) : un seul écouteur,
+ * posé une fois — relit `passageSelectionneCourant` à CHAQUE clic plutôt que
+ * de capturer une valeur au moment de l'inscription (le bouton est partagé
+ * entre tous les passages sélectionnés successivement). */
+$("voir-evenements-passage").addEventListener("click", () => {
+  ouvrirEvenementsPassage(passageSelectionneCourant);
+});
 
 /* Le premier `GET /api/etat` décide seul du mode d'authentification — voir
  * `verifierEtatAuth`. Tant qu'il n'a pas répondu `200`, aucun bloc n'est

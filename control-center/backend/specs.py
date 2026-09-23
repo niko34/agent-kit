@@ -185,8 +185,19 @@ def lister_specs(racine, colonnes, vocabulaire=None, lignes_entete=60,
                 continue
             if any(nom.startswith(p) for p in prefixes_exclus if p):
                 continue
-            specs.append(lire_spec(os.path.join(dossier, nom), classe,
-                                   vocabulaire, lignes_entete))
+            chemin = os.path.join(dossier, nom)
+            # AUDIT feature-021 (A1) : un lien planté dans une colonne est vu
+            # par `os.listdir()` comme une spec, et `os.path.islink()` ne
+            # résout rien — il ne fait QUE dire « c'est un lien », sans
+            # suivre sa cible. C'est le filtre le moins cher possible ici :
+            # aucune spec légitime de ce dépôt n'est un lien symbolique, donc
+            # aucun faux rejet. La lecture PAR IDENTIFIANT (`_spec`,
+            # `resoudre_spec`) reste, elle, protégée par le confinement à
+            # DOUBLE garde de `vcs.chemin_sur()` — ce filtre-ci ferme la
+            # LISTE, pas la résolution.
+            if os.path.islink(chemin):
+                continue
+            specs.append(lire_spec(chemin, classe, vocabulaire, lignes_entete))
     return specs
 
 

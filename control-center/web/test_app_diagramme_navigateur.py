@@ -1,91 +1,90 @@
 #!/usr/bin/env python3
-"""E7 (feature-020) — capture headless du DIAGRAMME, dans les DEUX thèmes,
-comparée à la maquette de référence.
+"""F8/F15/F16 — capture headless du NOUVEAU graphe d'agents (feature-021,
+lot 4), mesurée sur ce que Chromium PEINT réellement.
 
     python3 control-center/web/test_app_diagramme_navigateur.py
 
-Mesuré (feature-020, brief) : `test_app_theme_navigateur.py` (56 cas) ne rend
-JAMAIS le diagramme — ses pages ne chargent ni `diagramme.js` ni `app.js`,
-et ne posent aucun élément `dg-*`. Ce fichier comble ce trou : il charge les
-DEUX scripts RÉELS du kit (`file://`, jamais copiés ni modifiés — ADR-0006)
-dans une page minimale, appelle `construireDiagramme()` (la même fonction
-qu'`index.html` en production) sur une fixture littérale, et mesure le SVG
-RÉELLEMENT peint par Chromium — pas une reconstruction dans le bac à sable
-`vm` de `test_app_accordeon.js` (qui ne peut pas résoudre `oklch()`,
-PIEGES.md §11).
+Pourquoi ce fichier existe, et pourquoi il a été RÉÉCRIT plutôt que supprimé
+-----------------------------------------------------------------------------
+Le lot 4 a remplacé la grammaire du diagramme (socle, bandes de rayon,
+graduations data-dépendantes) par celle du prototype Material 3 (disque de
+88 px, 3 états, 12 graduations fixes). L'ancien harnais mesurait un invariant
+de contraste entre `--trait-fin` et `--trait`, deux jetons que le lot 4
+supprime : ses ASSERTIONS étaient donc réellement périmées.
 
-Pourquoi une page maison plutôt que le vrai `index.html` servi par
-`server.py` : `index.html` exige `/api/etat` (fetch + SSE) pour peupler
-`#workflows` ; sous `file://` ces appels échouent proprement (rejet
-asynchrone, pas d'exception synchrone) et n'empêchent pas la suite du
-script de s'exécuter — mais piloter un cycle réel demanderait de démarrer le
-serveur, ce que PIEGES.md §2/§4 réserve à des precautions que ce test n'a
-pas besoin de payer : `construireDiagramme(wf, sigles)` est LE point d'entrée
-que production et ce test appellent tous deux, à l'identique.
+Son HARNAIS, lui, ne l'était pas. C'est lui qui avait attrapé, EN EXÉCUTANT,
+deux défauts que la relecture n'avait pas vus — la consolidation de
+`--trait-fin` au lot 2, et la casse du rendu par retrait des jetons au lot 3.
+Le supprimer laissait le livrable le plus complexe du cycle sans aucune
+vérification au niveau de l'exécution : les 40 cas de `test_app_diagramme.js`
+portent sur `disposer()`, une fonction PURE, qui ne sait rien de ce qui est
+peint.
 
-`$("filtre")` etc. (câblage de la barre de recherche, tout en bas d'`app.js`)
-lèvent une exception au chargement faute des éléments attendus dans le DOM —
-sans conséquence : ce sont des DÉCLARATIONS `function` (hoisted) qui nous
-intéressent (`disposer`, `construireDiagramme`, `siglesAgents`,
-`collecterRoles`), déjà définies avant que ce throw n'interrompe le reste du
-script `app.js`. Un script suivant s'exécute normalement même si le
-précédent a levé une exception non rattrapée (comportement standard des
-balises `<script>` séquentielles).
+Ce que ce fichier couvre, et que RIEN d'autre ne couvre
+-----------------------------------------------------------------------------
+Tout ce qui n'existe qu'une fois la cascade CSS appliquée :
 
-Relation mesurée (défaut E, feature-020) : dans la maquette, l'anneau guide
-et le contour nominal se distinguent par un jeton *toujours plus subtil pour
-le guide* (`T.bd`, alpha .10 clair / .085 sombre) que pour le contour et les
-graduations éteintes (`T.bd2`, alpha .19 clair / .16 sombre) — RECOPIÉ ICI
-depuis le texte brut de la maquette, jamais recalculé depuis le kit. On
-mesure que le kit respecte la MÊME direction (guide moins contrasté contre
-le fond que le contour/graduation), sur la couleur RÉELLEMENT peinte
-(canevas 2D, PIEGES.md §11 — `getComputedStyle` seul rendrait `oklch()` non
-résolu), dans LES DEUX thèmes, et qu'aucune des deux couleurs n'est figée
-(elles changent bien entre thème clair et thème sombre).
+- F8  : l'anneau d'activité est réellement animé (`animation-name` calculé),
+        les 12 graduations sont réellement 12 nœuds peints, les 3 pastilles
+        de fichiers se DISTINGUENT à l'œil (opacité calculée) et pas
+        seulement par une classe ;
+- F15 : aucun `.token-value` n'existe dans l'arbre, et le sigle restant est
+        optiquement CENTRÉ — le disque est dégradable sans être à trous,
+        ce qui se mesure en comparant les boîtes réelles, pas en relisant
+        `place-content: center` ;
+- F16 : les quatre représentations sont VISIBLES. Un échec change réellement
+        la couleur peinte ET porte un glyphe réellement rendu ; « sans
+        clôture » se distingue de l'échec par la couleur ET par le glyphe ;
+        l'agent principal porte un anneau réellement dessiné ; et les
+        libellés ne se chevauchent pas, mesuré sur les RECTANGLES RÉELS
+        rendus par le moteur, jamais en recalculant la formule de
+        `disposer()` (qui ne prouverait que sa propre cohérence).
+
+La leçon du lot 3 s'applique ici : une garde qui constate qu'une classe est
+posée vérifie le MÉCANISME. Ce fichier vérifie le RÉSULTAT.
+
+Méthode
+-----------------------------------------------------------------------------
+On charge les DEUX scripts RÉELS du kit (`file://`, jamais copiés ni modifiés
+— `ADR-0006`) et la feuille RÉELLE dans une page minimale, on appelle
+`construireGrapheAgents(disposer(segments), sigles, null)` — LE point
+d'entrée bas niveau que la production appelle aussi (`rendreGrapheCycle
+Principal`, app.js) — et on lit `getComputedStyle` / `getBoundingClientRect`.
+⚠️ Retargeté (feature-028, lot C1) : ce fichier appelait `construireDiagramme()`,
+une enveloppe autour de `construireGrapheAgents()` propre à l'accordéon
+« Cycles », retirée avec lui — le rendu peint (ce que CE fichier vérifie)
+est rigoureusement identique, `construireDiagramme` n'ajoutait qu'une note
+de contexte textuelle jamais mesurée ici.
+
+Écarts NON couverts, nommés plutôt que tus :
+- aucune comparaison pixel par pixel avec le prototype (il n'utilise pas les
+  jetons du kit ; seule la correspondance déclarée est vérifiable) ;
+- `prefers-reduced-motion` n'est pas émulé ici : la PRÉSENCE du bloc est
+  gardée statiquement par `test_conformite_animations.js`
+  (`F14_bloc_prefers_reduced_motion_present`), et ce fichier vérifie la
+  proposition complémentaire — qu'en mode normal l'animation s'applique
+  VRAIMENT, sans quoi la supprimer sous `reduced-motion` ne voudrait rien
+  dire ;
+- la fonte utilisée pour les glyphes dépend de la machine : on mesure que le
+  glyphe occupe une largeur NON NULLE et que les deux glyphes diffèrent,
+  jamais leur forme.
 
 Saute proprement si aucun binaire Chromium n'est trouvé.
-
-Écarts NON couverts par ce fichier (nommés, pas passés sous silence) :
-- aucune comparaison PIXEL PAR PIXEL avec une capture PNG de la maquette
-  elle-même (la maquette n'utilise pas les jetons du kit — seule la
-  correspondance déclarée dans la spec est vérifiable, pas un diff d'image) ;
-- le rendu de l'émoji "⏳" de la pastille d'attente dépend de la fonte
-  installée sur la machine qui exécute le test (déjà noté item Q de la
-  spec) — non mesuré ici ;
-- la légende HTML (`.diagramme-legende`) et l'en-tête (`.dg-entete`) ne sont
-  pas mesurés visuellement, seule leur présence structurelle l'est déjà par
-  `test_app_accordeon.py`.
 """
+
+HARNAIS_NAVIGATEUR = True
 
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
 import tempfile
 
-# bug-022 : marqueur de MODULE (pas le nom du fichier) declarant ce harnais
-# comme lanceur de navigateur. Mesure : `*_navigateur.py` n'attrape que 2 des
-# 3 harnais qui lancent Chromium -- `test_app_navigation_http.py` n'a pas ce
-# suffixe et le lance quand meme. Le marqueur, lui, meurt AVEC le fichier :
-# quand `feature-021` supprimera `test_app_theme_navigateur.py`, sa ligne
-# HARNAIS_NAVIGATEUR partira avec lui, sans rien a editer ailleurs. Lu par
-# `control-center/backend/test_ci_partition_navigateur.py` et par le job
-# `centre-de-controle-matrice` (`.github/workflows/hygiene-specs.yml`), qui
-# l'exclut de la matrice Python -- ce fichier vaut un rendu Chromium, pas une
-# version de l'interpreteur.
-HARNAIS_NAVIGATEUR = True
+ICI = os.path.dirname(os.path.abspath(__file__))
 
-_ICI = os.path.dirname(os.path.abspath(__file__))
-_APP_CSS = os.path.join(_ICI, "app.css")
-_APP_JS = os.path.join(_ICI, "app.js")
-_DIAGRAMME_JS = os.path.join(_ICI, "diagramme.js")
-_MAQUETTE = os.path.join(
-    os.path.dirname(_ICI), "maquettes", "2026-09-15-diagramme-reference.html")
-
-_echecs = []
 _tests = 0
+_echecs = []
 
 
 def check(nom, condition, detail=""):
@@ -130,263 +129,538 @@ def _lancer_navigateur(commande):
         return subprocess.run(commande, capture_output=True, text=True, timeout=30)
 
 
-_PAGE = """<!doctype html><html data-theme="%(theme)s"><head><meta charset="utf-8">
+_PAGE = """<!doctype html><html><head><meta charset="utf-8">
 <link rel="stylesheet" href="file://%(css)s">
 </head><body>
-<div class="bloc" id="conteneur" style="width:640px"></div>
-<canvas id="c" width="2" height="2"></canvas>
-<pre id="salida"></pre>
+<div class="bloc" id="conteneur" style="width:1200px"></div>
 <script src="file://%(diagramme_js)s"></script>
 <script src="file://%(app_js)s"></script>
 <script>
 (function () {
-  function passage(agent, debutIso, dureeMs, outils) {
+  function passage(o) {
     return {
-      agent: agent, debut: debutIso, duree_ms: dureeMs, outils: outils || 0,
-      fichiers: [], echecs: 0, termine: true, etat: undefined, type: "sousagent",
+      agent: o.agent, debut: o.debut, duree_ms: o.duree_ms || 5000,
+      outils: o.outils || 0, fichiers: o.fichiers || [],
+      echecs: o.echecs || 0, termine: o.termine !== false,
+      etat: o.etat, type: o.type || "sousagent",
     };
   }
-  var resultat = {};
-  try {
-    var passages = [
-      passage("backend-developer", "2026-09-15T10:00:00.000Z", 5000, 0),
-      passage("frontend-developer", "2026-09-15T10:00:00.000Z", 5000, 0),
-      passage("test-engineer", "2026-09-15T10:10:00.000Z", 5000, 0),
-    ];
+  function peindre(passages) {
+    var conteneur = document.getElementById('conteneur');
+    conteneur.innerHTML = '';
     var wf = { segments: passages, passages: passages };
     var sigles = siglesAgents(Array.from(collecterRoles([wf])));
-    var frag = construireDiagramme(wf, sigles);
-    document.getElementById('conteneur').appendChild(frag);
+    conteneur.appendChild(construireGrapheAgents(disposer(wf.segments), sigles, null));
+    return conteneur;
+  }
+  function boite(n) {
+    var r = n.getBoundingClientRect();
+    return { x: r.left, y: r.top, w: r.width, h: r.height,
+             cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
+  }
+  function calc(n, prop) { return getComputedStyle(n).getPropertyValue(prop).trim(); }
+  function pseudo(n, prop) { return getComputedStyle(n, '::before').getPropertyValue(prop).trim(); }
 
-    var svg = document.querySelector('.dg-svg');
-    var guide = svg.querySelector('.dg-guide');
-    var graduation = svg.querySelector('.dg-graduation');
-    var cercle = svg.querySelector('.dg-cercle');
-    var sigle = svg.querySelector('.dg-sigle');
-    var lien = svg.querySelector('.dg-lien');
-    var cadre = svg.querySelector('.dg-cadre-simultane');
-
-    // G1 : taille de police RÉELLEMENT CALCULÉE (getComputedStyle), jamais
-    // l'attribut ni la règle — c'est tout l'objet du défaut (une règle CSS
-    // `.dg-socle-nom { font-size: 10.5px }` écrasait l'attribut de
-    // présentation posé depuis `taillePx`). Le MÊME rôle « nom » a deux
-    // tailles selon la forme du créneau : la fixture ci-dessus porte les
-    // DEUX (créneau 0 empilé à 2 agents, créneau 1 simple à 1 agent) —
-    // `.dg-socle-nom` apparaît donc 3 fois dans le DOM (empilé, empilé,
-    // simple, dans l'ordre de peinture des créneaux) : les deux premiers
-    // sont le nom EMPILÉ, le dernier le nom SIMPLE.
-    var nomsEmpileEtSimple = Array.prototype.slice.call(svg.querySelectorAll('.dg-socle-nom'));
-    var socleHeureSimple = svg.querySelector('.dg-socle-heure');
-    var socleDureeSimple = svg.querySelector('.dg-socle-duree');
-    var socleHeureDureeEmpile = svg.querySelector('.dg-socle-heure-duree');
-
-    var ctx = document.getElementById('c').getContext('2d', {colorSpace: 'srgb'});
-    function peindre(couleur) {
-      ctx.clearRect(0, 0, 2, 2);
-      ctx.fillStyle = couleur;
-      ctx.fillRect(0, 0, 2, 2);
-      var d = ctx.getImageData(0, 0, 1, 1).data;
-      function h2(n) { return n.toString(16).padStart(2, '0'); }
-      return '#' + h2(d[0]) + h2(d[1]) + h2(d[2]);
+  // Ecretage du canevas (lot 4) : la boite ENGLOBANTE de tout ce qui
+  // appartient a un agent -- disque, anneau de role, drapeau, nom, duree --
+  // par les rectangles REELLEMENT peints, jamais par un recalcul de la
+  // formule de `disposer()` (PIEGES, "un test qui delegue a la fonction
+  // sous test peut rester aveugle a sa propre divergence"). Le canevas de
+  // reference est lui aussi lu sur le DOM reel (`.graphe-scroll`, qui
+  // ecrete verticalement via `overflow-y: hidden`, app.css), jamais
+  // recalcule depuis `geo.hauteur`.
+  function boiteAgent(noeud) {
+    var wrap = noeud.closest('.agent-wrap');
+    var elements = [noeud];
+    var ring = wrap.querySelector('.role-ring'); if (ring) elements.push(ring);
+    var flag = wrap.querySelector('.agent-flag'); if (flag) elements.push(flag);
+    var nom = wrap.querySelector('.agent-name'); if (nom) elements.push(nom);
+    var duree = wrap.querySelector('.agent-duration'); if (duree) elements.push(duree);
+    var rects = elements.map(function (n) { return n.getBoundingClientRect(); });
+    return {
+      top: Math.min.apply(null, rects.map(function (r) { return r.top; })),
+      bottom: Math.max.apply(null, rects.map(function (r) { return r.bottom; })),
+      left: Math.min.apply(null, rects.map(function (r) { return r.left; })),
+      right: Math.max.apply(null, rects.map(function (r) { return r.right; })),
+    };
+  }
+  // Union de TOUT ce qui est reellement trace : agents ET connecteurs. La
+  // version precedente unissait les seuls elements d'un AGENT (disque,
+  // anneau, drapeau, nom, duree) -- un arc de reprise, qui n'appartient a
+  // aucun agent mais relie deux passages, restait donc HORS du perimetre
+  // mesure, et c'est exactement par la qu'il a ete tronque de 62 px sans
+  // qu'aucune garde ne bouge. Une garde ne couvre que ce que son enonce
+  // NOMME ; un enonce qui enumere laisse dehors ce qu'il n'a pas liste.
+  // `getBoundingClientRect()` n'inclut NI `box-shadow` NI `outline`. Le halo
+  // d'echec est precisement un `box-shadow: 0 0 0 6px` (app.css l.633) et le
+  // focus un `outline: 3px` avec `outline-offset` : deux debordements reels
+  // qu'une union de rectangles ne voit pas. On gonfle donc le rectangle de
+  // leur extension verticale, lue sur le style CALCULE.
+  // Limite declaree : on traite la forme simple `<dx> <dy> <flou> <etendue>`,
+  // non-`inset`, eventuellement repetee — celle qu'emploie la feuille. Une
+  // forme `inset` (qui ne deborde pas) ou une notation exotique retomberait
+  // sur 0, donc sous-estimerait : le sens de l'erreur est signale ici.
+  function debordementOmbre(n) {
+    var st = getComputedStyle(n);
+    var v = 0;
+    var ombre = st.boxShadow;
+    if (ombre && ombre !== 'none' && ombre.indexOf('inset') === -1) {
+      ombre.split(/,(?![^(]*\))/).forEach(function (part) {
+        var l = (part.match(/-?[0-9.]+px/g) || []).map(parseFloat);
+        if (l.length >= 3) v = Math.max(v, Math.abs(l[1]) + l[2] + (l[3] || 0));
+      });
     }
+    if (st.outlineStyle && st.outlineStyle !== 'none') {
+      v = Math.max(v, parseFloat(st.outlineWidth || 0) + parseFloat(st.outlineOffset || 0));
+    }
+    return v;
+  }
+  function boiteTracee(conteneur) {
+    var rects = [];
+    Array.prototype.forEach.call(conteneur.querySelectorAll('.agent-node'),
+      function (n) {
+        rects.push(boiteAgent(n));
+        // L'ombre et l'outline appartiennent au DISQUE seul, pas aux
+        // libelles : on gonfle le rectangle du noeud, jamais l'union deja
+        // etendue par `.agent-name`/`.agent-duration` — sinon on inventerait
+        // 6 px de debordement sous une etiquette qui n'en porte aucun.
+        var e = debordementOmbre(n);
+        if (e > 0) {
+          var r = n.getBoundingClientRect();
+          rects.push({ top: r.top - e, bottom: r.bottom + e,
+                       left: r.left - e, right: r.right + e });
+        }
+      });
+    Array.prototype.forEach.call(conteneur.querySelectorAll('.connector-layer path'),
+      function (n) {
+        var r = n.getBoundingClientRect();
+        rects.push({ top: r.top, bottom: r.bottom, left: r.left, right: r.right });
+      });
+    if (!rects.length) return null;
+    return {
+      top: Math.min.apply(null, rects.map(function (r) { return r.top; })),
+      bottom: Math.max.apply(null, rects.map(function (r) { return r.bottom; })),
+      elements: rects.length,
+    };
+  }
+  function canevasBoite() {
+    var r = document.querySelector('.graphe-scroll').getBoundingClientRect();
+    return { top: r.top, bottom: r.bottom, left: r.left, right: r.right };
+  }
 
-    resultat = {
-      surface: peindre(getComputedStyle(document.getElementById('conteneur')).backgroundColor),
-      guideStroke: peindre(getComputedStyle(guide).stroke),
-      graduationStroke: peindre(getComputedStyle(graduation).stroke),
-      cercleStroke: peindre(getComputedStyle(cercle).stroke),
-      sigleFill: peindre(getComputedStyle(sigle).fill),
-      lienStroke: peindre(getComputedStyle(lien).stroke),
-      cadrePresent: !!cadre,
-      cadreFillAttr: cadre ? cadre.getAttribute('fill') : null,
-      cadreRx: cadre ? cadre.getAttribute('rx') : null,
-      fontSizeHeureSimple: socleHeureSimple ? getComputedStyle(socleHeureSimple).fontSize : null,
-      fontSizeDureeSimple: socleDureeSimple ? getComputedStyle(socleDureeSimple).fontSize : null,
-      fontSizeNomSimple: nomsEmpileEtSimple.length
-        ? getComputedStyle(nomsEmpileEtSimple[nomsEmpileEtSimple.length - 1]).fontSize : null,
-      fontSizeNomEmpile: nomsEmpileEtSimple.length
-        ? getComputedStyle(nomsEmpileEtSimple[0]).fontSize : null,
-      fontSizeHeureDureeEmpile: socleHeureDureeEmpile ? getComputedStyle(socleHeureDureeEmpile).fontSize : null,
-      nomsSocleCount: nomsEmpileEtSimple.length,
-      erreur: null,
+  var out = { erreur: null };
+  try {
+    // --- scenario 1 : un cycle ordinaire, un agent actif -------------------
+    var c = peindre([
+      passage({ agent: "backend-developer", debut: "2026-09-21T10:00:00.000Z",
+                termine: false, fichiers: ["a", "b"] }),
+    ]);
+    var noeud = c.querySelector('.agent-node');
+    out.actif = {
+      classes: noeud.className,
+      orbite_presente: !!noeud.querySelector('.work-orbit'),
+      orbite_animation: calc(noeud.querySelector('.work-orbit'), 'animation-name'),
+      orbite_duree: calc(noeud.querySelector('.work-orbit'), 'animation-duration'),
+      graduations: noeud.querySelectorAll('.tool-ticks i').length,
+      graduation_animation: calc(noeud.querySelector('.tool-ticks i'), 'animation-name'),
+      pastilles: noeud.querySelectorAll('.file-dots i').length,
+      opacites: Array.prototype.map.call(
+        noeud.querySelectorAll('.file-dots i'), function (i) { return calc(i, 'opacity'); }),
+      sigle_texte: noeud.querySelector('.agent-code').textContent,
+      sigle_boite: boite(noeud.querySelector('.agent-code')),
+      noeud_boite: boite(noeud),
+      face_enfants: noeud.querySelector('.agent-face').children.length,
+      token_value: document.querySelectorAll('.token-value').length,
+      diametre: calc(noeud, 'width') + ' x ' + calc(noeud, 'height'),
+      agent_boite: boiteAgent(noeud),
+      canevas_boite: canevasBoite(),
+      // Anneau d'activite pilote par `--progress` (lot 8, ADR-0031 §5) :
+      // arc FIXE (jamais un pourcentage), peint sur le pseudo-element
+      // DEDIE `::before`, mis en mouvement SEUL -- jamais `.agent-node`
+      // lui-meme (le sigle et les pastilles tourneraient avec).
+      anneau_progress: calc(noeud, '--progress'),
+      anneau_avant_anime: pseudo(noeud, 'animation-name'),
+      disque_anime: calc(noeud, 'animation-name'),
+      anneau_avant_fond: pseudo(noeud, 'background-image'),
+    };
+
+    // --- scenario 2 : echec ------------------------------------------------
+    c = peindre([
+      passage({ agent: "test-engineer", debut: "2026-09-21T10:00:00.000Z", echecs: 2 }),
+    ]);
+    noeud = c.querySelector('.agent-node');
+    var drapeauE = noeud.querySelector('.agent-flag');
+    out.echec = {
+      classes: noeud.className,
+      state_color: calc(noeud, '--state-color'),
+      danger: calc(document.documentElement, '--danger'),
+      drapeau_classe: drapeauE ? drapeauE.className : null,
+      drapeau_boite: drapeauE ? boite(drapeauE) : null,
+      drapeau_couleur: drapeauE ? calc(drapeauE, 'color') : null,
+      glyphe: drapeauE ? pseudo(drapeauE, 'content') : null,
+      graduation_couleur: calc(noeud.querySelector('.tool-ticks i'), 'background-color'),
+      agent_boite: boiteAgent(noeud),
+      canevas_boite: canevasBoite(),
+      // Meme passage `termine: true` par defaut => etat "done" : l'anneau
+      // doit etre COMPLET et STABLE (360deg, aucune animation), meme en
+      // echec (l'echec ne fait que RECOLORER l'anneau, jamais varier son
+      // ouverture -- ADR-0031 §3/§5, deux dimensions distinctes).
+      anneau_progress: calc(noeud, '--progress'),
+      anneau_avant_anime: pseudo(noeud, 'animation-name'),
+    };
+
+    // --- scenario 3 : sans cloture ----------------------------------------
+    c = peindre([
+      passage({ agent: "doc-writer", debut: "2026-09-21T10:00:00.000Z", etat: "sans_cloture" }),
+    ]);
+    noeud = c.querySelector('.agent-node');
+    var drapeauS = noeud.querySelector('.agent-flag');
+    out.sans_cloture = {
+      classes: noeud.className,
+      state_color: calc(noeud, '--state-color'),
+      drapeau_classe: drapeauS ? drapeauS.className : null,
+      drapeau_boite: drapeauS ? boite(drapeauS) : null,
+      drapeau_couleur: drapeauS ? calc(drapeauS, 'color') : null,
+      glyphe: drapeauS ? pseudo(drapeauS, 'content') : null,
+      drapeau_bordure: drapeauS ? calc(drapeauS, 'border-top-style') : null,
+      agent_boite: boiteAgent(noeud),
+      canevas_boite: canevasBoite(),
+    };
+
+    // --- scenario 4 : agent principal --------------------------------------
+    c = peindre([
+      passage({ agent: "claude", debut: "2026-09-21T10:00:00.000Z", type: "principal" }),
+    ]);
+    noeud = c.querySelector('.agent-node');
+    var anneau = noeud.querySelector('.role-ring');
+    out.principal = {
+      classes: noeud.className,
+      anneau_present: !!anneau,
+      anneau_boite: anneau ? boite(anneau) : null,
+      anneau_style: anneau ? calc(anneau, 'border-top-style') : null,
+      anneau_largeur: anneau ? calc(anneau, 'border-top-width') : null,
+      noeud_boite: boite(noeud),
+      agent_boite: boiteAgent(noeud),
+      canevas_boite: canevasBoite(),
+    };
+
+    // --- scenario 5 : non-chevauchement des libelles, sur boites REELLES ---
+    // Noms de longueurs tres inegales, enchaines : c'est le cas ou la
+    // reservation de `disposer()` doit se voir.
+    var noms = ["a", "security-reviewer", "b", "frontend-developer",
+                "c", "ux-ui-designer", "backend-developer"];
+    var suite = noms.map(function (n, i) {
+      return passage({ agent: n,
+                       debut: new Date(Date.UTC(2026, 8, 21, 10, i * 5, 0)).toISOString() });
+    });
+    c = peindre(suite);
+    var libelles = Array.prototype.map.call(c.querySelectorAll('.agent-name'), boite);
+    var durees = Array.prototype.map.call(c.querySelectorAll('.agent-duration'), boite);
+    out.libelles = {
+      nombre: libelles.length,
+      boites: libelles,
+      durees_nombre: durees.length,
+      toutes_largeurs_positives: libelles.every(function (b) { return b.w > 0; }),
+    };
+
+    // --- scenario 6 : un cycle QUI REBOUCLE -------------------------------
+    // `frontend-developer` revient apres deux autres passages : c'est la
+    // condition exacte de `detecterRebouclages` (meme agent, ecart > 1).
+    // Le journal reel en regorge (`events.py` : doc-writer 9,
+    // frontend-developer 8, backend-developer 7...), mais aucune scene ne
+    // portait de reprise -- donc aucune mesure n'en voyait jamais une.
+    var quiReboucle = ["frontend-developer", "code-reviewer", "test-engineer",
+                       "frontend-developer"].map(function (n, i) {
+      return passage({ agent: n,
+                       debut: new Date(Date.UTC(2026, 8, 21, 10, i * 5, 0)).toISOString() });
+    });
+    c = peindre(quiReboucle);
+    var arcs = c.querySelectorAll('.connector-layer path.is-reprise');
+    out.reprise = {
+      arcs_nombre: arcs.length,
+      arc_boite: arcs.length ? (function () {
+        var r = arcs[0].getBoundingClientRect();
+        return { top: r.top, bottom: r.bottom, h: r.height };
+      }()) : null,
+      boite_tracee: boiteTracee(c),
+      canevas_boite: canevasBoite(),
     };
   } catch (e) {
-    resultat = { erreur: e.name + ': ' + e.message };
+    out.erreur = String(e && e.stack || e);
   }
-  document.getElementById('salida').textContent = JSON.stringify(resultat);
-})();
+  document.title = JSON.stringify(out);
+}());
 </script>
-</body></html>
-"""
-
-_RE_SALIDA_JSON = re.compile(r'<pre id="salida">(\{.*?\})</pre>', re.S)
+</body></html>"""
 
 
-def rendre_diagramme(navigateur, dossier, theme):
-    page = _PAGE % {
-        "theme": theme, "css": _APP_CSS,
-        "diagramme_js": _DIAGRAMME_JS, "app_js": _APP_JS,
-    }
-    chemin = os.path.join(dossier, "page_diagramme_%s.html" % theme)
-    with open(chemin, "w", encoding="utf-8") as f:
-        f.write(page)
-    commande = [
-        navigateur, "--headless", "--disable-gpu", "--no-sandbox",
-        "--dump-dom", "file://" + chemin,
-    ]
-    resultat = _lancer_navigateur(commande)
-    m = _RE_SALIDA_JSON.search(resultat.stdout)
-    if not m:
-        return None
-    return json.loads(m.group(1))
+def chevauchent(a, b, marge=0.5):
+    """Deux rectangles se chevauchent-ils, avec une marge de tolerance ?"""
+    return (a["x"] < b["x"] + b["w"] - marge and b["x"] < a["x"] + a["w"] - marge
+            and a["y"] < b["y"] + b["h"] - marge and b["y"] < a["y"] + a["h"] - marge)
 
 
-def _srgb_vers_lineaire(c):
-    c = c / 255.0
-    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
-
-
-def _luminance_relative(hexcolor):
-    h = hexcolor.lstrip("#")
-    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
-    return (0.2126 * _srgb_vers_lineaire(r) + 0.7152 * _srgb_vers_lineaire(g)
-            + 0.0722 * _srgb_vers_lineaire(b))
-
-
-def contraste(hex1, hex2):
-    """Formule WCAG 2.1 — même calcul, reproduit indépendamment, que dans
-    `test_app_theme_navigateur.py` et `test_app_theme.js`."""
-    l1, l2 = _luminance_relative(hex1), _luminance_relative(hex2)
-    clair, sombre = (l1, l2) if l1 > l2 else (l2, l1)
-    return (clair + 0.05) / (sombre + 0.05)
-
-
-def alphas_bd_bd2_maquette():
-    """Lit LITTÉRALEMENT, depuis le texte de la maquette, l'alpha de `--bd`
-    et `--bd2` dans chacun des DEUX blocs de thème explicite
-    (`:root[data-theme="clair"]` n'existe pas dans ce fichier — le bloc
-    racine SANS media query sert de clair par défaut ; `:root[data-theme=
-    "sombre"]` est le second bloc `--bd2:`). Jamais recalculé : juste
-    recopié puis parsé, pour comparer une DIRECTION (bd plus subtil que
-    bd2), pas une valeur absolue."""
-    with open(_MAQUETTE, "r", encoding="utf-8") as f:
-        source = f.read()
-    # `.10` / `.085` sont des fractions décimales (CSS `rgba(...,.10)` ==
-    # alpha 0.10) — reconstruites en préfixant `0.`, jamais lues comme des
-    # entiers bruts (`085` vaudrait alors 85, plus grand que `16`, et
-    # inverserait la comparaison).
-    alphas = [float("0." + m.group(1)) for m in re.finditer(r"--bd:rgba\([^)]*,\.(\d+)\)", source)]
-    alphas2 = [float("0." + m.group(1)) for m in re.finditer(r"--bd2:rgba\([^)]*,\.(\d+)\)", source)]
-    check("maquette_bd_et_bd2_trouves_au_moins_deux_fois_chacun",
-          len(alphas) >= 2 and len(alphas2) >= 2,
-          "bd=%r bd2=%r" % (alphas, alphas2))
-    return alphas, alphas2
+def depassement_vertical(agent_boite, canevas_boite):
+    """De combien de px la boite de l'agent (disque + anneau + drapeau +
+    libelles, deja UNIE cote JS sur les rectangles reellement peints)
+    deborde-t-elle du canevas reellement rendu (`.graphe-scroll`) ? Renvoie
+    (haut, bas), chacun >= 0. AUCUN recalcul de la formule de `disposer()`
+    ici : les deux boites viennent de `getBoundingClientRect()`."""
+    haut = max(0.0, canevas_boite["top"] - agent_boite["top"])
+    bas = max(0.0, agent_boite["bottom"] - canevas_boite["bottom"])
+    return haut, bas
 
 
 def main():
     navigateur = trouver_navigateur()
     if not navigateur:
         print("ℹ️  Aucun binaire Chromium trouvé (chromium / chromium-browser / "
-              "google-chrome) — test_app_diagramme_navigateur.py SAUTÉ (E7 : "
-              "mesure du diagramme RÉELLEMENT peint, nécessite un vrai moteur "
-              "de rendu).")
+              "google-chrome) — harnais sauté.")
         return 0
 
-    # -- vérité terrain, recopiée depuis le texte de la maquette elle-même --
-    alphas_bd, alphas_bd2 = alphas_bd_bd2_maquette()
-    if alphas_bd and alphas_bd2:
-        check("maquette_bd_toujours_plus_subtil_que_bd2",
-              all(a < b for a, b in zip(sorted(alphas_bd), sorted(alphas_bd2))),
-              "bd=%r bd2=%r" % (alphas_bd, alphas_bd2))
+    for nom in ("app.css", "app.js", "diagramme.js"):
+        chemin = os.path.join(ICI, nom)
+        if not os.path.exists(chemin) or os.path.getsize(chemin) == 0:
+            print("ECHEC ATTEIGNABILITE : %s est absent ou vide à %s" % (nom, chemin))
+            return 1
 
-    with tempfile.TemporaryDirectory(prefix="cc-test-diagramme-navigateur-") as dossier:
-        mesures = {}
-        for theme in ("clair", "sombre"):
-            m = rendre_diagramme(navigateur, dossier, theme)
-            check("E7_%s_rendu_disponible" % theme, m is not None,
-                  "--dump-dom n'a rien renvoyé")
-            if m is None:
-                continue
-            check("E7_%s_aucune_erreur_js" % theme, m.get("erreur") is None,
-                  "erreur : %r" % m.get("erreur"))
-            mesures[theme] = m
+    page = _PAGE % {
+        "css": os.path.join(ICI, "app.css"),
+        "app_js": os.path.join(ICI, "app.js"),
+        "diagramme_js": os.path.join(ICI, "diagramme.js"),
+    }
+    print("[atteignabilité] navigateur : %s ; page : %d octets ; app.js : %d octets ; "
+          "diagramme.js : %d octets"
+          % (navigateur, len(page),
+             os.path.getsize(os.path.join(ICI, "app.js")),
+             os.path.getsize(os.path.join(ICI, "diagramme.js"))))
 
-        for theme, m in mesures.items():
-            if m.get("erreur"):
-                continue
-            surface = m["surface"]
+    with tempfile.TemporaryDirectory() as tmp:
+        fichier = os.path.join(tmp, "harnais.html")
+        with open(fichier, "w", encoding="utf-8") as f:
+            f.write(page)
+        res = _lancer_navigateur([
+            navigateur, "--headless", "--disable-gpu", "--no-sandbox",
+            "--virtual-time-budget=3000", "--window-size=1400,900",
+            "--dump-dom", "file://" + fichier,
+        ])
 
-            # -- défaut E, sur la couleur RÉELLEMENT peinte : le guide doit
-            # rester moins contrasté contre le fond que le contour nominal
-            # ET que la graduation éteinte (les deux portent --trait, comme
-            # le contour nominal de la maquette et sa graduation éteinte
-            # portent tous deux T.bd2). --
-            c_guide = contraste(m["guideStroke"], surface)
-            c_graduation = contraste(m["graduationStroke"], surface)
-            c_cercle = contraste(m["cercleStroke"], surface)
-            check("E7_%s_guide_moins_contraste_que_graduation_eteinte" % theme,
-                  c_guide < c_graduation,
-                  "guide=%.3f:1 (%s) graduation=%.3f:1 (%s) sur fond %s"
-                  % (c_guide, m["guideStroke"], c_graduation, m["graduationStroke"], surface))
-            check("E7_%s_guide_moins_contraste_que_contour_nominal" % theme,
-                  c_guide < c_cercle,
-                  "guide=%.3f:1 (%s) contour=%.3f:1 (%s) sur fond %s"
-                  % (c_guide, m["guideStroke"], c_cercle, m["cercleStroke"], surface))
-            check("E7_%s_contour_nominal_et_graduation_eteinte_meme_jeton" % theme,
-                  m["cercleStroke"] == m["graduationStroke"],
-                  "contour=%s graduation=%s — les deux portent --trait, comme "
-                  "T.bd2 dans la maquette" % (m["cercleStroke"], m["graduationStroke"]))
+    if res.returncode != 0:
+        print("ECHEC : Chromium a rendu le code %d\n%s" % (res.returncode, res.stderr[-2000:]))
+        return 1
 
-            check("E7_%s_cadre_simultane_present" % theme, m["cadrePresent"] is True)
-            check("E7_%s_cadre_sans_aplat" % theme, m["cadreFillAttr"] == "none",
-                  "obtenu fill=%r" % m["cadreFillAttr"])
-            check("E7_%s_cadre_rx_9" % theme, m["cadreRx"] == "9",
-                  "obtenu rx=%r" % m["cadreRx"])
+    dom = res.stdout
+    debut = dom.find("<title>")
+    fin = dom.find("</title>")
+    if debut < 0 or fin < 0:
+        print("ECHEC ATTEIGNABILITE : aucun <title> dans le DOM rendu — la page "
+              "n'a pas exécuté son script (DOM de %d octets)" % len(dom))
+        return 1
 
-            # -- G1 (revue code-reviewer, feature-020) : la taille de police
-            # RÉELLEMENT CALCULÉE par Chromium (`getComputedStyle`), jamais
-            # l'attribut de présentation ni une règle CSS recopiée — c'est le
-            # défaut trouvé (`.dg-socle-nom { font-size: 10.5px }` écrasait
-            # l'attribut posé depuis `taillePx`, y compris pour le nom
-            # EMPILÉ qui doit valoir 11px). Valeurs recopiées À LA MAIN
-            # depuis la maquette (l.188 nom simple, l.203 nom empilé),
-            # jamais relues du contrat `disposer()`.
-            check("G1_%s_nb_lignes_dg_socle_nom_attendu" % theme, m["nomsSocleCount"] == 3,
-                  "obtenu " + str(m["nomsSocleCount"]) + " — la fixture doit porter 2 agents "
-                  "empilés + 1 agent simple pour distinguer les deux tailles du même rôle")
-            check("G1_%s_heure_simple_10_5px" % theme, m["fontSizeHeureSimple"] == "10.5px",
-                  "obtenu " + repr(m["fontSizeHeureSimple"]))
-            check("G1_%s_duree_simple_12_5px" % theme, m["fontSizeDureeSimple"] == "12.5px",
-                  "obtenu " + repr(m["fontSizeDureeSimple"]))
-            check("G1_%s_nom_simple_10_5px" % theme, m["fontSizeNomSimple"] == "10.5px",
-                  "obtenu " + repr(m["fontSizeNomSimple"]))
-            check("G1_%s_heure_duree_empile_11_5px" % theme, m["fontSizeHeureDureeEmpile"] == "11.5px",
-                  "obtenu " + repr(m["fontSizeHeureDureeEmpile"]))
-            check("G1_%s_nom_empile_11px" % theme, m["fontSizeNomEmpile"] == "11px",
-                  "obtenu " + repr(m["fontSizeNomEmpile"]))
-            # Le point précis du défaut : même RÔLE (nom), même CLASSE CSS
-            # (`.dg-socle-nom`), taille RÉELLEMENT calculée différente selon
-            # la forme du créneau — épinglé nommément, pas juste "différent".
-            check("G1_%s_nom_simple_et_nom_empile_reellement_distincts" % theme,
-                  m["fontSizeNomSimple"] != m["fontSizeNomEmpile"]
-                  and m["fontSizeNomSimple"] == "10.5px" and m["fontSizeNomEmpile"] == "11px",
-                  "simple=%r empilé=%r" % (m["fontSizeNomSimple"], m["fontSizeNomEmpile"]))
+    brut = dom[debut + 7:fin]
+    import html as _html
+    try:
+        mesures = json.loads(_html.unescape(brut))
+    except Exception as e:
+        print("ECHEC ATTEIGNABILITE : <title> illisible (%s) : %s" % (e, brut[:400]))
+        return 1
 
-        # -- aucune couleur figée : le passage clair -> sombre doit changer
-        # les quatre couleurs mesurées (sinon un littéral aurait remplacé
-        # une variable, feature-020 §C4/plan de test manuel item 5). --
-        if "clair" in mesures and "sombre" in mesures:
-            mc, ms = mesures["clair"], mesures["sombre"]
-            if not mc.get("erreur") and not ms.get("erreur"):
-                for cle in ("guideStroke", "graduationStroke", "cercleStroke", "sigleFill", "lienStroke"):
-                    check("E7_%s_change_entre_les_deux_themes" % cle,
-                          mc[cle] != ms[cle],
-                          "clair=%s sombre=%s — identique d'un thème à l'autre : "
-                          "couleur probablement figée" % (mc[cle], ms[cle]))
+    if mesures.get("erreur"):
+        print("ECHEC ATTEIGNABILITE : le script de la page a levé :\n%s" % mesures["erreur"])
+        return 1
+
+    # ------------------------------------------------------------------ F8
+    a = mesures["actif"]
+    print("[dérivé] disque actif : %s ; graduations %d ; pastilles %d ; diamètre %s"
+          % (a["classes"], a["graduations"], a["pastilles"], a["diametre"]))
+
+    check("F8_anneau_d_activite_present", a["orbite_presente"])
+    check("F8_anneau_d_activite_REELLEMENT_anime", a["orbite_animation"] == "work-orbit",
+          "animation-name calculé = %r (si `none`, le disque actif ne tourne pas, quoi "
+          "que dise la feuille)" % a["orbite_animation"])
+
+    # ---------------------------------------------- F8bis (lot 8, ADR-0031 §5)
+    # L'anneau `--progress` : arc FIXE par état, jamais un pourcentage, mis
+    # en mouvement par un pseudo-élément DÉDIÉ (`::before`), jamais par
+    # `.agent-node` lui-même.
+    print("[dérivé] actif : --progress=%r, ::before animation-name=%r, "
+          ".agent-node animation-name=%r" %
+          (a["anneau_progress"], a["anneau_avant_anime"], a["disque_anime"]))
+    check("F8bis_anneau_progress_actif_arc_fixe_270deg", a["anneau_progress"] == "270deg",
+          "obtenu %r — ADR-0031 §5 : arc FIXE, jamais un pourcentage dérivé des tokens"
+          % a["anneau_progress"])
+    check("F8bis_anneau_avant_anime_sur_actif", a["anneau_avant_anime"] == "work-orbit",
+          "animation-name calculé du pseudo-élément = %r (si `none`, l'anneau ne bouge "
+          "plus pendant l'activité)" % a["anneau_avant_anime"])
+    check("F8bis_disque_lui_meme_JAMAIS_anime", a["disque_anime"] == "none",
+          "animation-name de `.agent-node` = %r — s'il tourne, le sigle et les "
+          "pastilles tournent avec lui (interdit, notes de brief)" % a["disque_anime"])
+    check("F8bis_anneau_avant_porte_bien_un_conic_gradient",
+          "conic-gradient" in a["anneau_avant_fond"],
+          "background-image calculé du pseudo-élément = %r" % a["anneau_avant_fond"])
+    check("F8_douze_graduations_peintes", a["graduations"] == 12,
+          "obtenu %d" % a["graduations"])
+    check("F8_graduations_REELLEMENT_animees_sur_actif",
+          a["graduation_animation"] == "tick-work",
+          "animation-name calculé = %r" % a["graduation_animation"])
+    check("F8_trois_pastilles_peintes", a["pastilles"] == 3, "obtenu %d" % a["pastilles"])
+    # deux fichiers sur trois : les pastilles doivent se DISTINGUER a l'oeil,
+    # pas seulement porter une classe differente.
+    distinctes = len(set(a["opacites"])) >= 2
+    check("F8_pastilles_allumees_VISIBLEMENT_distinctes", distinctes,
+          "opacités calculées %s — si toutes égales, la classe `.on` ne peint rien"
+          % a["opacites"])
+
+    # ----------------------------------------------------------------- F15
+    check("F15_aucun_token_value_dans_l_arbre", a["token_value"] == 0,
+          "obtenu %d — la lecture des tokens est sortie vers feature-023" % a["token_value"])
+    check("F15_sigle_reellement_rendu",
+          bool(a["sigle_texte"].strip()) and a["sigle_boite"]["w"] > 0,
+          "texte %r, largeur %s" % (a["sigle_texte"], a["sigle_boite"]["w"]))
+    # « degradable, jamais a trous » : le sigle restant est OPTIQUEMENT centre
+    # dans le disque. Si un espace etait reserve pour un chiffre absent, le
+    # sigle serait decale vers le haut.
+    ecart_y = abs(a["sigle_boite"]["cy"] - a["noeud_boite"]["cy"])
+    check("F15_disque_sans_trou_le_sigle_reste_centre", ecart_y <= 14,
+          "écart vertical mesuré entre le centre du sigle et celui du disque : %.1f px "
+          "(un espace réservé pour un chiffre absent décalerait le sigle)" % ecart_y)
+
+    # ----------------------------------------------------------------- F16
+    e = mesures["echec"]
+    s = mesures["sans_cloture"]
+    p = mesures["principal"]
+    print("[dérivé] échec : --state-color %r vs --danger %r ; glyphe %r"
+          % (e["state_color"], e["danger"], e["glyphe"]))
+    print("[dérivé] sans clôture : --state-color %r ; glyphe %r ; bordure %r"
+          % (s["state_color"], s["glyphe"], s["drapeau_bordure"]))
+
+    check("F16_echec_recolore_REELLEMENT_le_disque",
+          e["state_color"] != "" and e["state_color"] == e["danger"],
+          "--state-color calculé %r, --danger %r" % (e["state_color"], e["danger"]))
+    check("F8bis_anneau_progress_termine_complet_360deg_meme_en_echec",
+          e["anneau_progress"] == "360deg",
+          "obtenu %r — l'échec RECOLORE l'anneau (--danger), il ne rouvre jamais son "
+          "arc (ADR-0031 §3 : deux dimensions distinctes, jamais la seule couleur)"
+          % e["anneau_progress"])
+    check("F8bis_anneau_avant_STABLE_sur_termine",
+          e["anneau_avant_anime"] == "none",
+          "animation-name du pseudo-élément sur un disque terminé = %r (devrait être "
+          "`none` : complet et stable, plus aucun mouvement, ADR-0031 §5)"
+          % e["anneau_avant_anime"])
+    check("F16_echec_recolore_jusqu_aux_graduations",
+          e["graduation_couleur"] not in ("", "rgba(0, 0, 0, 0)"),
+          "background-color calculé des graduations : %r" % e["graduation_couleur"])
+    check("F16_echec_porte_un_drapeau_REELLEMENT_rendu",
+          bool(e["drapeau_boite"]) and e["drapeau_boite"]["w"] > 0
+          and e["drapeau_boite"]["h"] > 0,
+          "boîte %s" % (e["drapeau_boite"],))
+    check("F16_echec_glyphe_non_vide", e["glyphe"] not in (None, "", "none", '""'),
+          "content calculé %r" % e["glyphe"])
+
+    check("F16_sans_cloture_porte_un_drapeau_REELLEMENT_rendu",
+          bool(s["drapeau_boite"]) and s["drapeau_boite"]["w"] > 0,
+          "boîte %s" % (s["drapeau_boite"],))
+    check("F16_sans_cloture_glyphe_non_vide", s["glyphe"] not in (None, "", "none", '""'),
+          "content calculé %r" % s["glyphe"])
+    # C'est LE critere qui separe les deux representations : un passage sans
+    # fin observee n'est PAS un echec (PIEGES §17) et ne doit pas s'afficher
+    # comme tel. On exige DEUX dimensions distinctes, couleur ET glyphe.
+    check("F16_sans_cloture_SE_DISTINGUE_de_l_echec_par_la_couleur",
+          s["drapeau_couleur"] != e["drapeau_couleur"],
+          "les deux drapeaux sont peints %r — un passage sans clôture serait lu "
+          "comme un échec" % s["drapeau_couleur"])
+    check("F16_sans_cloture_SE_DISTINGUE_de_l_echec_par_le_glyphe",
+          s["glyphe"] != e["glyphe"],
+          "les deux glyphes valent %r" % s["glyphe"])
+    check("F16_sans_cloture_n_est_pas_recolore_en_danger",
+          s["state_color"] != e["danger"],
+          "--state-color %r == --danger : un passage sans fin observée serait peint "
+          "comme un échec" % s["state_color"])
+
+    check("F16_principal_porte_un_anneau_REELLEMENT_dessine",
+          p["anneau_present"] and p["anneau_boite"]["w"] > 0
+          and p["anneau_style"] not in ("none", "hidden"),
+          "présent=%s boîte=%s style=%r" % (p["anneau_present"], p["anneau_boite"],
+                                            p["anneau_style"]))
+    check("F16_anneau_du_principal_deborde_du_disque",
+          p["anneau_boite"]["w"] > p["noeud_boite"]["w"],
+          "anneau %.1f px vs disque %.1f px — un anneau à l'intérieur du disque "
+          "ne se verrait pas" % (p["anneau_boite"]["w"], p["noeud_boite"]["w"]))
+
+    # ------------------------------------------------ ecretage du canevas (lot 4)
+    # Tout ce qui appartient a un agent (disque, anneau de role, drapeau, nom,
+    # duree) doit tenir dans le canevas REELLEMENT rendu (`.graphe-scroll`,
+    # qui ecrete verticalement — `overflow-y: hidden`, app.css). Les trois cas
+    # les plus exigeants : l'agent principal (anneau pointille), l'agent en
+    # echec (halo + drapeau), l'agent sans cloture (drapeau) — plus le cas de
+    # base (agent actif).
+    for cle, libelle in (
+        ("actif", "agent actif"),
+        ("echec", "agent en échec (halo + drapeau)"),
+        ("sans_cloture", "agent sans clôture (drapeau)"),
+        ("principal", "agent principal (anneau pointillé)"),
+    ):
+        d = mesures[cle]
+        haut, bas = depassement_vertical(d["agent_boite"], d["canevas_boite"])
+        print("[dérivé] écrêtage %s : dépassement haut %.1f px, bas %.1f px "
+              "(boîte agent [%.1f, %.1f], canevas [%.1f, %.1f])"
+              % (libelle, haut, bas, d["agent_boite"]["top"], d["agent_boite"]["bottom"],
+                 d["canevas_boite"]["top"], d["canevas_boite"]["bottom"]))
+        check("F_ecretage_%s_tient_entierement_dans_le_canevas" % cle,
+              haut <= 0.5 and bas <= 0.5,
+              "%s : dépassement haut %.1f px, bas %.1f px — mesuré sur les rectangles "
+              "réellement peints (disque, anneau, drapeau, nom, durée unis), jamais "
+              "recalculé depuis les marges de disposer()" % (libelle, haut, bas))
+
+    # -------------------------------- F16, 4/4 : non-chevauchement des libelles
+    lb = mesures["libelles"]
+    print("[dérivé] %d libellés mesurés sur leurs rectangles RÉELS" % lb["nombre"])
+    check("F16_tous_les_libelles_sont_rendus", lb["nombre"] == 7,
+          "obtenu %d" % lb["nombre"])
+    check("F16_chaque_libelle_a_une_largeur_non_nulle", lb["toutes_largeurs_positives"])
+    paires = []
+    for i in range(len(lb["boites"])):
+        for j in range(i + 1, len(lb["boites"])):
+            if chevauchent(lb["boites"][i], lb["boites"][j]):
+                paires.append((i, j))
+    check("F16_aucun_libelle_n_en_chevauche_un_autre", not paires,
+          "%d paire(s) qui se recouvrent : %s — mesuré sur les rectangles rendus par "
+          "le moteur, jamais en recalculant la formule de disposer()"
+          % (len(paires), paires))
+    check("F16_chaque_disque_porte_sa_duree", lb["durees_nombre"] == lb["nombre"],
+          "%d durées pour %d libellés" % (lb["durees_nombre"], lb["nombre"]))
+
+    # --------------------------- ecretage des CONNECTEURS (arc de reprise)
+    # Un arc de reprise n'appartient a aucun agent : il relie deux passages,
+    # et il etait donc hors du perimetre de la garde d'ecretage precedente,
+    # qui enumerait « disque, anneau, drapeau, nom, duree ». Mesure :
+    # sommet a -62 px pour un canevas commencant a 0, arc tronque, suite
+    # verte. La garde porte desormais sur l'union de TOUT ce qui est trace.
+    r = mesures["reprise"]
+    check("F_reprise_la_scene_porte_bien_un_arc", r["arcs_nombre"] >= 1,
+          "%d arc(s) de reprise dans une scène où `frontend-developer` revient "
+          "après deux passages — sans arc, la garde ci-dessous serait verte par "
+          "vacuité" % r["arcs_nombre"])
+    if r["arc_boite"]:
+        print("[dérivé] arc de reprise : hauteur peinte %.1f px, sommet à %.1f "
+              "(canevas à %.1f)" % (r["arc_boite"]["h"], r["arc_boite"]["top"],
+                                    r["canevas_boite"]["top"]))
+    bt = r["boite_tracee"]
+    print("[dérivé] union de %d élément(s) tracé(s) : [%.1f, %.1f], canevas [%.1f, %.1f]"
+          % (bt["elements"], bt["top"], bt["bottom"],
+             r["canevas_boite"]["top"], r["canevas_boite"]["bottom"]))
+    haut, bas = depassement_vertical(bt, r["canevas_boite"])
+    check("F_ecretage_tout_le_trace_CONNECTEURS_COMPRIS_tient_dans_le_canevas",
+          haut <= 0.5 and bas <= 0.5,
+          "dépassement haut %.1f px, bas %.1f px sur l'union de %d élément(s) "
+          "réellement peints (agents ET connecteurs) — un arc de reprise culmine "
+          "au-dessus du plus haut disque, il ne peut pas être couvert par une "
+          "garde qui n'énumère que les parties d'un agent"
+          % (haut, bas, bt["elements"]))
 
     print("\n%d cas, %d echec(s)" % (_tests, len(_echecs)))
-    for e in _echecs:
-        print("  - " + e)
+    for nom in _echecs:
+        print("  - %s" % nom)
     return 1 if _echecs else 0
 
 

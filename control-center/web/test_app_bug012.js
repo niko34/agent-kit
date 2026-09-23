@@ -123,6 +123,9 @@ class FakeNode {
   addEventListener(type, gestionnaire) {
     (this._listeners[type] = this._listeners[type] || []).push(gestionnaire);
   }
+  // `ouvrirTiroir` (app.js) appelle `.focus()` SANS garde de type sur
+  // `#tiroir-fermer` — no-op nécessaire pour exercer ce chemin (M5).
+  focus() {}
   get classList() {
     const self = this;
     return {
@@ -137,35 +140,85 @@ class FakeNode {
 // script isolé, sans parseur HTML : ADR-0006).
 //
 // ⚠️ Piège mesuré (PIEGES.md §7) : cette liste tenue à la main a laissé
-// passer, sans échec, l'arrivée de la navigation à sections (feature-019) —
-// `nav-sections`, les six onglets, les six sections et leurs six titres,
-// PLUS `barre` (ajouté en revue pour `--hauteur-barre`) manquaient encore ici
-// pendant tout le cycle : chaque `if (section) …`/`if (onglet) …` de
-// `appliquerSection` (app.js) avalait silencieusement un `getElementById`
-// retombé à `null`, et la suite restait verte sur une navigation totalement
-// inerte. Complété le 2026-09-15 (revue) — comparé par exécution à
-// `grep -oE 'id="[a-zA-Z0-9-]+"' index.html`, pas recopié à l'œil.
+// Comparée par exécution à `grep -oE 'id="[a-zA-Z0-9-]+"' index.html`, pas
+// recopiée à l'œil (PIEGES §7). Resynchronisée au lot 3 (feature-021,
+// cycle 2, F7) : `nav-sections`/les six `onglet-*`/`section-*`/
+// `titre-section-*` disparaissent avec la navigation à onglets ; les 25 id
+// « adopté » de F0 (structure mono-écran, bottom sheet, connecteurs du
+// graphe) et les nouveaux titres de bloc (`titre-agents`, `titre-systeme`,
+// `titre-fichiers`, `titre-evenements`) entrent.
+// Resynchronisée à nouveau au lot A1 de feature-028 (U1 de feature-021
+// appliquée) : `agents`/`note-agents`/`titre-agents`, `compteur-prompt`,
+// `timeline`/`titre-evenements` retirés (sections disparues) ;
+// `voir-evenements-passage` ajouté (tranche d'événements d'un passage,
+// ouverte dans le tiroir existant).
+// Resynchronisée une troisième fois (feature-028, décision humaine du
+// 2026-09-23, AU-DELÀ de U1) : `systeme`/`titre-systeme` retirés à leur
+// tour — la section « Système » a disparu entière, retrait sec sans
+// migration (contrairement à ce que `U1` réclamait).
+// Resynchronisée une quatrième fois (feature-028, décision humaine du
+// 2026-09-23, « fichiers ») : `fichiers`/`titre-fichiers` retirés — la
+// section « Fichiers touchés » a disparu entière, retrait de capacité
+// assumé (« la consultation des diffs ne va nulle part »), `ouvrirDiff`
+// retiré avec elle (code mort, plus aucun appelant).
+// Resynchronisée une cinquième fois (feature-028, lot A) : `cycle-tab-actif`/
+// `cycle-tab-historique` ajoutés — les deux onglets `.tab-button` de
+// `.cycle-tabs` reçoivent un id pour être câblés (jusqu'ici décoratifs, 0
+// gestionnaire d'événement posé).
 const IDS = [
-  "agents", "bandeau-hote", "bandeau-hote-bouton", "bandeau-hote-texte",
-  "barre", "bascule-theme", "bouton-generer-brouillon", "compteur-prompt",
-  "compteur-specs", "derogation-minimale", "erreur-generer-brouillon",
-  "fichiers", "filtre", "filtre-divergences", "horodatage",
-  "icone-systeme-clair", "icone-systeme-sombre", "jauge-flux", "jauge-git",
-  "jauge-pilotage", "kanban", "legende-cycles", "nav-sections", "note-agents",
-  "pied-cycles", "pilotage-corps", "porte-aide", "porte-bouton",
-  "porte-champ", "porte-corps", "porte-erreur", "porte-jeton", "porte-titre",
-  "projet", "prompt", "redaction-corps", "systeme", "theme-clair",
-  "theme-sombre", "theme-systeme", "timeline", "tiroir", "tiroir-contenu",
-  "tiroir-fermer", "tiroir-titre", "titre-besoin", "titre-cycles", "titre-demande",
-  "titre-pilotage", "workflows",
-].concat(["agents", "systeme", "developper", "cycles", "fichiers", "evenements"]
-  .flatMap((s) => ["onglet-" + s, "section-" + s, "titre-section-" + s]));
+  "a11y-announcement", "account-button", "add-item-dialog", "add-item-form",
+  "add-item-intro", "add-item-redaction-corps", "add-item-title", "avatar",
+  "backlog-column-count", "backlog-count", "backlog-title", "bandeau-hote",
+  "bandeau-hote-bouton", "bandeau-hote-texte", "barre",
+  "bouton-generer-item-brouillon",
+  "cancel-add-item", "cancel-delete",
+  "claude-compositeur-copie", "claude-compositeur-dialog",
+  "claude-compositeur-fermer", "claude-compositeur-titre",
+  "claude-destinataire", "claude-destinataire-valeur",
+  "claude-question", "claude-question-texte", "claude-status", "claude-title",
+  "close-add-item", "close-feature", "composer", "composer-etat",
+  "compteur-specs", "context-menu", "conversation",
+  "conversation-erreur", "conversation-portee", "cycle-canvas",
+  "cycle-indice", "cycle-status", "cycle-tab-actif", "cycle-tab-historique",
+  "cycle-title", "delete-confirm-aide", "delete-confirm-bouton",
+  "delete-confirm-input", "delete-confirm-label", "delete-copy",
+  "delete-dialog", "delete-erreur", "delete-item", "delete-title",
+  "edit-item", "envoyer-conversation",
+  "erreur-generer-item-brouillon",
+  "feature-agent", "feature-criteria", "feature-dependency",
+  "feature-description", "feature-dialog", "feature-done", "feature-edit",
+  "feature-kind", "feature-priority", "feature-status", "feature-title",
+  "feature-updated", "filtre", "filtre-divergences",
+  "gabarits-adoptes", "horodatage", "item-derogation-minimale",
+  "item-description", "item-priority",
+  "item-title", "item-type-bug", "item-type-feature",
+  "jauge-flux", "jauge-git", "jauge-pilotage", "kanban", "launch-divider",
+  "link-front-sec", "link-front-tests",
+  "link-front2-review", "link-reprise", "link-sec-front2", "link-spec-front",
+  "link-tests-front2", "main-content",
+  "menu-interrupt-cycle", "menu-launch-cycle", "motion-note",
+  "open-add-item",
+  "porte-aide", "porte-bouton", "porte-champ", "porte-corps", "porte-erreur",
+  "porte-jeton", "porte-titre", "projet", "prompt",
+  "repo-strip", "repo-strip-ok", "repo-strip-texte", "selected-code",
+  "selected-duration", "selected-files", "selected-state", "selected-task",
+  "selected-title", "selected-tokens", "selected-tools", "sheet-metrics", "sheet-toggle",
+  "status-dot", "summary-active", "summary-step",
+  "summary-time", "summary-tokens",
+  "tiroir", "tiroir-contenu", "tiroir-edition",
+  "tiroir-edition-annuler", "tiroir-edition-enregistrer",
+  "tiroir-edition-erreur", "tiroir-edition-texte", "tiroir-fermer",
+  "tiroir-titre",
+  "user-name", "view-details", "voir-evenements-passage",
+];
 // Cachés par défaut dans le HTML (attribut `hidden` présent sur le balisage
-// d'origine) — voir index.html.
+// d'origine) — voir index.html. `section-*` retirés avec la navigation à
+// onglets (lot 3) : plus aucune section n'est masquée.
 const CACHES_PAR_DEFAUT = new Set([
-  "bandeau-hote", "tiroir", "porte-jeton", "porte-erreur", "icone-systeme-sombre",
-  "section-systeme", "section-developper", "section-cycles", "section-fichiers",
-  "section-evenements", "erreur-generer-brouillon",
+  "bandeau-hote", "tiroir", "porte-jeton", "porte-erreur",
+  "erreur-generer-item-brouillon", "gabarits-adoptes", "repo-strip-ok",
+  // feature-025 (lots 9-10) : `hidden` posé sur le balisage d'origine.
+  "context-menu", "delete-erreur", "tiroir-edition",
 ]);
 
 // Garde structurelle contre la RÉCURRENCE du piège ci-dessus (§7) : `IDS`
@@ -355,9 +408,20 @@ async function testAucunRenduAvantUn200() {
   check("T1_aucun_rendu_avant_200_projet_vide",
     bac.$("projet").textContent === "",
     "obtenu : " + JSON.stringify(bac.$("projet").textContent));
-  check("T1_aucun_rendu_avant_200_agents_vide",
-    bac.$("agents").children.length === 0,
-    "obtenu " + bac.$("agents").children.length + " enfant(s)");
+  // ⚠️ RECIBLÉ au lot A1 de feature-028 (U1 de feature-021) : `#agents` a
+  // disparu avec la section « Agents ». RECIBLÉ À NOUVEAU (feature-028,
+  // décision humaine du 2026-09-23) : `#systeme` a disparu à son tour
+  // (section entière retirée, migration en pastilles jamais réalisée SANS
+  // objet désormais). RECIBLÉ UNE TROISIÈME FOIS (feature-028, décision
+  // humaine du 2026-09-23, retrait « fichiers ») : `#fichiers` a disparu
+  // avec la section « Fichiers touchés ». RECIBLÉ UNE QUATRIÈME FOIS
+  // (feature-028, lot C1, décision humaine 1B) : `#workflows`/`rendreCycles`
+  // (l'accordéon « Cycles ») ont disparu à leur tour — `#cycle-canvas`
+  // (`rendreGrapheCyclePrincipal`) reste peuplé au MÊME rafraîchissement
+  // (voir `rafraichir`, app.js) ; même rôle de sonde ici.
+  check("T1_aucun_rendu_avant_200_cycle_canvas_vide",
+    bac.$("cycle-canvas").children.length === 0,
+    "obtenu " + bac.$("cycle-canvas").children.length + " enfant(s)");
   check("T1_aucun_flux_ouvert_avant_200",
     bac.appelsEventSource.length === 0 && bac.appelsSetInterval.length === 0);
 
@@ -440,23 +504,9 @@ async function testCheminNormalEventSource() {
 }
 
 // ------------------------------------------------- utilitaires feature-010 --
-function classes(noeud) { return (noeud.className || "").split(/\s+/).filter(Boolean); }
-function aClasse(noeud, c) { return classes(noeud).indexOf(c) !== -1; }
-function tousLesNoeuds(racine) {
-  const resultat = [];
-  (function parcourir(n) {
-    resultat.push(n);
-    (n.children || []).forEach(parcourir);
-  })(racine);
-  return resultat;
-}
-function maillonsWorkflows(bac) {
-  return tousLesNoeuds(bac.$("workflows")).filter((n) => aClasse(n, "maillon"));
-}
-function notesWorkflows(bac, classe) {
-  return tousLesNoeuds(bac.$("workflows"))
-    .filter((n) => aClasse(n, "wf-notes") && (!classe || aClasse(n, classe)));
-}
+// `classes`/`aClasse`/`tousLesNoeuds`/`maillonsWorkflows`/`notesWorkflows`
+// SUPPRIMÉES ICI (feature-028, lot C1) : plus aucun appelant depuis le
+// retrait des scénarios T6/T7/F010 ci-dessus (accordéon « Cycles » retiré).
 async function chargerAvecEtat(overrides) {
   const bac = creerBac();
   enfilerEtat(bac, 200, corpsEtat(false, overrides));
@@ -467,225 +517,14 @@ async function chargerAvecEtat(overrides) {
   return bac;
 }
 
-// -- T6 [10] : `.maillon.sans-cloture` — ni `.en-cours` ni `.echec`, libellé
-// « fin non observée », et repli fidèle sur un backend sans champ `etat` ---
-async function testSansCloture() {
-  const ilYA22h = new Date(Date.now() - 22 * 3600 * 1000).toISOString();
-  const workflow = {
-    session_id: "abcdefgh1234", fin_observee_absente: true, cycles_dans_la_session: 1,
-    debut: "2026-09-13T20:00:00.000Z", fin_observee: ilYA22h, fichiers: [],
-    segments: [
-      {
-        type: "sousagent", agent: "test-engineer", termine: false, etat: "sans_cloture",
-        derniere_activite: ilYA22h, duree_ms: null, fichiers: [], echecs: 2,
-      },
-      {
-        // Backend antérieur au correctif bug-013 : pas de champ `etat` du
-        // tout. Le comportement HISTORIQUE (`.en-cours` sur tout segment
-        // ouvert) doit rester intact — aucune affirmation nouvelle par défaut.
-        type: "sousagent", agent: "debugger", termine: false,
-        duree_ms: null, fichiers: [], echecs: 0,
-      },
-    ],
-    reprises: {}, commandes: {}, imbrication_suspectee: false, fermetures_orphelines: 0,
-  };
-  const bac = await chargerAvecEtat({ workflows: [workflow] });
-  const [m1, m2] = maillonsWorkflows(bac);
-
-  check("T6_sans_cloture_porte_la_classe", aClasse(m1, "sans-cloture"),
-    "classes obtenues : " + classes(m1).join(" "));
-  check("T6_sans_cloture_jamais_en_cours", !aClasse(m1, "en-cours"));
-  check("T6_sans_cloture_jamais_echec_meme_avec_des_echecs", !aClasse(m1, "echec"),
-    "classes obtenues : " + classes(m1).join(" ") + " (echecs=2 dans la donnée)");
-  const libelle = m1.textContent;
-  check("T6_libelle_fin_non_observee", libelle.indexOf("fin non observée depuis") !== -1,
-    "obtenu : " + JSON.stringify(libelle));
-  check("T6_libelle_ne_dit_jamais_en_cours", libelle.indexOf("en cours") === -1,
-    "obtenu : " + JSON.stringify(libelle));
-
-  check("T6_backend_sans_champ_etat_repli_en_cours", aClasse(m2, "en-cours"),
-    "classes obtenues : " + classes(m2).join(" "));
-  check("T6_backend_sans_champ_etat_jamais_sans_cloture", !aClasse(m2, "sans-cloture"));
-}
-
-// -- T7 [9] : imbrication_suspectee — rendu neutre, jamais accusateur, jamais
-// le mot « imbrication » dans le texte affiché -----------------------------
-async function testImbricationDevientOrdreApproximatif() {
-  const workflow = {
-    session_id: "11112222", fin_observee_absente: false, cycles_dans_la_session: 1,
-    debut: "2026-09-13T20:00:00.000Z", fin_observee: "2026-09-13T20:05:00.000Z", fichiers: [],
-    segments: [], reprises: {}, commandes: {},
-    imbrication_suspectee: true, fermetures_orphelines: 0,
-  };
-  const bac = await chargerAvecEtat({ workflows: [workflow] });
-  const attendues = notesWorkflows(bac, "attendu");
-  const alertes = notesWorkflows(bac, "alerte");
-
-  check("T7_rendu_en_attendu_pas_en_alerte", attendues.length === 1 && alertes.length === 0,
-    "attendu(s) : " + attendues.length + ", alerte(s) directe(s) sur wf-notes : " + alertes.length);
-  const texte = attendues.length ? attendues[0].textContent : "";
-  check("T7_libelle_nomme_la_vraie_cause", texte.indexOf("ordre approximatif") !== -1,
-    "obtenu : " + JSON.stringify(texte));
-  check("T7_libelle_ne_dit_plus_jamais_imbrication",
-    texte.toLowerCase().indexOf("imbrication") === -1,
-    "obtenu : " + JSON.stringify(texte));
-  const titre = attendues.length ? tousLesNoeuds(attendues[0]).map((n) => n.title || "").join(" ") : "";
-  check("T7_infobulle_ne_dit_pas_non_plus_imbrication",
-    titre.toLowerCase().indexOf("imbrication") === -1,
-    "obtenu : " + JSON.stringify(titre));
-}
-
-// -- T8 [8] : rebouclage réel vs. enchaînement normal — LA distinction
-// jamais vérifiée sur un vrai cas (positif ET négatif dans le même test) --
-async function testRebouclageAncreDansLaChaine() {
-  const seg = (type, agent, extra) => Object.assign({
-    type, agent, termine: true, etat: "termine", duree_ms: 500, fichiers: [], echecs: 0,
-  }, type === "principal" ? { outils: 1 } : {}, extra || {});
-
-  // Positif : test-engineer → debugger → test-engineer. Un AUTRE sous-agent
-  // (debugger) s'est intercalé : c'est un vrai rebouclage.
-  const workflowPositif = {
-    session_id: "aaaa1111", fin_observee_absente: false, cycles_dans_la_session: 1,
-    debut: "2026-09-13T20:00:00.000Z", fin_observee: "2026-09-13T20:10:00.000Z", fichiers: [],
-    segments: [
-      seg("principal", "(agent principal)"),
-      seg("sousagent", "test-engineer"),
-      seg("principal", "(agent principal)"),
-      seg("sousagent", "debugger"),
-      seg("principal", "(agent principal)"),
-      seg("sousagent", "test-engineer"),
-    ],
-    reprises: { "test-engineer": 2 }, commandes: {},
-    imbrication_suspectee: false, fermetures_orphelines: 0,
-  };
-
-  // Négatif : debugger → (agent principal seul) → debugger. AUCUN autre
-  // sous-agent ne s'est intercalé — l'orchestration normale ne doit jamais
-  // se lire comme un rebouclage.
-  const workflowNegatif = {
-    session_id: "bbbb2222", fin_observee_absente: false, cycles_dans_la_session: 1,
-    debut: "2026-09-13T21:00:00.000Z", fin_observee: "2026-09-13T21:05:00.000Z", fichiers: [],
-    segments: [
-      seg("sousagent", "debugger"),
-      seg("principal", "(agent principal)"),
-      seg("sousagent", "debugger"),
-    ],
-    reprises: { debugger: 2 }, commandes: {},
-    imbrication_suspectee: false, fermetures_orphelines: 0,
-  };
-
-  const bac = await chargerAvecEtat({ workflows: [workflowNegatif, workflowPositif] });
-  // `rendreCycles` (feature-016 ; anciennement `rendreWorkflows`) affiche
-  // `etat.workflows.slice().reverse()` : le premier bloc DOM rendu est donc
-  // `workflowPositif` (le dernier de la liste fournie).
-  const tousMaillons = maillonsWorkflows(bac);
-  // Le bandeau `.wf-notes.reboucle` ne doit se déclencher QUE si
-  // `indicesRepris` a réellement marqué un maillon (`.repris`) — jamais sur
-  // la seule présence de `wf.reprises`. Sur le NÉGATIF, `wf.reprises` vaut
-  // pourtant `{debugger: 2}` : sans ce garde, le bandeau s'affichait là où
-  // la détection elle-même dit qu'il n'y a pas de rebouclage (bug trouvé sur
-  // capture, pas par ce test — c'est précisément le trou qu'il comble).
-  const bandeaux = notesWorkflows(bac, "reboucle");
-
-  check("T8_bandeau_reboucle_seulement_sur_le_positif", bandeaux.length === 1,
-    "obtenu " + bandeaux.length);
-  const texteBandeaux = bandeaux.map((b) => b.textContent).join(" | ");
-  check("T8_bandeau_contient_fleche_reboucle", texteBandeaux.indexOf("↻") !== -1,
-    "obtenu : " + JSON.stringify(texteBandeaux));
-  check("T8_bandeau_cite_lagent_et_le_compte",
-    texteBandeaux.indexOf("test-engineer ×2") !== -1,
-    "obtenu : " + JSON.stringify(texteBandeaux));
-
-  // Le NÉGATIF ne porte aucun `.wf-notes.reboucle` : la réapparition de
-  // `debugger` après le seul agent principal reste nommée, mais dans une
-  // mention neutre (`.attendu`), pas dans la bande ambre du rebouclage.
-  const attendues = notesWorkflows(bac, "attendu");
-  const noteNegative = attendues.filter(
-    (n) => n.textContent.indexOf("debugger ×2") !== -1);
-  check("T8_negatif_porte_une_mention_neutre_pas_le_bandeau",
-    noteNegative.length === 1,
-    "note(s) neutre(s) citant debugger ×2 : " + noteNegative.length);
-  if (noteNegative.length) {
-    check("T8_mention_neutre_ne_dit_pas_reboucle",
-      noteNegative[0].textContent.indexOf("↻") === -1
-      && noteNegative[0].textContent.toLowerCase().indexOf("reboucle") === -1,
-      "obtenu : " + JSON.stringify(noteNegative[0].textContent));
-  }
-
-  // Sur le workflow POSITIF (rendu en premier, 6 maillons) : seul le
-  // DEUXIÈME maillon "test-engineer" (après le debugger intercalé) est
-  // `.repris` — pas le premier.
-  const positifs = tousMaillons.slice(0, 6);
-  const testEngineerMaillons = positifs.filter((m) => m.textContent.indexOf("test-engineer") !== -1);
-  check("T8_deux_maillons_test_engineer_sur_le_positif", testEngineerMaillons.length === 2,
-    "obtenu " + testEngineerMaillons.length);
-  if (testEngineerMaillons.length === 2) {
-    check("T8_premier_test_engineer_pas_repris", !aClasse(testEngineerMaillons[0], "repris"),
-      "classes : " + classes(testEngineerMaillons[0]).join(" "));
-    check("T8_second_test_engineer_est_repris", aClasse(testEngineerMaillons[1], "repris"),
-      "classes : " + classes(testEngineerMaillons[1]).join(" "));
-  }
-
-  // Sur le workflow NÉGATIF (rendu en second, 3 maillons) : AUCUN `.repris`,
-  // même si `wf.reprises` vaut `{debugger: 2}` côté backend — seul un AUTRE
-  // sous-agent intercalé fait foi côté rendu.
-  const negatifs = tousMaillons.slice(6);
-  const aucunRepris = negatifs.every((m) => !aClasse(m, "repris"));
-  check("T8_enchainement_normal_jamais_repris", aucunRepris,
-    "classes : " + negatifs.map((m) => classes(m).join(" ")).join(" | "));
-}
-
-// -- feature-010 §A2 : le bandeau ne doit NOMMER que les agents réellement marqués
-// par `indicesRepris` — jamais recopier `wf.reprises` brut. Cas MIXTE, tel
-// qu'observé sur le tableau de bord réel : un vrai rebouclage (debugger,
-// intercalé par test-engineer) coexiste, dans la MÊME chaîne, avec une
-// simple réapparition après le seul agent principal (frontend-developer).
-// `wf.reprises` cite les deux ; le rendu doit les séparer.
-async function testBandeauNommeSeulementLesAgentsAncres() {
-  const seg = (type, agent, extra) => Object.assign({
-    type, agent, termine: true, etat: "termine", duree_ms: 500, fichiers: [], echecs: 0,
-  }, type === "principal" ? { outils: 1 } : {}, extra || {});
-
-  const workflow = {
-    session_id: "cccc3333", fin_observee_absente: false, cycles_dans_la_session: 1,
-    debut: "2026-09-14T09:00:00.000Z", fin_observee: "2026-09-14T09:20:00.000Z", fichiers: [],
-    segments: [
-      seg("principal", "(agent principal)"),
-      seg("sousagent", "frontend-developer"),
-      seg("principal", "(agent principal)"),
-      seg("sousagent", "frontend-developer"), // repasse APRÈS le seul principal : pas un rebouclage
-      seg("principal", "(agent principal)"),
-      seg("sousagent", "debugger"),
-      seg("principal", "(agent principal)"),
-      seg("sousagent", "test-engineer"),      // s'intercale : le prochain debugger EST un rebouclage
-      seg("principal", "(agent principal)"),
-      seg("sousagent", "debugger"),
-    ],
-    reprises: { "frontend-developer": 2, debugger: 2 }, commandes: {},
-    imbrication_suspectee: false, fermetures_orphelines: 0,
-  };
-
-  const bac = await chargerAvecEtat({ workflows: [workflow] });
-
-  const bandeaux = notesWorkflows(bac, "reboucle");
-  check("F010_un_seul_bandeau_reboucle", bandeaux.length === 1,
-    "obtenu " + bandeaux.length);
-  const texteBandeau = bandeaux.map((b) => b.textContent).join(" | ");
-  check("F010_bandeau_nomme_debugger", texteBandeau.indexOf("debugger ×2") !== -1,
-    "obtenu : " + JSON.stringify(texteBandeau));
-  check("F010_bandeau_ne_nomme_pas_frontend_developer",
-    texteBandeau.indexOf("frontend-developer") === -1,
-    "obtenu : " + JSON.stringify(texteBandeau));
-
-  const attendues = notesWorkflows(bac, "attendu");
-  const texteAttendues = attendues.map((n) => n.textContent).join(" | ");
-  check("F010_mention_neutre_nomme_frontend_developer",
-    texteAttendues.indexOf("frontend-developer ×2") !== -1,
-    "obtenu : " + JSON.stringify(texteAttendues));
-  check("F010_mention_neutre_ne_nomme_pas_debugger",
-    texteAttendues.indexOf("debugger") === -1,
-    "obtenu : " + JSON.stringify(texteAttendues));
-}
+// -- T6/T7/F010 SUPPRIMÉS ICI (feature-028, lot C1) : ces quatre
+// scénarios (`.maillon.sans-cloture`, note neutre d'imbrication, bandeau
+// de rebouclage nommant les agents ancrés) testaient la CHAÎNE
+// TEXTUELLE des segments de l'accordéon « Cycles » — l'une des DEUX
+// informations que la décision humaine 1B (2026-09-23) déclare
+// explicitement PERDUES en retirant l'accordéon entier, pas un défaut
+// de ce lot. `maillonsWorkflows`/`notesWorkflows` retirées avec eux,
+// plus aucun appelant.
 
 // -- T5 : la jauge PEUT annoncer « reconnexion », mais seulement quand un
 // EventSource réel existe et se rompt (source.onerror) -------------------
@@ -707,67 +546,170 @@ async function testReconnexionSeulementSiEventSource() {
     "obtenu : " + JSON.stringify(bac.$("jauge-flux").textContent));
 }
 
-/* feature-015 (revue code-reviewer) : le groupe `role="radiogroup"` de la
- * bascule de thème doit honorer le motif WAI-ARIA complet — pas seulement
- * gauche/droite. On vérifie la cible du focus (le vrai signal de « quel
- * bouton la touche a sélectionné »), pas `aria-checked` : le faux DOM ne
- * modélise pas `document.documentElement`, donc `positionActiveTheme()` y
- * retombe toujours sur « système » — c'est une limite du harnais, pas du
- * code (voir le commentaire de `attributeThemeActuel` dans app.js). */
-function espionnerFocus(bouton) {
-  bouton._focusAppels = 0;
-  bouton.focus = () => { bouton._focusAppels += 1; };
+// -- feature-021, cycle 2, lot 7 : identité (GATE S4) et #cycle-title -------
+async function testIdentiteGateEtCycleTitle() {
+  // Identité CONNUE : avatar + nom réels, jamais « JD »/« Jean Dupont ».
+  const bacConnue = await chargerAvecEtat({ identite: "Nicolas Philippe" });
+
+  // S4.2 — initiales dérivées CÔTÉ CLIENT, jamais recopiées d'un exemple.
+  // (`app.js` est chargé dans `bacConnue.sandbox` : PIEGES §39, une
+  // fonction déclarée `function` au premier niveau du script devient une
+  // propriété du sandbox `vm`, contrairement à `let`/`const`.)
+  check("S4_2_initiales_deux_mots",
+    bacConnue.sandbox.initialesDepuisNom("Nicolas Philippe") === "NP",
+    "obtenu : " + JSON.stringify(bacConnue.sandbox.initialesDepuisNom("Nicolas Philippe")));
+  check("S4_2_initiales_un_seul_mot", bacConnue.sandbox.initialesDepuisNom("Madonna") === "MA");
+  check("S4_2_initiales_espaces_multiples",
+    bacConnue.sandbox.initialesDepuisNom("  Ada   Lovelace  ") === "AL");
+  check("S4_2_initiales_absence_rend_null",
+    bacConnue.sandbox.initialesDepuisNom(null) === null
+    && bacConnue.sandbox.initialesDepuisNom("") === null
+    && bacConnue.sandbox.initialesDepuisNom("   ") === null);
+  check("S4_identite_connue_avatar_initiales",
+    bacConnue.$("avatar").textContent === "NP",
+    "obtenu : " + JSON.stringify(bacConnue.$("avatar").textContent));
+  check("S4_identite_connue_nom_affiche",
+    bacConnue.$("user-name").textContent === "Nicolas Philippe");
+  check("S4_identite_connue_aria_label_cite_le_nom",
+    String(bacConnue.$("account-button")["aria-label"] || "").indexOf("Nicolas Philippe") !== -1,
+    "obtenu : " + JSON.stringify(bacConnue.$("account-button")["aria-label"]));
+  check("S4_5_account_button_aucun_ecouteur_pose",
+    Object.keys(bacConnue.$("account-button")._listeners || {}).length === 0,
+    "S4.5 : account-button doit rester INERTE, n'appeler aucune route");
+
+  // Identité ABSENTE : dégrade avec motif, JAMAIS une fabrication.
+  const bacAbsente = await chargerAvecEtat({ identite: null });
+  check("S4_identite_absente_avatar_pas_dinitiales_fabriquees",
+    bacAbsente.$("avatar").textContent !== "NP" && bacAbsente.$("avatar").textContent !== "",
+    "obtenu : " + JSON.stringify(bacAbsente.$("avatar").textContent));
+  check("S4_identite_absente_nom_affiche_un_motif",
+    bacAbsente.$("user-name").textContent === "Identité inconnue");
+
+  // #cycle-title (F0) : JAMAIS une chaîne vide, cible aria-labelledby de
+  // `.cycle-surface`. Aucun cycle observé → libellé factuel dédié ; un
+  // cycle observé sans titre de spec connu (H4b reste au lot 10) →
+  // « Cycle #N », sur la MÊME donnée que la pastille `#cycle-indice`.
+  const bacSansCycle = await chargerAvecEtat({ workflows: [] });
+  check("cycle_title_aucun_cycle_jamais_vide",
+    !!bacSansCycle.$("cycle-title").textContent.trim(),
+    "obtenu : " + JSON.stringify(bacSansCycle.$("cycle-title").textContent));
+  check("cycle_title_aucun_cycle_libelle_dedie",
+    bacSansCycle.$("cycle-title").textContent === "Aucun cycle observé");
+
+  const workflowAvecIndice = {
+    session_id: "identite0001", fin_observee_absente: true, cycles_dans_la_session: 1,
+    indice_cycle: 42, debut: "2026-09-22T10:00:00.000Z", fin_observee: null,
+    fichiers: [], segments: [
+      { type: "sousagent", agent: "spec-reader", termine: false, etat: "en_cours",
+        duree_ms: null, fichiers: [], echecs: 0 },
+    ],
+    reprises: {}, commandes: {}, imbrication_suspectee: false, fermetures_orphelines: 0,
+  };
+  const bacAvecCycle = await chargerAvecEtat({ workflows: [workflowAvecIndice] });
+  check("cycle_title_cycle_observe_cycle_hash_n",
+    bacAvecCycle.$("cycle-title").textContent === "Cycle #42",
+    "obtenu : " + JSON.stringify(bacAvecCycle.$("cycle-title").textContent));
+  check("cycle_title_egale_la_pastille_cycle_indice",
+    bacAvecCycle.$("cycle-title").textContent === bacAvecCycle.$("cycle-indice").textContent);
+
+  // feature-025 (lots 9-10) : TROISIÈME état — titre de spec CONNU. Une
+  // garde écrite au lot 7 aurait été livrée morte (`etat.lancement_spec_id`
+  // n'existait pas encore côté serveur) ; elle s'écrit ICI, sur les TROIS
+  // états, pas seulement le nouveau — sinon une régression sur les deux
+  // premiers passerait inaperçue pendant qu'on prouve le troisième.
+  const bacAvecSpecConnue = await chargerAvecEtat({
+    workflows: [workflowAvecIndice],
+    lancement_spec_id: "feature-042-un-besoin",
+    specs: [{ id: "feature-042-un-besoin", titre: "Un besoin précis", colonne: "todo" }],
+  });
+  check("cycle_title_spec_connue_prime_sur_cycle_hash_n",
+    bacAvecSpecConnue.$("cycle-title").textContent === "feature-042-un-besoin · Un besoin précis",
+    "obtenu : " + JSON.stringify(bacAvecSpecConnue.$("cycle-title").textContent));
+
+  // `lancement_spec_id` non nul mais SANS titre distinct de l'id (spec sans
+  // `## Titre` H1, cf. `specs.py:_titre` — l'id sert de repli) : pas de
+  // « · » fabriqué pour rien.
+  const bacSpecSansTitreDistinct = await chargerAvecEtat({
+    workflows: [workflowAvecIndice],
+    lancement_spec_id: "feature-043-sans-titre",
+    specs: [{ id: "feature-043-sans-titre", titre: "feature-043-sans-titre", colonne: "todo" }],
+  });
+  check("cycle_title_spec_connue_sans_titre_distinct_pas_de_point_milieu_fabrique",
+    bacSpecSansTitreDistinct.$("cycle-title").textContent === "feature-043-sans-titre",
+    "obtenu : " + JSON.stringify(bacSpecSansTitreDistinct.$("cycle-title").textContent));
+
+  // `lancement_spec_id` renvoyé par le serveur mais absent d'`etat.specs`
+  // (course : la spec a été déplacée/supprimée entre le lancement et ce
+  // relevé) — DÉGRADE sur « Cycle #N », jamais un titre vide ni un crash.
+  const bacSpecIdSansCorrespondance = await chargerAvecEtat({
+    workflows: [workflowAvecIndice],
+    lancement_spec_id: "feature-999-introuvable",
+    specs: [],
+  });
+  check("cycle_title_spec_id_sans_correspondance_degrade_sur_cycle_hash_n",
+    bacSpecIdSansCorrespondance.$("cycle-title").textContent === "Cycle #42",
+    "obtenu : " + JSON.stringify(bacSpecIdSansCorrespondance.$("cycle-title").textContent));
+
+  // `lancement_spec_id` ABSENT (aucun lancement en cours, ou lancement
+  // terminé — `etat.lancement_spec_id` redevient `null` côté serveur dès
+  // que `toujours_en_cours()` est faux) : retombe sur l'état 2, jamais un
+  // titre périmé conservé côté client.
+  check("cycle_title_sans_lancement_spec_id_reste_a_l_etat_2",
+    bacAvecCycle.$("cycle-title").textContent === "Cycle #42",
+    "non-régression : le scénario SANS lancement_spec_id (ci-dessus) doit rester inchangé");
 }
 
-function declencherKeydown(bouton, touche) {
-  let empeche = false;
-  const evenement = { key: touche, preventDefault: () => { empeche = true; } };
-  (bouton._listeners.keydown || []).forEach((gestionnaire) => gestionnaire(evenement));
-  return empeche;
-}
+// -- Revue de code, cycle `feature-021` (M5) : le serveur rend trois `409`
+// sémantiquement distincts sur `POST /api/spec/modifier` (`gestion_spec.py`
+// : « spec close : immuable », « un lancement est en cours sur cette
+// spec », empreinte périmée) — CHACUN avec son message exact. Le client ne
+// doit JAMAIS fabriquer un diagnostic à leur place : il affiche
+// `donnees.erreur` tel quel. Trois messages serveur DISTINCTS, trois
+// assertions — la ancienne version affichait le MÊME texte fabriqué
+// (« … rechargez-la avant de réessayer ») sur les trois, dont sur une spec
+// `done` que rien ne rend modifiable.
+async function testModifierSpec409AfficheLeMessageExactDuServeur() {
+  const casServeur = [
+    "spec close : immuable",
+    "un lancement est en cours sur cette spec",
+    "empreinte périmée, rechargez la spec",
+  ];
+  for (const messageServeur of casServeur) {
+    const bac = creerBac();
+    enfilerEtat(bac, 200, corpsEtat(false, {}));
+    chargerAppJS(bac);
+    await attendreMicrotaches();
+    await attendreMicrotaches();
+    await attendreMicrotaches();
 
-async function testBasculeThemeClavierMotifComplet() {
-  const bac = creerBac();
-  chargerAppJS(bac);
+    // `editionCourante` est un `let` de niveau supérieur d'`app.js` : PIEGES
+    // §39, il ne devient JAMAIS une propriété du sandbox `vm` — l'y écrire
+    // directement (`bac.sandbox.editionCourante = …`) crée une propriété
+    // ORPHELINE, sans effet sur la variable réellement lue par
+    // `surSoumissionEditionSpec`. Seul le flux réel (`ouvrirEditionSpec`,
+    // une `async function` déclarée — PIEGES §39, celles-ci DEVIENNENT des
+    // propriétés du sandbox) la pose pour de vrai.
+    bac.reponsesFetch.push({
+      predicat: (url) => String(url).indexOf("/api/spec?id=") === 0,
+      repondre: async () => ({ status: 200, body: { contenu: "contenu initial", empreinte: "abc123" } }),
+    });
+    await bac.sandbox.ouvrirEditionSpec("feature-900-exemple");
+    await attendreMicrotaches();
 
-  const clair = bac.$("theme-clair");
-  const systeme = bac.$("theme-systeme");
-  const sombre = bac.$("theme-sombre");
-  [clair, systeme, sombre].forEach(espionnerFocus);
+    bac.$("tiroir-edition-texte").value = "contenu modifié";
+    bac.reponsesFetch.push({
+      predicat: (url, options) => String(url) === "/api/spec/modifier" && options && options.method === "POST",
+      repondre: async () => ({ status: 409, body: { erreur: messageServeur } }),
+    });
 
-  declencherKeydown(clair, "ArrowDown");
-  check("clavier_ArrowDown_deplace_vers_systeme",
-    systeme._focusAppels === 1 && clair._focusAppels === 0 && sombre._focusAppels === 0);
+    await bac.sandbox.surSoumissionEditionSpec({ preventDefault: () => {} });
+    await attendreMicrotaches();
 
-  declencherKeydown(systeme, "ArrowUp");
-  check("clavier_ArrowUp_revient_a_clair", clair._focusAppels === 1);
-
-  declencherKeydown(clair, "End");
-  check("clavier_End_va_au_dernier_sombre", sombre._focusAppels === 1);
-
-  declencherKeydown(sombre, "Home");
-  check("clavier_Home_revient_au_premier_clair", clair._focusAppels === 2);
-
-  declencherKeydown(clair, "ArrowRight");
-  check("clavier_ArrowRight_deplace_vers_systeme", systeme._focusAppels === 2);
-
-  declencherKeydown(systeme, "ArrowLeft");
-  check("clavier_ArrowLeft_revient_a_clair", clair._focusAppels === 3);
-
-  // Rebouclage aux extrémités : ArrowDown/ArrowRight depuis le dernier
-  // bouton revient au premier, ArrowUp/ArrowLeft depuis le premier va au
-  // dernier — un `role="radiogroup"` ne s'arrête jamais en bout de liste.
-  declencherKeydown(sombre, "ArrowDown");
-  check("clavier_ArrowDown_reboucle_du_dernier_au_premier", clair._focusAppels === 4);
-  declencherKeydown(clair, "ArrowUp");
-  check("clavier_ArrowUp_reboucle_du_premier_au_dernier", sombre._focusAppels === 2);
-
-  check("clavier_preventDefault_sur_touche_geree", declencherKeydown(clair, "Home"));
-  const focusAvant = { c: clair._focusAppels, s: systeme._focusAppels, d: sombre._focusAppels };
-  const empeche = declencherKeydown(clair, "Enter");
-  check("clavier_touche_non_geree_ignoree",
-    !empeche && clair._focusAppels === focusAvant.c
-    && systeme._focusAppels === focusAvant.s && sombre._focusAppels === focusAvant.d);
+    const erreur = bac.$("tiroir-edition-erreur");
+    check("M5_409_affiche_le_message_exact_du_serveur : " + messageServeur,
+      erreur.hidden === false && erreur.textContent === messageServeur,
+      "obtenu : " + JSON.stringify(erreur.textContent));
+  }
 }
 
 async function main() {
@@ -776,12 +718,9 @@ async function main() {
   await testPorteMotifJetonRefuse();
   await testRechargementJetonMemoireExigeSondage();
   await testCheminNormalEventSource();
-  await testSansCloture();
-  await testImbricationDevientOrdreApproximatif();
-  await testRebouclageAncreDansLaChaine();
-  await testBandeauNommeSeulementLesAgentsAncres();
   await testReconnexionSeulementSiEventSource();
-  await testBasculeThemeClavierMotifComplet();
+  await testIdentiteGateEtCycleTitle();
+  await testModifierSpec409AfficheLeMessageExactDuServeur();
 
   console.log("\n" + _tests + " cas, " + _echecs.length + " echec(s)");
   for (const e of _echecs) console.log("  - " + e);

@@ -2,7 +2,9 @@
 
 ## Statut
 
-Accepté
+Accepté (`_ROUTES_ECRITURE` étendue de 4 à 8 entrées par [ADR-0040](0040-les-chemins-decriture-du-cockpit.md) —
+`/api/spec/lancer`, `/api/spec/modifier`, `/api/spec/supprimer`, `/api/conversation` ;
+le test d'introspection et la garantie structurelle décrits ici ne changent pas de forme)
 
 ## Date
 
@@ -196,3 +198,12 @@ dernier curseur connu, sans état côté serveur à retrouver pour lui.
   [ADR-0004](0004-centre-controle-sans-route-ecriture.md).
 - Constats reportés hors périmètre : `bug-010`, `bug-011` (à créer dans
   `specs/features/todo/`).
+
+> **Note (2026-09-23)** : la mention d'`/api/diff` en « Alternatives
+> considérées » (ci-dessus) décrivait l'état des routes de lecture au moment
+> de la décision — elle reste exacte comme trace historique. **`/api/diff`
+> n'existe plus** : retirée par `feature-028` (GATE P1, condition C5) faute
+> d'appelant frontal restant, une fois la liste « Fichiers touchés » du
+> tableau de bord retirée elle aussi (`ADR-0043`). Aucune autre partie de cet
+> ADR n'est affectée — `_ROUTES_ECRITURE` et la garde d'introspection qu'il
+> décrit ne portaient jamais sur les routes de lecture.

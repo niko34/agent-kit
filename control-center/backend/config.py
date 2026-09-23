@@ -131,8 +131,44 @@ _DEFAUTS = {
         # commande ne reçoit le drapeau ; le déclarer est une décision
         # explicite du projet, pas un héritage silencieux.
         "commandes_avec_budget": [],
+        # Liste FERMÉE des clés de [commandes] dont l'argv DÉCLARÉ peut porter
+        # un drapeau de contournement des permissions (feature-022, GATE P1
+        # re-passage, S3.13). VIDE par défaut : le serveur ne desserre jamais
+        # rien lui-même, l'argv vient exclusivement de [commandes] — une
+        # commande qui porte un tel drapeau sans figurer ici est REFUSÉE
+        # (503) avant tout `Popen`.
+        "commandes_sans_permissions": [],
+    },
+    # Lecture des transcripts de sous-agents, HORS racine du projet
+    # (feature-023, GATE P1 S5). VIDE par défaut : `racine` calculée depuis
+    # l'environnement seul (`transcripts.racine()`), jamais depuis une valeur
+    # projet qui pourrait pointer n'importe où. Les deux budgets bornent une
+    # lecture qui, sans plafond, vaudrait un déni de service auto-infligé
+    # (S5.6) : `/api/etat` est rappelé à chaque signal.
+    "transcripts": {
+        "racine": "",
+        "budget_secondes": 1.0,
+        "budget_octets": 20_000_000,
+    },
+    # Session tmux persistante que le cockpit tape (feature-026, D8) : VIDE
+    # par défaut — sans elle, `server.py` retombe sur l'ancien canal
+    # `json-lines` (feature-022), inchangé. JAMAIS un champ de requête :
+    # sinon le porteur du jeton choisirait dans quel terminal il tape.
+    "session": {
+        "socket_tmux": "",
+        "nom": "",
+        "repertoire_transcripts": "",
     },
 }
+
+# Drapeaux qui contournent l'invite de permission de `claude` — présents dans
+# l'argv DÉCLARÉ d'une commande, ils rendent cette commande lançable
+# uniquement si sa clé figure dans `[garde_fous].commandes_sans_permissions`
+# (feature-022, GATE P1 re-passage, S3.13). `bypassPermissions` est cherché
+# comme SOUS-CHAÎNE d'un token (ex. `--permission-mode=bypassPermissions`),
+# les deux autres comme token EXACT.
+_DRAPEAUX_CONTOURNEMENT_PERMISSIONS = ("--dangerously-skip-permissions",
+                                       "--allow-dangerously-skip-permissions")
 
 
 class Config(dict):
@@ -163,11 +199,106 @@ class Config(dict):
         ⚠️ C'est ici que vit la LISTE FERMÉE. L'appelant fournit une CLÉ ; il ne
         fournit jamais une ligne de commande. Aucune chaîne venue du réseau ne
         peut donc atteindre un shell : au pire elle ne correspond à aucune clé.
+
+        Deux formes TOML acceptées, fusion incluse (feature-022, D1) : la
+        forme HISTORIQUE — `cle = [...]`, une liste directe, `entree()` rend
+        alors `"aucune"` — et la forme TABLE — `[commandes.cle] argv = [...]`
+        (+ `entree` optionnel) —, seule capable de porter une propriété
+        déclarative comme `entree`. Une entrée table SANS `argv` valide
+        (absent, mal typé) n'est pas une commande : `None`, comme une entrée
+        absente.
         """
-        argv = self.section("commandes").get(cle)
+        brut = self.section("commandes").get(cle)
+        argv = brut.get("argv") if isinstance(brut, dict) else brut
         if isinstance(argv, list) and argv and all(isinstance(x, str) for x in argv):
             return list(argv)
         return None
+
+    def entree(self, cle):
+        """Protocole d'entrée déclaré pour `cle` — `"aucune"` ou
+        `"json-lines"` (feature-022, GATE P1 re-passage, D1).
+
+        `"aucune"` est le DÉFAUT SÛR, rendu pour toute commande qui ne se
+        déclare pas sous forme de table, toute table sans champ `entree`, et
+        toute valeur qui ne serait ni `"aucune"` ni `"json-lines"` — c'est
+        EXACTEMENT le comportement d'avant ce lot (`lanceur.Lancement` ouvre
+        alors `stdin=DEVNULL`, inchangé). `entree` n'est JAMAIS un champ de
+        requête : un porteur du jeton ne peut donc pas ouvrir un canal sur
+        une commande qui ne le déclare pas ICI, dans la configuration.
+        """
+        brut = self.section("commandes").get(cle)
+        if not isinstance(brut, dict):
+            return "aucune"
+        valeur = brut.get("entree")
+        if valeur not in ("aucune", "json-lines"):
+            return "aucune"
+        return valeur
+
+    def permissions_autorisees(self, cle):
+        """Vrai si l'argv DÉCLARÉ de `cle` peut porter un drapeau de
+        contournement des permissions (feature-022, GATE P1 re-passage,
+        S3.13).
+
+        Le serveur ne touche JAMAIS aux drapeaux de permission : l'argv vient
+        EXCLUSIVEMENT de `[commandes]`. Cette méthode ne fait que JUGER un
+        argv déjà déclaré — elle n'ajoute, ne retire ni ne réécrit rien.
+        Une commande dont l'argv ne porte AUCUN des drapeaux de
+        `_DRAPEAUX_CONTOURNEMENT_PERMISSIONS` (token exact) ni de
+        `bypassPermissions` (sous-chaîne d'un token) est toujours autorisée :
+        c'est la PRÉSENCE du drapeau qui déclenche le test, jamais l'inverse.
+        Une commande qui en porte un doit alors figurer dans la liste FERMÉE
+        `[garde_fous].commandes_sans_permissions`, VIDE par défaut — sinon
+        REFUS (503, avant tout `Popen`).
+
+        Revue de code du cycle `feature-021` (M1) : la comparaison PORTE SUR
+        CHAQUE TOKEN NORMALISÉ, pas sur le token brut — sinon
+        `--dangerously-skip-permissions=true` (forme `--flag=valeur`) et
+        `--permission-mode=BYPASSPERMISSIONS` (casse différente) échappent à
+        la liste fermée alors qu'ils portent le même contournement. La
+        normalisation retire tout suffixe `=valeur` avant de comparer le NOM
+        du drapeau en minuscules, et la recherche de `bypassPermissions` se
+        fait sur le token entier passé en minuscules — insensible à la casse
+        dans les deux cas.
+        """
+        argv = self.commande(cle)
+        if argv is None:
+            return True  # rien à autoriser : le 404 de clé inconnue prime
+        drapeaux_norm = {d.lower() for d in _DRAPEAUX_CONTOURNEMENT_PERMISSIONS}
+        sensible = False
+        for tok in argv:
+            nom = tok.split("=", 1)[0].strip().lower()
+            if nom in drapeaux_norm or "bypasspermissions" in tok.lower():
+                sensible = True
+                break
+        if not sensible:
+            return True
+        bruts = self.section("garde_fous").get("commandes_sans_permissions", [])
+        if not isinstance(bruts, list):
+            return False
+        autorisees = [c for c in bruts if isinstance(c, str) and c]
+        return cle in autorisees
+
+    def commande_pour_spec_id(self, cle, spec_id):
+        """`argv` de `cle`, `spec_id` substitué comme ÉLÉMENT UNIQUE de la
+        liste, jamais par concaténation de chaîne (feature-025, GATE P1
+        S1.3 — `ADR-0005` amendé, pas révoqué : la clé reste choisie dans
+        `[commandes]`, seule la substitution est neuve).
+
+        L'emplacement est un PLACEHOLDER DÉCLARÉ, le littéral `"{spec_id}"`,
+        présent EXACTEMENT une fois dans l'`argv` de `cle` — jamais deviné,
+        jamais ajouté d'office. Une clé sans cet emplacement (ou en portant
+        plus d'un) est un `400` : ce n'est pas une commande prévue pour être
+        ciblée sur une spec, quelle que soit sa validité par ailleurs pour
+        `/api/lancer`.
+
+        Rend `(argv, None)` ou `(None, (code, message))`.
+        """
+        argv = self.commande(cle)
+        if argv is None:
+            return None, (404, "clé de commande inconnue")
+        if argv.count("{spec_id}") != 1:
+            return None, (400, "commande sans emplacement déclaré pour spec_id")
+        return [spec_id if tok == "{spec_id}" else tok for tok in argv], None
 
     def agents_ouvrants(self):
         """Les `agent_type` dont l'invocation ouvre un cycle, chaînes non vides.
@@ -309,6 +440,98 @@ class Config(dict):
             return False
         autorisees = [c for c in bruts if isinstance(c, str) and c]
         return cle in autorisees
+
+    def transcripts_racine_surcharge(self):
+        """Racine de lecture des transcripts DÉCLARÉE par le projet, ou
+        `None` (feature-023, GATE P1 S5.1).
+
+        Ignorée si elle n'est pas un chemin ABSOLU : une racine relative ne
+        peut pas remplacer un calcul dont la garantie est justement d'être
+        confiné, sans faire dépendre ce confinement du répertoire courant du
+        processus. `transcripts.racine()` retombe alors sur le calcul par
+        défaut, jamais sur une valeur à moitié acceptée.
+        """
+        brut = self.section("transcripts").get("racine", "")
+        if not isinstance(brut, str) or not brut:
+            return None
+        if not os.path.isabs(brut):
+            return None
+        return brut
+
+    def transcripts_budget_secondes(self):
+        """Budget de TEMPS pour une lecture de transcripts (S5.6), en
+        secondes, `>= 0` — **`0` est une valeur VALIDE** (dégrade tout de
+        suite, `tokens_par_passage.partiel = true`, S5.6 : « budget 0 →
+        champ partiel, réponse < 1 s »), distincte d'une valeur absente ou
+        du mauvais type qui, elles, retombent sur le défaut. NaN, infini ou
+        négatif retombent aussi sur le défaut : ce ne sont pas des bornes
+        exprimables."""
+        defaut = _DEFAUTS["transcripts"]["budget_secondes"]
+        brut = self.section("transcripts").get("budget_secondes", defaut)
+        if isinstance(brut, bool) or not isinstance(brut, (int, float)):
+            return defaut
+        if not math.isfinite(brut) or brut < 0:
+            return defaut
+        return float(brut)
+
+    def transcripts_budget_octets(self):
+        """Budget d'OCTETS pour une lecture de transcripts (S5.6), entier
+        `>= 0` — **`0` est une valeur VALIDE**, même raison que
+        `transcripts_budget_secondes` ci-dessus. Retombe sur le défaut si
+        absent, du mauvais type, ou négatif."""
+        defaut = _DEFAUTS["transcripts"]["budget_octets"]
+        brut = self.section("transcripts").get("budget_octets", defaut)
+        if isinstance(brut, bool) or not isinstance(brut, int):
+            return defaut
+        if brut < 0:
+            return defaut
+        return brut
+
+    def session_socket_tmux(self):
+        """Chemin ABSOLU du socket tmux de la session déclarée, ou `None`
+        (feature-026, D8) — jamais dérivé de l'environnement hérité (`TMUX`,
+        `TMUX_TMPDIR`, `TMUX_PANE`). Même patron que
+        `transcripts_racine_surcharge()` : un chemin relatif rend `None`,
+        jamais à moitié accepté."""
+        brut = self.section("session").get("socket_tmux", "")
+        if not isinstance(brut, str) or not brut:
+            return None
+        if not os.path.isabs(brut):
+            return None
+        return brut
+
+    def session_nom(self):
+        """Nom de la session tmux déclarée, ou `None` si absent, vide ou mal
+        typé (feature-026)."""
+        brut = self.section("session").get("nom", "")
+        if not isinstance(brut, str) or not brut:
+            return None
+        return brut
+
+    def session_repertoire_transcripts(self):
+        """Répertoire ABSOLU des transcripts de la session déclarée, ou
+        `None` (feature-026) — même discipline que `session_socket_tmux()` :
+        un chemin relatif n'est jamais à moitié accepté."""
+        brut = self.section("session").get("repertoire_transcripts", "")
+        if not isinstance(brut, str) or not brut:
+            return None
+        if not os.path.isabs(brut):
+            return None
+        return brut
+
+    def session_config(self):
+        """Les trois réglages de `[session]` réunis en un seul `dict`
+        `{"socket_tmux": …, "nom": …, "repertoire_transcripts": …}` — le
+        format attendu par `session_tmux.py` — ou `None` si l'UN des trois
+        manque (feature-026, A1). Une configuration à moitié déclarée n'est
+        pas une session utilisable : `server.py` retombe alors sur l'ancien
+        canal `json-lines` (feature-022), inchangé."""
+        socket_tmux = self.session_socket_tmux()
+        nom = self.session_nom()
+        repertoire = self.session_repertoire_transcripts()
+        if socket_tmux is None or nom is None or repertoire is None:
+            return None
+        return {"socket_tmux": socket_tmux, "nom": nom, "repertoire_transcripts": repertoire}
 
     def tetes_de_commande(self):
         """Les têtes RÉDIGÉES de chaque commande autorisée.

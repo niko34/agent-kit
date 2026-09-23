@@ -1,9 +1,20 @@
 #!/usr/bin/env python3
-"""Lecture de git — fichiers touchés, diffs, historique.
+"""Git — fichiers touchés, historique, ET (depuis feature-025) la suppression
+d'une spec suivie et propre.
+
+⚠️ `diff()` a existé (diff de l'arbre de travail, ou d'un fichier précis) et a
+été RETIRÉE (feature-028, GATE P1 condition C5) avec son unique appelant,
+`/api/diff` : une route de lecture confinée mais sans plus aucune
+justification reste une surface exposée sans raison (Règle absolue n°1).
 
 Git est la source de vérité de l'état du code, comme les specs le sont de l'état
-fonctionnel. Ce module ne fait que **lire** : aucun `add`, aucun `commit`, aucun
-`checkout`. Le dépôt appartient à l'humain et aux agents.
+fonctionnel. Ce module a longtemps été un module de LECTURE SEULE — ce n'est
+plus vrai depuis feature-025 (GATE P1 S2.10, ADR-0040 — À ÉCRIRE au lot 13,
+ne pas la citer comme existante avant que `doc-writer` ne la produise) :
+`supprimer_suivi()` exécute `git rm`, le premier `git` en ÉCRITURE lancé
+depuis ce serveur. La
+garde ne change pas : `argv`, `shell=False`, confinement par `chemin_sur()`
+AVANT tout appel — seule la surface s'élargit d'une commande.
 
 ## Deux invariants de sûreté, et pourquoi ils sont ici
 
@@ -30,11 +41,6 @@ dans chaque projet issu du template.
 
 import os
 import subprocess
-
-# Un diff est fait pour être lu par un humain dans une page web. Au-delà, on
-# tronque et on le DIT : mieux vaut un diff annoncé incomplet qu'une page de
-# quatre mégaoctets ou, pire, un diff silencieusement coupé.
-_MAX_DIFF = 200_000
 
 # Une commande git qui ne rend pas la main est un serveur qui ne rend pas la main.
 _TIMEOUT = 15
@@ -113,6 +119,31 @@ def branche(racine):
     return sortie.strip() if ok else None
 
 
+# Plafond de troncature de l'identité (feature-021, GATE S4.1) : une borne
+# nommée, jamais un littéral enfoui — un `user.name` anormalement long est
+# tronqué plutôt que rejeté, pour ne jamais faire dépendre l'affichage d'un
+# format que l'utilisateur ne maîtrise pas entièrement (config globale).
+_MAX_IDENTITE = 80
+
+
+def identite(racine):
+    """Nom déclaré par l'utilisateur pour git (`git config --get user.name`).
+
+    C'est la SEULE source autorisée (feature-021, GATE S4.1) : jamais
+    `user.email` (donnée personnelle plus sensible que le nom), jamais
+    `os.getlogin()` ni la variable d'environnement `$USER` (identité du
+    compte SYSTÈME, pas une déclaration de l'utilisateur pour ce projet).
+    Rend `None` si `git` est absent, si la commande échoue, ou si la valeur
+    est vide — l'appelant DÉGRADE dans ce cas, il n'invente jamais un nom
+    (règle absolue n°1, aucune fabrication de donnée personnelle).
+    """
+    ok, sortie = _git(racine, "config", "--get", "user.name")
+    if not ok:
+        return None
+    nom = sortie.strip()
+    return nom[:_MAX_IDENTITE] if nom else None
+
+
 def etat(racine):
     """Fichiers touchés dans l'arbre de travail.
 
@@ -153,31 +184,6 @@ def etat(racine):
     return entrees
 
 
-def diff(racine, chemin=None, indexe=False, taille_max=_MAX_DIFF):
-    """Diff de l'arbre de travail, ou d'un fichier précis.
-
-    Rend (texte, tronque). `tronque` est vrai quand le diff dépassait la borne —
-    l'appelant DOIT le dire à l'utilisateur : un diff coupé en silence se lit
-    comme un diff complet, et c'est un mensonge sur l'état du code.
-    """
-    arguments = ["diff", "--no-color"]
-    if indexe:
-        arguments.append("--cached")
-    if chemin is not None:
-        relatif = chemin_sur(racine, chemin)
-        if relatif is None:
-            return None, False
-        # `--` ferme la liste des options : un fichier nommé `--stat` reste un
-        # fichier.
-        arguments += ["--", relatif]
-    ok, sortie = _git(racine, *arguments)
-    if not ok:
-        return None, False
-    if len(sortie) > taille_max:
-        return sortie[:taille_max], True
-    return sortie, False
-
-
 def journal(racine, limite=20):
     """Derniers commits : hash court, date ISO, auteur, sujet.
 
@@ -203,6 +209,59 @@ def journal(racine, limite=20):
         commits.append({"hash": champs[0], "date": champs[1],
                         "auteur": champs[2], "sujet": champs[3]})
     return commits
+
+
+def verifier_supprimable(racine, chemin_relatif):
+    """`(True, None)` si `chemin_relatif` est SUIVI par git et SANS aucune
+    modification, ni dans l'arbre de travail ni dans l'index — sinon
+    `(False, motif)`, sans AUCUN effet (GATE P1 S2.6, feature-025).
+
+    `POST /api/spec/ecrire` (`redaction_spec.py`) n'appelle jamais `git add`
+    ni `git commit` : toute spec créée depuis le cockpit est donc NON SUIVIE
+    par git jusqu'à un commit humain. Mesuré : `git rm` y échoue avec
+    `rc 128` (« did not match any files ») ; sur une spec par ailleurs suivie
+    mais modifiée, il échoue aussi (`rc 1`, « has local modifications »). Un
+    plan de retour arrière fondé sur `git rm` + une référence est donc
+    INAPPLICABLE dans ces deux cas — cette fonction le VÉRIFIE et le DIT
+    avant que `supprimer_suivi()` ne soit jamais appelée.
+    """
+    ok, _ = _git(racine, "ls-files", "--error-unmatch", "--", chemin_relatif)
+    if not ok:
+        return False, "spec non suivie par git — commit ou stash d'abord"
+    ok, _ = _git(racine, "diff", "--quiet", "--", chemin_relatif)
+    if not ok:
+        return False, "spec modifiée dans l'arbre de travail — commit ou stash d'abord"
+    ok, _ = _git(racine, "diff", "--cached", "--quiet", "--", chemin_relatif)
+    if not ok:
+        return False, "spec modifiée dans l'index — commit ou stash d'abord"
+    return True, None
+
+
+def tete_sha(racine):
+    """Hash complet du commit `HEAD`, ou `None` si indisponible.
+
+    C'est la référence ATTEIGNABLE (jamais un blob dangling) que le plan de
+    retour arrière d'une suppression porte (`git checkout <sha> -- <chemin>`,
+    GATE P1 S2.7) — valable seulement parce que `verifier_supprimable()` a
+    garanti que le contenu sur disque égale `HEAD:<chemin>` avant l'appel.
+    """
+    ok, sortie = _git(racine, "rev-parse", "HEAD")
+    if not ok:
+        return None
+    sha = sortie.strip()
+    return sha or None
+
+
+def supprimer_suivi(racine, chemin_relatif):
+    """`git rm -- <chemin_relatif>` — le SEUL point d'écriture git de ce
+    module (GATE P1 S2.10, feature-025). À appeler UNIQUEMENT après
+    `verifier_supprimable()` : sur une spec suivie et propre, `git rm` ne
+    touche que l'index et l'arbre de travail, jamais l'historique — le
+    retour arrière reste toujours une référence atteignable.
+
+    `shell=False` (via `_git()`), `--` avant le chemin : mêmes garanties que
+    toute autre commande de ce module."""
+    return _git(racine, "rm", "--", chemin_relatif)
 
 
 def fichiers_du_commit(racine, reference):
@@ -256,6 +315,3 @@ if __name__ == "__main__":
         "touches": etat(racine),
         "derniers_commits": journal(racine, 3),
     }, ensure_ascii=False, indent=2))
-    texte, tronque = diff(racine)
-    print("diff de l'arbre : %d caractères%s"
-          % (len(texte or ""), " (TRONQUÉ)" if tronque else ""))
