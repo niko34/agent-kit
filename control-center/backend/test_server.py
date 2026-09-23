@@ -236,8 +236,6 @@ def main():
             ("/api/spec?id=../../../etc/passwd", "spec par remontée"),
             ("/api/spec?id=", "spec sans identifiant"),
             ("/api/spec?id=nexiste-pas", "spec inconnue"),
-            ("/api/diff?chemin=../../etc/passwd", "diff par remontée"),
-            ("/api/diff?chemin=/etc/passwd", "diff par chemin absolu"),
             ("/server.py", "source du serveur"),
             ("/../backend/server.py", "remontée dans le statique"),
             ("/api/inconnu", "route inconnue"),
@@ -246,6 +244,21 @@ def main():
             code, _ = appeler(base, chemin)
             check("test_refus_%s" % libelle.replace(" ", "_"), code >= 400,
                   "%s a répondu %d au lieu d'un refus" % (chemin, code))
+
+        # --- feature-028, GATE P1 condition C5 : `/api/diff` RETIRÉE --------
+        # Elle exposait le diff de l'arbre de travail SANS appelant frontal
+        # (celui-ci a disparu, décision humaine) : une route de lecture
+        # confinée mais sans justification reste une surface exposée sans
+        # raison (Règle absolue n°1). INVERSÉ en assertion d'absence
+        # (`PIEGES §30`), pas effacé : les deux anciens témoins de
+        # confinement (`?chemin=../../etc/passwd`, `?chemin=/etc/passwd`)
+        # rendraient encore `>= 400` par PUR HASARD (route inconnue, 404)
+        # sans plus rien prouver sur le confinement — retirés du tableau
+        # `refus` ci-dessus pour ne pas laisser croire l'inverse, remplacés
+        # par ce cas dédié, sur le chemin NU, qui vérifie l'absence de la
+        # route elle-même.
+        code, _ = appeler(base, "/api/diff")
+        check("test_api_diff_retiree_404", code == 404, "obtenu %d" % code)
 
         # --- une spec réelle se lit ------------------------------------------
         # ⚠️ Ces deux cas dépendent du contenu du dépôt. Ils étaient SAUTÉS EN

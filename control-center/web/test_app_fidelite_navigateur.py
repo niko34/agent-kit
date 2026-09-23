@@ -278,6 +278,49 @@ ANCRES_ORDRE_NON_COMPARABLE = {
     "feature-edit": "position dépend de la hauteur du dialogue de détail, pas un ordre DOM différent",
     "feature-done": "position dépend de la hauteur du dialogue de détail, pas un ordre DOM différent",
     "cancel-add-item": "position dépend de la hauteur du dialogue d'ajout, pas un ordre DOM différent",
+    # feature-028 (lot B, GATE C2) : MÊME cause que `cancel-add-item`
+    # ci-dessus, remontée d'un cran — `#item-title` ajouté fait grandir
+    # `#add-item-dialog` (`<dialog>` centré verticalement par le navigateur,
+    # `showModal()`), donc son bord haut REMONTE mécaniquement (un dialogue
+    # plus grand, centré, a un `top` plus petit) : `#add-item-dialog` et son
+    # bouton de fermeture `#close-add-item` migrent de bande avec lui,
+    # jamais un ordre DOM différent.
+    "add-item-dialog": "hauteur du dialogue augmentée par `#item-title` (GATE C2) — un `<dialog>` centré "
+                        "remonte mécaniquement quand il grandit, voir le commentaire sur `#add-item-dialog` (index.html)",
+    "close-add-item": "contenu de l'en-tête d'`#add-item-dialog` — même raison que `add-item-dialog` ci-dessus",
+    # feature-028 (lot pilotage dédié) : MÊME cause, remontée une fois de
+    # plus — `#item-derogation-minimale` (et sa note) ajoutés font grandir
+    # `#add-item-dialog` davantage, donc son `<h2>` `#add-item-title` migre
+    # de bande à son tour.
+    "add-item-title": "hauteur du dialogue augmentée par `#item-derogation-minimale` (CLAUDE.md) — "
+                       "même raison que `add-item-dialog` ci-dessus",
+    # Correctif « hauteur du panneau » (rapporté depuis un iPad, cycle
+    # feature-026) : `.claude-panel` porte désormais `max-height: 58vh` —
+    # avant ce correctif, le panneau s'étirait (`align-items: stretch`,
+    # comportement PAR DÉFAUT de la grille) jusqu'à la hauteur de sa colonne
+    # sœur, poussant `#composer`/`#prompt` (dernière rangée `auto` de sa
+    # grille interne) à une position DÉPENDANTE de cette colonne sœur — pas
+    # d'un ordre de lecture. Plafonné, le panneau reprend sa hauteur PROPRE,
+    # et `#composer`/`#prompt` remontent d'autant : c'est la conséquence
+    # ATTENDUE du plafond (le panneau ne doit plus grandir sans borne), pas
+    # une régression — le prototype STATIQUE n'a jamais eu ce comportement
+    # d'étirement à mesurer contre.
+    "composer": "position dépend de la hauteur, désormais plafonnée, de `.claude-panel` — pas un ordre DOM différent. "
+                "COMPENSÉ (l'ordre DOM, lui, reste vérifié) par `ORDRE_DOM_conversation_precede_composer` dans "
+                "`test_app_conversation_feature026.js` — cette exemption retire le `top` peint, pas la couverture.",
+    "prompt": "même raison que `composer`, qui le contient. COMPENSÉ par "
+              "`ORDRE_DOM_prompt_descendant_de_composer` (même fichier).",
+    # feature-028 (lot B, GATE C2) : `#item-title` AJOUTÉ juste au-dessus
+    # dans `#add-item-dialog` (le prototype n'a pas de champ titre, alors
+    # que le slug — donc le nom de fichier réel — en dérive) — décale
+    # mécaniquement `#item-priority` d'une rangée de formulaire vers le bas,
+    # donc hors de la bande verticale où il tombait par coïncidence dans le
+    # prototype (`feature-updated`/`feature-dependency`, un dialogue SANS
+    # rapport). Pas un ordre DOM différent : `#item-priority` reste APRÈS
+    # `#item-description` dans les deux documents, seule sa position en
+    # PIXELS a bougé, mécaniquement, à cause d'un champ requis par le GATE.
+    "item-priority": "position décalée par l'ajout requis d'`#item-title` juste au-dessus (GATE C2) — "
+                      "pas un ordre DOM différent, voir le commentaire sur `#add-item-dialog` (index.html).",
 }
 
 # Valeurs de `border-radius`/`box-shadow` peintes par le cockpit hors de
@@ -432,7 +475,11 @@ def _script_scene_cockpit(ancres_json):
     ];
     var wf1 = { segments: passages, passages: passages };
     var sigles = siglesAgents(Array.from(collecterRoles([wf1])));
-    document.getElementById('cycle-canvas').appendChild(construireDiagramme(wf1, sigles));
+    // `construireDiagramme` SUPPRIMÉE (feature-028, lot C1, accordéon
+    // « Cycles » retiré) : retargeté vers `construireGrapheAgents`, le
+    // point d'entrée bas niveau qu'elle enveloppait — MÊME rendu.
+    document.getElementById('cycle-canvas').appendChild(
+      construireGrapheAgents(disposer(wf1.segments), sigles, null));
 
     rendreKanban({
       colonnes: [
@@ -448,10 +495,8 @@ def _script_scene_cockpit(ancres_json):
       divergences: 1,
     });
 
-    rendreAgents([
-      { nom: "frontend-developer", actif_sur: "F-003", modele: "sonnet", peut_ecrire: true, outils: ["Read"], peut_deleguer: false, description: "d" },
-      { nom: "backend-developer", actif_sur: null, modele: "sonnet", peut_ecrire: false, outils: [], peut_deleguer: true, description: "d" },
-    ]);
+    // `rendreAgents` SUPPRIMÉE (U1 de feature-021, feature-028 lot A1) : la
+    // section « Agents » a disparu, rien à peindre ici pour elle.
 
     // Sélectionne un agent RÉEL du graphe (clic, pas un appel direct) pour
     // peupler la bottom sheet de détail (F11, ancres `selected-*`).
@@ -472,9 +517,9 @@ def _script_scene_cockpit(ancres_json):
     // dialogue À LA MAIN ci-dessous reproduit EXACTEMENT ce que cette
     // fonction pose sur le DOM une fois la réponse reçue (mêmes id, même
     // `showModal()`) — un test double délibéré, pas une divergence de
-    // fidélité : c'est la MÊME raison que `rendreKanban`/`rendreAgents`
-    // sont appelées directement plus haut avec des données synthétiques,
-    // plutôt que via `/api/etat`.
+    // fidélité : c'est la MÊME raison que `rendreKanban` est appelée
+    // directement plus haut avec des données synthétiques, plutôt que via
+    // `/api/etat`.
     var cimetiere2 = document.createElement('div');
     cimetiere2.setAttribute('aria-hidden', 'true');
     document.body.appendChild(cimetiere2);

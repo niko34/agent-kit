@@ -53,18 +53,9 @@ function duree(ms) {
   return texteDuree(ms, true);
 }
 
-/* Temps écoulé depuis `derniere_activite`, pour le SEUL registre « sans
- * clôture » (`etat` additif, bug-013/feature-010) : un segment mort depuis
- * des heures s'exprime en heures, jamais en minutes à quatre chiffres. */
-function dureeDepuisIso(iso) {
-  if (!iso) return null;
-  const debut = Date.parse(String(iso));
-  if (Number.isNaN(debut)) return null;
-  const ms = Date.now() - debut;
-  if (ms < 0) return null;
-  if (ms < 3600000) return Math.max(1, Math.round(ms / 60000)) + " min";
-  return Math.round(ms / 3600000) + " h";
-}
+/* `dureeDepuisIso` SUPPRIMÉE ICI (feature-028, lot C1) : ne servait plus
+ * que l'accordéon « Cycles » (registre « sans clôture », chaîne des
+ * segments), retiré entier — plus aucun appelant. */
 
 /* Le champ « Priorité » est du Markdown écrit à la main. Il arrivait brut dans
  * l'interface — « **Haute** — un crash n », « ~~Moyenne — fausse une » — avec
@@ -203,66 +194,27 @@ function rendreIdentite(etat) {
   }
 }
 
-/* ---------------------------------------------------------------- agents -- */
-function rendreAgents(agents) {
-  const liste = $("agents");
-  vider(liste);
-  if (!agents.length) {
-    /* État vide explicite, qui dit quoi faire (§8, feature-019) — pas une
-     * liste muette. */
-    liste.appendChild(el("li", "vide",
-      "aucun agent découvert — vérifiez que le dépôt déclare des agents "
-      + "sous .claude/agents/"));
-    $("note-agents").textContent = "";
-    return;
-  }
-  agents.forEach((agent) => {
-    const ligne = el("li", agent.actif_sur ? "actif" : "");
-    const gauche = el("div");
-    gauche.appendChild(el("span", "nom", agent.nom));
-    if (agent.actif_sur) gauche.appendChild(el("span", "plume", " ● en cours"));
-    ligne.appendChild(gauche);
-    const droite = el("div");
-    droite.appendChild(el("span", "modele", agent.modele || "—"));
-    droite.appendChild(el("span", "plume", agent.peut_ecrire ? " ✎" : " ·"));
-    ligne.appendChild(droite);
-    ligne.title = (agent.description || agent.nom) +
-      "\nOutils : " + (agent.outils.join(", ") || "—") +
-      (agent.peut_deleguer ? "\nPeut déléguer (Task)" : "\nNe peut pas déléguer (pas de Task)");
-    liste.appendChild(ligne);
-  });
-  $("note-agents").textContent =
-    agents.length + " agents découverts · ✎ = peut écrire";
-}
+/* ---------------------------------------------------------------- agents --
+ * `rendreAgents`/`#agents` SUPPRIMÉS (U1 de feature-021, feature-028 lot A1) :
+ * la section « Agents » du DOM a disparu entière. `etat.agents[].actif_sur`
+ * reste lu ailleurs (compte « agents actifs » de la bande de résumé) — ce
+ * n'est pas le rendu de liste qui disparaît, c'est la liste elle-même. */
 
-/* --------------------------------------------------------------- système -- */
-/* Le suffixe « appliqué / non appliqué » vient du MÊME champ `ecriture_active`
- * que le badge d'en-tête (voir rendreBadgePilotage) — jamais d'une déduction
- * séparée sur `commandes_declarees.length` ou une constante. C'est le défaut
- * d'origine de ce module (app.js affichait les garde-fous comme s'ils étaient
- * en vigueur alors qu'aucun code ne les appliquait) ; le corriger ici sans
- * changer la source laisserait la moitié du mensonge intacte. */
-function rendreSysteme(etat) {
-  const dl = $("systeme");
-  vider(dl);
-  const suffixe = etat.ecriture_active ? "appliqué" : "non appliqué (lecture seule)";
-  const lignes = [
-    ["Dépôt", etat.git.depot ? (etat.git.branche || "?") : "absent", null],
-    ["Fichiers touchés", etat.git.touches.length, null],
-    ["Divergences", etat.divergences, null],
-    ["Workflows", etat.workflows.length, null],
-    ["Configuration", etat.config_lue ? "lue" : "défauts", null],
-    ["Commandes", etat.commandes_declarees.length, null],
-    ["Budget max", (etat.garde_fous.budget_max_usd ?? "—") + " $", suffixe],
-    ["Écrivains", etat.garde_fous.ecrivains_simultanes ?? "—", suffixe],
-  ];
-  lignes.forEach(([cle, valeur, suffixeLigne]) => {
-    dl.appendChild(el("dt", "", cle));
-    const dd = el("dd", "", valeur);
-    if (suffixeLigne) dd.appendChild(el("span", "suffixe-ecriture", " · " + suffixeLigne));
-    dl.appendChild(dd);
-  });
-}
+/* ---------------------------------------------------------------- système --
+ * `rendreSysteme`/`#systeme` SUPPRIMÉS (feature-028, décision humaine du
+ * 2026-09-23 : « Supprime système. Je ne souhaite pas que ça aille
+ * ailleurs. » — AU-DELÀ de U1 de feature-021, qui demandait une migration
+ * jamais réalisée). Dépôt/Fichiers touchés dupliqués dans `.repo-strip`
+ * (voir `rendreGrapheCyclePrincipal`) ; Divergences dupliquée dans
+ * `#compteur-specs` (voir plus bas). ⚠️ Budget max/Écrivains, dupliqués à
+ * l'origine dans `rendreNotePlafondPilotage`, et Workflows, dupliqué à
+ * l'origine dans `#legende-cycles`/`rendreCycles`, ont PERDU ce second
+ * porteur à leur tour (feature-028, lots C1/pilotage dédié — accordéon
+ * « Cycles » puis panneau « Piloter par clé » retirés entiers) : ces deux
+ * informations ne sont plus affichées NULLE PART. « Configuration :
+ * lue/défauts » n'a jamais eu de doublon — information perdue, signalée
+ * dans le rapport du lot, pas migrée (la spec l'interdit sans destination
+ * réelle). */
 
 /* ---------------------------------------------------------------- kanban -- */
 let dernierEtat = null;
@@ -352,6 +304,26 @@ function rendreKanban(etat) {
       plus.setAttribute("data-launchable", eligibleLancement ? "true" : "false");
       plus.setAttribute("data-editable", eligibleModification ? "true" : "false");
       plus.setAttribute("data-supprimable", eligibleSuppression ? "true" : "false");
+      /* GATE C3 (feature-028) : `etat.lancement_spec_id` est le `spec_id`
+       * que LE SERVEUR a mémorisé sur le lancement COURANT (voir le
+       * commentaire de `rendreGrapheCyclePrincipal` sur ce même champ) —
+       * jamais une corrélation reconstruite. Une seule carte peut donc
+       * porter `data-interrompable="true"` à la fois.
+       * ⚠️ M2 (revue de code, feature-028) : CAPACITÉ RETIRÉE SOUS CONDITION
+       * DE CONFIGURATION, pas une décision de conception — `lancement_spec_id`
+       * (server.py, `do_GET`) est SINGULIER : avec `ecrivains_simultanes > 1`
+       * dans `control-center.toml`, il ne porte que le PREMIER lancement actif
+       * trouvé parmi `lancements_actifs()`. Un second lancement, sur une autre
+       * carte, ne recevra JAMAIS `data-interrompable="true"` — et depuis le
+       * retrait du bouton générique « Interrompre » (panneau Pilotage), il
+       * devient ALORS inatteignable depuis l'interface, sans qu'aucune erreur
+       * ne le signale. Valeur par défaut `ecrivains_simultanes = 1` : ça ne se
+       * manifeste pas aujourd'hui. Si ce plafond est un jour relevé, cette
+       * carte doit exposer TOUS les `spec_id` de `lancements_actifs()` (champ
+       * serveur pluriel à ajouter, hors du périmètre frontend de ce lot) —
+       * ne pas relever le plafond sans le faire. */
+      plus.setAttribute("data-interrompable",
+        etat.lancement_spec_id === spec.id ? "true" : "false");
       const plusIcone = el("span", "", "⋮");
       plusIcone.setAttribute("aria-hidden", "true");
       plus.appendChild(plusIcone);
@@ -424,47 +396,13 @@ function rendreKanban(etat) {
   }
 }
 
-/* ------------------------------------------------------------- workflows -- */
-/* Ancrage visuel du rebouclage dans la chaîne (feature-010, §8) : un agent qui
- * réapparaît APRÈS qu'un AUTRE sous-agent l'a suivi. On ignore l'agent
- * principal dans ce calcul : il s'intercale entre chaque appel de sous-agent
- * par construction (c'est lui qui orchestre), sa présence seule ne signale
- * donc rien — c'est un AUTRE sous-agent intercalé qui distingue un vrai
- * rebouclage d'un enchaînement normal. Aucun appel réseau : tout vient de
- * `segments[]`, déjà transmis. */
-function indicesRepris(segments) {
-  const indices = new Set();
-  const sousAgents = [];
-  segments.forEach((segment, index) => {
-    if (segment.type !== "principal") sousAgents.push({ agent: segment.agent, index });
-  });
-  const dernierePosition = new Map();
-  sousAgents.forEach((entree, position) => {
-    const precedente = dernierePosition.get(entree.agent);
-    if (precedente !== undefined && position - precedente > 1) indices.add(entree.index);
-    dernierePosition.set(entree.agent, position);
-  });
-  return indices;
-}
-
-/* --------------------------------------------------------- identité d'agent
- * feature-016 : PREMIER appelant de `sigleAgent`/`siglesAgents` (ci-dessus).
- * L'identité colorée par agent (`--a-<rôle>`/`--f-<rôle>`) est RETIRÉE
- * (`ADR-0032`, feature-021 cycle 2 lot 4) : le disque Material 3 de la
- * maquette n'emploie aucune couleur par rôle (`ADR-0031`), et l'ADR retire
- * ce signal du tableau de bord ENTIER, pas seulement du diagramme — « le
- * rôle d'un agent se communique par le TEXTE, jamais plus par une teinte
- * qui lui serait propre » (ADR-0032 §2). `.agent-sigle`/`.agent-nom`
- * gardent leur forme (chasse fixe, contour) mais plus de couleur inline. */
-function construireIdentiteAgent(nom, sigles) {
-  const enveloppe = document.createDocumentFragment();
-  const sigle = el("span", "agent-sigle", (sigles && sigles.get(nom)) || "??");
-  sigle.setAttribute("aria-hidden", "true");
-  const nomSpan = el("span", "agent-nom", nom);
-  enveloppe.appendChild(sigle);
-  enveloppe.appendChild(nomSpan);
-  return enveloppe;
-}
+/* ------------------------------------------------------------- workflows --
+ * `indicesRepris`/`construireIdentiteAgent` SUPPRIMÉES ICI (feature-028, lot
+ * C1) : elles ne servaient plus que l'accordéon « Cycles » (`rendreCycles`,
+ * ci-dessous), retiré entier — voir le commentaire au-dessus de son ancienne
+ * définition pour la décision et ce qui est PERDU (propriétés agrégées,
+ * chaîne textuelle des segments). `.agent-sigle`/`.agent-nom` (CSS)
+ * retirées avec elles, plus aucun producteur. */
 
 /* ------------------------------------------------------------ état — cycle
  * Tableau arrêté à QUATRE cases (feature-016), une seule teinte vive
@@ -479,15 +417,10 @@ const ETATS_CYCLE = {
 };
 function descripteurEtat(cle) { return ETATS_CYCLE[cle] || ETATS_CYCLE.indetermine; }
 
-function construireBadgeEtat(cle) {
-  const info = descripteurEtat(cle);
-  const badge = el("span", "cycle-etat " + info.classe);
-  const glyphe = el("span", "glyphe", info.glyphe);
-  glyphe.setAttribute("aria-hidden", "true");
-  badge.appendChild(glyphe);
-  badge.appendChild(document.createTextNode(" " + info.libelle));
-  return badge;
-}
+/* `construireBadgeEtat` SUPPRIMÉE ICI (feature-028, lot C1) : ne servait
+ * plus que l'en-tête de l'accordéon « Cycles », retiré entier. `.cycle-etat`
+ * (CSS) retirée avec elle. `descripteurEtat`/`ETATS_CYCLE` RESTENT : lus
+ * ailleurs (`#cycle-status`, `rendreGrapheCyclePrincipal`). */
 
 /* Dérivation de l'état d'un CYCLE (feature-016) — lit UNIQUEMENT `passages`
  * (les sous-agents) : le segment principal a `termine: true` par construction
@@ -504,29 +437,8 @@ function etatCycle(wf) {
   return "indetermine";
 }
 
-function idCycleDom(workflowId) {
-  /* workflow_id assaini avant usage en id HTML (item B) : format
-   * `<session_id>#<indice>`, le `#` et tout caractère hors [A-Za-z0-9_-]
-   * remplacés. */
-  return "cycle-" + String(workflowId).replace(/[^A-Za-z0-9_-]/g, "-");
-}
-
-/* Désignation d'un cycle (feature-016) — N'INVENTE AUCUN NOM : la donnée
- * « nom de spec » n'existe pas dans le journal. Trois formes seulement,
- * toutes dérivées de champs réellement présents. */
-function construireDesignation(wf, sigles) {
-  const frag = document.createDocumentFragment();
-  frag.appendChild(document.createTextNode(heure(wf.debut) + " — "));
-  if (wf.bornage === "marqueur-agent" && wf.borne_par) {
-    frag.appendChild(document.createTextNode("ouvert par "));
-    frag.appendChild(construireIdentiteAgent(wf.borne_par, sigles));
-  } else if (wf.bornage === "avant-premier-marqueur") {
-    frag.appendChild(document.createTextNode("avant le premier repère"));
-  } else {
-    frag.appendChild(document.createTextNode("session entière"));
-  }
-  return frag;
-}
+/* `idCycleDom`/`construireDesignation` SUPPRIMÉES ICI (feature-028, lot C1) :
+ * ne servaient plus que l'accordéon « Cycles », retiré entier. */
 
 function dureeIso(debutIso, finIso) {
   if (!debutIso || !finIso) return null;
@@ -537,335 +449,21 @@ function dureeIso(debutIso, finIso) {
   return ms >= 0 ? ms : null;
 }
 
-function construireResume(wf) {
-  const n = (wf.passages || []).length;
-  const d = duree(dureeIso(wf.debut, wf.fin_observee));
-  const ecoule = dureeDepuisIso(wf.fin_observee);
-  const morceaux = [n + " agent" + (n > 1 ? "s" : ""), d !== null ? d : "durée inconnue"];
-  if (ecoule) morceaux.push("il y a " + ecoule);
-  return morceaux.join(" · ");
-}
-
-/* Dépliement exclusif (item C) : préférence d'affichage LOCALE, tenue HORS
- * DOM (clé = `workflow_id`) — elle survit à `vider()` + reconstruction
- * complète du sous-arbre à chaque rafraîchissement. `null` = tout replié
- * (un ré-clic sur l'en-tête ouvert le referme). */
-/* `null` seulement AVANT le tout premier rendu (aucun cycle encore vu) —
- * une fois un cycle affiché, un et un seul reste toujours ouvert : le
- * design (§6) décrit un dépliement EXCLUSIF, jamais un repli total, et
- * `rendreCycles` retombe de toute façon sur le plus récent si `cycleOuvert`
- * ne correspond plus à rien d'affiché. Autoriser le repli complet ferait
- * réapparaître le cycle par défaut au rafraîchissement suivant sans que
- * rien ne le signale — un aller-retour silencieux, pas un choix retenu. */
-let cycleOuvert = null;
-
-function construireEnteteCycle(wf, sigles, ouvert) {
-  const h3 = el("h3", "cycle-entete");
-  const bouton = el("button", "cycle-bouton");
-  bouton.type = "button";
-  const idBouton = idCycleDom(wf.workflow_id) + "-bouton";
-  const idDetail = idCycleDom(wf.workflow_id) + "-detail";
-  bouton.id = idBouton;
-  bouton.setAttribute("aria-expanded", ouvert ? "true" : "false");
-  bouton.setAttribute("aria-controls", idDetail);
-  bouton.appendChild(construireBadgeEtat(etatCycle(wf)));
-  const designation = el("span", "cycle-designation");
-  designation.appendChild(construireDesignation(wf, sigles));
-  bouton.appendChild(designation);
-  bouton.appendChild(el("span", "cycle-resume", construireResume(wf)));
-  bouton.addEventListener("click", () => {
-    /* Ré-cliquer l'en-tête déjà ouvert ne fait rien : « un seul cycle visible
-     * à la fois » (§6), jamais zéro — voir le commentaire sur `cycleOuvert`. */
-    if (cycleOuvert === wf.workflow_id) return;
-    cycleOuvert = wf.workflow_id;
-    rendreCycles(dernierEtat);
-  });
-  h3.appendChild(bouton);
-  return { h3, idBouton, idDetail };
-}
-
-/* Bloc de propriétés (item D) — chaque valeur RELIT une donnée déjà calculée,
- * n'invente aucun compte. « Agents simultanés » lit `imbrication_suspectee`
- * tel quel : c'est une SUSPICION, jamais un dénombrement (le journal ne
- * permet pas de compter des agents réellement concurrents). */
-function construireProprietes(wf) {
-  const dl = el("dl", "cycle-proprietes");
-  const ajouter = (cle, valeur) => {
-    dl.appendChild(el("dt", "", cle));
-    dl.appendChild(el("dd", "", valeur));
-  };
-  const info = descripteurEtat(etatCycle(wf));
-  ajouter("Statut", info.glyphe + " " + info.libelle);
-  const d = duree(dureeIso(wf.debut, wf.fin_observee));
-  ajouter("Durée", d !== null ? d : "inconnue");
-  const segments = wf.segments || wf.passages || [];
-  const outils = segments.reduce((total, s) => total + (s.outils || 0), 0);
-  ajouter("Appels d'outils", outils);
-  ajouter("Fichiers écrits", (wf.fichiers || []).length);
-  ajouter("Rebouclages", indicesRepris(wf.passages || []).size);
-  ajouter("Agents simultanés", wf.imbrication_suspectee ? "suspectés" : "aucun");
-  return dl;
-}
-
-/* Table des passages (item F) — agent, début, durée, outils, fichiers, état.
- * Au-delà de 40 lignes (item M, pire cas mesuré : 297), les plus anciennes
- * sont repliées via `hidden`, JAMAIS retirées du DOM. */
-const LIMITE_PASSAGES_VISIBLES = 40;
-
-function construireLignePassage(passage, sigles, repris) {
-  const tr = el("tr", repris ? "repris" : "");
-  const tdAgent = el("td");
-  const colonne = el("div", "colonne-agent");
-  colonne.appendChild(construireIdentiteAgent(passage.agent, sigles));
-  tdAgent.appendChild(colonne);
-  tr.appendChild(tdAgent);
-  tr.appendChild(el("td", "", heure(passage.debut)));
-  const d = duree(passage.duree_ms);
-  tr.appendChild(el("td", "", d !== null ? d : (passage.termine ? "durée invalide" : "en cours")));
-  tr.appendChild(el("td", "", passage.outils || 0));
-  tr.appendChild(el("td", "", (passage.fichiers || []).length));
-  const tdEtat = el("td");
-  tdEtat.appendChild(construireBadgeEtat(passage.etat));
-  tr.appendChild(tdEtat);
-  return tr;
-}
-
-function construireTablePassages(wf, sigles) {
-  const passages = wf.passages || [];
-  const enveloppe = document.createDocumentFragment();
-  if (!passages.length) {
-    /* Cas limite L : un cycle sans agent typé ne disparaît pas en silence. */
-    enveloppe.appendChild(el("p", "vide", "aucun agent typé n'est apparu dans ce cycle"));
-    return enveloppe;
-  }
-  const reprisesIdx = indicesRepris(passages);
-  const excedent = Math.max(0, passages.length - LIMITE_PASSAGES_VISIBLES);
-  const lignesRepliees = [];
-
-  const table = el("table", "table-passages");
-  const thead = document.createElement("thead");
-  const trEntete = document.createElement("tr");
-  ["Agent", "Début", "Durée", "Outils", "Fichiers", "État"].forEach((libelle) => {
-    trEntete.appendChild(el("th", "", libelle));
-  });
-  thead.appendChild(trEntete);
-  table.appendChild(thead);
-  const tbody = document.createElement("tbody");
-  passages.forEach((passage, index) => {
-    const ligne = construireLignePassage(passage, sigles, reprisesIdx.has(index));
-    if (excedent > 0 && index < excedent) {
-      ligne.hidden = true;
-      lignesRepliees.push(ligne);
-    }
-    tbody.appendChild(ligne);
-  });
-  table.appendChild(tbody);
-
-  if (excedent > 0) {
-    let ouvert = false;
-    const bouton = el("button", "pilotage-secondaire action-repli",
-      "Afficher les " + excedent + " passages plus anciens");
-    bouton.type = "button";
-    bouton.setAttribute("aria-expanded", "false");
-    bouton.addEventListener("click", () => {
-      ouvert = !ouvert;
-      lignesRepliees.forEach((ligne) => { ligne.hidden = !ouvert; });
-      bouton.textContent = ouvert
-        ? "Masquer les " + excedent + " passages plus anciens"
-        : "Afficher les " + excedent + " passages plus anciens";
-      bouton.setAttribute("aria-expanded", ouvert ? "true" : "false");
-    });
-    enveloppe.appendChild(bouton);
-  }
-  enveloppe.appendChild(table);
-  return enveloppe;
-}
-
-/* Chaîne des segments + notes (item E) — placeholder du diagramme visuel de
- * feature-017 : conservé À L'IDENTIQUE (aucune information perdue), les
- * libellés et infobulles ne changent pas. Seule modification (item H) : le
- * texte du maillon (`.mnom`) porte désormais l'identité de l'agent — l'état
- * reste au contour (CSS), jamais recoloré par-dessus. */
-function construireChaineEtNotes(wf) {
-  const enveloppe = document.createDocumentFragment();
-
-  /* La chaîne montre les SEGMENTS, agent principal compris. Sans lui, elle
-   * racontait un workflow plus creux qu'il n'est : sur un relevé réel, 108
-   * des 110 appels d'outils lui appartenaient et n'apparaissaient nulle part. */
-  const segments = wf.segments || wf.passages || [];
-  /* Seule source de vérité pour un VRAI rebouclage : un autre sous-agent
-   * intercalé entre deux passages du même agent (voir `indicesRepris`
-   * ci-dessus). `wf.reprises` ne fait que NOMMER les agents et leur
-   * compte pour le libellé — il ne décide plus, seul, de l'affichage :
-   * il comptait aussi une simple réapparition après l'agent principal,
-   * un enchaînement normal, comme un rebouclage. */
-  const reprisesChaine = indicesRepris(segments);
-  if (segments.length) {
-    const chaine = el("div", "chaine");
-    segments.forEach((segment, index) => {
-      if (index) chaine.appendChild(el("span", "fleche", "→"));
-      let classe = "maillon";
-      if (segment.type === "principal") classe += " principal";
-      /* `etat` est additif (bug-013) : sur un backend plus ancien, il est
-       * absent — on retombe alors sur le SEUL signal disponible avant lui
-       * (`termine`), jamais sur une affirmation nouvelle par défaut. */
-      const sansCloture = segment.etat === "sans_cloture";
-      if (sansCloture) classe += " sans-cloture";
-      else if (segment.etat === "en_cours") classe += " en-cours";
-      else if (segment.etat === undefined && !segment.termine) classe += " en-cours";
-      /* Jamais cumulée avec `.sans-cloture` : une fin sans annonce n'est ni
-       * un succès ni un échec du travail, l'accusation visuelle (bordure
-       * rouille, marqueur ✕) n'a pas sa place dessus. */
-      if (segment.echecs && !sansCloture) classe += " echec";
-      if (reprisesChaine.has(index)) classe += " repris";
-      const maillon = el("span", classe);
-      const mnom = el("span", "mnom", segment.agent);
-      /* Plus de couleur d'identité (ADR-0032, lot 4) : le segment principal
-       * garde son propre registre visuel (`.principal .mnom`, fond creusé +
-       * italique), les sous-agents restent au jeton de texte par défaut. */
-      maillon.appendChild(mnom);
-      if (sansCloture) {
-        const ecoule = dureeDepuisIso(segment.derniere_activite);
-        maillon.appendChild(el("span", "mduree",
-          "⋯ fin non observée depuis " + (ecoule || "un temps inconnu")));
-      } else {
-        const d = duree(segment.duree_ms);
-        maillon.appendChild(el("span", "mduree",
-          d !== null ? d : (segment.termine ? "durée invalide" : "en cours")));
-      }
-      const detail = [];
-      if (segment.type === "principal" && segment.outils) detail.push(segment.outils + " outils");
-      if (segment.fichiers && segment.fichiers.length) detail.push(segment.fichiers.length + " fich.");
-      if (detail.length) maillon.appendChild(el("span", "mduree", detail.join(" · ")));
-      if (segment.echecs && !sansCloture) maillon.appendChild(el("span", "mduree", "✕" + segment.echecs));
-      maillon.title = segment.type === "principal"
-        ? "Agent principal — la session Claude Code elle-même, entre deux "
-          + "sous-agents.\nC'est elle qui orchestre : elle lit, écrit, lance "
-          + "les commandes et invoque les agents.\n"
-          + (segment.fichiers || []).join("\n")
-        : "Sous-agent " + segment.agent + "\n" + (segment.fichiers || []).join("\n");
-      chaine.appendChild(maillon);
-    });
-    enveloppe.appendChild(chaine);
-  }
-
-  const notes = [];
-  if (wf.commandes && Object.keys(wf.commandes).length) {
-    notes.push("commandes : " + Object.keys(wf.commandes)
-      .map((c) => c + " ×" + wf.commandes[c]).join(", "));
-  }
-  if (notes.length) enveloppe.appendChild(el("div", "wf-notes", notes.join(" · ")));
-
-  /* Le rebouclage a sa propre bande, distincte d'un enchaînement normal
-   * (feature-010, §8) : `wf.reprises` était affiché comme une ligne de
-   * texte neutre, indiscernable des autres notes. `.repris` sur les
-   * maillons concernés (voir `indicesRepris`, ci-dessus) ancre le même
-   * signal dans la chaîne.
-   * ⚠️ Le bandeau ne se déclenche QUE si `indicesRepris` a réellement
-   * marqué un maillon — jamais sur la seule présence de `wf.reprises`.
-   * Sans ce garde, le bandeau annonçait un rebouclage que la détection
-   * elle-même écartait : deux logiques sur le même fait, dans la même
-   * fonction, en désaccord. Une réapparition après le seul agent
-   * principal reste un fait qu'on signale — sobrement — pas une alerte :
-   * la taire serait un récit muet sur ce qu'il sait.
-   * ⚠️ feature-010 §A2 : ce garde portait sur le DÉCLENCHEMENT du bandeau, pas sur
-   * son CONTENU — `reprises.map(...)` recopiait `wf.reprises` en entier,
-   * y compris des agents que `indicesRepris` n'a marqué nulle part (un
-   * troisième agent reparu seulement après l'agent principal, pendant
-   * qu'un AUTRE agent portait, lui, un vrai rebouclage ailleurs dans la
-   * même chaîne). Le bandeau ne doit NOMMER que les agents dont au moins
-   * un maillon est réellement `.repris` ; les autres basculent dans la
-   * mention neutre — les deux pouvant coexister sur le même workflow. */
-  const agentsAncres = new Set();
-  segments.forEach((segment, index) => {
-    if (reprisesChaine.has(index)) agentsAncres.add(segment.agent);
-  });
-  const reprises = Object.keys(wf.reprises || {});
-  const reprisesAncrees = reprises.filter((a) => agentsAncres.has(a));
-  const reprisesNonAncrees = reprises.filter((a) => !agentsAncres.has(a));
-  if (reprisesAncrees.length) {
-    const bandeau = el("div", "wf-notes reboucle");
-    bandeau.appendChild(el("span", "",
-      "↻ reboucle — reprises : "
-      + reprisesAncrees.map((a) => a + " ×" + wf.reprises[a]).join(", ")));
-    enveloppe.appendChild(bandeau);
-  }
-  if (reprisesNonAncrees.length) {
-    const note = el("div", "wf-notes attendu");
-    note.appendChild(el("span", "",
-      "ℹ agent(s) repassé(s), sans rebouclage détecté : "
-      + reprisesNonAncrees.map((a) => a + " ×" + wf.reprises[a]).join(", ")));
-    note.title =
-      "Ces agents réapparaissent dans la chaîne, mais toujours "
-      + "immédiatement après l'agent principal — jamais après un AUTRE "
-      + "sous-agent. Ce n'est pas un rebouclage : c'est un enchaînement "
-      + "normal.";
-    enveloppe.appendChild(note);
-  }
-
-  /* Les incertitudes sont AFFICHÉES, pas masquées : un récit muet sur ce
-   * qu'il ignore se lit comme un récit complet. */
-  /* `imbrication_suspectee` (bug-013/feature-010, §9) : la mesure sur cycle
-   * réel a montré 9 workflows sur 12 le levant, TOUJOURS pour la même
-   * cause — l'orchestrator cesse son activité avant que le hook n'écrive
-   * sa fin, avec plusieurs secondes de retard. Aucun agent ne peut en
-   * invoquer un autre : ce n'est PAS une anomalie du récit, c'est un
-   * artefact connu de latence d'écriture. Rendu neutre (`.attendu`, comme
-   * les fins de tour du runtime ci-dessous), jamais en alerte — et le
-   * champ backend n'est PAS renommé, seuls le rendu et le libellé le
-   * sont. */
-  if (wf.imbrication_suspectee) {
-    const note = el("div", "wf-notes attendu");
-    const texte = el("span", "",
-      "ℹ ordre approximatif — fin de sous-agent journalisée en retard : "
-      + "l'ordre affiché peut ne pas refléter l'enchaînement réel");
-    texte.title =
-      "Le hook qui journalise la fin d'un sous-agent peut écrire plusieurs "
-      + "secondes après que l'agent a réellement cessé toute activité — un "
-      + "agent suivant peut démarrer avant que cette fermeture ne soit "
-      + "inscrite au journal.\n\n"
-      + "Ce n'est pas un agent qui en invoque un autre : le runtime ne "
-      + "permet pas ce chaînage. Ce drapeau signale un retard d'écriture "
-      + "du hook, pas une anomalie du récit.";
-    note.appendChild(texte);
-    enveloppe.appendChild(note);
-  }
-  if (wf.fermetures_orphelines) {
-    const note = el("div", "wf-notes attendu");
-    const texte = el("span", "",
-      "ℹ " + wf.fermetures_orphelines + " fin(s) de tour du runtime — "
-      + "ce ne sont pas des sous-agents");
-    texte.title =
-      "Claude Code émet un événement « fin de sous-agent » à chaque fois que "
-      + "l'agent principal termine un tour de conversation, avec un identifiant "
-      + "neuf et un nom vide.\n\n"
-      + "Ces événements ne correspondent à aucun sous-agent réel : ils n'ont pas "
-      + "de début associé, et rien ne leur est attribué.\n\n"
-      + "Ils sont comptés ici plutôt qu'ignorés en silence — un événement "
-      + "inexpliqué qu'on tait devient un écart invisible entre le journal et "
-      + "le récit qu'on en tire.";
-    note.appendChild(texte);
-    enveloppe.appendChild(note);
-  }
-  /* Un bornage sur `marqueur-agent` est une CONVENTION posée par la
-   * configuration, pas un fait relevé par le système. ⚠️ Ce commentaire
-   * opposait auparavant le bornage à `imbrication_suspectee`, « qui EST une
-   * anomalie du récit » — c'est FAUX, et le commentaire de ce champ, 35
-   * lignes plus haut, dit désormais l'inverse mesure à l'appui. Deux
-   * commentaires contradictoires sur le même champ valent moins qu'aucun :
-   * le lecteur croit celui qu'il rencontre en premier.
-   * Même registre visuel que les fermetures orphelines : un fait qu'on
-   * signale, pas une alerte. Absent sur un backend en retard : `wf.bornage`
-   * n'existe alors simplement pas. */
-  if (wf.bornage === "marqueur-agent" && wf.borne_par) {
-    const note = el("div", "wf-notes attendu");
-    note.appendChild(el("span", "",
-      "ℹ frontières posées sur l'invocation de " + wf.borne_par + " ; un "
-      + "cycle mené sans cet agent est rattaché au segment précédent"));
-    enveloppe.appendChild(note);
-  }
-  return enveloppe;
-}
+/* `construireResume`/`cycleOuvert`/`construireEnteteCycle`/`construireProprietes`/`construireChaineEtNotes` SUPPRIMÉES ICI
+ * (feature-028, lot C1) : c'était l'accordéon « Cycles » tout entier —
+ * décision humaine 1B, 2026-09-23 : « L'accordéon est retiré, ses deux
+ * informations sont PERDUES » (propriétés agrégées du cycle : outils,
+ * fichiers écrits, rebouclages, agents simultanés ; et la chaîne
+ * textuelle des segments). Retrait ASSUMÉ, même forme que le retrait des
+ * diffs (feature-028, décision humaine du 2026-09-23) — pas une
+ * migration, pas un oubli.
+ * ⚠️ EFFET DE BORD non couvert par la décision 1B, signalé plutôt
+ * qu'inventé : la légende (« N sur M cycles affichés ») et le pied
+ * (« N événement(s) sans session associée ») de l'accordéon
+ * disparaissent AVEC lui — ce bornage n'est affiché NULLE PART ailleurs
+ * du DOM. `.cycles`/`.cycle-entete`/`.cycle-bouton`/`.cycle-designation`/
+ * `.cycle-resume`/`.cycle-detail`/`.cycle-proprietes`/`.chaine`/
+ * `.maillon`/`.fleche`/`.wf-notes` (CSS) retirées avec elles. */
 
 /* ------------------------------------------------------ graphe d'agents --
  * feature-021, cycle 2, lot 4 (F8/F9/F14/F15/F16), ADR-0031/ADR-0032.
@@ -1005,6 +603,12 @@ function tacheDisque(agentGeo) {
   return agentGeo.etat === "active" ? "en cours" : "terminé";
 }
 
+/* Passage actuellement affiché dans la bottom sheet — SEULE mémoire requise
+ * pour que `#voir-evenements-passage` (evenements, U1) sache quel passage
+ * interroger sans recalcul ; réinitialisée à `null` tant qu'aucun disque n'a
+ * été cliqué (bouton désactivé, voir plus bas). */
+let passageSelectionneCourant = null;
+
 /* Sélection LOCALE, aucun appel réseau : toute la donnée affichée est déjà
  * dans `agentGeo`, le même objet que `disposer()` a produit pour PEINDRE le
  * disque cliqué — la bottom sheet ne recalcule rien, elle relit. Chaque
@@ -1034,6 +638,13 @@ function selectionnerPassage(agentGeo, sigle, infoTokens) {
   $("selected-duration").textContent = agentGeo.duree.texte;
   const annonce = $("a11y-announcement");
   if (annonce) annonce.textContent = "Détail affiché : " + agentGeo.agent + ", " + tacheDisque(agentGeo);
+
+  /* evenements (U1) : le bouton n'est activé QUE si `agentId` est exploitable
+   * — l'agent principal et les backends anciens n'en portent pas, et un
+   * filtrage approximatif serait pire qu'une absence déclarée (§16 PIEGES). */
+  passageSelectionneCourant = agentGeo;
+  const boutonEvenements = $("voir-evenements-passage");
+  if (boutonEvenements) boutonEvenements.disabled = !agentGeo.agentId;
 }
 
 /* Traduit UN agent (`disposer().agents[i]`) en la structure DOM exacte du
@@ -1189,37 +800,56 @@ function construireGrapheAgents(geo, sigles, tokensParPassage) {
   return scroll;
 }
 
-/* Point d'entrée pour l'accordéon « Cycles » (`construireDetailCycle`, plus
- * bas) : `wf.segments` (agent principal compris) si disponible, repli sur
- * `wf.passages` sur un backend plus ancien. Un cycle sans aucun segment
- * retombe sur `null` : l'appelant garde alors le seul état vide déjà
- * affiché par la table des passages. */
-function construireDiagramme(wf, sigles, tokensParPassage) {
-  const segments = wf.segments || wf.passages || [];
-  if (!segments.length) return null;
-  /* Garde (bug-020, conservée) : `diagramme.js` est chargé en `<script>`
-   * séparé (index.html, AVANT ce fichier) — s'il est absent (404, cache,
-   * oubli de relancer le serveur après un fichier neuf, PIEGES §8),
-   * `disposer` n'existe pas. Se rabattre sur l'absence de diagramme, comme
-   * un cycle sans segment, plutôt que de laisser l'exception remonter
-   * jusqu'au `catch` global de `rafraichir()` (qui l'afficherait à tort
-   * comme « serveur injoignable »). */
-  if (typeof disposer !== "function") return null;
-  const geo = disposer(segments);
-  const enveloppe = document.createDocumentFragment();
-  enveloppe.appendChild(el("p", "note", "l'écart horizontal sert la lisibilité, il ne mesure pas le temps"));
-  enveloppe.appendChild(construireGrapheAgents(geo, sigles, tokensParPassage));
-  return enveloppe;
-}
+/* `construireDiagramme` SUPPRIMÉE ICI (feature-028, lot C1) : ne servait
+ * plus que l'accordéon « Cycles », retiré entier. */
 
 /* ------------------------------------------------ graphe principal (F8/F9)
  * `#cycle-canvas` (zone de travail, mono-écran) : reconstruit à CHAQUE
  * rafraîchissement — pas de diff incrémental, `disposer()` est un module pur
- * bon marché à rappeler et le nombre de passages par cycle reste modeste. */
+ * bon marché à rappeler et le nombre de passages par cycle reste modeste.
+ *
+ * Deux MODES d'affichage du même `#cycle-canvas`/`.detail-sheet` (feature-028,
+ * lot A, câblage des onglets `#cycle-tab-actif`/`#cycle-tab-historique`) —
+ * jamais deux panneaux, jamais `role="tab"` (F7, mono-écran) : « Historique »
+ * ne fait QUE changer quel `wf` alimente le MÊME rendu. `cycleHistoriqueChoisi`
+ * survit à `vider()` + reconstruction (même patron que `cycleOuvert` de
+ * l'accordéon, ci-dessous) : un choix déjà fait reste tant que le cycle
+ * choisi existe encore dans `etat.workflows`. */
+let modeCycleAffiche = "actif"; // "actif" | "historique"
+let cycleHistoriqueChoisi = null; // workflow_id retenu en mode "historique"
+
 function choisirCycleAffiche(etat) {
   const workflows = (etat.workflows || []).slice().reverse();   // le plus récent en tête
   if (!workflows.length) return null;
+  if (modeCycleAffiche === "historique") {
+    const trouve = workflows.find((wf) => wf.workflow_id === cycleHistoriqueChoisi);
+    if (trouve) return trouve;
+    // Le cycle retenu a disparu de la liste affichée (bornage, PIEGES §19) —
+    // retombe sur le plus récent, jamais sur une exception ni un cycle fantôme.
+    cycleHistoriqueChoisi = workflows[0].workflow_id;
+    return workflows[0];
+  }
   return workflows.find((wf) => etatCycle(wf) === "en_cours") || workflows[0];
+}
+
+/* État des TROIS contrôles de `.cycle-tabs`, dérivé du mode ET du nombre de
+ * cycles CONNUS — jamais recalculé à la main ailleurs (une seule source de
+ * vérité, cf. skill dev-workflow). `#cycle-indice` n'est un sélecteur RÉEL
+ * qu'en mode « historique », ET seulement s'il y a plus d'un cycle à
+ * parcourir : avec un seul cycle connu, le bouton reste `aria-disabled`,
+ * jamais un clic qui ne changerait jamais rien. */
+function actualiserControleCycleTabs(workflowsTries) {
+  const ongletActif = $("cycle-tab-actif");
+  const ongletHistorique = $("cycle-tab-historique");
+  const indice = $("cycle-indice");
+  if (ongletActif) ongletActif.setAttribute("aria-pressed", modeCycleAffiche === "actif" ? "true" : "false");
+  if (ongletHistorique) ongletHistorique.setAttribute("aria-pressed", modeCycleAffiche === "historique" ? "true" : "false");
+  if (!indice) return;
+  const parcourable = modeCycleAffiche === "historique" && workflowsTries.length > 1;
+  indice.setAttribute("aria-disabled", parcourable ? "false" : "true");
+  indice.setAttribute("aria-label", parcourable
+    ? "Cycle affiché — cliquer pour voir le cycle précédent"
+    : "Cycle affiché");
 }
 
 function formatEcoule(ms) {
@@ -1256,7 +886,9 @@ function rendreGrapheCyclePrincipal(etat) {
     repoOk.hidden = true;
   }
 
+  const workflowsTries = (etat.workflows || []).slice().reverse(); // le plus récent en tête
   const wf = choisirCycleAffiche(etat);
+  actualiserControleCycleTabs(workflowsTries);
   if (!wf) {
     $("cycle-status").textContent = "Aucun cycle sélectionné";
     $("summary-step").textContent = "—";
@@ -1321,15 +953,8 @@ function rendreGrapheCyclePrincipal(etat) {
 }
 
 
-function construireDetailCycle(wf, sigles, tokensParPassage) {
-  const detail = document.createDocumentFragment();
-  detail.appendChild(construireProprietes(wf));
-  const diagramme = construireDiagramme(wf, sigles, tokensParPassage);
-  if (diagramme) detail.appendChild(diagramme);
-  detail.appendChild(construireTablePassages(wf, sigles));
-  detail.appendChild(construireChaineEtNotes(wf));
-  return detail;
-}
+/* `construireDetailCycle` SUPPRIMÉE ICI (feature-028, lot C1) : ne
+ * servait plus que l'accordéon « Cycles », retiré entier. */
 
 /* Rôles apparaissant dans les cycles AFFICHÉS (passages + agents ouvrants
  * cités en désignation) : `siglesAgents` calcule tous les sigles d'un coup,
@@ -1350,129 +975,56 @@ function collecterRoles(workflows) {
   return roles;
 }
 
-/* Liste des cycles en accordéon (feature-016, docs/DESIGN-SYSTEM.md §6). */
-function rendreCycles(etat) {
-  const zone = $("workflows");
-  vider(zone);
-  const workflows = (etat.workflows || []).slice().reverse();   // le plus récent en tête
+/* `rendreCycles` SUPPRIMÉE ICI (feature-028, lot C1) : c'était
+ * l'accordéon « Cycles » (`#workflows`) lui-même — voir le commentaire
+ * au-dessus de l'ancienne `construireResume` pour la décision humaine
+ * (1B) et ce qui est PERDU. `.cycles`/`#workflows` (markup), `#legende-
+ * cycles`/`#pied-cycles` retirés d'`index.html` avec elle. */
 
-  if (!workflows.length) {
-    /* Cas limite : état vide explicite, qui dit quoi faire — pas une liste
-     * muette. */
-    zone.appendChild(el("li", "vide",
-      "aucun cycle observé pour l'instant — invoquez un agent depuis la "
-      + "section Développer (bloc Pilotage) pour en amorcer un"));
-    cycleOuvert = null;
-    $("legende-cycles").textContent = "";
-    $("pied-cycles").textContent = "";
-    return;
-  }
+/* `rendreFichiers`/`ouvrirDiff` SUPPRIMÉS ICI (feature-028, décision humaine
+ * du 2026-09-23) : « Fichiers touchés » retirée, retrait de capacité assumé
+ * — « la consultation des diffs ne va nulle part ». `ouvrirDiff` n'avait
+ * qu'un seul appelant dans tout ce fichier (la ligne ci-dessus, retirée avec
+ * elle) : code mort sans elle, retiré au même lot (`/api/diff` n'a donc plus
+ * d'appelant frontal — signalé à `doc-writer` et au GATE). La liste des
+ * fichiers touchés du dépôt reste lisible ailleurs, via `.repo-strip`
+ * (`rendreGrapheCyclePrincipal`). */
 
-  /* Dépliement exclusif (item C) : le dernier cycle est ouvert par défaut ;
-   * un choix déjà fait survit tant que le cycle choisi reste présent dans la
-   * liste affichée. */
-  const idsPresents = new Set(workflows.map((wf) => wf.workflow_id));
-  if (cycleOuvert === null || !idsPresents.has(cycleOuvert)) {
-    cycleOuvert = workflows[0].workflow_id;
-  }
-
-  const sigles = siglesAgents(Array.from(collecterRoles(workflows)));
-
-  workflows.forEach((wf) => {
-    const li = el("li", "cycle");
-    const ouvert = wf.workflow_id === cycleOuvert;
-    const { h3, idDetail } = construireEnteteCycle(wf, sigles, ouvert);
-    li.appendChild(h3);
-    const detail = el("div", "cycle-detail");
-    detail.id = idDetail;
-    detail.setAttribute("role", "region");
-    detail.setAttribute("aria-labelledby", idCycleDom(wf.workflow_id) + "-bouton");
-    detail.hidden = !ouvert;
-    /* Le contenu est construit que le cycle soit ouvert ou non (item M/C :
-     * jamais retiré du DOM) — coûte une reconstruction de plus au clic, en
-     * échange d'un état de dépliement qui ne perd jamais rien au clavier. */
-    detail.appendChild(construireDetailCycle(wf, sigles, etat.tokens_par_passage));
-    li.appendChild(detail);
-    zone.appendChild(li);
-  });
-
-  /* Légende fixe au-dessus de la liste (item, comportement attendu) : les
-   * DEUX bornages — combien sont affichés sur le total, et ce qu'est un
-   * cycle. `etat.cycles_total` est additif (feature-016, item K) : absent
-   * sur un backend plus ancien, on retombe sur le seul compte affiché. */
-  const total = typeof etat.cycles_total === "number" ? etat.cycles_total : workflows.length;
-  $("legende-cycles").textContent =
-    workflows.length + (total > workflows.length ? " sur " + total : "")
-    + " cycle" + (total > 1 ? "s" : "") + " affiché" + (total > 1 ? "s" : "") + " — "
-    + "un cycle commence à l'invocation d'un agent ouvrant configuré ; sans "
-    + "agent ouvrant, une session reste un seul cycle, dit « session entière ».";
-
-  /* Pied de liste (item K) : `evenements_hors_session` était calculé puis
-   * jeté — des événements écrits avant qu'une session ne soit connue, jamais
-   * absorbés dans un cycle fabriqué pour l'occasion. */
-  const horsSession = typeof etat.evenements_hors_session === "number"
-    ? etat.evenements_hors_session : 0;
-  $("pied-cycles").textContent = horsSession
-    ? horsSession + " événement(s) sans session associée — ne forment aucun cycle"
-    : "";
+/* -------------------------------------------------------- événements/passage --
+ * `rendreTimeline`/`#timeline` SUPPRIMÉS (U1 de feature-021, feature-028
+ * lot A1) : plus de flux brut affiché en continu. La tranche d'événements
+ * D'UN PASSAGE reste accessible à la demande, dans le tiroir EXISTANT
+ * (`#tiroir`) — jamais un second panneau. `libelleEvenement` reprend TEL
+ * QUEL le classement déjà éprouvé de l'ancienne `rendreTimeline`. */
+function libelleEvenement(e) {
+  let quoi = e.hook_event_name || "?";
+  if (e.hook_event_name === "SubagentStart") quoi = "▶ " + (e.agent_type || "?");
+  else if (e.hook_event_name === "SubagentStop") quoi = "■ fin de sous-agent";
+  else if (e.failed) quoi = "✕ " + (e.tool || "outil") + " en échec";
+  else if (e.command_head) quoi = "$ " + e.command_head;
+  else if (e.file) quoi = (e.tool || "fichier") + " " + e.file;
+  return quoi;
 }
 
-/* -------------------------------------------------------------- fichiers -- */
-function rendreFichiers(etat) {
-  const zone = $("fichiers");
-  vider(zone);
-  if (!etat.git.depot) {
-    zone.appendChild(el("div", "vide", "pas un dépôt git"));
-    return;
-  }
-  if (!etat.git.touches.length) {
-    zone.appendChild(el("div", "vide", "arbre de travail propre"));
-  }
-  etat.git.touches.forEach((entree) => {
-    const ligne = el("button", "fichier");
-    ligne.type = "button";
-    ligne.appendChild(el("span", "fcode", entree.libelle));
-    ligne.appendChild(el("span", "fchemin",
-      entree.ancien ? entree.ancien + " → " + entree.chemin : entree.chemin));
-    ligne.addEventListener("click", () => ouvrirDiff(entree.chemin));
-    zone.appendChild(ligne);
-  });
-
-  (etat.git.commits || []).slice(0, 4).forEach((commit) => {
-    const ligne = el("div", "fichier");
-    ligne.appendChild(el("span", "fcode", commit.hash));
-    // `.fsujet`, pas `.fchemin` (feature-019) : `commit.sujet` est une phrase
-    // écrite par un humain, jamais un chemin — la chasse fixe de `.fchemin`
-    // n'a rien à y faire.
-    ligne.appendChild(el("span", "fsujet", commit.sujet));
-    zone.appendChild(ligne);
-  });
+/* Filtre sur `agent_id` SEUL, jamais sur une fenêtre de temps devinée : c'est
+ * la même computation que la géométrie du diagramme (`disposer`, ADR-0031
+ * §4), pas la corrélation événement→spec qu'§16 PIEGES dit non fiable (2 cas
+ * sur 14) — `agent_id` est un identifiant d'invocation, pas une hypothèse. */
+function evenementsDuPassage(agentId) {
+  const tous = (dernierEtat && dernierEtat.evenements) || [];
+  return tous.filter((e) => e.agent_id === agentId);
 }
 
-/* -------------------------------------------------------------- timeline -- */
-function rendreTimeline(etat) {
-  const liste = $("timeline");
-  vider(liste);
-  const evenements = etat.evenements.slice().reverse();
+function ouvrirEvenementsPassage(agentGeo) {
+  if (!agentGeo || !agentGeo.agentId) return;
+  const titre = "Événements — " + agentGeo.agent;
+  const evenements = evenementsDuPassage(agentGeo.agentId);
   if (!evenements.length) {
-    liste.appendChild(el("li", "vide",
-      "journal vide — aucun événement observé pour l'instant ; il se "
-      + "remplit dès qu'un agent est invoqué"));
+    ouvrirTiroir(titre, "aucun événement associé à ce passage pour l'instant.");
     return;
   }
-  evenements.forEach((e) => {
-    let classe = "";
-    let quoi = e.hook_event_name || "?";
-    if (e.hook_event_name === "SubagentStart") { classe = "agent"; quoi = "▶ " + (e.agent_type || "?"); }
-    else if (e.hook_event_name === "SubagentStop") { classe = "agent"; quoi = "■ fin de sous-agent"; }
-    else if (e.failed) { classe = "echec"; quoi = "✕ " + (e.tool || "outil") + " en échec"; }
-    else if (e.command_head) { quoi = "$ " + e.command_head; }
-    else if (e.file) { quoi = (e.tool || "fichier") + " " + e.file; }
-    const ligne = el("li", classe);
-    ligne.appendChild(el("span", "heure", heure(e.ts)));
-    ligne.appendChild(el("span", "quoi", quoi));
-    liste.appendChild(ligne);
-  });
+  const lignes = evenements.map((e) => heure(e.ts) + "  " + libelleEvenement(e));
+  ouvrirTiroir(titre, lignes.join("\n"));
 }
 
 /* ---------------------------------------------------------------- tiroir -- */
@@ -1491,26 +1043,6 @@ function ouvrirTiroir(titre, contenu) {
 function fermerTiroir() {
   $("tiroir").hidden = true;
   if (typeof fermerEditionTiroir === "function") fermerEditionTiroir();
-}
-
-async function ouvrirDiff(chemin) {
-  ouvrirTiroir(chemin, "chargement…");
-  try {
-    const reponse = await fetch("/api/diff?chemin=" + encodeURIComponent(chemin),
-      { headers: enTeteAuthPilotage() });
-    if (reponse.status === 401) {
-      sur401Lecture();
-      return ouvrirTiroir(chemin, "Authentification requise — reconnectez-vous.");
-    }
-    const donnees = await reponse.json();
-    if (donnees.erreur) return ouvrirTiroir(chemin, "Erreur : " + donnees.erreur);
-    const avis = donnees.tronque
-      ? "⚠ DIFF TRONQUÉ — la suite n'est pas affichée\n" + "".padEnd(60, "─") + "\n\n"
-      : "";
-    ouvrirTiroir(chemin, avis + (donnees.diff || "(aucune différence)"));
-  } catch (erreur) {
-    ouvrirTiroir(chemin, "Erreur réseau : " + erreur.message);
-  }
 }
 
 /* ---------------------------------------------------- backlog : actions -- *
@@ -1579,11 +1111,22 @@ const MENU_CONTEXTUEL_LARGEUR_PX = 190; // .context-menu { width: 190px }
 const MENU_CONTEXTUEL_MARGE_VIEWPORT_PX = 12; // espace minimal laissé au bord droit du viewport
 const MENU_CONTEXTUEL_HAUTEUR_AVEC_LANCER_PX = 226; // « lancer » + séparateur + « modifier » + « supprimer »
 const MENU_CONTEXTUEL_HAUTEUR_SANS_LANCER_PX = 174; // « modifier » + « supprimer », sans « lancer »
+// Item de plus (feature-028, lot A, GATE C3) : « Interrompre » partage
+// `launch-divider` avec « Lancer un cycle » plutôt que d'en ouvrir un à lui
+// seul. Deux incréments, REMESURÉS (Chromium sans tête, script de mesure
+// jetable, jamais devinés — PIEGES) plutôt que la simple hauteur d'un item :
+// quand `launchable` est déjà vrai, `launch-divider` est déjà compté dans
+// `MENU_CONTEXTUEL_HAUTEUR_AVEC_LANCER_PX`, donc seul l'item s'ajoute
+// (48px, confirmé 226 -> 274). Quand `launchable` est faux, le séparateur
+// passe de caché à visible EN MÊME TEMPS que l'item : l'incrément mesuré
+// est l'item ET le séparateur (59px, confirmé 167 -> 226 et 119 -> 178).
+const MENU_CONTEXTUEL_HAUTEUR_ITEM_INTERROMPRE_SEUL_PX = 48;
+const MENU_CONTEXTUEL_HAUTEUR_ITEM_INTERROMPRE_AVEC_SEPARATEUR_PX = 59;
 
 function elementsMenuVisibles() {
   const menu = $("context-menu");
   if (!menu) return [];
-  return ["menu-launch-cycle", "view-details", "edit-item", "delete-item"]
+  return ["menu-launch-cycle", "menu-interrupt-cycle", "view-details", "edit-item", "delete-item"]
     .map((id) => $(id))
     .filter((n) => n && !n.hidden);
 }
@@ -1612,10 +1155,16 @@ function ouvrirMenuContextuel(bouton, specId) {
   const launchable = bouton.getAttribute("data-launchable") === "true";
   const editable = bouton.getAttribute("data-editable") === "true";
   const supprimable = bouton.getAttribute("data-supprimable") === "true";
+  /* GATE C3 : n'apparaît que sur la carte dont la spec est le lancement
+   * COURANT (`data-interrompable`, posé par `rendreKanban` d'après
+   * `etat.lancement_spec_id === spec.id`). */
+  const interrompable = bouton.getAttribute("data-interrompable") === "true";
   const lancer = $("menu-launch-cycle");
+  const interrompre = $("menu-interrupt-cycle");
   const separateur = $("launch-divider");
   if (lancer) lancer.hidden = !launchable;
-  if (separateur) separateur.hidden = !launchable;
+  if (interrompre) interrompre.hidden = !interrompable;
+  if (separateur) separateur.hidden = !(launchable || interrompable);
   const modifier = $("edit-item");
   if (modifier) modifier.hidden = !editable;
   const supprimer = $("delete-item");
@@ -1626,12 +1175,18 @@ function ouvrirMenuContextuel(bouton, specId) {
     const rect = bouton.getBoundingClientRect();
     const largeurVue = (typeof window !== "undefined" && window.innerWidth) || 1024;
     const hauteurVue = (typeof window !== "undefined" && window.innerHeight) || 768;
+    const hauteurBase = launchable
+      ? MENU_CONTEXTUEL_HAUTEUR_AVEC_LANCER_PX : MENU_CONTEXTUEL_HAUTEUR_SANS_LANCER_PX;
+    const incrementInterrompre = !interrompable ? 0
+      : (launchable ? MENU_CONTEXTUEL_HAUTEUR_ITEM_INTERROMPRE_SEUL_PX
+                    : MENU_CONTEXTUEL_HAUTEUR_ITEM_INTERROMPRE_AVEC_SEPARATEUR_PX);
+    const hauteurMenu = hauteurBase + incrementInterrompre;
     menu.style.left = Math.min(
       largeurVue - (MENU_CONTEXTUEL_LARGEUR_PX + MENU_CONTEXTUEL_MARGE_VIEWPORT_PX),
       Math.max(8, rect.right - MENU_CONTEXTUEL_LARGEUR_PX)
     ) + "px";
     menu.style.top = Math.min(
-      hauteurVue - (launchable ? MENU_CONTEXTUEL_HAUTEUR_AVEC_LANCER_PX : MENU_CONTEXTUEL_HAUTEUR_SANS_LANCER_PX),
+      hauteurVue - hauteurMenu,
       rect.bottom + 4
     ) + "px";
   }
@@ -1906,9 +1461,15 @@ async function surClicConfirmerSuppression() {
 
 // -- lancement pour une spec désignée (B1) -----------------------------------
 async function surClicLancerCyclePourSpec(specId) {
+  /* `pilotage.cleChoisie` est désormais TOUJOURS auto-choisie (première
+   * commande déclarée, `actualiserPilotage`/`initialiserPilotage`) — plus
+   * aucune UI ne permet d'en choisir une autre depuis le retrait du panneau
+   * générique « Piloter par clé » (feature-028, lot pilotage dédié). `null`
+   * ici signifie donc UNIQUEMENT « aucune commande n'est déclarée dans
+   * `[commandes]` », jamais « pas encore choisie ». */
   if (!pilotage.cleChoisie) {
     if ($("a11y-announcement")) {
-      $("a11y-announcement").textContent = "Choisissez d'abord une commande dans Pilotage avant de lancer un cycle pour " + specId + ".";
+      $("a11y-announcement").textContent = "Aucune commande déclarée sous [commandes] dans la configuration — impossible de lancer un cycle pour " + specId + ".";
     }
     return;
   }
@@ -1925,7 +1486,6 @@ async function surClicLancerCyclePourSpec(specId) {
         texteSortie: "", syntheticMessage: null,
       };
       pilotage.phase = "lancement";
-      if (typeof rendrePilotage === "function") rendrePilotage();
       demarrerSondagePilotage();
       if ($("a11y-announcement")) $("a11y-announcement").textContent = "Cycle lancé pour " + specId + ".";
       rafraichir();
@@ -1941,6 +1501,35 @@ async function surClicLancerCyclePourSpec(specId) {
   }
 }
 
+// -- interruption d'un lancement DÉSIGNÉ (feature-028, lot A, GATE C3) ------
+// Historiquement distincte de `surClicInterromprePilotage` (bloc Pilotage
+// générique, RETIRÉ au lot pilotage dédié, feature-028) qui n'envoyait AUCUN
+// `spec_id` et tuait donc `lancement_courant()`, quel qu'il soit. Ici, le
+// `spec_id` de LA CARTE est envoyé explicitement — le serveur
+// (`_interrompre`, feature-028) cherche ce lancement PARMI
+// `lancements_actifs()` et ne touche à aucun autre.
+async function surClicInterromprePourSpec(specId) {
+  try {
+    const reponse = await fetch("/api/interrompre", {
+      method: "POST",
+      headers: Object.assign({ "Content-Type": "application/json" }, enTeteAuthPilotage()),
+      body: JSON.stringify({ spec_id: specId }),
+    });
+    if (reponse.status === 202) {
+      if ($("a11y-announcement")) $("a11y-announcement").textContent = "Interruption demandée pour " + specId + ".";
+      rafraichir();
+      return;
+    }
+    if (reponse.status === 401) { sur401Lecture(); return; }
+    const donnees = await reponse.json().catch(() => ({}));
+    if ($("a11y-announcement")) {
+      $("a11y-announcement").textContent = "Interruption refusée pour " + specId + " : " + (donnees.erreur || reponse.status);
+    }
+  } catch (e) {
+    if ($("a11y-announcement")) $("a11y-announcement").textContent = "Erreur réseau à l'interruption de " + specId + " : " + e.message;
+  }
+}
+
 // -- câblage des éléments STATIQUES du menu/dialogues (une fois) ------------
 (function cablerActionsBacklogUneFois() {
   const fermer1 = $("close-feature");
@@ -1953,6 +1542,12 @@ async function surClicLancerCyclePourSpec(specId) {
     const cible = menuTargetSpec;
     fermerMenuContextuel(false);
     if (cible) surClicLancerCyclePourSpec(cible);
+  });
+  const menuInterrompre = $("menu-interrupt-cycle");
+  if (menuInterrompre) menuInterrompre.addEventListener("click", () => {
+    const cible = menuTargetSpec;
+    fermerMenuContextuel(false);
+    if (cible) surClicInterromprePourSpec(cible);
   });
   const menuDetails = $("view-details");
   if (menuDetails) menuDetails.addEventListener("click", () => {
@@ -1985,15 +1580,27 @@ async function surClicLancerCyclePourSpec(specId) {
   const annulerEdition = $("tiroir-edition-annuler");
   if (annulerEdition) annulerEdition.addEventListener("click", () => { fermerEditionTiroir(); fermerTiroir(); });
 
-  // `#open-add-item`/`#add-item-dialog` : structure présente (F0), soumission
-  // INERTE et le dit — voir le commentaire d'`index.html` sur `#open-add-item`.
+  // `#open-add-item`/`#add-item-dialog` (feature-028, lot B, GATE C1/C2) :
+  // câblé dans la MÊME machine `redaction` que l'ancien flux `demande` —
+  // voir le commentaire au-dessus de `SURFACES_REDACTION`, plus bas dans ce
+  // fichier.
   const ouvrirAjout = $("open-add-item");
   if (ouvrirAjout) ouvrirAjout.addEventListener("click", () => {
-    const forme = $("add-item-form");
-    if (forme && typeof forme.reset === "function") forme.reset();
+    /* Un brouillon `dialogue` déjà en cours (l'utilisateur a fermé la boîte
+     * SANS l'avoir écrit) survit à la réouverture — `forme.reset()` ne
+     * s'applique qu'à une saisie FRAÎCHE, sinon il effacerait les champs
+     * qu'un « Régénérer » ultérieur relit, sans toucher au brouillon déjà
+     * affiché (qui, lui, ne dépend plus des champs une fois généré). */
+    const repriseEnCours = redaction.surface === "dialogue" && redaction.phase !== "saisie";
+    if (!repriseEnCours) {
+      const forme = $("add-item-form");
+      if (forme && typeof forme.reset === "function") forme.reset();
+    }
     ouvrirDialogue($("add-item-dialog"));
-    const champ = $("item-description");
-    if (champ && typeof champ.focus === "function") champ.focus();
+    if (!repriseEnCours) {
+      const champ = $("item-title");
+      if (champ && typeof champ.focus === "function") champ.focus();
+    }
   });
   const fermerAjout = $("close-add-item");
   if (fermerAjout) fermerAjout.addEventListener("click", () => fermerDialogue($("add-item-dialog")));
@@ -2002,21 +1609,48 @@ async function surClicLancerCyclePourSpec(specId) {
   const formeAjout = $("add-item-form");
   if (formeAjout) formeAjout.addEventListener("submit", (evenement) => {
     if (evenement && typeof evenement.preventDefault === "function") evenement.preventDefault();
-    if ($("add-item-intro")) {
-      $("add-item-intro").textContent = "Cette action n'est pas encore reliée à l'écriture — "
-        + "la rédaction automatique de la spec est hors périmètre de ce lot (feature-024).";
-    }
+    /* GATE C1 : UN clic ici = `POST /api/spec/brouillon` SEUL — jamais
+     * enchaîné à `/api/spec/ecrire`. `surClicGenererBrouillon` s'arrête à la
+     * phase "brouillon" ; c'est la relecture humaine du Markdown, PUIS un
+     * second clic explicite (« Écrire dans todo/… », dans
+     * `#add-item-redaction-corps`) qui atteint l'écriture — jamais ce
+     * gestionnaire de soumission. */
+    surClicGenererBrouillon("dialogue");
   });
 })();
 
-/* --------------------------------------------------------------- pilotage -- */
-/* Lancer un workflow déclaré, suivre sa sortie en direct, l'interrompre.
+/* --------------------------------------------------------------- pilotage --
+ * ⚠️ CE BLOC N'EST PLUS UN PANNEAU (feature-028, lot pilotage dédié,
+ * 2026-09-23) : le panneau générique « Piloter par clé » (`#pilotage-corps`,
+ * `#titre-pilotage`, son `<select>` de commandes, ses boutons Lancer/
+ * Confirmer/Interrompre/Nouveau lancement) a été RETIRÉ ENTIER — voir le
+ * commentaire à l'endroit de son ancienne définition, plus bas dans ce
+ * fichier, pour la décision et ce qui est PERDU avec lui. Ce qui SUBSISTE
+ * ici n'est plus « le pilotage », c'est l'ÉTAT D'EXÉCUTION PARTAGÉ dont
+ * dépendent DIRECTEMENT le lancement et l'interruption PAR CARTE
+ * (`surClicLancerCyclePourSpec`/`surClicInterromprePourSpec`, plus haut) :
+ *   - le jeton d'authentification (`enTeteAuthPilotage` et consorts) — sert
+ *     à TOUT appel authentifié de ce fichier, pas seulement au pilotage,
+ *     déjà avant ce lot ;
+ *   - `pilotage.lancement`/`pilotage.phase` — le suivi du lancement EN
+ *     COURS (sondage `demarrerSondagePilotage`/`sonderLancementPilotage`,
+ *     badge d'en-tête `rendreBadgePilotage`/`#jauge-pilotage`) ;
+ *   - `pilotage.cleChoisie` — la commande utilisée par TOUT lancement
+ *     déclenché depuis une carte, désormais TOUJOURS auto-choisie (la
+ *     première déclarée sous `[commandes]`, jamais plus choisie par un
+ *     humain depuis que le `<select>` qui permettait ce choix a disparu
+ *     avec le panneau).
+ * Renommer l'identifiant `pilotage` lui-même a été ENVISAGÉ (~80 usages
+ * dans ce fichier, plusieurs harnais de test l'invoquent aussi PAR SON NOM,
+ * `bac.sandbox.pilotage`/`rendreBadgePilotage`) et ÉCARTÉ : le risque d'un
+ * renommage mécanique sous ce volume dépassait le bénéfice d'un nom plus
+ * exact, pour une clarté que ce commentaire porte déjà. Décision de ce
+ * lot, pas un oubli — si un futur lecteur bute encore sur le nom, le
+ * renommage reste à faire, avec le temps qu'il mérite.
  *
- * Invariant central : `ecriture_active` (et `ecriture_raison`) est LU depuis
- * `/api/etat`, jamais redéduit ici d'une autre donnée (longueur de
- * `commandes_declarees`, constante, etc.) — c'est le même champ que celui qui
- * alimente les lignes « Budget max » / « Écrivains » du bloc Système
- * (rendreSysteme, ci-dessus).
+ * Invariant central : `ecriture_active` est LU depuis `/api/etat`, jamais
+ * redéduit ici d'une autre donnée (longueur de `commandes_declarees`,
+ * constante, etc.).
  *
  * Le jeton ne va JAMAIS en query string (il finirait dans des journaux
  * d'accès) : toujours dans l'en-tête `Authorization: Bearer …`. Il n'est posé
@@ -2026,14 +1660,9 @@ async function surClicLancerCyclePourSpec(specId) {
 const CLE_JETON_PILOTAGE = "pilotage_jeton";
 
 let pilotage = {
-  phase: "chargement",     // chargement | inactif | pret | confirmation | occupe | lancement
-  raison: null,
-  commandes: [],
-  budgetMaxUsd: null,
-  ecrivains: null,
-  cleChoisie: null,
-  confirmation: null,      // { cle, plafond, ecrivains, besoinJeton, erreur, enCours }
-  occupe: null,            // { texte }
+  phase: "chargement",     // chargement | inactif | pret | lancement
+  commandes: [],           // déclarées sous [commandes] — pour l'auto-sélection de cleChoisie
+  cleChoisie: null,        // commande utilisée par TOUT lancement déclenché depuis une carte
   lancement: null,         // { cle, etat, curseur, tronque, derniereActivite, debutClient, texteSortie, syntheticMessage }
 };
 
@@ -2328,14 +1957,6 @@ async function verifierEtatAuth() {
   }
 }
 
-function dureeLisiblePilotage(ms) {
-  if (ms === null || ms === undefined || ms < 0 || Number.isNaN(ms)) return null;
-  if (ms < 1000) return Math.round(ms) + " ms";
-  if (ms < 60000) return Math.round(ms / 1000) + " s";
-  const minutes = Math.floor(ms / 60000);
-  return minutes + " min " + Math.round((ms % 60000) / 1000) + " s";
-}
-
 function arreterSondagePilotage() {
   if (minuteurSondagePilotage) { clearInterval(minuteurSondagePilotage); minuteurSondagePilotage = null; }
 }
@@ -2360,419 +1981,41 @@ function rendreBadgePilotage(etat) {
   }
 }
 
-/* -- construction du DOM, entièrement redessiné à chaque changement de phase -- */
-function rendreSelecteurPilotage() {
-  const conteneur = el("div", "pilotage-select");
-  const label = el("label", "", "Commande à lancer");
-  label.htmlFor = "commande-lancer";
-  const select = document.createElement("select");
-  select.id = "commande-lancer";
-  pilotage.commandes.forEach((cle) => {
-    const option = el("option", "", cle);
-    option.value = cle;
-    if (cle === pilotage.cleChoisie) option.selected = true;
-    select.appendChild(option);
-  });
-  select.addEventListener("change", () => { pilotage.cleChoisie = select.value; });
-  conteneur.appendChild(label);
-  conteneur.appendChild(select);
-  return conteneur;
-}
-
-function rendreNotePlafondPilotage(budget, ecrivains) {
-  return el("p", "note",
-    "Plafond appliqué : " + (budget ?? "—") + " $ · Écrivains : " + (ecrivains ?? "—"));
-}
-
-function rendreConfirmationPilotage() {
-  const conf = pilotage.confirmation;
-  const enveloppe = document.createDocumentFragment();
-  enveloppe.appendChild(el("p", "note", "Commande sélectionnée : " + conf.cle));
-
-  const conteneur = el("div", "pilotage-confirmation");
-  const titre = el("p", "");
-  titre.appendChild(document.createTextNode("Lancer "));
-  titre.appendChild(el("strong", "", conf.cle));
-  titre.appendChild(document.createTextNode(" ?"));
-  conteneur.appendChild(titre);
-  conteneur.appendChild(el("p", "note",
-    "Plafond réellement appliqué : " + conf.plafond + " $ (relu à l'instant du serveur) · "
-    + "Écrivains : " + conf.ecrivains));
-
-  let champJeton = null;
-  if (conf.besoinJeton) {
-    const bloc = el("div", "pilotage-jeton");
-    const label = el("label", "", "Jeton de pilotage");
-    label.htmlFor = "confirmation-jeton";
-    champJeton = document.createElement("input");
-    champJeton.type = "password";
-    champJeton.id = "confirmation-jeton";
-    champJeton.autocomplete = "off";
-    champJeton.setAttribute("aria-describedby", "jeton-aide");
-    champJeton.disabled = conf.enCours;
-    const aide = el("p", "note",
-      "Jeton partagé du serveur — jamais mémorisé au-delà de cet onglet.");
-    aide.id = "jeton-aide";
-    bloc.appendChild(label);
-    bloc.appendChild(champJeton);
-    bloc.appendChild(aide);
-    conteneur.appendChild(bloc);
-  }
-
-  if (conf.erreur) {
-    const erreur = el("p", "note", conf.erreur);
-    erreur.setAttribute("role", "alert");
-    conteneur.appendChild(erreur);
-  }
-
-  const boutons = el("div", "pilotage-boutons");
-  const annuler = el("button", "pilotage-secondaire", "Annuler");
-  annuler.type = "button";
-  annuler.disabled = conf.enCours;
-  annuler.addEventListener("click", surClicAnnulerConfirmationPilotage);
-  const confirmer = el("button", "action-ecriture", "Confirmer le lancement");
-  confirmer.type = "button";
-  confirmer.id = "bouton-confirmer";
-  confirmer.disabled = conf.enCours;
-  confirmer.addEventListener("click", surClicConfirmerPilotage);
-  boutons.appendChild(annuler);
-  boutons.appendChild(confirmer);
-  conteneur.appendChild(boutons);
-  enveloppe.appendChild(conteneur);
-
-  /* Le sous-panneau REMPLACE le bouton in situ : le focus s'y pose, sur le
-   * premier contrôle utile (le champ jeton s'il est demandé, sinon
-   * directement la confirmation). */
-  requestAnimationFrame(() => { (champJeton || confirmer).focus(); });
-
-  return enveloppe;
-}
-
-function rendreOccupePilotage() {
-  const conteneur = el("div", "pilotage-occupe");
-  const texte = el("p", "note avert", pilotage.occupe.texte);
-  texte.setAttribute("role", "status");
-  texte.setAttribute("aria-live", "polite");
-  conteneur.appendChild(texte);
-  /* Modèle de permission binaire assumé (voir spec) : tout porteur du jeton
-   * peut interrompre, quel que soit celui qui a lancé. */
-  const bouton = el("button", "action-ecriture", "Interrompre");
-  bouton.type = "button";
-  bouton.addEventListener("click", surClicInterromprePilotage);
-  conteneur.appendChild(bouton);
-  return conteneur;
-}
-
-function construireLigneEtatPilotage(l) {
-  const ligne = el("p", "pilotage-ligne");
-  ligne.id = "pilotage-ligne-etat";
-  ligne.setAttribute("role", "status");
-  ligne.setAttribute("aria-live", "polite");
-
-  if (l.etat === "en_cours") {
-    const inactiviteMs = Date.now() - l.derniereActivite * 1000;
-    const bloque = inactiviteMs > 30000;
-    ligne.classList.add(bloque ? "bloque" : "en-cours");
-    const ecoule = dureeLisiblePilotage(inactiviteMs) || "0 s";
-    ligne.textContent = bloque
-      ? "● en cours — bloqué depuis " + ecoule
-      : "● en cours · dernière sortie il y a " + ecoule;
-  } else if (l.etat === "termine") {
-    ligne.classList.add("termine");
-    const dureeTxt = l.debutClient ? dureeLisiblePilotage(Date.now() - l.debutClient) : null;
-    ligne.textContent = "✓ terminé" + (dureeTxt ? " · durée " + dureeTxt : "");
-  } else if (l.etat === "echec") {
-    ligne.classList.add("echec");
-    const dureeTxt = l.debutClient ? dureeLisiblePilotage(Date.now() - l.debutClient) : null;
-    ligne.textContent = "✕ échoué"
-      + (l.syntheticMessage ? " · " + l.syntheticMessage : "")
-      + (dureeTxt ? " · durée " + dureeTxt : "");
-  } else if (l.etat === "interrompu") {
-    ligne.classList.add("interrompu");
-    ligne.textContent = "■ interrompu par l'utilisateur";
-  } else {
-    ligne.textContent = String(l.etat || "");
-  }
-  return ligne;
-}
-
-function rendreLancementPilotage() {
-  const l = pilotage.lancement;
-  const conteneur = el("div", "pilotage-lancement");
-  conteneur.appendChild(construireLigneEtatPilotage(l));
-
-  if (l.tronque) {
-    conteneur.appendChild(el("div", "pilotage-tronque",
-      "⚠ SORTIE TRONQUÉE — le début n'est pas affiché"));
-  }
-
-  const pre = document.createElement("pre");
-  pre.id = "sortie-lancement";
-  pre.textContent = l.texteSortie || "";
-  conteneur.appendChild(pre);
-
-  const boutons = el("div", "pilotage-boutons");
-  if (l.etat === "en_cours") {
-    const interrompre = el("button", "pilotage-secondaire", "Interrompre");
-    interrompre.type = "button";
-    interrompre.addEventListener("click", surClicInterromprePilotage);
-    boutons.appendChild(interrompre);
-  } else {
-    const nouveau = el("button", "action-ecriture", "Nouveau lancement");
-    nouveau.type = "button";
-    nouveau.addEventListener("click", surClicNouveauLancementPilotage);
-    boutons.appendChild(nouveau);
-  }
-  conteneur.appendChild(boutons);
-
-  requestAnimationFrame(() => { pre.scrollTop = pre.scrollHeight; });
-  return conteneur;
-}
-
-function rendrePilotage() {
-  const corps = $("pilotage-corps");
-  vider(corps);
-
-  if (pilotage.phase === "chargement") {
-    corps.appendChild(el("p", "vide", "chargement…"));
-  } else if (pilotage.phase === "inactif") {
-    const note = el("p", "note avert");
-    note.appendChild(document.createTextNode("Écriture non activée : "));
-    note.appendChild(el("strong", "", pilotage.raison || "raison inconnue"));
-    corps.appendChild(note);
-  } else if (pilotage.phase === "pret") {
-    if (!pilotage.commandes.length) {
-      corps.appendChild(el("p", "vide",
-        "aucune commande déclarée — ajoutez-en une sous [commandes] dans la "
-        + "configuration pour activer le pilotage"));
-      return;
-    }
-    corps.appendChild(rendreSelecteurPilotage());
-    corps.appendChild(rendreNotePlafondPilotage(pilotage.budgetMaxUsd, pilotage.ecrivains));
-    const bouton = el("button", "action-ecriture", "Lancer…");
-    bouton.type = "button";
-    bouton.id = "bouton-lancer";
-    bouton.addEventListener("click", surClicLancerPilotage);
-    corps.appendChild(bouton);
-  } else if (pilotage.phase === "confirmation") {
-    corps.appendChild(rendreConfirmationPilotage());
-  } else if (pilotage.phase === "occupe") {
-    corps.appendChild(rendreOccupePilotage());
-  } else if (pilotage.phase === "lancement") {
-    corps.appendChild(rendreLancementPilotage());
-  }
-}
-
-/* -- actions ------------------------------------------------------------- */
-async function surClicLancerPilotage() {
-  const bouton = $("bouton-lancer");
-  if (bouton) bouton.disabled = true;
-  try {
-    /* Plafond relu ICI, frais — jamais une valeur mise en cache par un sondage
-     * antérieur (SSE ou autre). */
-    const reponse = await fetch("/api/etat", { headers: enTeteAuthPilotage() });
-    if (reponse.status === 401) {
-      if (bouton) bouton.disabled = false;
-      return sur401Lecture();
-    }
-    const etat = await reponse.json();
-    dernierEtat = etat;
-    if (!etat.ecriture_active) {
-      pilotage.phase = "inactif";
-      pilotage.raison = etat.ecriture_raison;
-      rendrePilotage();
-      rendreBadgePilotage(etat);
-      return;
-    }
-    pilotage.commandes = etat.commandes_declarees || [];
-    pilotage.budgetMaxUsd = etat.garde_fous.budget_max_usd;
-    pilotage.ecrivains = etat.garde_fous.ecrivains_simultanes;
-    pilotage.confirmation = {
-      cle: pilotage.cleChoisie,
-      plafond: pilotage.budgetMaxUsd,
-      ecrivains: pilotage.ecrivains,
-      besoinJeton: modeAuth === "requis" && !jetonPilotageStocke(),
-      erreur: null,
-      enCours: false,
-    };
-    pilotage.phase = "confirmation";
-    rendrePilotage();
-  } catch (erreur) {
-    if (bouton) bouton.disabled = false;
-  }
-}
-
-function surClicAnnulerConfirmationPilotage() {
-  pilotage.confirmation = null;
-  pilotage.phase = "pret";
-  rendrePilotage();
-  const bouton = $("bouton-lancer");
-  if (bouton) bouton.focus();
-}
-
-async function surClicConfirmerPilotage() {
-  const conf = pilotage.confirmation;
-  if (!conf || conf.enCours) return;
-  let jeton = jetonPilotageStocke();
-  if (!jeton) {
-    const champ = $("confirmation-jeton");
-    jeton = champ ? champ.value : "";
-  }
-  if (!jeton) {
-    conf.erreur = "Jeton requis.";
-    rendrePilotage();
-    return;
-  }
-
-  conf.enCours = true;
-  conf.erreur = null;
-  rendrePilotage();
-
-  try {
-    const reponse = await fetch("/api/lancer", {
-      method: "POST",
-      headers: Object.assign({ "Content-Type": "application/json" }, enTeteAuthPilotage(jeton)),
-      body: JSON.stringify({ cle: conf.cle }),
-    });
-
-    if (reponse.status === 202) {
-      stockerJetonPilotage(jeton);
-      pilotage.lancement = {
-        cle: conf.cle, etat: "en_cours", curseur: 0, tronque: false,
-        derniereActivite: Date.now() / 1000, debutClient: Date.now(),
-        texteSortie: "", syntheticMessage: null,
-      };
-      pilotage.confirmation = null;
-      pilotage.phase = "lancement";
-      rendrePilotage();
-      rendreBadgePilotage(dernierEtat);
-      demarrerSondagePilotage();
-      return;
-    }
-
-    const donnees = await reponse.json().catch(() => ({}));
-
-    if (reponse.status === 401) {
-      oublierJetonPilotage();
-      conf.enCours = false;
-      conf.besoinJeton = true;
-      conf.erreur = "Jeton refusé.";
-      rendrePilotage();
-      return;
-    }
-    if (reponse.status === 403) {
-      pilotage.confirmation = null;
-      pilotage.phase = "inactif";
-      rendrePilotage();
-      const r = await fetch("/api/etat", { headers: enTeteAuthPilotage() });
-      const etat = await r.json();
-      dernierEtat = etat;
-      pilotage.raison = etat.ecriture_raison;
-      rendrePilotage();
-      rendreBadgePilotage(etat);
-      return;
-    }
-    if (reponse.status === 409) {
-      stockerJetonPilotage(jeton);
-      pilotage.occupe = { texte: donnees.erreur || "un écrivain occupe déjà la place" };
-      pilotage.confirmation = null;
-      pilotage.phase = "occupe";
-      rendrePilotage();
-      return;
-    }
-    if (reponse.status === 503) {
-      /* Aucun processus n'a été créé : le bouton ne repasse JAMAIS en
-       * « en cours » dans ce cas. */
-      stockerJetonPilotage(jeton);
-      pilotage.lancement = {
-        cle: conf.cle, etat: "echec", curseur: 0, tronque: false,
-        derniereActivite: Date.now() / 1000, debutClient: null,
-        texteSortie: "", syntheticMessage: donnees.erreur || "plafond de dépense non transmissible",
-      };
-      pilotage.confirmation = null;
-      pilotage.phase = "lancement";
-      rendrePilotage();
-      return;
-    }
-    if (reponse.status === 404) {
-      conf.enCours = false;
-      conf.erreur = "Clé de commande inconnue — la liste a peut-être changé.";
-      rendrePilotage();
-      return;
-    }
-    conf.enCours = false;
-    conf.erreur = "Erreur du serveur (" + reponse.status + ").";
-    rendrePilotage();
-  } catch (erreur) {
-    conf.enCours = false;
-    conf.erreur = "Erreur réseau : " + erreur.message;
-    rendrePilotage();
-  }
-}
-
-async function surClicInterromprePilotage() {
-  try {
-    /* Corps VIDE mais explicite : sans lui, certains clients HTTP n'émettent
-     * aucun `Content-Length`, que `do_POST` exige avant toute autre garde
-     * (411 sinon) — vérifié par exécution sur ce module (`curl -X POST` sans
-     * `--data` échoue en 411, `--data ''` réussit). */
-    const reponse = await fetch("/api/interrompre", {
-      method: "POST",
-      headers: enTeteAuthPilotage(),
-      body: "",
-    });
-    if (reponse.status === 202) {
-      if (pilotage.phase === "occupe") {
-        /* On ne connaît ni la clé exacte ni un curseur pertinent pour ce
-         * lancement qu'on n'a pas soi-même démarré : on repart de 0, comme au
-         * chargement de page — c'est ce qui rend la reconnexion possible sans
-         * état persistant côté client. */
-        pilotage.lancement = {
-          cle: null, etat: "en_cours", curseur: 0, tronque: false,
-          derniereActivite: Date.now() / 1000, debutClient: null,
-          texteSortie: "", syntheticMessage: null,
-        };
-        pilotage.occupe = null;
-        pilotage.phase = "lancement";
-        rendrePilotage();
-        rendreBadgePilotage(dernierEtat);
-        demarrerSondagePilotage();
-      }
-      return;
-    }
-    if (reponse.status === 401) {
-      oublierJetonPilotage();
-      return;
-    }
-    if (reponse.status === 403) {
-      pilotage.phase = "inactif";
-      rendrePilotage();
-      const r = await fetch("/api/etat", { headers: enTeteAuthPilotage() });
-      const etat = await r.json();
-      dernierEtat = etat;
-      pilotage.raison = etat.ecriture_raison;
-      rendrePilotage();
-      rendreBadgePilotage(etat);
-      return;
-    }
-    if (reponse.status === 404 && pilotage.phase === "occupe") {
-      pilotage.occupe = null;
-      pilotage.phase = "pret";
-      rendrePilotage();
-    }
-  } catch (erreur) {
-    /* Réessayable : le bouton reste affiché, rien n'est changé côté état. */
-  }
-}
-
-function surClicNouveauLancementPilotage() {
-  arreterSondagePilotage();
-  pilotage.lancement = null;
-  pilotage.phase = "pret";
-  rendrePilotage();
-  const bouton = $("bouton-lancer");
-  if (bouton) bouton.focus();
-}
+/* `rendreSelecteurPilotage`/`rendreNotePlafondPilotage`/
+ * `rendreConfirmationPilotage`/`rendreOccupePilotage`/
+ * `construireLigneEtatPilotage`/`rendreLancementPilotage`/`rendrePilotage`/
+ * `surClicLancerPilotage`/`surClicAnnulerConfirmationPilotage`/
+ * `surClicConfirmerPilotage`/`surClicInterromprePilotage`/
+ * `surClicNouveauLancementPilotage` SUPPRIMÉES ICI (feature-028, lot
+ * pilotage dédié, décision humaine du 2026-09-23 : « Pour le pilotage,
+ * lance le lot ») — c'était le panneau générique « Piloter par clé »
+ * (`#pilotage-corps`, `#titre-pilotage`), retiré entier. Le lancement
+ * générique par clé ne pouvait de toute façon lancer QUE ce que
+ * `[commandes]` déclare, et la configuration ne déclare que `demo` et
+ * `lent`, deux commandes d'exemple sans usage réel (« Demo ou lent
+ * n'ont pas de sens », décision humaine). ⚠️ SI une VRAIE commande est un
+ * jour déclarée dans `[commandes]`, elle n'aura plus AUCUN point d'accès
+ * générique — c'est une capacité retirée sous une CONDITION
+ * D'ENVIRONNEMENT (la configuration actuelle ne déclare que des
+ * exemples), pas sous une décision de conception : à re-corriger le jour
+ * où cette condition change, pas à re-découvrir.
+ * ⚠️ EFFET DE BORD signalé (pas dans le périmètre de la décision
+ * ci-dessus, mais découvert en la préparant) : `rendreNotePlafondPilotage`
+ * était le DERNIER porteur de « Budget max » / « Écrivains » — leur
+ * PREMIER porteur, la section `systeme`, avait déjà disparu (feature-028,
+ * décision humaine antérieure, retrait sec sans migration). Cette
+ * information n'est donc plus affichée NULLE PART après ce lot.
+ * `pilotage.confirmation`/`pilotage.occupe`/`pilotage.budgetMaxUsd`/
+ * `pilotage.ecrivains`/`pilotage.raison` retirés de l'état partagé avec
+ * elles, plus aucun lecteur.
+ * `dureeLisiblePilotage` retirée plus haut, seule appelante
+ * (`construireLigneEtatPilotage`) disparue avec le reste.
+ * L'INFRASTRUCTURE PARTAGÉE SURVIT (voir le commentaire d'introduction du
+ * bloc « pilotage », plus haut) : `pilotage` (objet), `arreterSondagePilotage`,
+ * `rendreBadgePilotage`, `demarrerSondagePilotage`/`sonderLancementPilotage`,
+ * `initialiserPilotage`/`actualiserPilotage` restent — le lancement et
+ * l'interruption PAR CARTE (`surClicLancerCyclePourSpec`/
+ * `surClicInterromprePourSpec`) en dépendent directement. */
 
 /* -- sondage de la sortie, ~1 s, PENDANT un lancement seulement -- */
 function demarrerSondagePilotage() {
@@ -2799,7 +2042,6 @@ async function sonderLancementPilotage() {
       pilotage.lancement.derniereActivite = donnees.derniere_activite;
       pilotage.lancement.etat = donnees.etat;
       if (donnees.etat !== "en_cours") arreterSondagePilotage();
-      rendrePilotage();
       rendreBadgePilotage(dernierEtat);
     } else if (reponse.status === 401) {
       sur401Lecture();
@@ -2809,8 +2051,6 @@ async function sonderLancementPilotage() {
       const r = await fetch("/api/etat", { headers: enTeteAuthPilotage() });
       const etat = await r.json();
       dernierEtat = etat;
-      pilotage.raison = etat.ecriture_raison;
-      rendrePilotage();
       rendreBadgePilotage(etat);
     } else if (reponse.status === 404) {
       arreterSondagePilotage();
@@ -2851,22 +2091,17 @@ async function initialiserPilotage(etat) {
       /* Reconnexion ratée : on retombe simplement sur l'état « pret ». */
     }
   }
-  rendrePilotage();
   rendreBadgePilotage(dernierEtat);
 }
 
 function actualiserPilotage(etat) {
-  pilotage.budgetMaxUsd = etat.garde_fous.budget_max_usd;
-  pilotage.ecrivains = etat.garde_fous.ecrivains_simultanes;
   pilotage.commandes = etat.commandes_declarees || [];
-  pilotage.raison = etat.ecriture_raison;
 
   if (!etat.ecriture_active) {
     /* Un lancement réellement en cours survit côté serveur : l'interface
      * cesse seulement de prétendre pouvoir le piloter depuis cet onglet. */
     arreterSondagePilotage();
     pilotage.phase = "inactif";
-    rendrePilotage();
     rendreBadgePilotage(etat);
     return;
   }
@@ -2877,13 +2112,12 @@ function actualiserPilotage(etat) {
   }
 
   /* Les autres phases ne se réinitialisent jamais depuis `/api/etat` : ce
-   * champ ne porte que `ecriture_active` / `ecriture_raison` et les
-   * garde-fous affichés — jamais l'état d'un lancement, qui vient
+   * champ ne porte que `ecriture_active` et `commandes_declarees` (pour
+   * l'auto-sélection ci-dessous) — jamais l'état d'un lancement, qui vient
    * exclusivement de `/api/lancement`. */
   if (pilotage.phase === "pret" && !pilotage.cleChoisie && pilotage.commandes.length) {
     pilotage.cleChoisie = pilotage.commandes[0];
   }
-  rendrePilotage();
   rendreBadgePilotage(etat);
 }
 
@@ -2900,11 +2134,23 @@ function actualiserPilotage(etat) {
  * plus une erreur qui NE QUITTE JAMAIS la phase où elle survient — jamais de
  * reset du texte du besoin, du brouillon ou du contenu édité.
  *
- * Design arrêté (ux-ui-designer, feature-008) : panneau en FLUX normal dans
- * `.demande`, aucune surface `role="dialog"`/`.porte` pour ce flux tant que
- * bug-017 (la porte d'authentification ne rend pas le reste du document
- * inerte au clavier) n'est pas corrigé — rebâtir une modale ici exposerait
- * le même défaut sur une action plus grave (écriture de fichier sur disque).
+ * Design arrêté à l'origine (ux-ui-designer, feature-008) : panneau en FLUX
+ * normal dans `.demande`, aucune surface `role="dialog"`/`.porte` POUR CE
+ * FLUX tant que bug-017 (la porte d'authentification ne rendait pas le
+ * reste du document inerte au clavier) n'était pas corrigé — rebâtir une
+ * modale À LA `#porte-jeton` (un `div[role=dialog]` maison) ici aurait
+ * exposé le même défaut sur une action plus grave.
+ * ⚠️ ÉCART DÉCLARÉ (feature-028, lot B, GATE C1/C2) : le flux vit désormais
+ * AUSSI dans `#add-item-dialog`, un `<dialog>` NATIF (`showModal()`), jamais
+ * un second `div[role=dialog]` maison. `test_app_feature025_a11y_
+ * navigateur.py` a mesuré, sur `#delete-dialog`, que la sémantique modale
+ * NATIVE du navigateur place déjà le reste du document hors de portée du
+ * focus et du clic — c'est exactement la protection que bug-017 exigeait,
+ * obtenue par un mécanisme DIFFÉRENT (le moteur de rendu, pas un `inert`
+ * posé à la main). Le risque que la conception d'origine écartait
+ * (`#porte-jeton` qui ne rendrait pas le reste inerte) ne se reproduit donc
+ * pas ici. Machine à états et fonctions PARTAGÉES entre les deux surfaces
+ * (`SURFACES_REDACTION` ci-dessous) — jamais un second chemin, GATE C1.
  *
  * `ecriture_active` / `ecriture_raison` sont lus depuis le MÊME `dernierEtat`
  * que le bloc Pilotage (aucun nouvel appel réseau) : le bouton « Écrire… »
@@ -2928,7 +2174,69 @@ let redaction = {
   compteRemplir: 0,
   derogationIgnoree: false, // dérogation cochée mais template complet imposé
   ecrit: null,              // { chemin, numero }
+  /* "demande" | "dialogue" | null — QUELLE surface a produit ce brouillon,
+   * posé au premier "Générer" et relu par "Régénérer"/"Écrire…"/"Nouveau
+   * brouillon" pour cibler le bon corps (`SURFACES_REDACTION`) SANS relire
+   * un id figé. `null` avant toute génération : aucune des deux ne rend
+   * quoi que ce soit tant que `phase === "saisie"`. */
+  surface: null,
 };
+
+/* SEUL point d'entrée du flux (`#add-item-dialog`, le `+`) — `demande`
+ * (« Que souhaitez-vous développer ? ») portait un second point d'entrée,
+ * RETIRÉ (feature-028, lot C2, une fois B3 vérifié). La table reste une
+ * table (plutôt que des constantes en dur) : c'était déjà la forme choisie
+ * pour partager la machine à états entre DEUX surfaces (GATE C1, jamais un
+ * second chemin), et rien n'empêche qu'une autre en rejoigne un jour.
+ * `typeBugId`/`typeFeatureId` (radios Feature/Bug, déjà au prototype, F0)
+ * pilotent `type` ; `derogationId` (feature-028, lot pilotage dédié — ajout
+ * requis par `CLAUDE.md` : « pour un bug simple ou un refactor ponctuel, le
+ * format minimal specs/modele.md suffit », pas une question de goût) pilote
+ * `minimal`, INDÉPENDAMMENT du type choisi — contrairement à `demande`
+ * (retirée), qui dérivait les deux d'UNE SEULE case. Un « bug » n'exige pas
+ * forcément le gabarit minimal, ni l'inverse : les deux réglages restent
+ * des choix séparés sur cette surface. */
+const SURFACES_REDACTION = {
+  dialogue: {
+    corps: "add-item-redaction-corps",
+    erreurBrouillonId: "erreur-generer-item-brouillon",
+    boutonGenererId: "bouton-generer-item-brouillon",
+    titreId: "item-title",
+    texteId: "item-description",
+    derogationId: "item-derogation-minimale",
+    typeBugId: "item-type-bug",
+    typeFeatureId: "item-type-feature",
+  },
+};
+
+/* Rend `{ titre, texte, type, minimal }` ou `null` si un champ requis est
+ * absent de CE bac à sable (harnais plus ancien, PIEGES §38) — jamais une
+ * exception qui remonterait jusqu'à l'appelant. `type` (radio) et `minimal`
+ * (case de dérogation) sont lus INDÉPENDAMMENT l'un de l'autre — voir le
+ * commentaire sur `SURFACES_REDACTION` ci-dessus. */
+function lireChampsSurface(nomSurface) {
+  const conf = SURFACES_REDACTION[nomSurface];
+  if (!conf) return null;
+  const champTitre = $(conf.titreId);
+  const champTexte = $(conf.texteId);
+  if (!champTitre || !champTexte) return null;
+
+  let type = "feature";
+  if (conf.typeBugId) {
+    const radioBug = $(conf.typeBugId);
+    if (!radioBug) return null;
+    type = radioBug.checked ? "bug" : "feature";
+  }
+
+  let minimal = false;
+  if (conf.derogationId) {
+    const champDerogation = $(conf.derogationId);
+    if (!champDerogation) return null;
+    minimal = champDerogation.checked;
+  }
+
+  return { titre: champTitre.value, texte: champTexte.value, type: type, minimal: minimal };
+}
 
 let minuteurCompteRemplir = null;
 
@@ -2960,23 +2268,28 @@ function texteCompteRemplir(n) {
   return n + (n === 1 ? " bloc [remplir] restant" : " blocs [remplir] restants");
 }
 
-function actualiserCompteurPrompt() {
-  const champ = $("spec-prompt");
-  const compteur = $("compteur-prompt");
-  if (!champ || !compteur) return;
-  const n = champ.value.length;
-  compteur.textContent = n + (n === 1 ? " caractère" : " caractères");
-}
+/* `actualiserCompteurPrompt`/`#compteur-prompt` SUPPRIMÉS (U1 de
+ * feature-021, feature-028 lot A1) : il comptait un textarea sans limite
+ * déclarée, donc ne prévenait d'aucun plafond réel. */
 
-function afficherErreurGenerationStatique(message) {
-  const p = $("erreur-generer-brouillon");
+/* `nomSurface` : celle qui a déclenché l'appel — retombe sur
+ * `redaction.surface` (déjà posé par `surClicGenererBrouillon`) si omis,
+ * jamais sur "demande" en dur (sinon un message d'erreur de la surface
+ * `dialogue` s'afficherait dans le panneau de l'AUTRE, invisible côté
+ * dialogue). */
+function afficherErreurGenerationStatique(message, nomSurface) {
+  const conf = SURFACES_REDACTION[nomSurface || redaction.surface];
+  if (!conf) return;
+  const p = $(conf.erreurBrouillonId);
   if (!p) return;
   p.textContent = message;
   p.hidden = false;
 }
 
-function masquerErreurGenerationStatique() {
-  const p = $("erreur-generer-brouillon");
+function masquerErreurGenerationStatique(nomSurface) {
+  const conf = SURFACES_REDACTION[nomSurface || redaction.surface];
+  if (!conf) return;
+  const p = $(conf.erreurBrouillonId);
   if (!p) return;
   p.hidden = true;
   p.textContent = "";
@@ -3035,7 +2348,10 @@ function rendreBrouillonRedaction() {
   const regenerer = el("button", "pilotage-secondaire", "Régénérer");
   regenerer.type = "button";
   regenerer.disabled = redaction.enCoursBrouillon;
-  regenerer.addEventListener("click", surClicGenererBrouillon);
+  /* SANS argument : relit `redaction.surface`, déjà posé au premier
+   * « Générer » — jamais l'objet Event que `addEventListener` fournirait
+   * en premier paramètre si la fonction était passée directement ici. */
+  regenerer.addEventListener("click", () => surClicGenererBrouillon());
   boutons.appendChild(regenerer);
 
   const ecritureActive = Boolean(dernierEtat && dernierEtat.ecriture_active);
@@ -3131,7 +2447,17 @@ function rendreEcritRedaction() {
 
 function rendreRedaction() {
   clearTimeout(minuteurCompteRemplir);
-  const corps = $("redaction-corps");
+  /* Vide l'AUTRE surface si elle porte un résidu — coexistence TRANSITOIRE
+   * de `demande` et `dialogue` (feature-028, lot B ; `demande` retirée juste
+   * après, lot C2) : jamais un contenu périmé affiché à côté du flux
+   * réellement actif. */
+  Object.keys(SURFACES_REDACTION).forEach((nom) => {
+    if (nom === redaction.surface) return;
+    const autre = $(SURFACES_REDACTION[nom].corps);
+    if (autre) vider(autre);
+  });
+  const conf = SURFACES_REDACTION[redaction.surface];
+  const corps = conf && $(conf.corps);
   if (!corps) return;
   vider(corps);
   if (redaction.phase === "brouillon") {
@@ -3146,31 +2472,37 @@ function rendreRedaction() {
 
 /* -- actions ------------------------------------------------------------- */
 
-/* Sert à la fois « Générer le brouillon » (phase saisie) et « Régénérer »
- * (phase brouillon) : les deux relisent les MÊMES champs (`#titre-besoin`,
- * `#spec-prompt`, `#derogation-minimale`) — Régénérer n'agit jamais sur le texte
- * édité du brouillon, seulement sur le besoin d'origine (voir message du
- * 409). La case « bug simple / refactor ponctuel » pilote À LA FOIS le
- * PRÉFIXE de fichier demandé (`type` : "bug" plutôt que "feature") et
- * la RICHESSE de template demandée (`minimal`) — le serveur peut honorer
- * l'un sans l'autre (fail-closed sur la richesse seulement, voir
- * `contenuEstGabaritMinimal`), jamais l'inverse : le frontend ne décide
- * rien, il relit ce que le contenu renvoyé révèle. */
-async function surClicGenererBrouillon() {
-  const champTitre = $("titre-besoin");
-  const champPrompt = $("spec-prompt");
-  const champDerogation = $("derogation-minimale");
-  if (!champTitre || !champPrompt || !champDerogation) return;
-  const titre = champTitre.value;
-  const texte = champPrompt.value;
-  const derogationDemandee = champDerogation.checked;
-  const type = derogationDemandee ? "bug" : "feature";
+/* Sert à la fois « Générer le brouillon » (phase saisie, sur L'UNE DES DEUX
+ * surfaces) et « Régénérer » (phase brouillon, TOUJOURS sur la surface déjà
+ * engagée — GATE C1, jamais un second chemin) : les trois relisent les
+ * MÊMES champs de LA MÊME surface (`SURFACES_REDACTION`, `lireChampsSurface`)
+ * — Régénérer n'agit jamais sur le texte édité du brouillon, seulement sur
+ * le besoin d'origine (voir message du 409).
+ *
+ * `nomSurfaceExplicite` : fourni SEULEMENT par les deux boutons "Générer"
+ * (un par surface) ; omis par "Régénérer" (relit `redaction.surface`, déjà
+ * posé au premier appel). Un appelant qui passerait un objet Event par
+ * erreur (patron `addEventListener(type, fn)`) ne casse rien : une chaîne
+ * absente de `SURFACES_REDACTION` retombe silencieusement sur
+ * `redaction.surface`. */
+async function surClicGenererBrouillon(nomSurfaceExplicite) {
+  const surface = (typeof nomSurfaceExplicite === "string" && SURFACES_REDACTION[nomSurfaceExplicite])
+    ? nomSurfaceExplicite : redaction.surface;
+  const conf = SURFACES_REDACTION[surface];
+  if (!conf) return;
+  const champs = lireChampsSurface(surface);
+  if (!champs) return;
+  const titre = champs.titre;
+  const texte = champs.texte;
+  const type = champs.type;
+  const minimal = champs.minimal;
   const enRegeneration = redaction.phase === "brouillon";
 
+  redaction.surface = surface;
   redaction.enCoursBrouillon = true;
   redaction.erreurBrouillon = null;
-  masquerErreurGenerationStatique();
-  const boutonInitial = $("bouton-generer-brouillon");
+  masquerErreurGenerationStatique(surface);
+  const boutonInitial = $(conf.boutonGenererId);
   if (boutonInitial) boutonInitial.disabled = true;
   if (enRegeneration) rendreRedaction();
 
@@ -3178,7 +2510,7 @@ async function surClicGenererBrouillon() {
     const reponse = await fetch("/api/spec/brouillon", {
       method: "POST",
       headers: Object.assign({ "Content-Type": "application/json" }, enTeteAuthPilotage()),
-      body: JSON.stringify({ type: type, titre: titre, texte: texte, minimal: derogationDemandee }),
+      body: JSON.stringify({ type: type, titre: titre, texte: texte, minimal: minimal }),
     });
 
     if (reponse.status === 401) {
@@ -3200,7 +2532,7 @@ async function surClicGenererBrouillon() {
         genre: donnees.genre,
         titre: titre,
         texte: texte,
-        minimal: derogationDemandee,
+        minimal: minimal,
         slug: donnees.slug,
         nomFichierPrevu: donnees.nom_fichier_prevu,
         substitutions: donnees.substitutions || [],
@@ -3211,7 +2543,7 @@ async function surClicGenererBrouillon() {
        * mais non honorée par le serveur (mot-clé sensible détecté côté
        * serveur, fail-closed) se voit — `genre` n'est qu'un écho de `type`,
        * la seule preuve fiable est dans le CONTENU renvoyé. */
-      redaction.derogationIgnoree = derogationDemandee && !contenuEstGabaritMinimal(redaction.contenu);
+      redaction.derogationIgnoree = minimal && !contenuEstGabaritMinimal(redaction.contenu);
       redaction.enCoursBrouillon = false;
       redaction.phase = "brouillon";
       rendreRedaction();
@@ -3230,12 +2562,12 @@ async function surClicGenererBrouillon() {
     }
     redaction.erreurBrouillon = message;
     if (enRegeneration) rendreRedaction();
-    else afficherErreurGenerationStatique(message);
+    else afficherErreurGenerationStatique(message, surface);
   } catch (erreur) {
     redaction.enCoursBrouillon = false;
     redaction.erreurBrouillon = "Erreur réseau : " + erreur.message;
     if (enRegeneration) rendreRedaction();
-    else afficherErreurGenerationStatique(redaction.erreurBrouillon);
+    else afficherErreurGenerationStatique(redaction.erreurBrouillon, surface);
   } finally {
     if (boutonInitial) boutonInitial.disabled = false;
   }
@@ -3350,32 +2682,55 @@ async function surClicConfirmerEcriture() {
 }
 
 function surClicNouveauBrouillon() {
+  const surface = redaction.surface;
+  const conf = SURFACES_REDACTION[surface];
   redaction = {
     phase: "saisie", enCoursBrouillon: false, enCoursEcriture: false,
     erreurBrouillon: null, erreurEcriture: null, brouillon: null,
     contenu: "", compteRemplir: 0, derogationIgnoree: false, ecrit: null,
+    surface: surface,
   };
-  masquerErreurGenerationStatique();
-  const champTitre = $("titre-besoin");
-  const champPrompt = $("spec-prompt");
-  const champDerogation = $("derogation-minimale");
-  if (champTitre) champTitre.value = "";
-  if (champPrompt) champPrompt.value = "";
-  if (champDerogation) champDerogation.checked = false;
-  actualiserCompteurPrompt();
+  masquerErreurGenerationStatique(surface);
+  if (conf) {
+    const champTitre = $(conf.titreId);
+    const champTexte = $(conf.texteId);
+    if (champTitre) champTitre.value = "";
+    if (champTexte) champTexte.value = "";
+    if (conf.derogationId) {
+      const champDerogation = $(conf.derogationId);
+      if (champDerogation) champDerogation.checked = false;
+    }
+    if (conf.typeBugId) {
+      const radioBug = $(conf.typeBugId);
+      if (radioBug) radioBug.checked = false;
+    }
+    if (conf.typeFeatureId) {
+      const radioFeature = $(conf.typeFeatureId);
+      if (radioFeature) radioFeature.checked = true;
+    }
+  }
   rendreRedaction();
-  if (champTitre) champTitre.focus();
+  if (conf) {
+    const champTitre = $(conf.titreId);
+    if (champTitre) champTitre.focus();
+  }
 }
 
 /* ------------------------------------------------------------ conversation --
- * feature-022 (absorbée, lot 11) : panneau de conversation permanent avec
- * l'agent principal. `GET /api/conversation` ne porte QUE les messages
- * UTILISATEUR persistés (S3.4/D2, server.py `_conversation_lire`) — la
- * réponse de l'agent vit dans le tampon circulaire de `/api/lancement`,
- * jamais recopiée ici. Ce panneau n'affiche donc AUCUNE bulle « Claude »
- * fabriquée : `#claude-status` reflète un fait réel (« disponible » = un
- * lancement accepte le canal, backend `lancement_conversation()`), jamais un
- * texte inventé (PIEGES §16).
+ * feature-022 (absorbée, lot 11), REBRANCHÉE par feature-026 sur la session
+ * Claude remote persistante quand `[session]` est déclarée en configuration.
+ * DEUX canaux distincts, jamais fusionnés côté backend (`server.py`) :
+ *  - ancien canal (`feature-022`, `[session]` absente) : `GET /api/conversation`
+ *    ne porte QUE les messages UTILISATEUR persistés par le cockpit lui-même
+ *    (`_conversation_lire`) — aucun `etat`/`destinataire` dans le corps ;
+ *  - nouveau canal (`feature-026`, `[session]` déclarée) : le fil vient du
+ *    TRANSCRIPT réel de la session tmux persistante, DEUX rôles
+ *    (`user`/`assistant`, `fil.py`), et le corps porte `etat`/`destinataire`
+ *    BRUTS — c'est le backend qui fait foi sur l'état affiché, jamais une
+ *    dérivation locale d'un code HTTP (voir `libellePastilleClaude`).
+ * Ce panneau n'affiche donc AUCUNE bulle « Claude » fabriquée : tout texte
+ * assistant vient soit du transcript réel (canal feature-026), soit — sur
+ * l'ancien canal — du seul fait `etat.agents[].actif_sur` (PIEGES §16).
  *
  * Trois états de lecture (chargement/erreur/vide), comme partout ailleurs
  * dans ce module :
@@ -3392,25 +2747,57 @@ function surClicNouveauBrouillon() {
  */
 let conversation = {
   phase: "chargement",   // chargement | disponible | indisponible | erreur
+  etat: null,            // libellé BRUT du backend (feature-026, `_LIBELLES_ETAT_SESSION`) :
+                          // "En ligne"/"Occupée"/"Hors ligne"/"Injoignable" — fait FOI quand
+                          // présent, jamais redérivé d'un code HTTP (voir `libellePastilleClaude`).
+  destinataire: null,    // texte BRUT du backend (`"session tmux %r" % nom`), jamais reformulé.
   messages: [],
   tronque: false,
   erreurLecture: null,
   envoiEnCours: false,
 };
 
-function heureDepuisMs(ts) {
-  if (typeof ts !== "number" || !isFinite(ts)) return "";
-  try {
-    return new Date(ts).toISOString().slice(11, 19);
-  } catch (erreur) {
-    return "";
-  }
+/* Le backend fait FOI sur l'état affiché (feature-026, ux-ui-designer étape 5 :
+ * « le libellé vient du backend, le JS ne le redérive plus d'un code HTTP »).
+ * `conversation.etat` n'est renseigné QUE quand le corps de réponse le porte
+ * (chemin session tmux persistante) ; l'ANCIEN canal (`feature-022`, aucune
+ * `[session]` déclarée) n'en a jamais porté et retombe sur la dérivation
+ * locale ci-dessous — seul repli légitime, puisqu'aucune donnée backend
+ * n'existe à faire foi dans ce cas. */
+function libellePastilleClaude() {
+  if (conversation.etat) return conversation.etat;
+  if (conversation.phase === "chargement") return "…";
+  if (conversation.phase === "disponible") return "En ligne";
+  if (conversation.phase === "indisponible") return "Hors ligne";
+  return "Injoignable";
 }
 
-/* Construit UN message. `auteur` distingue seulement le glyphe de l'avatar
- * (texte, jamais une image ni une classe neuve) — `message`/`message-avatar`/
- * `bubble` restent les SEULES classes adoptées pour ce rôle (F0) : pas de
- * variante « utilisateur » inventée hors du prototype.
+/* TROIS entrées (correction ux-ui-designer, étape 5bis) — « Occupée »
+ * DISPARAÎT du badge : la maquette normative ne code qu'UN SEUL état, et
+ * cette entrée servait à BLOQUER l'envoi. `appliquerEtatComposer` PLIE
+ * « Occupée » sur « En ligne » avant de lire cette table (voir
+ * `libelleBadge`) — l'objet lui-même ne porte donc plus jamais cette clé.
+ * L'information n'est pas perdue : elle vit dans le FIL, voir
+ * `rendreMessageActiviteClaude`/`texteActiviteClaude` ci-dessous. Le
+ * `title` d'incertitude (`_TITRE_HEURISTIQUE_PASTILLE`, SUPPRIMÉ) quitte le
+ * badge avec elle et se redépose sur ce même indicateur de fil. */
+const _CLASSE_ETAT_PASTILLE = {
+  "En ligne": "is-en-ligne",
+  "Hors ligne": "is-hors-ligne", "Injoignable": "is-injoignable",
+};
+
+/* Construit UN message. `role` ("assistant" ou tout le reste, traité comme
+ * "utilisateur") distingue le glyphe de l'avatar ET le palier tonal de la
+ * bulle — `--surface-high` (utilisateur) contre `--surface-low` (assistant,
+ * inchangé, seul rôle codé par le prototype). Aucune couleur neuve, aucun
+ * alignement inventé : même colonne, même alignement (piège trouvé par
+ * l'ux-ui-designer, journal de bord étape 5). Le rôle est porté à
+ * l'accessibilité par `aria-label` sur l'article, le glyphe restant
+ * `aria-hidden`.
+ *
+ * `promptSource` (`"queued"`/`"typed"`, feature-026) affiché BRUT, sans
+ * traduction, juste après l'horodatage — absent (canal `feature-022`, ou
+ * champ manquant) : rien n'est affiché, jamais une valeur inventée.
  *
  * `envoye === false` (revue de code, cycle `feature-021`, B3) : le serveur
  * écrit désormais `"envoye": false` AVANT toute tentative, basculé à `true`
@@ -3420,12 +2807,21 @@ function heureDepuisMs(ts) {
  * contredirait alors le bandeau d'erreur affiché au moment de l'envoi. La
  * marque réutilise `.note.erreur` (AUCUNE classe neuve) : même texte,
  * jamais porté par la seule couleur. */
-function rendreMessageConversation(auteur, glyphe, texteMessage, ts, envoye) {
+function rendreMessageConversation(role, texteMessage, ts, promptSource, envoye) {
+  const estAssistant = role === "assistant";
   const article = el("article", "message");
-  article.appendChild(el("span", "message-avatar", glyphe)).setAttribute("aria-hidden", "true");
-  const bulle = el("div", "bubble");
-  const heureTexte = heureDepuisMs(ts);
+  article.setAttribute("aria-label", estAssistant ? "Message de l'assistant" : "Message de l'utilisateur");
+  article.appendChild(el("span", "message-avatar", estAssistant ? "✺" : "→")).setAttribute("aria-hidden", "true");
+  const bulle = el("div", "bubble" + (estAssistant ? "" : " is-utilisateur"));
+  // `ts` : ISO-8601 UTC BRUT (backend, jamais fabriqué) — `heure()` (l.25)
+  // en extrait `HH:MM:SS` sans conversion, même helper que le reste du
+  // tableau de bord. Absent (`null`) : aucune heure affichée, jamais une
+  // heure de LECTURE qui se ferait passer pour une heure d'ÉMISSION.
+  const heureTexte = heure(ts);
   if (heureTexte) bulle.appendChild(el("time", "", heureTexte));
+  if (typeof promptSource === "string" && promptSource) {
+    bulle.appendChild(el("span", "prompt-source", promptSource));
+  }
   bulle.appendChild(document.createTextNode(texteMessage));
   if (envoye === false) {
     bulle.appendChild(el("p", "note erreur", "Non envoyé — réessayez."));
@@ -3443,28 +2839,61 @@ function texteActiviteClaude(etat) {
 }
 
 /* Bulle « statut réel de Claude » (jamais un message fabriqué) : porte
- * `#claude-live-message` (id adopté, F0) autour du texte DÉRIVÉ de
- * `etat.agents[].actif_sur` — jamais inventé. Reconstruite à chaque rendu,
- * comme le reste de `#conversation` (PIEGES §38 : un id créé dynamiquement
- * n'existe qu'après ce rendu). */
-function rendreMessageActiviteClaude(texteActivite) {
+ * `#claude-live-message` (id adopté, F0) autour d'un texte DÉRIVÉ — soit de
+ * `etat.agents[].actif_sur` (ancien canal, feature-022), soit de
+ * `conversation.etat === "Occupée"` (canal session tmux, feature-026,
+ * correction ux-ui-designer étape 5bis : « Claude travaille… » va DANS LE
+ * FIL, jamais dans le badge, comme le vrai client) — jamais inventé.
+ * Reconstruite à chaque rendu, comme le reste de `#conversation` (PIEGES
+ * §38 : un id créé dynamiquement n'existe qu'après ce rendu).
+ * `titre`, s'il est fourni, porte la même mise en garde que le badge
+ * portait AVANT cette correction (« Déterminé par lecture de l'écran
+ * (heuristique). ») — elle ne s'applique qu'au signal `Occupée`, lu sur
+ * l'écran de la session, jamais à l'ancien canal `etat.agents`. */
+function rendreMessageActiviteClaude(texteActivite, titre) {
   const article = el("article", "message");
   article.appendChild(el("span", "message-avatar", "✺")).setAttribute("aria-hidden", "true");
   const bulle = el("div", "bubble");
   const portee = el("span", "", texteActivite);
   portee.id = "claude-live-message";
+  if (titre) portee.title = titre;
   bulle.appendChild(portee);
   article.appendChild(bulle);
   return article;
 }
 
+/* `#claude-compositeur-dialog` (feature-026, correction ux-ui-designer étape
+ * 5bis) : forme RÉACTIVE du `409` `raison: "compositeur_introuvable"` —
+ * patron de `#delete-dialog` (`ouvrirDialogue`/`fermerDialogue`, mêmes
+ * fonctions génériques). Le texte reste dans le composeur : cette fonction
+ * ne le touche jamais. */
+function ouvrirDialogueCompositeurIntrouvable() {
+  ouvrirDialogue($("claude-compositeur-dialog"));
+}
+
+/* Ancrage en bas (correctif « hauteur du panneau », rapporté depuis un
+ * iPad — `.claude-panel` est désormais borné, `#conversation` défile pour
+ * de vrai) : posé APRÈS la réécriture du DOM, SEULEMENT si `etaitEnBas`
+ * (lu AVANT, dans `rendreConversation`) — quelqu'un qui a remonté
+ * l'historique garde sa position, jamais de saut forcé. `scrollTop` posé
+ * DIRECTEMENT, jamais `scroll-behavior: smooth` : un repositionnement de
+ * contenu, pas une décoration. */
+function restaurerScrollDeConversation(conteneur, etaitEnBas) {
+  if (etaitEnBas) conteneur.scrollTop = conteneur.scrollHeight;
+}
+
 function rendreConversation() {
   const conteneur = $("conversation");
   if (!conteneur) return;
+  // Lu AVANT `vider()` — contre le fil ENCORE affiché, pas le futur. 24px de
+  // tolérance : un défilement au pixel près (sous-pixel, barre de défilement)
+  // ne doit pas faire passer un utilisateur réellement en bas pour « remonté ».
+  const etaitEnBas = conteneur.scrollTop + conteneur.clientHeight >= conteneur.scrollHeight - 24;
   vider(conteneur);
 
   if (conversation.phase === "chargement") {
     conteneur.appendChild(el("p", "vide", "chargement…"));
+    restaurerScrollDeConversation(conteneur, etaitEnBas);
     appliquerEtatComposer();
     return;
   }
@@ -3478,9 +2907,21 @@ function rendreConversation() {
   }
 
   /* Statut réel de l'agent (jamais un message fabriqué) — seulement quand
-   * le canal est disponible ET qu'une activité réelle existe. */
-  const activite = conversation.phase === "disponible" ? texteActiviteClaude(dernierEtat) : null;
-  if (activite) conteneur.appendChild(rendreMessageActiviteClaude(activite));
+   * le canal est disponible ET qu'une activité réelle existe. Deux sources
+   * MUTUELLEMENT EXCLUSIVES par canal : `conversation.etat === "Occupée"`
+   * (session tmux persistante, feature-026 — l'information que le badge ne
+   * porte plus, correction étape 5bis) prime sur `etat.agents[].actif_sur`
+   * (ancien canal, feature-022, qui ne renseigne jamais `conversation.etat`).
+   * Seule la première porte le `title` d'incertitude : c'est la seule des
+   * deux à venir d'une lecture heuristique de l'écran. */
+  const claudeOccupee = conversation.phase === "disponible" && conversation.etat === "Occupée";
+  const activite = claudeOccupee
+    ? "Claude travaille…"
+    : (conversation.phase === "disponible" ? texteActiviteClaude(dernierEtat) : null);
+  if (activite) {
+    conteneur.appendChild(rendreMessageActiviteClaude(
+      activite, claudeOccupee ? "Déterminé par lecture de l'écran (heuristique)." : ""));
+  }
 
   if (conversation.phase === "indisponible" && !conversation.messages.length) {
     conteneur.appendChild(el("p", "vide", "Aucun agent en cours n'accepte de message."));
@@ -3489,46 +2930,85 @@ function rendreConversation() {
   }
 
   if (conversation.tronque) {
+    // Bornes RÉELLES du backend (`fil.py`, `lire_fil`, feature-026, A7/D2),
+    // jamais une formule inventée : 40 messages, 4 Mio.
     conteneur.appendChild(el("p", "note",
-      "Fil tronqué : les messages les plus anciens ne sont plus disponibles."));
+      "Fil tronqué : au-delà de 40 messages ou 4 Mio, les messages les plus "
+      + "anciens ne sont plus disponibles."));
   }
 
   conversation.messages.forEach((msg) => {
-    // `envoye` absent (fil écrit avant ce correctif) vaut « remis » — seule
-    // une valeur EXPLICITEMENT `false` marque un message non parti (B3).
+    // `envoye` absent vaut « remis » — seule une valeur EXPLICITEMENT
+    // `false` marque un message non parti (B3, feature-021). ⚠️ Corrigé
+    // (revue de code, feature-026) : le canal `feature-026` sert AUSSI des
+    // lignes du journal propre du cockpit fusionnées au transcript
+    // (`server._fusionner_avec_journal_cockpit`), où `envoye` PEUT valoir
+    // `false` — l'ancien commentaire affirmait le contraire. L'invariant
+    // qui rend `envoye` absent fiable ici n'est plus « ce canal ne porte
+    // jamais ce champ » : c'est que le backend IGNORE désormais toute
+    // entrée `envoye: false` avant fusion (B1a) — une tentative refusée
+    // n'atteint donc jamais ce fil, `envoye` reste absent PARCE QUE tout ce
+    // qui en sort est réellement parti, pas parce que le canal l'ignore.
     const envoyeMsg = !msg || msg.envoye !== false;
+    const role = msg && msg.role === "assistant" ? "assistant" : "utilisateur";
     conteneur.appendChild(rendreMessageConversation(
-      "utilisateur", "→", String((msg && msg.texte) || ""), msg && msg.ts, envoyeMsg));
+      role, String((msg && msg.texte) || ""), msg && msg.ts,
+      msg && msg.prompt_source, envoyeMsg));
   });
 
   // Question bloquante épinglée (F2) : AUCUNE source de données ce cycle —
   // reste `hidden`, jamais un texte fabriqué (voir le commentaire HTML sur
   // `#claude-question`, PIEGES §16).
 
+  const destinataireEl = $("claude-destinataire-valeur");
+  if (destinataireEl) destinataireEl.textContent = conversation.destinataire || "—";
+
+  restaurerScrollDeConversation(conteneur, etaitEnBas);
   appliquerEtatComposer();
 }
 
 async function actualiserConversation() {
   try {
     const reponse = await fetch("/api/conversation", { headers: enTeteAuthPilotage() });
+    if (reponse.status === 401) {
+      sur401Lecture();
+      return;
+    }
+    const donnees = await reponse.json().catch(() => null);
+    // Le backend fait foi (feature-026) : `etat`/`destinataire` sont lus
+    // AVANT de discriminer sur le code HTTP, présents aussi bien sur un 200
+    // que sur un 404/503 du chemin session tmux — ABSENTS sur l'ancien canal
+    // `feature-022` (repli local ci-dessous, seul cas légitime).
+    if (donnees && typeof donnees.etat === "string" && donnees.etat) {
+      conversation.etat = donnees.etat;
+    }
+    if (donnees && typeof donnees.destinataire === "string" && donnees.destinataire) {
+      conversation.destinataire = donnees.destinataire;
+    }
     if (reponse.status === 200) {
-      const donnees = await reponse.json();
       conversation.phase = "disponible";
-      conversation.messages = Array.isArray(donnees.messages) ? donnees.messages : [];
-      conversation.tronque = !!donnees.tronque;
+      conversation.messages = Array.isArray(donnees && donnees.messages) ? donnees.messages : [];
+      conversation.tronque = !!(donnees && donnees.tronque);
       conversation.erreurLecture = null;
     } else if (reponse.status === 404) {
       conversation.phase = "indisponible";
       conversation.messages = [];
       conversation.tronque = false;
       conversation.erreurLecture = null;
-    } else if (reponse.status === 401) {
-      sur401Lecture();
-      return;
     } else {
-      conversation.erreurLecture = "réponse inattendue (" + reponse.status + ")";
+      // 503 (socket/transcript indisponible, feature-026) ou tout autre code
+      // inattendu : le fil déjà affiché N'EST PAS effacé, un bandeau dit
+      // l'incertitude (mêmes trois états de lecture que partout ailleurs).
+      conversation.erreurLecture = (donnees && donnees.erreur)
+        || ("réponse inattendue (" + reponse.status + ")");
     }
   } catch (erreur) {
+    // Aucune réponse du tout (réseau/serveur injoignable) : `etat` n'est
+    // PLUS une donnée backend fraîche, la pastille retombe sur la dérivation
+    // locale « Injoignable » (`libellePastilleClaude`) plutôt que d'afficher
+    // un état potentiellement périmé comme s'il tenait encore.
+    conversation.etat = null;
+    conversation.phase = "erreur";
     conversation.erreurLecture = "hors ligne";
   }
   rendreConversation();
@@ -3561,17 +3041,27 @@ function appliquerEtatComposer() {
   if (!champ || !bouton) return;
 
   const ecritureActive = Boolean(dernierEtat && dernierEtat.ecriture_active);
+  const libelle = libellePastilleClaude();
   let raison = null;
   if (conversation.phase === "chargement") {
     raison = "chargement de la conversation…";
   } else if (!ecritureActive) {
     raison = "écriture non activée" +
       ((dernierEtat && dernierEtat.ecriture_raison) ? " : " + dernierEtat.ecriture_raison : "");
-  } else if (conversation.phase === "indisponible") {
+  } else if (libelle === "Injoignable") {
+    raison = "session injoignable";
+  } else if (libelle === "Hors ligne" || conversation.phase === "indisponible") {
     raison = "aucun agent en cours n'accepte de message";
   } else if (conversation.envoiEnCours) {
     raison = "envoi en cours…";
   }
+  // ⚠️ Branche « Occupée » RETIRÉE (feature-026, correction ux-ui-designer
+  // étape 5bis) : mesuré sur session jetable réelle, un texte tapé pendant
+  // que Claude travaille est MIS EN FILE par `claude` lui-même
+  // (`promptSource: "queued"`), jamais perdu — le compositeur ne doit donc
+  // plus jamais être inerte pour cette seule raison. Cas d'inertie
+  // restants, exactement : chargement initial, écriture non activée, Hors
+  // ligne, Injoignable, envoi en cours.
 
   const inerte = raison !== null;
   champ.disabled = inerte;
@@ -3584,12 +3074,17 @@ function appliquerEtatComposer() {
 
   const statut = $("claude-status");
   if (statut) {
+    // « Occupée » disparaît du BADGE (reste lisible dans le fil, voir
+    // `rendreConversation`/`rendreMessageActiviteClaude`) : PLIÉ sur
+    // « En ligne » ici seulement — `conversation.etat`, lui, garde sa
+    // valeur brute pour le reste du panneau (fil, 409). Le badge ne code
+    // plus que TROIS états, et ne porte plus aucun `title` heuristique
+    // (déposé sur l'indicateur de fil à la place).
+    const libelleBadge = libelle === "Occupée" ? "En ligne" : libelle;
     vider(statut);
+    statut.className = "claude-status " + (_CLASSE_ETAT_PASTILLE[libelleBadge] || "");
     statut.appendChild(el("span", "", "●")).setAttribute("aria-hidden", "true");
-    statut.appendChild(document.createTextNode(
-      " " + (conversation.phase === "disponible" ? "En ligne"
-        : conversation.phase === "indisponible" ? "Hors ligne"
-        : conversation.phase === "erreur" ? "Injoignable" : "…")));
+    statut.appendChild(document.createTextNode(" " + libelleBadge));
   }
 }
 
@@ -3622,6 +3117,9 @@ async function surSoumissionConversation(evenement) {
       return;
     }
     const donnees = await reponse.json().catch(() => ({}));
+    if (donnees && typeof donnees.destinataire === "string" && donnees.destinataire) {
+      conversation.destinataire = donnees.destinataire;
+    }
     /* 503 « canal occupé » (S3.9/S3.10) : normal et attendu tant que l'agent
      * n'a pas lu le message précédent — on le DIT à l'écran, on ne réessaie
      * JAMAIS en silence (feature-022, cas limites). Le texte reste dans le
@@ -3630,6 +3128,29 @@ async function surSoumissionConversation(evenement) {
       afficherErreurConversation("Canal occupé — " +
         (donnees.erreur || "l'agent n'a pas encore lu le message précédent") +
         ". Le message n'a pas été envoyé, réessayez.");
+    } else if (reponse.status === 409) {
+      /* Heuristique (D5, condition 6 du GATE P1) : la lecture d'écran AVANT
+       * `send-keys` n'est PAS une garantie — vocabulaire au CONDITIONNEL,
+       * jamais « bloqué », jamais un mot de garde. Aucun réessai automatique,
+       * texte laissé dans le champ dans LES TROIS CAS (même discipline que
+       * le 503 ci-dessus). Réactif, discriminé par `donnees.raison`
+       * (feature-026, correction ux-ui-designer étape 5bis — le 409
+       * n'est plus jamais préventif, « Occupée » n'en fait plus partie). */
+      const raison409 = donnees && donnees.raison;
+      if (raison409 === "compositeur_introuvable") {
+        ouvrirDialogueCompositeurIntrouvable();
+      } else if (raison409 === "brouillon_present") {
+        afficherErreurConversation(
+          "Le message n'aurait pas pu être envoyé sans se mélanger à un texte déjà présent "
+          + "dans le terminal — réessayez une fois qu'il semble vide.");
+      } else {
+        // `interrompu_apres_collage`, ou toute raison future non répertoriée
+        // ici : le libellé du BACKEND fait foi, jamais un troisième texte
+        // inventé côté client (`donnees.erreur`, déjà rédigé par le
+        // serveur — voir `server.py`, `_conversation_envoyer`).
+        afficherErreurConversation(
+          donnees.erreur || "le message n'a pas été envoyé.");
+      }
     } else if (reponse.status === 404) {
       conversation.phase = "indisponible";
       afficherErreurConversation(donnees.erreur || "aucun agent en cours n'accepte de message");
@@ -3670,13 +3191,19 @@ async function rafraichir() {
     jaugeGit.textContent = etat.git.depot ? "git " + (etat.git.branche || "?") : "git absent";
     jaugeGit.className = "jauge " + (etat.git.depot ? "ok" : "ko");
     dernierEtat = etat;
-    rendreAgents(etat.agents);
-    rendreSysteme(etat);
+    /* `rendreAgents`/`rendreTimeline` SUPPRIMÉS ICI (U1 de feature-021,
+     * feature-028 lot A1) — sections retirées, voir les commentaires sur
+     * leurs anciennes définitions. `rendreSysteme` SUPPRIMÉ ICI (feature-028,
+     * décision humaine du 2026-09-23, AU-DELÀ de U1) — section retirée
+     * entière, voir le commentaire sur son ancienne définition.
+     * `rendreFichiers` SUPPRIMÉ ICI (feature-028, décision humaine du
+     * 2026-09-23) — « Fichiers touchés » retirée, la consultation des diffs
+     * ne va nulle part ; voir le commentaire sur son ancienne définition.
+     * `rendreCycles` SUPPRIMÉ ICI (feature-028, lot C1) — l'accordéon
+     * « Cycles » a disparu entier (décision humaine 1B), voir le
+     * commentaire sur son ancienne définition. */
     rendreGrapheCyclePrincipal(etat);
     rendreKanban(etat);
-    rendreCycles(etat);
-    rendreFichiers(etat);
-    rendreTimeline(etat);
     actualiserPilotage(etat);
     /* `ecriture_active` vient de rafraîchir : réapplique l'état du composer
      * immédiatement (raison à jour), sans attendre `actualiserConversation`
@@ -3728,9 +3255,12 @@ function refiltrer() { if (dernierEtat) rendreKanban(dernierEtat); }
 $("filtre").addEventListener("input", refiltrer);
 $("filtre-divergences").addEventListener("change", refiltrer);
 
-/* feature-008 : compteur de caractères, purement local (aucune requête). */
-$("spec-prompt").addEventListener("input", actualiserCompteurPrompt);
-$("bouton-generer-brouillon").addEventListener("click", surClicGenererBrouillon);
+/* feature-008 : compteur de caractères — SUPPRIMÉ (U1, feature-028 lot A1),
+ * voir le commentaire sur l'ancienne `actualiserCompteurPrompt`.
+ * `demande` (« Que souhaitez-vous développer ? ») SUPPRIMÉE ICI (feature-028,
+ * lot C2, une fois B3 vérifié) : `#bouton-generer-brouillon` n'existe plus,
+ * `#add-item-dialog` (le `+`) est désormais le SEUL point d'entrée — voir
+ * `SURFACES_REDACTION`. */
 
 /* feature-022 (lot 11) : composeur de conversation — `#composer`/`#prompt`
  * reprennent les noms du PROTOTYPE (clé de jointure des gardes de fidélité),
@@ -3741,10 +3271,54 @@ $("bouton-generer-brouillon").addEventListener("click", surClicGenererBrouillon)
 $("composer").addEventListener("submit", surSoumissionConversation);
 rendreConversation();
 
+/* `#claude-compositeur-dialog` (feature-026, étape 5bis) : câblage statique,
+ * une fois, même discipline que `cablerActionsBacklogUneFois` ci-dessus. */
+const claudeCompositeurFermer = $("claude-compositeur-fermer");
+if (claudeCompositeurFermer) {
+  claudeCompositeurFermer.addEventListener("click",
+    () => fermerDialogue($("claude-compositeur-dialog")));
+}
+
 document.addEventListener("keydown", (evenement) => {
   if (evenement.key === "Escape") fermerTiroir();
 });
 $("tiroir-fermer").addEventListener("click", fermerTiroir);
+
+/* Câblage des onglets de cycle (feature-028, lot A) : `if (élément)` GARDÉ
+ * avant tout appel de méthode — plusieurs harnais `test_app_*.js` chargent ce
+ * fichier ENTIER dans un bac à sable qui ne connaît que les id tenus à la
+ * main dans leur propre liste `IDS` (PIEGES §38) ; un accès direct ferait
+ * tomber TOUS ces harnais au chargement, pas seulement ceux qui exercent
+ * cette fonctionnalité — même précaution que le bloc feature-025 plus haut. */
+const ongletCycleActif = $("cycle-tab-actif");
+const ongletCycleHistorique = $("cycle-tab-historique");
+const boutonCycleIndice = $("cycle-indice");
+if (ongletCycleActif) {
+  ongletCycleActif.addEventListener("click", () => {
+    if (modeCycleAffiche === "actif") return;
+    modeCycleAffiche = "actif";
+    if (dernierEtat) rendreGrapheCyclePrincipal(dernierEtat);
+  });
+}
+if (ongletCycleHistorique) {
+  ongletCycleHistorique.addEventListener("click", () => {
+    if (modeCycleAffiche === "historique") return;
+    modeCycleAffiche = "historique";
+    if (dernierEtat) rendreGrapheCyclePrincipal(dernierEtat);
+  });
+}
+if (boutonCycleIndice) {
+  boutonCycleIndice.addEventListener("click", () => {
+    if (modeCycleAffiche !== "historique" || !dernierEtat) return;
+    const workflows = (dernierEtat.workflows || []).slice().reverse();
+    if (workflows.length < 2) return; // rien à parcourir, cf. actualiserControleCycleTabs
+    const idsPresents = workflows.map((wf) => wf.workflow_id);
+    let indexActuel = idsPresents.indexOf(cycleHistoriqueChoisi);
+    if (indexActuel === -1) indexActuel = 0;
+    cycleHistoriqueChoisi = workflows[(indexActuel + 1) % workflows.length].workflow_id;
+    rendreGrapheCyclePrincipal(dernierEtat);
+  });
+}
 
 /* F11 : replier/déplier la bottom sheet — un état PUREMENT visuel (le
  * détail reste dans le DOM, `aria-expanded` porte l'état pour qui n'y voit
@@ -3753,6 +3327,14 @@ $("sheet-toggle").addEventListener("click", () => {
   const repliee = $("sheet-metrics").hidden = !$("sheet-metrics").hidden;
   $("sheet-toggle").setAttribute("aria-expanded", repliee ? "false" : "true");
   $("sheet-toggle").setAttribute("aria-label", repliee ? "Déplier le détail" : "Replier le détail");
+});
+
+/* evenements (U1 de feature-021, feature-028 lot A1) : un seul écouteur,
+ * posé une fois — relit `passageSelectionneCourant` à CHAQUE clic plutôt que
+ * de capturer une valeur au moment de l'inscription (le bouton est partagé
+ * entre tous les passages sélectionnés successivement). */
+$("voir-evenements-passage").addEventListener("click", () => {
+  ouvrirEvenementsPassage(passageSelectionneCourant);
 });
 
 /* Le premier `GET /api/etat` décide seul du mode d'authentification — voir

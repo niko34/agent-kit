@@ -150,6 +150,15 @@ _DEFAUTS = {
         "budget_secondes": 1.0,
         "budget_octets": 20_000_000,
     },
+    # Session tmux persistante que le cockpit tape (feature-026, D8) : VIDE
+    # par défaut — sans elle, `server.py` retombe sur l'ancien canal
+    # `json-lines` (feature-022), inchangé. JAMAIS un champ de requête :
+    # sinon le porteur du jeton choisirait dans quel terminal il tape.
+    "session": {
+        "socket_tmux": "",
+        "nom": "",
+        "repertoire_transcripts": "",
+    },
 }
 
 # Drapeaux qui contournent l'invite de permission de `claude` — présents dans
@@ -477,6 +486,52 @@ class Config(dict):
         if brut < 0:
             return defaut
         return brut
+
+    def session_socket_tmux(self):
+        """Chemin ABSOLU du socket tmux de la session déclarée, ou `None`
+        (feature-026, D8) — jamais dérivé de l'environnement hérité (`TMUX`,
+        `TMUX_TMPDIR`, `TMUX_PANE`). Même patron que
+        `transcripts_racine_surcharge()` : un chemin relatif rend `None`,
+        jamais à moitié accepté."""
+        brut = self.section("session").get("socket_tmux", "")
+        if not isinstance(brut, str) or not brut:
+            return None
+        if not os.path.isabs(brut):
+            return None
+        return brut
+
+    def session_nom(self):
+        """Nom de la session tmux déclarée, ou `None` si absent, vide ou mal
+        typé (feature-026)."""
+        brut = self.section("session").get("nom", "")
+        if not isinstance(brut, str) or not brut:
+            return None
+        return brut
+
+    def session_repertoire_transcripts(self):
+        """Répertoire ABSOLU des transcripts de la session déclarée, ou
+        `None` (feature-026) — même discipline que `session_socket_tmux()` :
+        un chemin relatif n'est jamais à moitié accepté."""
+        brut = self.section("session").get("repertoire_transcripts", "")
+        if not isinstance(brut, str) or not brut:
+            return None
+        if not os.path.isabs(brut):
+            return None
+        return brut
+
+    def session_config(self):
+        """Les trois réglages de `[session]` réunis en un seul `dict`
+        `{"socket_tmux": …, "nom": …, "repertoire_transcripts": …}` — le
+        format attendu par `session_tmux.py` — ou `None` si l'UN des trois
+        manque (feature-026, A1). Une configuration à moitié déclarée n'est
+        pas une session utilisable : `server.py` retombe alors sur l'ancien
+        canal `json-lines` (feature-022), inchangé."""
+        socket_tmux = self.session_socket_tmux()
+        nom = self.session_nom()
+        repertoire = self.session_repertoire_transcripts()
+        if socket_tmux is None or nom is None or repertoire is None:
+            return None
+        return {"socket_tmux": socket_tmux, "nom": nom, "repertoire_transcripts": repertoire}
 
     def tetes_de_commande(self):
         """Les têtes RÉDIGÉES de chaque commande autorisée.

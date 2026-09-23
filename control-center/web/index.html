@@ -152,15 +152,19 @@
     <div class="workspace">
       <section class="cycle-surface" aria-labelledby="cycle-title">
         <div class="cycle-toolbar">
+          <!-- Câblage réel (feature-028, lot A) : `cycle-tab-actif`/
+               `cycle-tab-historique` deux MODES d'affichage du même
+               `cycle-canvas`/`detail-sheet` — jamais deux panneaux, jamais
+               `role="tab"` (F7, mono-écran). `#cycle-indice` devient le
+               sélecteur RÉEL en mode Historique : un clic avance d'un cycle
+               vers le précédent (boucle après le plus ancien) — la LISTE
+               complète des cycles reste dans l'accordéon « Cycles »
+               (feature-016), que ce lot ne retire pas encore (voir le
+               journal de bord de `feature-028`). -->
           <div class="cycle-tabs" role="group" aria-label="Vue des cycles">
-            <button class="tab-button" type="button" aria-pressed="true">Cycle actif</button>
-            <button class="tab-button" type="button" aria-pressed="false">Historique</button>
-            <!-- Classe adoptée `small-button` (F0) : sélecteur de cycle,
-                 décoratif à ce lot — le contenu réel (numéro de cycle) vient
-                 de `rendreCycles`/`etat.workflows`, câblé ci-dessous
-                 (F8/F9), la LISTE des cycles antérieurs reste dans
-                 l'accordéon « Cycles » (feature-016, inchangé). -->
-            <button class="small-button" type="button" id="cycle-indice" aria-label="Cycle affiché">—</button>
+            <button class="tab-button" type="button" id="cycle-tab-actif" aria-pressed="true">Cycle actif</button>
+            <button class="tab-button" type="button" id="cycle-tab-historique" aria-pressed="false">Historique</button>
+            <button class="small-button" type="button" id="cycle-indice" aria-label="Cycle affiché" aria-disabled="true">—</button>
           </div>
         </div>
 
@@ -238,6 +242,16 @@
           <!-- F2 (feature-023) : la bottom sheet DIT ce que le chiffre
                compte — texte FIXE, jamais recalculé (§16 PIEGES). -->
           <p class="motion-note">Le compte de tokens additionne l'entrée et la sortie du passage : il mesure le travail produit, pas son coût.</p>
+          <!-- `evenements` (U1 de feature-021) : plus de flux brut permanent —
+               la tranche d'événements DE CE PASSAGE s'ouvre désormais dans le
+               tiroir existant (`#tiroir`), sur demande explicite plutôt qu'en
+               continu (feature-028, lot A1). Désactivé tant qu'aucun passage
+               n'est sélectionné, ou que le passage sélectionné n'a pas
+               d'`agent_id` exploitable (agent principal, backend ancien) —
+               un filtrage approximatif serait pire qu'une absence (§16 PIEGES). -->
+          <button type="button" class="pilotage-secondaire" id="voir-evenements-passage" disabled>
+            Voir les événements de ce passage
+          </button>
         </section>
 
         <!-- Fil d'état du dépôt (classe adoptée `repo-strip`, F0) — données
@@ -250,7 +264,8 @@
         </p>
       </section>
 
-      <!-- Panneau de conversation permanent (feature-022, absorbée, lot 11).
+      <!-- Panneau de conversation permanent (feature-022, absorbée, lot 11 ;
+           REBRANCHÉ sur la session Claude remote persistante par feature-026).
            Markup/classes repris VERBATIM par sélecteur du prototype
            (l.754-764) : `.claude-panel`/`.claude-title`/`.claude-ident`/
            `.claude-mark`/`.claude-status`/`.conversation`/`.message`/
@@ -259,7 +274,13 @@
            du fil (`#conversation`) est intégralement reconstruit par
            `rendreConversation()` (app.js) : ce que ce fichier porte est le
            SEUL contenu initial neutre, jamais affiché tel quel une fois le
-           premier `GET /api/conversation` répondu. -->
+           premier `GET /api/conversation` répondu.
+           `#claude-destinataire-valeur`/`#conversation-portee` (feature-026,
+           ux-ui-designer étape 5) : ids STATIQUES ici (PIEGES §38), visibles
+           AVANT tout `GET /api/conversation` réussi — un basculement
+           silencieux de destinataire ferait atterrir un message dans le
+           mauvais terminal, la note sur la portée dit ce qui manque plutôt
+           que de le laisser deviner. -->
       <aside class="claude-panel" aria-labelledby="claude-title">
         <div class="claude-title">
           <div class="claude-ident">
@@ -283,7 +304,16 @@
           </button>
         </div>
 
-        <div class="conversation" id="conversation" aria-live="polite">
+        <p class="claude-destinataire" id="claude-destinataire">
+          Destinataire : <span class="claude-destinataire-valeur" id="claude-destinataire-valeur">—</span>
+        </p>
+        <p class="note" id="conversation-portee">
+          Les étapes d'outils et le raisonnement interne de Claude ne sont pas
+          repris ici : seuls les messages échangés apparaissent.
+        </p>
+
+        <div class="conversation" id="conversation" aria-live="polite" tabindex="0"
+             role="region" aria-label="Fil de la conversation avec Claude">
           <p class="vide">chargement…</p>
         </div>
 
@@ -374,76 +404,87 @@
       <span id="backlog-column-count" class="visually-hidden">—</span>
     </section>
 
-    <section class="bloc" aria-labelledby="titre-agents">
-      <h2 id="titre-agents">Agents</h2>
-      <p class="note" id="note-agents">découverts dans le dépôt</p>
-      <ul class="agents" id="agents"></ul>
-    </section>
+    <!-- ⚠️ `agents` (U1 de feature-021) SUPPRIMÉE ICI — feature-028, lot A1.
+         La source de vérité reste `.claude/agents/<rôle>.md` ; l'identité
+         couleur/sigle survit dans la légende du diagramme. Verdict U1
+         appliqué : SUPPRIMÉE entière (aucun repli, aucune migration
+         déclarée pour cette section). -->
 
-    <section class="bloc" aria-labelledby="titre-systeme">
-      <h2 id="titre-systeme">Système</h2>
-      <dl class="systeme" id="systeme"></dl>
-    </section>
+    <!-- ⚠️ `systeme` SUPPRIMÉE ICI — feature-028, décision humaine du
+         2026-09-23 : « Supprime système. Je ne souhaite pas que ça aille
+         ailleurs. » AU-DELÀ de `U1` de feature-021, qui exigeait une
+         MIGRATION (Divergences/Budget max/Écrivains en pastilles d'un
+         panneau « État du dépôt » — panneau qui n'existe toujours pas).
+         L'humain a tranché : pas de migration, retrait sec, aucune
+         destination. Dépôt/Fichiers touchés dupliqués dans `.repo-strip` ;
+         Divergences dupliquée dans `#compteur-specs`. ⚠️ Budget max/
+         Écrivains, dupliqués à l'origine dans la note de plafond du
+         panneau Pilotage, et Workflows, dupliqué à l'origine dans la
+         légende de l'accordéon Cycles, ont PERDU ce second porteur à leur
+         tour (feature-028, lots C1/pilotage dédié — accordéon puis panneau
+         retirés entiers) : ces deux informations ne sont plus affichées
+         nulle part. Seule « Configuration : lue/défauts » n'a jamais eu de
+         doublon — signalé, pas inventé (voir rapport du lot). -->
 
-    <section class="bloc demande" aria-labelledby="titre-demande">
-      <h2 id="titre-demande">Que souhaitez-vous développer&nbsp;?</h2>
-      <div class="champ-titre">
-        <label for="titre-besoin">Titre du besoin (résumé en une phrase — nomme le fichier)</label>
-        <input type="text" id="titre-besoin" maxlength="200" autocomplete="off"
-          placeholder="Ex. : Ajouter un export CSV des specs affichées">
-      </div>
-      <!-- Renommé `spec-prompt` (feature-021 cycle 2, lot 11, arbitrage
-           architect 2026-09-22 08:10, point (2)) : le prototype assigne
-           `#prompt` au composeur de conversation (`.claude-panel`,
-           ci-dessous) — les noms du prototype sont la clé de jointure des
-           gardes de fidélité, notre id cède le sien. -->
-      <textarea id="spec-prompt" rows="4"
-        placeholder="Décrire le besoin en détail…"></textarea>
-      <span class="compteur" id="compteur-prompt" aria-live="polite">0 caractère</span>
-      <p class="note avert">
-        Ce texte finit dans un fichier versionné&nbsp;: n'y collez ni secret
-        ni mot de passe. Il ne quitte pas ce poste — aucun appel de modèle.
-      </p>
-      <label class="bascule">
-        <input type="checkbox" id="derogation-minimale">
-        <span>Traiter comme bug simple / refactor ponctuel (template minimal)</span>
-      </label>
-      <p class="note">
-        Un mot-clé sensible (auth, permission, données personnelles,
-        paiement, migration) impose quand même le template complet.
-      </p>
-      <p class="note erreur" id="erreur-generer-brouillon" role="alert" hidden></p>
-      <div class="pilotage-boutons">
-        <button type="button" id="bouton-generer-brouillon" class="pilotage-secondaire">Générer le brouillon</button>
-      </div>
-      <div id="redaction-corps"></div>
-    </section>
+    <!-- ⚠️ `demande` (« Que souhaitez-vous développer ? ») SUPPRIMÉE ICI —
+         feature-028, lot C2 : câblée par B3, `#add-item-dialog` (le `+`) en
+         est désormais le SEUL point d'entrée — MÊME machine à états
+         (`redaction`, `SURFACES_REDACTION` dans `app.js`), jamais un second
+         chemin. `#titre-besoin`/`#spec-prompt`/`#bouton-generer-brouillon`/
+         `#redaction-corps` disparaissent avec elle. `#derogation-minimale`
+         (case « bug simple / refactor ponctuel (template minimal) ») a un
+         ÉQUIVALENT dans `#add-item-dialog` (`#item-derogation-minimale`,
+         feature-028, lot pilotage dédié — `CLAUDE.md` l'impose, ce n'était
+         pas une question de goût) : voir le commentaire sur
+         `#add-item-dialog`, plus bas, pour la différence de contrat avec
+         `demande` (`type`/`minimal` INDÉPENDANTS ici, jamais dérivés d'une
+         seule case). -->
 
-    <section class="bloc" aria-labelledby="titre-pilotage">
-      <h2 id="titre-pilotage">Pilotage</h2>
-      <div id="pilotage-corps">
-        <p class="vide">chargement…</p>
-      </div>
-    </section>
+    <!-- ⚠️ `pilotage` (le panneau générique « Piloter par clé », `#pilotage-
+         corps`) SUPPRIMÉE ICI — feature-028, lot pilotage dédié, décision
+         humaine du 2026-09-23 : « Pour le pilotage, lance le lot. » Le
+         lancement générique par clé ne pouvait de toute façon lancer QUE ce
+         que `[commandes]` déclare, et la configuration ne déclare que
+         `demo`/`lent`, deux commandes d'exemple sans usage réel (« Demo ou
+         lent n'ont pas de sens », décision humaine). ⚠️ SI une VRAIE
+         commande est un jour déclarée dans `[commandes]`, elle n'aura plus
+         AUCUN point d'accès générique — capacité retirée sous une CONDITION
+         D'ENVIRONNEMENT (la configuration actuelle ne déclare que des
+         exemples), pas sous une décision de conception : à re-corriger le
+         jour où cette condition change. Le lancement et l'interruption PAR
+         CARTE (menu `⋮` de chaque carte de spec) restent pleinement
+         fonctionnels — ils réutilisent l'état d'exécution partagé
+         (`pilotage`, `app.js`), pas ce panneau. `#jauge-pilotage` (barre du
+         haut) reste, lui aussi INCHANGÉ : ce badge n'a jamais fait partie
+         de cette section. -->
 
-    <section class="bloc" aria-labelledby="titre-cycles">
-      <div class="entete-bloc">
-        <h2 id="titre-cycles">Cycles</h2>
-      </div>
-      <p class="note" id="legende-cycles"></p>
-      <ul id="workflows" class="cycles"></ul>
-      <p class="note" id="pied-cycles"></p>
-    </section>
+    <!-- ⚠️ `cycles` (l'accordéon « Cycles », `#workflows`) SUPPRIMÉE ICI —
+         feature-028, lot C1, décision humaine 1B (2026-09-23) : « L'accordéon
+         est retiré, ses deux informations sont PERDUES » (propriétés
+         agrégées du cycle — outils, fichiers écrits, rebouclages, agents
+         simultanés — et la chaîne textuelle des segments). Retrait ASSUMÉ,
+         même forme que le retrait des diffs. Les onglets « Cycle actif »/
+         « Historique » (`.cycle-tabs`, câblés au lot A de ce même cycle,
+         voir `.cycle-surface` plus haut) restent le SEUL endroit du DOM pour
+         voir un cycle, actif ou passé. ⚠️ Effet de bord signalé, PAS couvert
+         par la décision 1B : la légende (« N sur M cycles affichés ») et le
+         pied (« N événement(s) sans session associée ») disparaissent AVEC
+         l'accordéon — ce bornage n'est affiché nulle part ailleurs. -->
 
-    <section class="bloc" aria-labelledby="titre-fichiers">
-      <h2 id="titre-fichiers">Fichiers touchés</h2>
-      <div id="fichiers"></div>
-    </section>
+    <!-- ⚠️ `fichiers` (« Fichiers touchés ») SUPPRIMÉE ICI — feature-028,
+         décision humaine du 2026-09-23 : « la consultation des diffs ne va
+         nulle part ». Retrait de capacité ASSUMÉ, pas une migration : la
+         liste des fichiers touchés du dépôt reste lisible via `.repo-strip`
+         (fil d'état du dépôt, bande de résumé), mais le détail par fichier
+         (diff) n'a plus de surface d'appel. `rendreFichiers`/`ouvrirDiff`
+         retirés d'`app.js` ; `/api/diff` n'a donc plus d'appelant frontal
+         (signalé à `doc-writer` et au GATE, feature-028). -->
 
-    <section class="bloc" aria-labelledby="titre-evenements">
-      <h2 id="titre-evenements">Derniers événements</h2>
-      <ol class="timeline" id="timeline"></ol>
-    </section>
+    <!-- ⚠️ `evenements` (U1 de feature-021) SUPPRIMÉE ICI comme panneau
+         PERMANENT — feature-028, lot A1. Le flux brut en continu disparaît ;
+         la tranche d'événements d'un passage reste accessible à la demande
+         via le bouton du détail (`#voir-evenements-passage`, plus haut), qui
+         ouvre `#tiroir`. `#timeline`/`rendreTimeline` retirés d'`app.js`. -->
 
   </main>
 </div>
@@ -553,8 +594,19 @@
      n'est PAS un `<dialog>` (comme dans le prototype : un menu n'est pas une
      modale plein-écran) — sa fermeture au clic extérieur/Échap/redimension-
      nement est gérée par `app.js`, jamais par `inert`. -->
+<!-- `menu-interrupt-cycle` (feature-028, lot A, GATE C3) : n'apparaît QUE sur
+     la carte dont la spec est le lancement COURANT (`data-interrompable`,
+     posé par `rendreKanban` d'après `etat.lancement_spec_id === spec.id`),
+     jamais un item générique — `POST /api/interrompre` sans `spec_id` tue
+     le lancement courant, quel qu'il soit, et l'item mentirait sur une
+     autre carte. Groupé avec « Lancer un cycle » (même divider, `launch-
+     divider`, visible si L'UN OU L'AUTRE des deux est présent) : ce sont
+     les deux actions de contrôle du cycle, séparées de « Voir les
+     détails »/« Modifier »/« Supprimer » qui portent sur la SPEC, pas sur
+     un lancement. -->
 <div class="context-menu" id="context-menu" role="menu" hidden>
   <button class="menu-item launch-action" id="menu-launch-cycle" type="button" role="menuitem"><span class="menu-icon" aria-hidden="true">▶</span><span>Lancer un cycle</span></button>
+  <button class="menu-item danger" id="menu-interrupt-cycle" type="button" role="menuitem"><span class="menu-icon" aria-hidden="true">■</span><span>Interrompre</span></button>
   <div class="menu-divider" id="launch-divider"></div>
   <button class="menu-item" id="view-details" type="button" role="menuitem"><span class="menu-icon" aria-hidden="true">◉</span><span>Voir les détails</span></button>
   <button class="menu-item" id="edit-item" type="button" role="menuitem"><span class="menu-icon" aria-hidden="true">✎</span><span>Modifier</span></button>
@@ -576,12 +628,38 @@
   <div class="feature-dialog-actions"><button class="secondary" id="feature-edit" type="button">Modifier</button><button class="primary" id="feature-done" type="button">Fermer</button></div>
 </dialog>
 
-<!-- `#add-item-dialog` : markup/classes repris tels quels du prototype
-     (l.822-844) pour la fidélité structurelle (F0). Sa soumission reste
-     INERTE — voir le commentaire sur `#open-add-item` plus haut : câbler un
-     vrai appel réseau ici sortirait du périmètre déclaré de cette spec
-     (« rédaction par Claude » = feature-024). Ouverture/fermeture et
-     validation de formulaire (HTML natif, `required`) restent fonctionnelles. -->
+<!-- `#add-item-dialog` : markup/classes repris du prototype (l.822-844, F0)
+     pour la fidélité structurelle, câblé au lot B (feature-028, GATE C1/C2) —
+     c'est désormais le SEUL point d'entrée du chemin de rédaction (`demande`
+     retirée en B4, une fois ce lot vérifié). Un seul AJOUT à la fidélité
+     (GATE C2, au minimum nécessaire) : le prototype n'a PAS de champ titre,
+     alors que le SLUG (donc le nom de fichier réel) en dérive — `#item-title`
+     AJOUTÉ, même libellé que `#titre-besoin` (`demande`, avant son retrait).
+     `#item-priority` (`select`, prototype) reste EN PLACE, fidélité intacte,
+     mais INERTE : `preparer_brouillon(config, genre, titre, texte, minimal)`
+     n'a aucun champ serveur pour une priorité, et le GATE interdit de la
+     concaténer à l'aveugle dans `contenu` côté client — MÊME traitement que
+     le 5ᵉ `icon-button` sans propriétaire (« Options de la conversation »,
+     `.claude-panel` ci-dessus, ADR-0039) : ni lu ni envoyé, `aria-disabled`
+     posé par `app.js`, motif en clair, jamais silencieux.
+     `#item-type` (feature/bug, DÉJÀ présent au prototype) est réutilisé TEL
+     QUEL pour `type` — aucun champ neuf pour lui.
+     `#item-derogation-minimale` AJOUTÉ (feature-028, lot pilotage dédié) :
+     `CLAUDE.md` IMPOSE le gabarit minimal pour un bug simple/refactor
+     ponctuel (« le format minimal specs/modele.md suffit ») — produire
+     systématiquement le gabarit complet depuis le `+` y contrevenait,
+     laissé par défaut sûr (pas une décision) au lot précédent, corrigé ici.
+     INDÉPENDANTE de `#item-type` (contrairement à `demande`, retirée, qui
+     dérivait `type` ET `minimal` d'UNE seule case) : un « bug » n'exige pas
+     forcément le gabarit minimal, ni l'inverse. Le fail-closed serveur sur
+     mot-clé sensible (`escalade_necessaire`) reste actif — la note en
+     dessous le dit, comme dans `demande`.
+     Machine à états PARTAGÉE avec l'ancien flux `demande` (`redaction`,
+     `surClicGenererBrouillon`/`rendreRedaction`, plus bas dans `app.js`) :
+     UN clic sur « Générer le brouillon » ici = `POST /api/spec/brouillon`
+     SEUL, jamais enchaîné à l'écriture (GATE C1 — la relecture humaine du
+     Markdown avant `/api/spec/ecrire` est la garde de `feature-008`, ce lot
+     ne la contourne pas). -->
 <dialog class="add-item-dialog" id="add-item-dialog" aria-labelledby="add-item-title" aria-describedby="add-item-intro">
   <div class="feature-dialog-header">
     <div class="feature-dialog-heading"><span class="feature-kind">Backlog</span><h2 id="add-item-title">Ajouter un élément</h2></div>
@@ -589,20 +667,50 @@
   </div>
   <form class="add-item-form" id="add-item-form">
     <div class="add-item-body">
-      <p class="form-intro" id="add-item-intro">Décrivez le besoin. Cette action n’est pas encore reliée à l’écriture — voir feature-024.</p>
+      <p class="form-intro" id="add-item-intro">Décrivez le besoin. Un brouillon est généré depuis le template du projet — à relire avant toute écriture sur disque.</p>
       <div class="form-grid">
         <fieldset class="form-field full" style="border:0;padding:0;margin:0">
           <legend class="field-label">Type d’élément</legend>
           <div class="type-segment">
-            <label class="type-option"><input type="radio" name="item-type" value="feature" checked><span>Feature</span></label>
-            <label class="type-option"><input type="radio" name="item-type" value="bug"><span>Bug</span></label>
+            <label class="type-option"><input type="radio" name="item-type" id="item-type-feature" value="feature" checked><span>Feature</span></label>
+            <label class="type-option"><input type="radio" name="item-type" id="item-type-bug" value="bug"><span>Bug</span></label>
           </div>
         </fieldset>
-        <div class="form-field full"><label for="item-description">Description <span aria-hidden="true">*</span></label><textarea id="item-description" name="description" required maxlength="280" placeholder="Décrivez le besoin ou le comportement observé…"></textarea><span class="field-help">Une ou deux phrases centrées sur le résultat attendu.</span></div>
-        <div class="form-field full"><label for="item-priority">Priorité</label><select id="item-priority" name="priority"><option value="Moyenne" selected>Moyenne</option><option value="Haute">Haute</option><option value="Basse">Basse</option></select></div>
+        <div class="form-field full">
+          <label for="item-title">Titre du besoin (résumé en une phrase — nomme le fichier)</label>
+          <input type="text" id="item-title" name="title" required maxlength="200" autocomplete="off"
+            placeholder="Ex. : Ajouter un export CSV des specs affichées">
+        </div>
+        <div class="form-field full"><label for="item-description">Description <span aria-hidden="true">*</span></label><textarea id="item-description" name="description" required placeholder="Décrivez le besoin ou le comportement observé…"></textarea><span class="field-help">Ce texte finit dans un fichier versionné : n’y collez ni secret ni mot de passe. Il ne quitte pas ce poste — aucun appel de modèle.</span></div>
+        <!-- M1 (revue de code, feature-028) : `aria-disabled` SEUL ne suffit
+             pas à un `<select>` (contrairement à un `<button>` inerte,
+             ADR-0039) — l'utilisateur peut changer sa valeur au clavier ou
+             à la souris, et ce choix serait jeté en silence (jamais lu par
+             `lireChampsSurface`). `disabled` réel, EN PLUS : le motif reste
+             en clair dans `.field-help`, jamais un contrôle inerte muet. -->
+        <div class="form-field full"><label for="item-priority">Priorité</label><select id="item-priority" name="priority" disabled aria-disabled="true"><option value="Moyenne" selected>Moyenne</option><option value="Haute">Haute</option><option value="Basse">Basse</option></select><span class="field-help">Non relié à l’écriture — aucun champ du template ne porte de priorité (voir le commentaire sur `#add-item-dialog`).</span></div>
       </div>
+      <!-- `#item-derogation-minimale` (feature-028, lot pilotage dédié) :
+           reprend le libellé et la note de `demande` (retirée) TELS QUELS —
+           même contrat serveur (`minimal`), même avertissement fail-closed. -->
+      <label class="bascule">
+        <input type="checkbox" id="item-derogation-minimale">
+        <span>Traiter comme bug simple / refactor ponctuel (template minimal)</span>
+      </label>
+      <p class="note">
+        Un mot-clé sensible (auth, permission, données personnelles,
+        paiement, migration) impose quand même le template complet.
+      </p>
+      <!-- B2a (revue de code, feature-028) : DÉPLACÉS ICI, à l'INTÉRIEUR de
+           `.add-item-body` (ils vivaient en FRÈRES DE `.add-item-body`,
+           enfants directs de `.add-item-form` — donc hors de la seule
+           rangée de grille qui défile, `minmax(0,1fr)`) — voir le
+           commentaire sur `.add-item-form`, app.css, pour la mesure du
+           défaut et le choix entre les deux pistes de la revue. -->
+      <p class="note erreur" id="erreur-generer-item-brouillon" role="alert" hidden></p>
+      <div id="add-item-redaction-corps"></div>
     </div>
-    <div class="add-item-actions"><span class="required-note"><span aria-hidden="true">*</span> Champs obligatoires</span><div class="form-buttons"><button class="cancel" id="cancel-add-item" type="button">Annuler</button><button class="submit" type="submit">Ajouter au backlog</button></div></div>
+    <div class="add-item-actions"><span class="required-note"><span aria-hidden="true">*</span> Champs obligatoires</span><div class="form-buttons"><button class="cancel" id="cancel-add-item" type="button">Annuler</button><button class="submit" id="bouton-generer-item-brouillon" type="submit">Générer le brouillon</button></div></div>
   </form>
 </dialog>
 
@@ -626,6 +734,24 @@
   <div class="dialog-actions">
     <button class="cancel" id="cancel-delete" type="button">Annuler</button>
     <button class="confirm" id="delete-confirm-bouton" type="button" disabled>Supprimer</button>
+  </div>
+</dialog>
+
+<!-- `#claude-compositeur-dialog` : forme RÉACTIVE (pas préventive) du `409`
+     `raison: "compositeur_introuvable"` (feature-026, reboucle « écrire
+     pendant que Claude travaille marche ») — patron de `#delete-dialog`
+     (`<h2>`, `<p>`, `.dialog-actions`), sans champ de saisie : rien à
+     confirmer, seulement à ACCUSER RÉCEPTION, d'où le bouton unique
+     `.cancel` (neutre, PAS `.confirm` — aucune action destructive ici,
+     aucune couleur neuve). Enfant direct de `<body>`, comme les trois
+     autres `<dialog>` : entre donc dans `FRERES_INERTES`
+     (test_app_bug017.js) au même titre qu'eux. Le texte reste dans le
+     composeur — jamais vidé, aucun réessai automatique. -->
+<dialog id="claude-compositeur-dialog" aria-labelledby="claude-compositeur-titre" aria-describedby="claude-compositeur-copie">
+  <h2 id="claude-compositeur-titre">Message non envoyé</h2>
+  <p id="claude-compositeur-copie">L’écran de la session semblerait porter une confirmation ou un dialogue — un message envoyé maintenant risquerait d’y répondre à votre place. Le texte n’a pas été envoyé et reste dans le composeur.</p>
+  <div class="dialog-actions">
+    <button class="cancel" id="claude-compositeur-fermer" type="button">Compris</button>
   </div>
 </dialog>
 

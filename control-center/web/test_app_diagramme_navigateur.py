@@ -47,8 +47,14 @@ Méthode
 -----------------------------------------------------------------------------
 On charge les DEUX scripts RÉELS du kit (`file://`, jamais copiés ni modifiés
 — `ADR-0006`) et la feuille RÉELLE dans une page minimale, on appelle
-`construireDiagramme()` — LE point d'entrée que la production appelle aussi —
-et on lit `getComputedStyle` / `getBoundingClientRect`.
+`construireGrapheAgents(disposer(segments), sigles, null)` — LE point
+d'entrée bas niveau que la production appelle aussi (`rendreGrapheCycle
+Principal`, app.js) — et on lit `getComputedStyle` / `getBoundingClientRect`.
+⚠️ Retargeté (feature-028, lot C1) : ce fichier appelait `construireDiagramme()`,
+une enveloppe autour de `construireGrapheAgents()` propre à l'accordéon
+« Cycles », retirée avec lui — le rendu peint (ce que CE fichier vérifie)
+est rigoureusement identique, `construireDiagramme` n'ajoutait qu'une note
+de contexte textuelle jamais mesurée ici.
 
 Écarts NON couverts, nommés plutôt que tus :
 - aucune comparaison pixel par pixel avec le prototype (il n'utilise pas les
@@ -144,7 +150,7 @@ _PAGE = """<!doctype html><html><head><meta charset="utf-8">
     conteneur.innerHTML = '';
     var wf = { segments: passages, passages: passages };
     var sigles = siglesAgents(Array.from(collecterRoles([wf])));
-    conteneur.appendChild(construireDiagramme(wf, sigles));
+    conteneur.appendChild(construireGrapheAgents(disposer(wf.segments), sigles, null));
     return conteneur;
   }
   function boite(n) {

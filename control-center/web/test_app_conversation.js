@@ -100,29 +100,36 @@ class FakeNode {
 
 // Tout id qu'`app.js` touche SANS CONDITION au chargement, plus ceux propres
 // à ce fichier (PIEGES §38 : un id absent du bac rend `null`, silencieux).
+// feature-028 (lot A1, U1 de feature-021) : `agents`/`note-agents`/
+// `titre-agents`, `compteur-prompt`, `timeline`/`titre-evenements` retirés ;
+// `voir-evenements-passage` ajouté. Décision humaine du 2026-09-23,
+// AU-DELÀ de U1 (feature-028) : `systeme`/`titre-systeme` retirés à leur
+// tour — retrait sec, sans migration. Décision humaine du 2026-09-23,
+// « fichiers » : `fichiers`/`titre-fichiers` retirés, `ouvrirDiff` avec eux.
 const IDS = [
-  "a11y-announcement", "account-button", "agents", "avatar",
+  "a11y-announcement", "account-button", "avatar",
   "backlog-column-count", "backlog-count", "backlog-title", "bandeau-hote",
   "bandeau-hote-bouton", "bandeau-hote-texte", "barre",
   "bouton-generer-brouillon", "claude-status", "composer", "composer-etat",
-  "conversation", "conversation-erreur", "compteur-prompt", "compteur-specs",
+  "conversation", "conversation-erreur", "compteur-specs",
   "cycle-canvas", "cycle-indice", "cycle-status", "cycle-title",
+  "cycle-tab-actif", "cycle-tab-historique",
   "derogation-minimale", "envoyer-conversation", "erreur-generer-brouillon",
-  "fichiers", "filtre", "filtre-divergences", "horodatage", "jauge-flux",
+  "filtre", "filtre-divergences", "horodatage", "jauge-flux",
   "jauge-git", "jauge-pilotage", "kanban", "legende-cycles",
   "link-front-sec", "link-front-tests", "link-front2-review", "link-reprise",
   "link-sec-front2", "link-spec-front", "link-tests-front2", "main-content",
-  "motion-note", "note-agents", "pied-cycles", "pilotage-corps",
+  "motion-note", "pied-cycles", "pilotage-corps",
   "porte-aide", "porte-bouton", "porte-champ", "porte-corps", "porte-erreur",
   "porte-jeton", "porte-titre", "projet", "prompt", "redaction-corps",
   "repo-strip", "repo-strip-ok", "repo-strip-texte", "selected-code",
   "selected-duration", "selected-files", "selected-state", "selected-task",
   "selected-title", "selected-tokens", "selected-tools", "sheet-metrics", "sheet-toggle",
   "spec-prompt", "status-dot", "summary-active", "summary-step",
-  "summary-time", "summary-tokens", "systeme", "timeline", "tiroir", "tiroir-contenu",
-  "tiroir-fermer", "tiroir-titre", "titre-agents", "titre-besoin",
-  "titre-cycles", "titre-demande", "titre-evenements", "titre-fichiers",
-  "titre-pilotage", "titre-systeme", "user-name", "workflows",
+  "summary-time", "summary-tokens", "tiroir", "tiroir-contenu",
+  "tiroir-fermer", "tiroir-titre", "titre-besoin",
+  "titre-cycles", "titre-demande",
+  "titre-pilotage", "user-name", "voir-evenements-passage", "workflows",
 ];
 const CACHES_PAR_DEFAUT = new Set(["bandeau-hote", "tiroir", "porte-jeton", "porte-erreur", "erreur-generer-brouillon"]);
 

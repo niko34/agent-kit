@@ -176,7 +176,7 @@ def _test_chemin_conversation_unitaire():
               "pid réattribué, chemins obtenus identiques : %r" % chemin_ancien)
 
         ok, _pos = srv_direct._ecrire_message_conversation(
-            chemin_ancien, "message-du-cycle-precedent")
+            chemin_ancien, "message-du-cycle-precedent", "lancement test")
         check("test_chemin_conversation_ecriture_ancien_lancement_ok", ok)
 
         messages_nouveau, _tronque = srv_direct._lire_conversation(chemin_nouveau)
@@ -201,7 +201,7 @@ def _test_marquer_message_envoye_unitaire():
     srv_direct, tmp_direct, _ = TSE._importer_server_clone()
     try:
         chemin = os.path.join(tmp_direct, "conv-b3.jsonl")
-        ok, position = srv_direct._ecrire_message_conversation(chemin, "un message")
+        ok, position = srv_direct._ecrire_message_conversation(chemin, "un message", "lancement test")
         check("test_marquer_envoye_ecriture_initiale_ok", ok)
 
         messages_avant, _ = srv_direct._lire_conversation(chemin)

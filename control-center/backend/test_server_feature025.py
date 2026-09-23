@@ -905,6 +905,84 @@ def main():
     finally:
         g8.fermer()
 
+    # =========================================================================
+    # feature-028, GATE P1 condition C3 : `POST /api/interrompre {spec_id}`
+    # cible EXACTEMENT le lancement demandé, jamais `lancement_courant()`
+    # seul — même défaut, même remède que la condition 1 du lot 9 (g7
+    # ci-dessus), mais côté ARRÊT plutôt que côté lecture. Sonde REJOUÉE avec
+    # `ecrivains_simultanes=2` : lancement ciblé sur ALPHA (202) -> lancement
+    # ciblé sur BETA (202, `self.courant` bascule sur BETA) -> interrompre
+    # {"spec_id": "alpha"} DOIT tuer ALPHA et laisser BETA vivant. Sans le
+    # correctif, `_interrompre()` ignorait le corps et tuait `lancement_
+    # courant()` (BETA) — l'inverse de ce qui était demandé.
+    # =========================================================================
+    g9 = GroupeGit(commandes={
+        "lancer_spec": [_PY, "-c", "import time; time.sleep(3)", "{spec_id}"],
+    }, avec_budget=["lancer_spec"], ecrivains_simultanes=2)
+    _surveiller_racine(g9.racine_projet)
+    try:
+        _ecrire_spec(g9.racine_projet, "todo", "feature-900-alpha")
+        _committer(g9.racine_projet, _relatif("feature-900-alpha", "todo"))
+        _ecrire_spec(g9.racine_projet, "todo", "feature-901-beta")
+        _committer(g9.racine_projet, _relatif("feature-901-beta", "todo"))
+        auth9 = _autorisation(g9.jeton_valeur)
+
+        code, corps = requete(g9.port, "POST", "/api/spec/lancer", entetes=auth9,
+                              corps=json.dumps({"cle": "lancer_spec",
+                                                "spec_id": "feature-900-alpha"}).encode())
+        check("test_C3_setup_lancement_alpha_202", code == 202, "obtenu %d : %s" % (code, corps))
+
+        code, corps = requete(g9.port, "POST", "/api/spec/lancer", entetes=auth9,
+                              corps=json.dumps({"cle": "lancer_spec",
+                                                "spec_id": "feature-901-beta"}).encode())
+        check("test_C3_setup_lancement_beta_202", code == 202, "obtenu %d : %s" % (code, corps))
+
+        # `spec_id` d'un TYPE invalide -> 400, AUCUN effet.
+        code, corps = requete(g9.port, "POST", "/api/interrompre", entetes=auth9,
+                              corps=json.dumps({"spec_id": 12345}).encode())
+        check("test_C3_spec_id_invalide_400", code == 400, "obtenu %d : %s" % (code, corps))
+
+        # `spec_id` INCONNU -> 404, AUCUN effet (ni alpha ni beta ne meurent).
+        code, corps = requete(g9.port, "POST", "/api/interrompre", entetes=auth9,
+                              corps=json.dumps({"spec_id": "feature-999-inconnue"}).encode())
+        check("test_C3_spec_id_inconnu_404", code == 404, "obtenu %d : %s" % (code, corps))
+
+        actifs = {l.spec_id for l in g9.ecriture().lancements_actifs()}
+        check("test_C3_404_sans_effet_alpha_et_beta_toujours_actifs",
+              {"feature-900-alpha", "feature-901-beta"} <= actifs,
+              "obtenu %r" % actifs)
+
+        # Interrompre CIBLÉ sur ALPHA, alors que `self.courant` porte BETA
+        # (le DERNIER lancement basculé, cf. GATE P2 lot 9 condition 1).
+        code, corps = requete(g9.port, "POST", "/api/interrompre", entetes=auth9,
+                              corps=json.dumps({"spec_id": "feature-900-alpha"}).encode())
+        check("test_C3_interrompre_cible_202", code == 202, "obtenu %d : %s" % (code, corps))
+
+        def _alpha_mort_beta_vivant():
+            actifs = {l.spec_id: l for l in g9.ecriture().lancements_actifs()}
+            return ("feature-900-alpha" not in actifs
+                    and actifs.get("feature-901-beta") is not None
+                    and actifs["feature-901-beta"].toujours_en_cours())
+
+        check("test_C3_alpha_meurt_beta_survit_a_l_interruption_ciblee",
+              _attendre(_alpha_mort_beta_vivant),
+              "l'interruption ciblée sur ALPHA a tué le mauvais lancement, "
+              "ou n'a rien tué du tout")
+
+        # Sans `spec_id` : comportement INCHANGÉ, interrompt `lancement_
+        # courant()` (BETA, le dernier basculé) — compatibilité du chemin
+        # existant (condition C3, "sans : comportement INCHANGÉ").
+        code, corps = requete(g9.port, "POST", "/api/interrompre", entetes=auth9, corps=b"")
+        check("test_C3_sans_spec_id_interrompt_le_courant_202",
+              code == 202, "obtenu %d : %s" % (code, corps))
+        check("test_C3_sans_spec_id_a_bien_tue_beta_le_courant",
+              _attendre(lambda: not any(
+                  l.spec_id == "feature-901-beta" and l.toujours_en_cours()
+                  for l in g9.ecriture().lancements_actifs())))
+    finally:
+        g9.ecriture().interrompre_courant()
+        g9.fermer()
+
     print("\n%d cas, %d echec(s)" % (_tests, len(_echecs)))
     for echec in _echecs:
         print("  - %s" % echec)

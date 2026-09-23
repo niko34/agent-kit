@@ -11,9 +11,38 @@
  * M echec(s) », code de sortie 1 à l'échec. Invoqué depuis
  * `test_app_feature008.py`, qui se saute proprement si `node` est absent.
  *
- * Design arrêté (ux-ui-designer, feature-008) : panneau en FLUX normal dans
- * `.demande`, machine à états `saisie -> brouillon -> confirmation-ecriture
- * -> ecrit`, plus une erreur qui ne quitte jamais la phase courante.
+ * ⚠️ RETARGETÉ (feature-028, lot C2, PIEGES §30 : jamais un test supprimé
+ * en silence). Ce harnais testait à l'origine `demande` (« Que souhaitez-
+ * vous développer ? », `#titre-besoin`/`#spec-prompt`/`#derogation-
+ * minimale`/`#bouton-generer-brouillon`/`#redaction-corps`) — RETIRÉE une
+ * fois le `+` câblé et vérifié (lot B). `#add-item-dialog` (`#item-title`/
+ * `#item-description`/radios `#item-type-*`/`#bouton-generer-item-
+ * brouillon`/`#add-item-redaction-corps`) est désormais le SEUL point
+ * d'entrée du MÊME flux (`redaction`, `SURFACES_REDACTION` dans `app.js`,
+ * GATE C1 : jamais un second chemin) — chaque scénario ci-dessous est
+ * RETARGETÉ vers ces ids, jamais supprimé.
+ *
+ * ⚠️ CAPACITÉ RESTAURÉE (feature-028, lot pilotage dédié) : au lot C2, ce
+ * fichier signalait `minimal` comme PERDUE (« choix sûr par défaut »,
+ * jamais réinventée — B6). `CLAUDE.md` l'impose pourtant : « pour un bug
+ * simple ou un refactor ponctuel, le format minimal specs/modele.md
+ * suffit » — ce n'était pas une question de goût. `#item-derogation-
+ * minimale` restaure la capacité, INDÉPENDAMMENT de `#item-type` (radios,
+ * inchangées) — contrairement à `demande`, qui dérivait les deux d'UNE
+ * seule case. `testEscaladeIgnoreeVisibleDepuisLaSurfaceDialogue` (ex-
+ * assertion d'ABSENCE, PIEGES §30 : inversée, jamais supprimée) redevient
+ * un test d'escalade RÉEL, vérifié sur le CONTENU RENDU (la note
+ * « Dérogation ignorée » et le texte du brouillon), jamais sur le seul
+ * paramètre envoyé.
+ *
+ * Design arrêté à l'origine (ux-ui-designer, feature-008) : panneau en FLUX
+ * normal dans `.demande`, machine à états `saisie -> brouillon ->
+ * confirmation-ecriture -> ecrit`, plus une erreur qui ne quitte jamais la
+ * phase courante. Le flux vit désormais dans `#add-item-dialog`, un
+ * `<dialog>` NATIF — voir le commentaire sur `SURFACES_REDACTION` (app.js)
+ * pour pourquoi ce changement ne reproduit PAS le défaut que bug-017 avait
+ * fait éviter à `demande` (la sémantique modale native protège déjà le
+ * reste du document, contrairement à un `div[role=dialog]` maison).
  *
  * Ce que ce harnais établit PAR EXÉCUTION :
  *  1. Le cycle nominal complet : saisie -> brouillon -> confirmation ->
@@ -26,11 +55,10 @@
  *     invoqué directement (bouton désactivé outrepassé), le passage en
  *     confirmation n'a PAS lieu si `ecriture_active` est faux.
  *  3. L'escalade est rendue VISIBLE : dérogation cochée + contenu renvoyé
- *     SANS le marqueur du gabarit minimal (« ## Symptôme observé » — voir
- *     `contenuEstGabaritMinimal`, `genre` n'étant qu'un écho de `type`,
- *     jamais une preuve d'escalade) affiche la note « Dérogation ignorée »,
- *     absente si le serveur honore la dérogation ou si elle n'était pas
- *     demandée.
+ *     SANS le marqueur du gabarit minimal affiche la note « Dérogation
+ *     ignorée », absente si le serveur honore la dérogation ou si elle
+ *     n'était pas demandée — vérifié sur le texte RENDU, jamais sur le
+ *     seul paramètre `minimal` envoyé.
  *  4. Le compte de blocs `[remplir]` se recalcule sur la frappe (débounce),
  *     sans reconstruire le `<textarea>` ni perdre le focus.
  *  5. Un 409 affiche le message exact instruisant de régénérer, un 422
@@ -40,13 +68,16 @@
  *     reste du module, `sur401Lecture`), jamais une modale dédiée.
  *  7. Rien du texte saisi ne part en query string : l'URL des deux routes
  *     reste exactement son chemin, le texte ne voyage que dans le corps.
- *  8. Aucune surface `role="dialog"`/`.porte` n'est introduite pour ce flux
- *     (lecture statique de `index.html`), et l'ancienne note « Inactif à
- *     dessein » a disparu au profit de l'avertissement RGPD permanent.
+ *  8. `#add-item-dialog` reprend le markup du PROTOTYPE (lecture statique de
+ *     `index.html`) : le champ titre est un AJOUT déclaré (GATE C2), la
+ *     priorité reste en place mais INERTE (ADR-0039, même patron que le
+ *     5ᵉ `icon-button`), l'avertissement RGPD est permanent.
  *
  * Ce que ce harnais NE peut PAS établir : le rendu visuel réel, ni le
  * comportement d'un vrai `<textarea>` face à un focus perdu pendant une
- * frappe réelle (aucun navigateur ici, ADR-0006).
+ * frappe réelle (aucun navigateur ici, ADR-0006) — voir
+ * `test_app_feature028_plus_navigateur.py` pour la garde en navigateur réel
+ * (Chromium), complémentaire de celle-ci.
  */
 
 const fs = require("fs");
@@ -143,11 +174,24 @@ class FakeNode {
 // Même liste que `test_app_bug012.js` (tenue à la main, PIEGES.md §7),
 // re-synchronisée pour cette feature. Resynchronisée au lot 3 (feature-021,
 // cycle 2, F7) : voir le commentaire de `test_app_bug012.js`.
+// feature-028 (lot A1, U1 de feature-021) : `agents`/`note-agents`/
+// `titre-agents`, `compteur-prompt`, `timeline`/`titre-evenements` retirés ;
+// `voir-evenements-passage` ajouté. Décision humaine du 2026-09-23,
+// AU-DELÀ de U1 (feature-028) : `systeme`/`titre-systeme` retirés à leur
+// tour — retrait sec, sans migration. Décision humaine du 2026-09-23,
+// « fichiers » : `fichiers`/`titre-fichiers` retirés, `ouvrirDiff` avec eux.
+// Décision humaine du 2026-09-23, « demande » (lot C2, feature-028) :
+// `titre-besoin`/`spec-prompt`/`derogation-minimale`/`bouton-generer-
+// brouillon`/`redaction-corps`/`titre-demande` retirés — remplacés par les
+// ids de `#add-item-dialog` (déjà présents ci-dessous, câblés au lot B).
 const IDS = [
-  "a11y-announcement", "account-button", "agents", "avatar",
+  "a11y-announcement", "account-button",
+  "add-item-dialog", "add-item-form", "add-item-intro",
+  "add-item-redaction-corps", "add-item-title", "avatar",
   "backlog-column-count", "backlog-count",
   "backlog-title", "bandeau-hote", "bandeau-hote-bouton",
-  "bandeau-hote-texte", "barre", "bouton-generer-brouillon",
+  "bandeau-hote-texte", "barre", "bouton-generer-item-brouillon",
+  "cancel-add-item", "close-add-item", "open-add-item",
   // feature-022 (lot 11) : `app.js` touche ces id SANS CONDITION au chargement
   // (câblage du composeur de conversation, `appliquerEtatComposer`,
   // `rendreConversation`) — absents d'ici, `creerBac()` rendrait `null` et
@@ -155,29 +199,31 @@ const IDS = [
   // feature, pas seulement les siens (PIEGES §38).
   "claude-status", "composer", "composer-etat", "conversation",
   "conversation-erreur", "envoyer-conversation", "prompt",
-  "compteur-prompt", "compteur-specs", "cycle-canvas", "cycle-status",
-  "cycle-title", "derogation-minimale", "erreur-generer-brouillon", "fichiers", "filtre",
-  "filtre-divergences", "horodatage", "jauge-flux", "jauge-git",
-  "jauge-pilotage", "kanban", "legende-cycles", "link-front-sec",
+  "compteur-specs", "cycle-canvas", "cycle-status",
+  "cycle-title", "erreur-generer-item-brouillon", "filtre",
+  "filtre-divergences", "horodatage", "item-derogation-minimale",
+  "item-description", "item-priority",
+  "item-title", "item-type-bug", "item-type-feature",
+  "jauge-flux", "jauge-git", "kanban", "legende-cycles", "link-front-sec",
   "link-front-tests", "link-front2-review", "link-reprise",
   "link-sec-front2", "link-spec-front", "link-tests-front2", "main-content",
-  "motion-note", "note-agents", "pied-cycles", "pilotage-corps",
+  "motion-note", "pied-cycles", "pilotage-corps",
   "porte-aide", "porte-bouton", "porte-champ", "porte-corps", "porte-erreur",
-  "porte-jeton", "porte-titre", "projet", "spec-prompt", "redaction-corps",
+  "porte-jeton", "porte-titre", "projet",
   "selected-code", "selected-duration", "selected-files", "selected-state",
   "selected-task", "selected-title", "selected-tokens", "selected-tools", "sheet-metrics", "sheet-toggle", "summary-active",
-  "summary-step", "summary-time", "summary-tokens", "systeme", "timeline", "tiroir",
-  "tiroir-contenu", "tiroir-fermer", "tiroir-titre", "titre-agents",
-  "titre-besoin", "titre-cycles", "titre-demande",
-  "titre-evenements", "titre-fichiers", "titre-pilotage", "titre-systeme",
-  "user-name", "workflows",
+  "summary-step", "summary-time", "summary-tokens", "tiroir",
+  "tiroir-contenu", "tiroir-fermer", "tiroir-titre",
+  "titre-cycles",
+  "titre-pilotage",
+  "user-name", "voir-evenements-passage", "workflows",
 ];
 
 // `section-*` retirés avec la navigation à onglets (lot 3, F7) : plus
 // aucune section n'est masquée.
 const CACHES_PAR_DEFAUT = new Set([
   "bandeau-hote", "tiroir", "porte-jeton", "porte-erreur",
-  "erreur-generer-brouillon",
+  "erreur-generer-item-brouillon",
 ]);
 
 function creerBac() {
@@ -366,19 +412,30 @@ function boutonParTexte(racine, texte) {
   return tousLesNoeuds(racine).find((n) => n.tagName === "BUTTON" && n.textContent === texte) || null;
 }
 function cliquer(bouton) { (bouton._listeners.click || []).forEach((fn) => fn()); }
+// Le bouton de génération est `type="submit"` DANS `#add-item-form` — ce
+// bac à sable ne simule PAS la sémantique native « cliquer un bouton submit
+// déclenche le submit du formulaire » (FakeNode n'a aucune notion de
+// formulaire) : on déclenche directement l'événement `submit` du `<form>`,
+// exactement ce que le VRAI navigateur ferait à la place de nous.
+function soumettreFormulaireAjout(bac) {
+  const evenementFactice = { preventDefault: () => {} };
+  (bac.$("add-item-form")._listeners.submit || []).forEach((fn) => fn(evenementFactice));
+}
 
 // ------------------------------------------------------------- scénarios --
 
 async function testCycleNominalComplet() {
   const bac = await chargerAvecEtat({ ecriture_active: true });
-  const corps = bac.$("redaction-corps");
+  const corps = bac.$("add-item-redaction-corps");
 
   check("N_phase_saisie_corps_vide_au_depart", corps.children.length === 0,
     "obtenu " + corps.children.length + " enfant(s)");
 
-  bac.$("titre-besoin").value = "Ajouter un export CSV";
-  bac.$("spec-prompt").value = "Ajouter un export CSV des specs affichées";
-  bac.$("derogation-minimale").checked = false;
+  bac.$("item-title").value = "Ajouter un export CSV";
+  bac.$("item-description").value = "Ajouter un export CSV des specs affichées";
+  // Radio "feature" par défaut dans le HTML réel — dans ce bac à sable,
+  // `item-type-bug.checked` vaut déjà `false` (valeur initiale de
+  // `FakeNode`) : aucune action nécessaire pour obtenir `type: "feature"`.
 
   enfilerUneFois(bac, "/api/spec/brouillon", 200, {
     genre: "feature",
@@ -388,7 +445,7 @@ async function testCycleNominalComplet() {
       + "## Description\n[remplir]\n",
     substitutions: ["slug", "type"],
   });
-  cliquer(bac.$("bouton-generer-brouillon"));
+  soumettreFormulaireAjout(bac);
   await attendreMicrotaches();
   await attendreMicrotaches();
   await attendreMicrotaches();
@@ -404,7 +461,6 @@ async function testCycleNominalComplet() {
     && corpsEnvoye.type === "feature" && corpsEnvoye.minimal === false,
     "obtenu : " + JSON.stringify(corpsEnvoye));
 
-  const titre = unParClasse(corps, "") ; // no-op, placeholder pour lisibilité
   const h3 = tousLesNoeuds(corps).find((n) => n.tagName === "H3");
   check("N_titre_brouillon_affiche_le_nom_prevu",
     !!h3 && h3.textContent.indexOf("feature-NNN-export-csv.md") !== -1,
@@ -487,22 +543,23 @@ async function testCycleNominalComplet() {
   check("N_bouton_nouveau_brouillon_present", !!boutonNouveau);
   cliquer(boutonNouveau);
   check("N_retour_saisie_corps_vide", corps.children.length === 0);
-  check("N_titre_reinitialise", bac.$("titre-besoin").value === "");
-  check("N_prompt_reinitialise", bac.$("spec-prompt").value === "");
-  check("N_derogation_reinitialisee", bac.$("derogation-minimale").checked === false);
+  check("N_titre_reinitialise", bac.$("item-title").value === "");
+  check("N_prompt_reinitialise", bac.$("item-description").value === "");
+  check("N_type_redevient_feature",
+    bac.$("item-type-feature").checked === true && bac.$("item-type-bug").checked === false);
 }
 
 async function testEcritureActiveEstUneCommoditePasUneGarde() {
   const bac = await chargerAvecEtat({ ecriture_active: false, ecriture_raison: "plafond atteint" });
-  const corps = bac.$("redaction-corps");
-  bac.$("titre-besoin").value = "Un besoin quelconque";
-  bac.$("spec-prompt").value = "Un besoin quelconque, en détail";
+  const corps = bac.$("add-item-redaction-corps");
+  bac.$("item-title").value = "Un besoin quelconque";
+  bac.$("item-description").value = "Un besoin quelconque, en détail";
 
   enfilerUneFois(bac, "/api/spec/brouillon", 200, {
     genre: "feature", slug: "x", nom_fichier_prevu: "feature-NNN-x.md",
     contenu: "[remplir]", substitutions: [],
   });
-  cliquer(bac.$("bouton-generer-brouillon"));
+  soumettreFormulaireAjout(bac);
   await attendreMicrotaches(); await attendreMicrotaches(); await attendreMicrotaches();
 
   const boutonEcrire = boutonParTexte(corps, "Écrire dans todo/…");
@@ -530,73 +587,95 @@ async function testEcritureActiveEstUneCommoditePasUneGarde() {
 const CONTENU_GABARIT_COMPLET = "## Métadonnées\n- ID : [remplir]\n\n## Description\n[remplir]\n";
 const CONTENU_GABARIT_MINIMAL = "# Bug — x\n\n## Symptôme observé\n[remplir]\n";
 
-async function testEscaladeIgnoreeVisible() {
-  // Dérogation cochée (« bug simple »), mot-clé sensible dans le texte :
-  // le serveur FORCE le gabarit complet (fail-closed) — visible SEULEMENT
-  // par l'absence de « ## Symptôme observé » dans le contenu renvoyé.
+// RE-RETARGETÉ (feature-028, lot pilotage dédié) : `#item-derogation-
+// minimale` restaure la capacité que `demande` portait (`CLAUDE.md`
+// l'impose). Ce scénario vérifie l'escalade sur le CONTENU RENDU (la note
+// « Dérogation ignorée » et le texte réel du brouillon), JAMAIS sur le seul
+// paramètre `minimal` envoyé — un frontend qui enverrait `minimal:true`
+// sans jamais lire la réponse pour détecter une escalade honorerait ce
+// test à tort si on ne regardait que le corps de la requête.
+async function testEscaladeIgnoreeVisibleDepuisLaSurfaceDialogue() {
+  // Dérogation cochée (« bug simple »), mot-clé sensible dans le texte : le
+  // serveur FORCE le gabarit complet (fail-closed) — visible SEULEMENT par
+  // l'absence de « ## Symptôme observé » dans le contenu renvoyé.
   const bac1 = await chargerAvecEtat({ ecriture_active: true });
-  bac1.$("titre-besoin").value = "Ajouter une permission d'accès";
-  bac1.$("spec-prompt").value = "Ajouter une permission d'accès au tableau de bord";
-  bac1.$("derogation-minimale").checked = true;
+  bac1.$("item-title").value = "Ajouter une permission d'accès";
+  bac1.$("item-description").value = "Ajouter une permission d'accès au tableau de bord";
+  bac1.$("item-derogation-minimale").checked = true;
   enfilerUneFois(bac1, "/api/spec/brouillon", 200, {
     genre: "bug", slug: "permission", nom_fichier_prevu: "bug-NNN-permission.md",
     contenu: CONTENU_GABARIT_COMPLET, substitutions: [],
   });
-  cliquer(bac1.$("bouton-generer-brouillon"));
+  soumettreFormulaireAjout(bac1);
   await attendreMicrotaches(); await attendreMicrotaches(); await attendreMicrotaches();
-  const corps1 = bac1.$("redaction-corps");
-  const noteIgnoree = tousLesNoeuds(corps1)
+  const appelBrouillon1 = bac1.appelsFetch.find((a) => a.url === "/api/spec/brouillon");
+  check("E_corps_envoye_porte_bien_minimal_true",
+    JSON.parse(appelBrouillon1.options.body).minimal === true,
+    "obtenu : " + appelBrouillon1.options.body);
+  const corps1 = bac1.$("add-item-redaction-corps");
+  const noteIgnoree1 = tousLesNoeuds(corps1)
     .find((n) => n.textContent === "Dérogation ignorée : le texte mentionne un sujet sensible — "
       + "template complet appliqué.");
-  check("E_note_derogation_ignoree_visible_quand_gabarit_complet_impose", !!noteIgnoree);
+  check("E_note_derogation_ignoree_visible_quand_gabarit_complet_impose", !!noteIgnoree1);
+  const textarea1 = tousLesNoeuds(corps1).find((n) => n.tagName === "TEXTAREA");
+  check("E_contenu_textarea_reellement_complet",
+    !!textarea1 && textarea1.value.indexOf("## Symptôme observé") === -1,
+    "obtenu : " + JSON.stringify(textarea1 && textarea1.value));
 
   // Dérogation cochée, rien de sensible : le serveur honore le gabarit
-  // minimal (« ## Symptôme observé » présent) — pas de note.
+  // minimal (« ## Symptôme observé » présent) — pas de note, et le texte
+  // RENDU porte bien le marqueur minimal.
   const bac2 = await chargerAvecEtat({ ecriture_active: true });
-  bac2.$("titre-besoin").value = "Corriger une faute de frappe";
-  bac2.$("spec-prompt").value = "Corriger une faute de frappe dans le pied de page";
-  bac2.$("derogation-minimale").checked = true;
+  bac2.$("item-title").value = "Corriger une faute de frappe";
+  bac2.$("item-description").value = "Corriger une faute de frappe dans le pied de page";
+  bac2.$("item-derogation-minimale").checked = true;
   enfilerUneFois(bac2, "/api/spec/brouillon", 200, {
     genre: "bug", slug: "faute", nom_fichier_prevu: "bug-NNN-faute.md",
     contenu: CONTENU_GABARIT_MINIMAL, substitutions: [],
   });
-  cliquer(bac2.$("bouton-generer-brouillon"));
+  soumettreFormulaireAjout(bac2);
   await attendreMicrotaches(); await attendreMicrotaches(); await attendreMicrotaches();
-  const corps2 = bac2.$("redaction-corps");
-  const noteAbsente = tousLesNoeuds(corps2)
-    .find((n) => n.textContent.indexOf("Dérogation ignorée") !== -1);
-  check("E_pas_de_note_quand_derogation_honoree", !noteAbsente);
+  const corps2 = bac2.$("add-item-redaction-corps");
+  check("E_pas_de_note_quand_derogation_honoree",
+    !tousLesNoeuds(corps2).some((n) => n.textContent.indexOf("Dérogation ignorée") !== -1));
+  const textarea2 = tousLesNoeuds(corps2).find((n) => n.tagName === "TEXTAREA");
+  check("E_contenu_textarea_reellement_minimal",
+    !!textarea2 && textarea2.value.indexOf("## Symptôme observé") !== -1,
+    "obtenu : " + JSON.stringify(textarea2 && textarea2.value));
 
-  // Dérogation jamais demandée : jamais de note, même si le gabarit renvoyé
-  // est le complet (cas normal, pas une escalade).
+  // Dérogation jamais demandée (case décochée) : jamais de note, même si le
+  // gabarit renvoyé est le complet (cas normal, pas une escalade) — et
+  // `minimal` envoyé est bien `false`, jamais recalculé côté client.
   const bac3 = await chargerAvecEtat({ ecriture_active: true });
-  bac3.$("titre-besoin").value = "Une fonctionnalité banale";
-  bac3.$("spec-prompt").value = "Une fonctionnalité banale, sans rapport avec la sécurité";
-  bac3.$("derogation-minimale").checked = false;
+  bac3.$("item-title").value = "Une fonctionnalité banale";
+  bac3.$("item-description").value = "Une fonctionnalité banale, sans rapport avec la sécurité";
   enfilerUneFois(bac3, "/api/spec/brouillon", 200, {
     genre: "feature", slug: "banal", nom_fichier_prevu: "feature-NNN-banal.md",
     contenu: CONTENU_GABARIT_COMPLET, substitutions: [],
   });
-  cliquer(bac3.$("bouton-generer-brouillon"));
+  soumettreFormulaireAjout(bac3);
   await attendreMicrotaches(); await attendreMicrotaches(); await attendreMicrotaches();
-  const corps3 = bac3.$("redaction-corps");
-  const noteAbsente3 = tousLesNoeuds(corps3)
-    .find((n) => n.textContent.indexOf("Dérogation ignorée") !== -1);
-  check("E_pas_de_note_quand_derogation_jamais_demandee", !noteAbsente3);
+  const appelBrouillon3 = bac3.appelsFetch.find((a) => a.url === "/api/spec/brouillon");
+  check("E_case_decochee_minimal_envoye_faux",
+    JSON.parse(appelBrouillon3.options.body).minimal === false,
+    "obtenu : " + appelBrouillon3.options.body);
+  const corps3 = bac3.$("add-item-redaction-corps");
+  check("E_pas_de_note_quand_derogation_jamais_demandee",
+    !tousLesNoeuds(corps3).some((n) => n.textContent.indexOf("Dérogation ignorée") !== -1));
 }
 
 async function testErreur409NeChangePasDePhase() {
   const bac = await chargerAvecEtat({ ecriture_active: true });
-  bac.$("titre-besoin").value = "Un besoin déjà nommé";
-  bac.$("spec-prompt").value = "Un besoin déjà nommé, en détail";
+  bac.$("item-title").value = "Un besoin déjà nommé";
+  bac.$("item-description").value = "Un besoin déjà nommé, en détail";
   enfilerUneFois(bac, "/api/spec/brouillon", 200, {
     genre: "feature", slug: "deja-nomme", nom_fichier_prevu: "feature-NNN-deja-nomme.md",
     contenu: "contenu du brouillon\n[remplir]", substitutions: [],
   });
-  cliquer(bac.$("bouton-generer-brouillon"));
+  soumettreFormulaireAjout(bac);
   await attendreMicrotaches(); await attendreMicrotaches(); await attendreMicrotaches();
 
-  const corps = bac.$("redaction-corps");
+  const corps = bac.$("add-item-redaction-corps");
   const textareaAvant = tousLesNoeuds(corps).find((n) => n.tagName === "TEXTAREA");
   const contenuAvant = textareaAvant.value;
 
@@ -634,16 +713,16 @@ async function testErreur409NeChangePasDePhase() {
 // `.note.erreur` au-dessus du bouton, jamais de perte du texte relu.
 async function testErreur422ContenuVideGereeCommeLesAutres() {
   const bac = await chargerAvecEtat({ ecriture_active: true });
-  bac.$("titre-besoin").value = "Un besoin quelconque";
-  bac.$("spec-prompt").value = "Un besoin quelconque, en détail";
+  bac.$("item-title").value = "Un besoin quelconque";
+  bac.$("item-description").value = "Un besoin quelconque, en détail";
   enfilerUneFois(bac, "/api/spec/brouillon", 200, {
     genre: "feature", slug: "quelconque", nom_fichier_prevu: "feature-NNN-quelconque.md",
     contenu: "contenu du brouillon\n[remplir]", substitutions: [],
   });
-  cliquer(bac.$("bouton-generer-brouillon"));
+  soumettreFormulaireAjout(bac);
   await attendreMicrotaches(); await attendreMicrotaches(); await attendreMicrotaches();
 
-  const corps = bac.$("redaction-corps");
+  const corps = bac.$("add-item-redaction-corps");
   const textareaAvant = tousLesNoeuds(corps).find((n) => n.tagName === "TEXTAREA");
   const contenuAvant = textareaAvant.value;
   cliquer(boutonParTexte(corps, "Écrire dans todo/…"));
@@ -673,17 +752,17 @@ async function testErreur422ContenuVideGereeCommeLesAutres() {
 async function test401RouvreLaPorteJamaisUneModaleDediee() {
   const bac = await chargerAvecEtat({ ecriture_active: true, jeton_requis: false });
   bac.sessionStorageDonnees["pilotage_jeton"] = "jeton-perime";
-  bac.$("titre-besoin").value = "Peu importe";
-  bac.$("spec-prompt").value = "Peu importe, en détail";
+  bac.$("item-title").value = "Peu importe";
+  bac.$("item-description").value = "Peu importe, en détail";
 
   enfilerUneFois(bac, "/api/spec/brouillon", 401, null);
-  cliquer(bac.$("bouton-generer-brouillon"));
+  soumettreFormulaireAjout(bac);
   await attendreMicrotaches(); await attendreMicrotaches(); await attendreMicrotaches();
 
   check("A401_porte_reouverte", bac.$("porte-jeton").hidden === false);
   check("A401_jeton_oublie", !bac.sessionStorageDonnees["pilotage_jeton"]);
   check("A401_aucune_nouvelle_surface_dialog_dediee_a_la_redaction",
-    bac.$("redaction-corps").children.length === 0);
+    bac.$("add-item-redaction-corps").children.length === 0);
 }
 
 // Reboucle (revue, Request changes) : un 401 en cours de relecture ne doit
@@ -695,16 +774,16 @@ async function test401NeBloqueJamaisLesBoutonsNiNePerdLeMarkdown() {
   // -- Route 1/2 : /api/spec/brouillon, depuis « Régénérer » (phase
   // brouillon, où vivent les boutons concernés par le défaut signalé) --
   const bac1 = await chargerAvecEtat({ ecriture_active: true, jeton_requis: false });
-  bac1.$("titre-besoin").value = "Un besoin";
-  bac1.$("spec-prompt").value = "Un besoin, en détail";
+  bac1.$("item-title").value = "Un besoin";
+  bac1.$("item-description").value = "Un besoin, en détail";
   enfilerUneFois(bac1, "/api/spec/brouillon", 200, {
     genre: "feature", slug: "besoin", nom_fichier_prevu: "feature-NNN-besoin.md",
     contenu: "contenu relu\n[remplir]", substitutions: [],
   });
-  cliquer(bac1.$("bouton-generer-brouillon"));
+  soumettreFormulaireAjout(bac1);
   await attendreMicrotaches(); await attendreMicrotaches(); await attendreMicrotaches();
 
-  const corps1 = bac1.$("redaction-corps");
+  const corps1 = bac1.$("add-item-redaction-corps");
   const textareaAvant1 = tousLesNoeuds(corps1).find((n) => n.tagName === "TEXTAREA");
   const contenuAvant1 = textareaAvant1.value;
 
@@ -725,16 +804,16 @@ async function test401NeBloqueJamaisLesBoutonsNiNePerdLeMarkdown() {
 
   // -- Route 2/2 : /api/spec/ecrire, depuis « Confirmer l'écriture » --
   const bac2 = await chargerAvecEtat({ ecriture_active: true, jeton_requis: false });
-  bac2.$("titre-besoin").value = "Un autre besoin";
-  bac2.$("spec-prompt").value = "Un autre besoin, en détail";
+  bac2.$("item-title").value = "Un autre besoin";
+  bac2.$("item-description").value = "Un autre besoin, en détail";
   enfilerUneFois(bac2, "/api/spec/brouillon", 200, {
     genre: "feature", slug: "autre-besoin", nom_fichier_prevu: "feature-NNN-autre-besoin.md",
     contenu: "contenu relu et corrigé\n[remplir]", substitutions: [],
   });
-  cliquer(bac2.$("bouton-generer-brouillon"));
+  soumettreFormulaireAjout(bac2);
   await attendreMicrotaches(); await attendreMicrotaches(); await attendreMicrotaches();
 
-  const corps2 = bac2.$("redaction-corps");
+  const corps2 = bac2.$("add-item-redaction-corps");
   const textareaAvant2 = tousLesNoeuds(corps2).find((n) => n.tagName === "TEXTAREA");
   const contenuAvant2 = textareaAvant2.value;
   cliquer(boutonParTexte(corps2, "Écrire dans todo/…"));
@@ -761,13 +840,13 @@ async function test401NeBloqueJamaisLesBoutonsNiNePerdLeMarkdown() {
 
 async function testAucuneFuiteDuTexteEnQueryString() {
   const bac = await chargerAvecEtat({ ecriture_active: true });
-  bac.$("titre-besoin").value = "Un titre anodin";
-  bac.$("spec-prompt").value = "un secret ne doit jamais partir en clair dans une URL";
+  bac.$("item-title").value = "Un titre anodin";
+  bac.$("item-description").value = "un secret ne doit jamais partir en clair dans une URL";
   enfilerUneFois(bac, "/api/spec/brouillon", 200, {
     genre: "feature", slug: "x", nom_fichier_prevu: "feature-NNN-x.md",
     contenu: "[remplir]", substitutions: [],
   });
-  cliquer(bac.$("bouton-generer-brouillon"));
+  soumettreFormulaireAjout(bac);
   await attendreMicrotaches(); await attendreMicrotaches(); await attendreMicrotaches();
 
   const appel = bac.appelsFetch.find((a) => a.url === "/api/spec/brouillon");
@@ -777,42 +856,69 @@ async function testAucuneFuiteDuTexteEnQueryString() {
 }
 
 // ------------------------------------------------- lecture statique HTML --
+// RETARGETÉ (feature-028, lot C2) : ce bloc lisait `.demande` ; il lit
+// désormais `#add-item-dialog`, le seul point d'entrée restant.
 function testStatiqueHTML() {
   const bloc = (() => {
-    const debut = HTML.indexOf('class="bloc demande"');
-    const suite = HTML.indexOf("</section>", debut);
+    const debut = HTML.indexOf('id="add-item-dialog"');
+    const suite = HTML.indexOf("</dialog>", debut);
     return HTML.slice(debut, suite);
   })();
 
-  check("S_prompt_nest_plus_disabled",
-    !/<textarea id="spec-prompt"[^>]*\bdisabled\b/.test(bloc));
-  check("S_ancienne_note_inactif_a_dessein_disparue",
-    HTML.indexOf("Inactif à dessein") === -1);
+  check("S_bloc_add_item_dialog_atteignable", bloc.length > 0);
+  check("S_description_nest_pas_disabled",
+    !/<textarea id="item-description"[^>]*\bdisabled\b/.test(bloc));
   check("S_avertissement_rgpd_permanent_present",
     bloc.indexOf("aucun appel de modèle") !== -1
     && bloc.indexOf("Il ne quitte pas ce poste") !== -1);
+  // RETARGETÉ (feature-028, lot pilotage dédié) : la case de dérogation
+  // « template minimal », perdue avec `demande` (lot C2), a un équivalent
+  // sur CETTE surface depuis — `CLAUDE.md` l'impose (« pour un bug simple
+  // ou un refactor ponctuel, le format minimal specs/modele.md suffit »).
   check("S_case_derogation_minimale_presente",
-    bloc.indexOf('id="derogation-minimale"') !== -1
+    bloc.indexOf('id="item-derogation-minimale"') !== -1
     && bloc.indexOf("template minimal") !== -1);
   check("S_note_mot_cle_sensible_presente",
     bloc.indexOf("mot-clé sensible") !== -1);
-  check("S_aucune_surface_dialog_dans_le_bloc_demande",
-    bloc.indexOf("role=\"dialog\"") === -1 && !/class="[^"]*\bporte\b/.test(bloc));
-  check("S_bouton_generer_brouillon_present",
-    bloc.indexOf('id="bouton-generer-brouillon"') !== -1
+  // GATE C2 : `#item-priority` reste EN PLACE (fidélité au prototype) mais
+  // INERTE — jamais lu ni envoyé (voir `lireChampsSurface`, app.js).
+  // M1 (revue de code, feature-028) : `aria-disabled` SEUL ne suffit pas à
+  // un `<select>` (contrairement à un `<button>`, ADR-0039) — l'utilisateur
+  // peut changer sa valeur, jetée en silence. `disabled` RÉEL exigé, EN
+  // PLUS de `aria-disabled` (jamais l'un sans l'autre). ⚠️ `\bdisabled\b`
+  // matcherait à tort DANS `aria-disabled` (le tiret est une frontière de
+  // mot) — le token est cherché isolé par des espaces/bords de balise,
+  // jamais par sous-chaîne (PIEGES §27).
+  const baliseItemPriority = (bloc.match(/<select[^>]*id="item-priority"[^>]*>/) || [""])[0];
+  check("S_item_priority_present_mais_marque_inerte",
+    baliseItemPriority !== ""
+    && /(^|\s)disabled(\s|>|$)/.test(baliseItemPriority)
+    && /aria-disabled="true"/.test(baliseItemPriority));
+  check("S_bouton_generer_present",
+    bloc.indexOf('id="bouton-generer-item-brouillon"') !== -1
     && bloc.indexOf("Générer le brouillon") !== -1);
   check("S_conteneur_redaction_corps_present",
-    bloc.indexOf('id="redaction-corps"') !== -1);
+    bloc.indexOf('id="add-item-redaction-corps"') !== -1);
   check("S_champ_titre_present_avec_label_associe",
-    bloc.indexOf('id="titre-besoin"') !== -1
-    && bloc.indexOf('for="titre-besoin"') !== -1);
+    bloc.indexOf('id="item-title"') !== -1
+    && bloc.indexOf('for="item-title"') !== -1);
+  check("S_champ_type_feature_bug_present",
+    bloc.indexOf('id="item-type-feature"') !== -1
+    && bloc.indexOf('id="item-type-bug"') !== -1);
+  // `demande` elle-même a disparu du HTML servi (lot C2) — voir
+  // `test_app_u1_navigateur.py` (checks `DH20260923_demande_*`) pour la
+  // garde d'ABSENCE exécutée sur le DOM RÉEL, complémentaire de celle-ci
+  // (lecture statique).
+  check("S_demande_disparue_du_html_statique",
+    HTML.indexOf('class="bloc demande"') === -1
+    && HTML.indexOf('id="titre-besoin"') === -1);
 }
 
 async function main() {
   testStatiqueHTML();
   await testCycleNominalComplet();
   await testEcritureActiveEstUneCommoditePasUneGarde();
-  await testEscaladeIgnoreeVisible();
+  await testEscaladeIgnoreeVisibleDepuisLaSurfaceDialogue();
   await testErreur409NeChangePasDePhase();
   await testErreur422ContenuVideGereeCommeLesAutres();
   await test401RouvreLaPorteJamaisUneModaleDediee();

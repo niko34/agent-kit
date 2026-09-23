@@ -139,9 +139,15 @@ const ICI = __dirname;
   // les frères, jamais une liste bornée) et doivent donc entrer ICI aussi,
   // sans quoi cette mesure STATIQUE compterait à tort leurs boutons/champs
   // comme atteignables hors de la porte alors qu'ils reçoivent `inert`.
+  // feature-026 (correction ux-ui-designer étape 5bis) : `#claude-
+  // compositeur-dialog` (forme réactive du 409 `compositeur_introuvable`)
+  // rejoint la liste pour la MÊME raison — un quatrième `<dialog>`, enfant
+  // direct de `<body>`, dont le bouton « Compris » compterait à tort comme
+  // atteignable hors de la porte sans cette entrée.
   const FRERES_INERTES = [
     "bandeau-hote", "skip-link", "app-shell", "tiroir", "gabarits-adoptes",
     "context-menu", "feature-dialog", "add-item-dialog", "delete-dialog",
+    "claude-compositeur-dialog",
   ];
   const FOCALISABLE = /<(a\s[^>]*href=|button|input|select|textarea|[a-zA-Z][a-zA-Z0-9-]*\s[^>]*tabindex=")/gi;
   (function compterAtteignablesHorsPorte() {
@@ -256,18 +262,31 @@ function creerBac() {
   // Reste des id que `app.js` référence à l'amorçage ou dans les chemins
   // exercés ici — regroupés sous `.app-shell` (peu importe où exactement,
   // seul `getElementById` compte pour ces id-là ; PIEGES §38).
+  // feature-028 (lot A1, U1 de feature-021) : `agents`/`note-agents`,
+  // `compteur-prompt`, `timeline` retirés (sections disparues) ;
+  // `voir-evenements-passage` ajouté (`app.js` le touche SANS CONDITION au
+  // chargement, PIEGES §38). `systeme` retiré à son tour (feature-028,
+  // décision humaine du 2026-09-23 — section entière disparue). `fichiers`
+  // retiré de même (feature-028, décision humaine du 2026-09-23, « la
+  // consultation des diffs ne va nulle part ») — `app.js` ne touche plus
+  // `$("fichiers")` du tout, `ouvrirDiff` est retiré avec la section.
+  // `demande` retirée (feature-028, lot C2, une fois le `+` câblé et
+  // vérifié) : `titre-besoin`/`spec-prompt`/`derogation-minimale`/
+  // `erreur-generer-brouillon`/`bouton-generer-brouillon`/`redaction-corps`
+  // disparus avec elle. `cycles` (l'accordéon) retiré à son tour
+  // (feature-028, lot C1, décision humaine 1B) : `workflows`/`legende-
+  // cycles`/`pied-cycles` disparus avec lui.
   const AUTRES_IDS = [
     "bandeau-hote-bouton", "bandeau-hote-texte", "barre", "jauge-flux", "jauge-git",
-    "jauge-pilotage", "horodatage", "projet", "agents", "note-agents", "systeme",
-    "kanban", "filtre", "filtre-divergences", "compteur-specs", "titre-besoin",
-    "spec-prompt", "compteur-prompt", "derogation-minimale", "erreur-generer-brouillon",
-    "bouton-generer-brouillon", "redaction-corps", "pilotage-corps", "workflows",
-    "legende-cycles", "pied-cycles", "fichiers", "timeline", "tiroir-contenu",
+    "jauge-pilotage", "horodatage", "projet",
+    "kanban", "filtre", "filtre-divergences", "compteur-specs",
+    "pilotage-corps",
+    "tiroir-contenu",
     "tiroir-fermer", "tiroir-titre", "main-content", "a11y-announcement",
     "summary-step", "summary-time", "summary-active", "summary-tokens", "cycle-status", "motion-note",
     "cycle-canvas", "selected-code", "selected-title", "selected-task",
     "selected-state", "selected-tokens", "selected-tools", "selected-files", "selected-duration",
-    "sheet-metrics", "sheet-toggle",
+    "sheet-metrics", "sheet-toggle", "voir-evenements-passage",
     "backlog-title", "backlog-count", "backlog-column-count",
     // feature-022 (lot 11) : `app.js` touche ces id SANS CONDITION au
     // chargement (câblage du composeur de conversation) — PIEGES §38.

@@ -170,35 +170,80 @@ const APP_JS_PATH = path.join(ICI, "app.js");
     !/class="avatar"[^>]*>\s*JD\s*</.test(HTML));
 })();
 
-/* Neuf blocs atteignables, une assertion épinglée par bloc — pas seulement
- * « neuf titres trouvés » (même défaut que l'ancien E5 : une prose voisine
+/* Sept blocs atteignables, une assertion épinglée par bloc — pas seulement
+ * « sept titres trouvés » (même défaut que l'ancien E5 : une prose voisine
  * qui MENTIONNE un libellé ferait passer l'assertion à tort si elle
  * cherchait une sous-chaîne dans tout le document — PIEGES §27). Chaque
  * libellé est cherché comme contenu d'un `<h1>`/`<h2>` précis, jamais dans
- * un bloc de texte qui l'engloberait. */
-(function testNeufBlocsAtteignablesEpinglesUnParUn() {
+ * un bloc de texte qui l'engloberait.
+ * ⚠️ RÉDUIT de neuf à sept blocs (feature-028, lot A1, U1 de feature-021) :
+ * « Agents » et « Derniers événements » ont disparu du DOM — voir
+ * `test_app_u1_navigateur.py` (A1bis) pour la garde d'ABSENCE, exécutée sur
+ * le DOM réel plutôt que sur ce texte statique.
+ * ⚠️ RÉDUIT à nouveau de sept à six blocs (feature-028, décision humaine du
+ * 2026-09-23, AU-DELÀ de U1) : « Système » a disparu à son tour, retrait
+ * sec sans migration — voir `test_app_u1_navigateur.py` (checks
+ * `DH20260923_*`) pour la garde d'ABSENCE sur le DOM réel.
+ * ⚠️ RÉDUIT une troisième fois de six à cinq blocs (feature-028, décision
+ * humaine du 2026-09-23, « fichiers ») : « Fichiers touchés » a disparu à
+ * son tour, retrait de capacité assumé (« la consultation des diffs ne va
+ * nulle part ») — voir `test_app_u1_navigateur.py` (checks `DH20260923_*`)
+ * pour la garde d'ABSENCE sur le DOM réel.
+ * ⚠️ RÉDUIT une quatrième fois de cinq à quatre blocs (feature-028, lot C2,
+ * une fois B3 vérifié) : « Que souhaitez-vous développer ? » (`demande`) a
+ * disparu à son tour — `#add-item-dialog` (le `+`) en est le remplaçant,
+ * MÊME machine à états (GATE C1, jamais un second chemin).
+ * ⚠️ RÉDUIT une cinquième fois de quatre à trois blocs (feature-028, lot C1,
+ * décision humaine 1B) : « Cycles » (l'accordéon `#workflows`) a disparu à
+ * son tour — les onglets « Cycle actif »/« Historique » du haut restent le
+ * SEUL endroit du DOM pour voir un cycle.
+ * ⚠️ RÉDUIT une sixième fois de trois à deux blocs (feature-028, lot
+ * pilotage dédié, décision humaine du 2026-09-23) : « Pilotage » (le
+ * panneau générique « Piloter par clé ») a disparu à son tour — le
+ * lancement et l'interruption PAR CARTE (menu `⋮`) restent le SEUL endroit
+ * du DOM pour agir sur un cycle. */
+(function testDeuxBlocsAtteignablesEpinglesUnParUn() {
   function echapper(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
   const BLOCS = [
     ["h1", "Aucun cycle observé"],
-    ["h2", "Agents"],
-    ["h2", "Système"],
-    ["h2", "Que souhaitez-vous développer"],
     ["h2", "Spécifications"],
-    ["h2", "Pilotage"],
-    ["h2", "Cycles"],
-    ["h2", "Fichiers touchés"],
-    ["h2", "Derniers événements"],
   ];
   BLOCS.forEach(([balise, libelle]) => {
     const re = new RegExp("<" + balise + "[^>]*>[^<]*" + echapper(libelle) + "[^<]*</" + balise + ">");
     check("E5_bloc_" + libelle.replace(/[^a-zA-Z]+/g, "_"), re.test(HTML),
       "« " + libelle + " » introuvable dans un <" + balise + ">");
   });
-  // Aucun de ces neuf blocs n'est masqué : le mono-écran n'a plus de
+  // Aucun de ces cinq blocs n'est masqué : le mono-écran n'a plus de
   // pagination — un `hidden` réapparu sur l'un d'eux serait une régression
   // vers l'ancien découpage en onglets.
   check("E5_aucun_hidden_statique_dans_le_corps",
     !/<(section|main)[^>]*\bhidden\b/.test(HTML));
+  // INVERSÉ (feature-028, décision humaine du 2026-09-23) : ce bloc
+  // affirmait la présence d'un <h2>Système</h2> ; il affirme désormais son
+  // ABSENCE complète du HTML statique.
+  check("E5_bloc_Systeme_absent",
+    !/<h2[^>]*>[^<]*Système[^<]*<\/h2>/.test(HTML));
+  // INVERSÉ (feature-028, décision humaine du 2026-09-23, « fichiers ») : ce
+  // bloc affirmait la présence d'un <h2>Fichiers touchés</h2> ; il affirme
+  // désormais son ABSENCE complète du HTML statique.
+  check("E5_bloc_Fichiers_touches_absent",
+    !/<h2[^>]*>[^<]*Fichiers touchés[^<]*<\/h2>/.test(HTML));
+  // INVERSÉ (feature-028, lot C2) : ce bloc affirmait la présence d'un
+  // <h2>Que souhaitez-vous développer&nbsp;?</h2> ; il affirme désormais
+  // son ABSENCE complète du HTML statique.
+  check("E5_bloc_Que_souhaitez_vous_developper_absent",
+    !/<h2[^>]*>[^<]*Que souhaitez-vous d[ée]velopper[^<]*<\/h2>/.test(HTML));
+  // INVERSÉ (feature-028, lot C1, décision humaine 1B) : ce bloc affirmait
+  // la présence d'un <h2>Cycles</h2> (l'accordéon) ; il affirme désormais
+  // son ABSENCE complète du HTML statique.
+  check("E5_bloc_Cycles_absent",
+    !/<h2[^>]*>[^<]*Cycles[^<]*<\/h2>/.test(HTML));
+  // INVERSÉ (feature-028, lot pilotage dédié, décision humaine du
+  // 2026-09-23) : ce bloc affirmait la présence d'un <h2>Pilotage</h2> (le
+  // panneau générique) ; il affirme désormais son ABSENCE complète du HTML
+  // statique.
+  check("E5_bloc_Pilotage_absent",
+    !/<h2[^>]*>[^<]*Pilotage[^<]*<\/h2>/.test(HTML));
 })();
 
 // ===================================================================== //
@@ -240,14 +285,46 @@ const CSS_SANS_COMMENTAIRES = sansCommentairesCSS(CSS);
   // spec — c'est du Markdown technique relu par un humain, MÊME NATURE que
   // `#tiroir-contenu` qu'il complète (l'un affiche, l'autre édite le même
   // texte) : 17 → 18 mono (+1), sans-serif inchangé.
-  check("C_compte_mono_final_dix_sept", compteMono === 18, "obtenu " + compteMono);
-  check("C_compte_sans_final_dix_sept", compteSans === 17, "obtenu " + compteSans);
+  // feature-026 (frontend, B4/note) : `.claude-destinataire-valeur` (texte
+  // BRUT du backend, `"session tmux %r" % nom` — identifiant technique) et
+  // `.prompt-source` (`"queued"`/`"typed"`, brut) rejoignent la chasse fixe,
+  // MÊME NATURE que `#sortie-lancement` : 18 → 20 mono (+2), sans inchangé.
+  // feature-028 (lot A1, U1 de feature-021) : `.agents .nom`/`.agents
+  // .modele` retirées avec la section « Agents » (−2 mono) ; `.fichier
+  // .fsujet` (−1 sans) et `.timeline .quoi` (−1 mono) / `.timeline .heure`
+  // (−1 sans) retirées avec la liste des commits et le panneau d'événements
+  // permanent : 20 → 17 mono (−3), 17 → 15 sans (−2).
+  // feature-028 (décision humaine du 2026-09-23, AU-DELÀ de U1) : `.systeme
+  // dd` retirée avec la section « Système » entière (−1 sans) :
+  // 15 → 14 sans, mono inchangé.
+  // feature-028 (décision humaine du 2026-09-23, « fichiers ») : `.fichier
+  // .fcode`/`.fichier .fchemin` retirées avec la section « Fichiers
+  // touchés » entière (−2 mono, plus aucun élément ne pose `.fichier`) :
+  // 17 → 15 mono, sans-serif inchangé.
+  // feature-028 (lot C2, `.demande` retirée) : `.demande input[type="text"]`
+  // retirée SANS remplaçant explicite — `#item-title` (le champ qui la
+  // remplace) est stylé par `.form-field input` (prototype), qui n'impose
+  // AUCUN `font-family` : il hérite du sans-serif de `body`, comme les
+  // autres champs M3, non compté par ce grep littéral (−1 sans, mono
+  // inchangé : `.demande textarea`/`.demande textarea.brouillon` sont
+  // RETARGETÉS vers `#add-item-redaction-corps textarea`, pas retirés).
+  // 14 → 13 sans.
+  // feature-028 (lot C1, accordéon « Cycles » retiré, décision humaine 1B) :
+  // `.agent-sigle`/`.agent-nom`/`.maillon .mnom` retirées (−3 mono) ;
+  // `.cycle-designation`/`.cycle-etat`/`.cycle-proprietes dd`/`.maillon
+  // .mduree` retirées (−4 sans) : 15 → 12 mono, 13 → 9 sans.
+  // feature-028 (lot pilotage dédié, décision humaine du 2026-09-23) :
+  // `.pilotage-jeton input`/`#sortie-lancement` retirées avec le panneau
+  // « Piloter par clé » (−2 mono) ; `.bloc h2`/`.pilotage-ligne`/
+  // `.pilotage-tronque` retirées avec lui (−3 sans, `.bloc` n'a plus aucun
+  // porteur — les sept sections qu'il habillait ont TOUTES disparu) :
+  // 12 → 10 mono, 9 → 6 sans.
+  check("C_compte_mono_final_dix", compteMono === 10, "obtenu " + compteMono);
+  check("C_compte_sans_final_six", compteSans === 6, "obtenu " + compteSans);
 
   const DOIT_RESTER_MONO = [
-    ".projet", ".note code", ".agents .nom", ".agents .modele",
-    ".agent-sigle", ".agent-nom", ".maillon .mnom",
-    ".pilotage-jeton input", "#sortie-lancement", ".fichier .fcode",
-    ".fichier .fchemin", ".timeline .quoi", ".tiroir-barre",
+    ".projet", ".note code",
+    ".tiroir-barre",
     "#tiroir-contenu", "#porte-champ", ".selected-mark", "#tiroir-edition-texte",
   ];
   DOIT_RESTER_MONO.forEach((selecteur) => {
@@ -256,11 +333,8 @@ const CSS_SANS_COMMENTAIRES = sansCommentairesCSS(CSS);
   });
 
   const DOIT_ETRE_SANS = [
-    ".jauge", ".horodatage", ".bloc h2", ".compteur", ".systeme dd",
+    ".jauge", ".horodatage", ".compteur",
     '.filtres input[type="search"]', ".column-title", ".card-footer",
-    ".cycle-designation", ".cycle-etat", ".cycle-proprietes dd",
-    ".maillon .mduree", ".pilotage-ligne", ".pilotage-tronque",
-    ".timeline .heure",
   ];
   DOIT_ETRE_SANS.forEach((selecteur) => {
     const i = CSS_SANS_COMMENTAIRES.indexOf(selecteur);
@@ -328,12 +402,17 @@ function analyserReglesCSS(css) {
   });
 
   const LISTE_BLANCHE_MONO = [
-    ".projet", ".note code", ".agents .nom", ".agents .modele",
-    ".agent-sigle", ".agent-nom", ".maillon .mnom",
-    ".pilotage-jeton input", ".pilotage-select select", "#sortie-lancement",
-    ".fichier .fcode", ".fichier .fchemin", ".timeline .quoi",
+    ".projet", ".note code",
     ".tiroir-barre", "#tiroir-contenu", "#porte-champ",
-    ".demande textarea.brouillon",
+    // `.agent-sigle`/`.agent-nom`/`.maillon .mnom` RETIRÉES (feature-028,
+    // lot C1, accordéon « Cycles » retiré, décision humaine 1B) : plus
+    // aucun producteur.
+    // `.pilotage-jeton input`/`.pilotage-select select`/`#sortie-lancement`
+    // RETIRÉES (feature-028, lot pilotage dédié) : plus aucun producteur.
+    // `.demande textarea.brouillon` RETARGETÉ (feature-028, lot C2,
+    // `.demande` retirée) : le sélecteur vit désormais sous le seul
+    // conteneur qui porte ce `<textarea>`, `#add-item-dialog`.
+    "#add-item-redaction-corps textarea.brouillon",
     // feature-021 cycle 2, lot 3 (F7) : sigle du passage sélectionné
     // (bottom sheet, id adopté), même nature que `.agent-sigle`.
     ".selected-mark",
@@ -341,8 +420,14 @@ function analyserReglesCSS(css) {
     // réutilise le tiroir existant — voir le commentaire au-dessus de
     // `C_compte_mono_final_dix_sept`.
     "#tiroir-edition-texte",
+    // feature-026 : destinataire et `prompt_source` bruts du backend — voir
+    // le commentaire au-dessus de `C_compte_mono_final_dix_sept`.
+    ".claude-destinataire-valeur", ".prompt-source",
     // `.carte .cid` (feature-008) RETIRÉ au lot 5 (F10) : le kanban M3 ne
     // porte plus de chasse fixe dédiée à l'identifiant de spec.
+    // `.fichier .fcode`/`.fichier .fchemin` (feature-028, décision humaine du
+    // 2026-09-23, « fichiers ») RETIRÉS : la section « Fichiers touchés » a
+    // disparu entière, plus aucun élément ne pose `.fichier`.
   ];
 
   const blancheSet = new Set(LISTE_BLANCHE_MONO);
@@ -360,7 +445,9 @@ function analyserReglesCSS(css) {
 })();
 
 (function testChiffresTabularNums() {
-  const CIBLES = [".systeme dd", ".timeline .heure", ".column-title", ".compteur", ".horodatage", ".maillon .mduree"];
+  // `.maillon .mduree` RETIRÉE (feature-028, lot C1, accordéon « Cycles »
+  // retiré, décision humaine 1B) : plus aucun producteur.
+  const CIBLES = [".column-title", ".compteur", ".horodatage"];
   CIBLES.forEach((selecteur) => {
     const i = CSS_SANS_COMMENTAIRES.indexOf(selecteur);
     if (i === -1) { check("C_tabular_nums_" + selecteur, false, "sélecteur introuvable"); return; }
@@ -370,25 +457,29 @@ function analyserReglesCSS(css) {
   });
 })();
 
-(function testBlocH2TroisCorrections() {
-  const i = CSS_SANS_COMMENTAIRES.indexOf(".bloc h2");
-  const fin = CSS_SANS_COMMENTAIRES.indexOf("}", i);
-  const bloc = CSS_SANS_COMMENTAIRES.slice(i, fin);
-  check("C_bloc_h2_sans_serif", bloc.indexOf("var(--sans)") !== -1, bloc);
-  check("C_bloc_h2_dix_huit_px", /font-size:\s*18px/.test(bloc), bloc);
-  // feature-021 cycle 2, lot 3 (F1_TRANSITOIRE_SEMANTIQUE_CLAIR) :
-  // `var(--texte)` a été re-pointé sur `var(--ink)`, MÊME VALEUR peinte.
-  check("C_bloc_h2_texte_pas_faible", /color:\s*var\(--ink\)\s*;/.test(bloc), bloc);
-  check("C_bloc_h2_pas_de_majuscules", !/text-transform/.test(bloc), bloc);
-  check("C_bloc_h2_pas_d_interlettrage", !/letter-spacing/.test(bloc), bloc);
+// RETARGETÉ (feature-028, lot pilotage dédié) : `.bloc h2` stylait le titre
+// des sept sections héritées — TOUTES retirées au fil de ce cycle, la
+// dernière étant « Pilotage ». `.bloc`/`.bloc h2` ont été retirées avec
+// elle (§33 PIEGES : aucune règle CSS orpheline) ; ce test affirme
+// désormais leur ABSENCE complète, plutôt que de vérifier des corrections
+// sur un sélecteur qui n'a plus de porteur.
+(function testBlocRetireeAvecSesSeptSections() {
+  check("C_bloc_absente_de_la_feuille",
+    CSS_SANS_COMMENTAIRES.indexOf(".bloc ") === -1 && CSS_SANS_COMMENTAIRES.indexOf(".bloc{") === -1
+    && CSS_SANS_COMMENTAIRES.indexOf(".bloc\n") === -1 && CSS_SANS_COMMENTAIRES.indexOf(".bloc,") === -1);
+  check("C_bloc_h2_absente_de_la_feuille",
+    CSS_SANS_COMMENTAIRES.indexOf(".bloc h2") === -1);
+  check("C_class_bloc_absente_du_html_statique",
+    HTML.indexOf('class="bloc') === -1 && HTML.indexOf('class="bloc"') === -1);
 })();
 
 (function testQuatriemeSurfaceLimiteeAuxInteractions() {
   // feature-021 cycle 2, lot 3 : `var(--surface-2)` a été re-pointé sur
   // `var(--surface-low)` (F1_TRANSITOIRE_SEMANTIQUE_CLAIR), ET
   // `.nav-onglet:hover` — l'un des DEUX usages d'entrée — a disparu AVEC la
-  // navigation à onglets qui le portait (F7). Un usage hérité subsiste :
-  // `.cycle-bouton:hover` (accordéon des cycles, feature-016, INCHANGÉ) ;
+  // navigation à onglets qui le portait (F7). Un usage hérité subsistait,
+  // `.cycle-bouton:hover` (accordéon des cycles, feature-016) — retiré à son
+  // tour avec l'accordéon (feature-028, lot C1, décision humaine 1B) ;
   // un usage NEUF le rejoint, fidèle au prototype (l.422) : `.sheet-toggle`
   // (bottom sheet, F11) porte un aplat de repos DANS LE PROTOTYPE LUI-MÊME
   // — `.cycle-canvas`, à l'inverse, N'A PAS de fond propre dans le
@@ -406,10 +497,11 @@ function analyserReglesCSS(css) {
   // rejoignent les huit précédents, tous deux COPIÉS du prototype (ADR-0024
   // §4) : `.bubble` (bulle de message, l.452) et `.composer` (fond du
   // composeur, l.456) — 8 → 10.
+  // feature-028 (lot C1, accordéon « Cycles » retiré, décision humaine 1B) :
+  // `.cycle-bouton:hover` disparaît avec l'accordéon qu'il survolait — le
+  // seul usage HÉRITÉ (pas COPIÉ du prototype) de ce jeton : 10 → 9.
   const compte = (CSS_SANS_COMMENTAIRES.match(/var\(--surface-low\)/g) || []).length;
-  check("C_surface_low_dix_usages", compte === 10, "obtenu " + compte);
-  check("C_surface_low_cycle_bouton_survol_conserve",
-    /\.cycle-bouton:hover\s*\{[^}]*var\(--surface-low\)/.test(CSS_SANS_COMMENTAIRES));
+  check("C_surface_low_neuf_usages", compte === 9, "obtenu " + compte);
   check("C_surface_low_sheet_toggle_fidele_au_prototype",
     /\.sheet-toggle\s*\{[^}]*var\(--surface-low\)/.test(CSS_SANS_COMMENTAIRES));
   check("C_surface_low_bubble_fidele_au_prototype",
@@ -426,20 +518,45 @@ function analyserReglesCSS(css) {
     /\.bandeau-hote\s*\{[^}]*background:\s*var\(--surface\)\s*;/.test(CSS_SANS_COMMENTAIRES));
   check("C_carte_surface_pas_surface_low",
     /\.feature-card\s*\{[^}]*background:\s*var\(--surface\)\s*;/.test(CSS_SANS_COMMENTAIRES));
-  check("C_maillon_surface_pas_surface_low",
-    /\.maillon\s*\{[^}]*background:\s*var\(--surface\)\s*[;,]/.test(CSS_SANS_COMMENTAIRES));
+  // `.maillon` RETIRÉE (feature-028, lot C1, accordéon « Cycles » retiré,
+  // décision humaine 1B) : plus aucun producteur, rien à vérifier ici.
 })();
 
-(function testFsujetDistinctDeFchemin() {
-  check("C_fsujet_existe_en_sans_serif",
-    /\.fichier \.fsujet\s*\{[^}]*var\(--sans\)/.test(CSS_SANS_COMMENTAIRES));
-  check("C_fchemin_reste_en_chasse_fixe",
-    /\.fichier \.fchemin\s*\{[^}]*var\(--mono\)/.test(CSS_SANS_COMMENTAIRES));
+/* ⚠️ INVERSÉ une première fois au lot A1 de feature-028 (U1 de feature-021) :
+ * la liste des commits (donc `.fsujet`, qui la distinguait de `.fchemin`)
+ * était SUPPRIMÉE de `rendreFichiers` — historique VCS rétrospectif, pas un
+ * état de cycle — mais `.fichier .fchemin` restait, la liste des fichiers
+ * touchés étant conservée.
+ * ⚠️ INVERSÉ UNE SECONDE FOIS (feature-028, décision humaine du 2026-09-23,
+ * « fichiers ») : la section « Fichiers touchés » elle-même a disparu
+ * ENTIÈRE — `.fichier` (donc `.fsujet` ET `.fchemin`) n'existe plus en CSS,
+ * `rendreFichiers`/`ouvrirDiff` n'existent plus en JS. Ce test vérifiait la
+ * présence de `.fchemin` en chasse fixe ; il vérifie désormais l'ABSENCE
+ * complète de `.fichier` (règle CSS ET fonctions de rendu JS), pour qu'une
+ * réintroduction silencieuse de la section soit détectée. */
+(function testFichierAbsentDuCssEtDuJs() {
+  check("C_fichier_nexiste_plus_en_css",
+    !/\.fichier(\s|\{|\.|:)/.test(CSS_SANS_COMMENTAIRES));
   const appJs = fs.readFileSync(APP_JS_PATH, "utf8");
-  check("C_app_js_utilise_fsujet_pour_le_sujet_de_commit",
-    /el\("span",\s*"fsujet",\s*commit\.sujet\)/.test(appJs));
-  check("C_app_js_n_utilise_plus_fchemin_pour_le_sujet_de_commit",
-    !/el\("span",\s*"fchemin",\s*commit\.sujet\)/.test(appJs));
+  check("C_app_js_nexpose_plus_rendreFichiers",
+    !/function rendreFichiers/.test(appJs));
+  check("C_app_js_nexpose_plus_ouvrirDiff",
+    !/function ouvrirDiff/.test(appJs));
+})();
+
+/* ⚠️ INVERSÉ (feature-028, décision humaine du 2026-09-23, AU-DELÀ de U1) :
+ * la section « Système » (donc `.systeme`) est SUPPRIMÉE ENTIÈRE — retrait
+ * sec, sans migration. Ce fichier vérifiait la présence et la police de
+ * `.systeme dd` (via `DOIT_ETRE_SANS`/`CIBLES`, ci-dessus, désormais sans
+ * cette entrée) ; il vérifie ici son ABSENCE complète (règle CSS ET
+ * fonction de rendu JS), pour qu'une réintroduction silencieuse de la
+ * section soit détectée. */
+(function testSystemeAbsentDuCssEtDuJs() {
+  const appJs = fs.readFileSync(APP_JS_PATH, "utf8");
+  check("C_systeme_nexiste_plus_en_css",
+    !/\.systeme(\s|\{|\.)/.test(CSS_SANS_COMMENTAIRES));
+  check("C_app_js_nexpose_plus_rendreSysteme",
+    !/function rendreSysteme/.test(appJs));
 })();
 
   /* `theme.js` a été SUPPRIMÉ au lot 13 de feature-021 : code mort depuis le

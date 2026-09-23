@@ -164,7 +164,11 @@ _SCRIPT_MESURE = r"""
     ];
     var wf = { segments: passages, passages: passages };
     var sigles = siglesAgents(Array.from(collecterRoles([wf])));
-    document.getElementById('cycle-canvas').appendChild(construireDiagramme(wf, sigles));
+    // `construireDiagramme` SUPPRIMÉE (feature-028, lot C1, accordéon
+    // « Cycles » retiré) : retargeté vers `construireGrapheAgents`, le
+    // point d'entrée bas niveau qu'elle enveloppait — MÊME rendu.
+    document.getElementById('cycle-canvas').appendChild(
+      construireGrapheAgents(disposer(wf.segments), sigles, null));
 
     // -- scène 2 : kanban, priorité haute + divergence ---------------------
     var etat = {
@@ -183,16 +187,13 @@ _SCRIPT_MESURE = r"""
     };
     rendreKanban(etat);
 
-    // -- scène 3 : agents + système, jauges dans leurs variantes -----------
-    rendreAgents([
-      { nom: "frontend-developer", actif_sur: "F-003", modele: "sonnet", peut_ecrire: true, outils: ["Read"], peut_deleguer: false, description: "d" },
-      { nom: "backend-developer", actif_sur: null, modele: "sonnet", peut_ecrire: false, outils: [], peut_deleguer: true, description: "d" },
-    ]);
-    rendreSysteme({
-      ecriture_active: false, git: { depot: true, branche: "main", touches: [1, 2] },
-      divergences: 1, workflows: [1], config_lue: true, commandes_declarees: [],
-      garde_fous: { budget_max_usd: 5, ecrivains_simultanes: 1 },
-    });
+    // -- scène 3 : jauges dans leurs variantes -------------------------------
+    // `rendreAgents` SUPPRIMÉE (U1 de feature-021, feature-028 lot A1) : la
+    // section « Agents » a disparu, rien à peindre ici pour elle.
+    // `rendreSysteme` SUPPRIMÉE À SON TOUR (feature-028, décision humaine du
+    // 2026-09-23, AU-DELÀ de U1) : la section « Système » a disparu, rien à
+    // peindre ici pour elle non plus — les jauges ci-dessous n'en dépendent
+    // pas (éléments distincts, `#jauge-*` de la bande de résumé).
     document.getElementById('jauge-git').className = 'jauge ok';
     document.getElementById('jauge-flux').className = 'jauge ko';
     document.getElementById('jauge-pilotage').className = 'jauge lecture-seule';
@@ -437,22 +438,20 @@ def construire_page(base_http, jetons, selecteurs_aplat=()):
         '<p class="note erreur" id="conversation-erreur" role="alert" hidden></p>'
         '</aside>'
         '</div>'
-        '<section class="bloc" aria-labelledby="titre-agents"><h2 id="titre-agents">Agents</h2>'
-        '<p class="note" id="note-agents"></p><ul class="agents" id="agents"></ul></section>'
-        '<section class="bloc" aria-labelledby="titre-systeme"><h2 id="titre-systeme">Système</h2>'
-        '<dl class="systeme" id="systeme"></dl></section>'
-        '<section class="bloc demande" aria-labelledby="titre-demande">'
-        '<h2 id="titre-demande">Que souhaitez-vous développer ?</h2>'
-        '<div class="champ-titre"><label for="titre-besoin">Titre</label>'
-        '<input type="text" id="titre-besoin" maxlength="200"></div>'
-        '<textarea id="spec-prompt" rows="4"></textarea>'
-        '<span class="compteur" id="compteur-prompt">0 caractère</span>'
-        '<p class="note avert">Aucun secret.</p>'
-        '<label class="bascule"><input type="checkbox" id="derogation-minimale"><span>Minimal</span></label>'
-        '<p class="note erreur" id="erreur-generer-brouillon" role="alert" hidden></p>'
-        '<div class="pilotage-boutons"><button type="button" id="bouton-generer-brouillon" '
-        'class="pilotage-secondaire">Générer le brouillon</button></div>'
-        '<div id="redaction-corps"></div></section>'
+        # `titre-agents`/`agents` retirés (feature-028, lot A1, U1 de
+        # feature-021) : la section « Agents » a disparu entière du HTML
+        # réel — ce fragment synthétique ne la reconstruit plus (stale
+        # jusqu'ici, corrigé au lot C2 : ce test mesure des COULEURS
+        # peintes, une section absente du DOM réel n'en peint aucune).
+        # `titre-systeme`/`systeme` retirés (feature-028, décision humaine du
+        # 2026-09-23, AU-DELÀ de U1) : la section « Système » a disparu
+        # entière du HTML réel — ce fragment synthétique ne la reconstruit
+        # plus.
+        # `demande` (titre-besoin/spec-prompt/derogation-minimale/redaction-
+        # corps) retirée (feature-028, lot C2, une fois le `+` câblé et
+        # vérifié) : remplacée par `#add-item-dialog`, un `<dialog>` NATIF
+        # jamais ouvert dans cette scène (aucun `showModal()`) — donc jamais
+        # peint, rien à reconstruire ici pour une garde de CONTRASTES.
         '<section class="backlog" aria-labelledby="backlog-title"><div class="kanban-heading">'
         '<div class="kanban-title-row entete-bloc"><h2 id="backlog-title">Spécifications</h2>'
         '<span class="compteur" id="compteur-specs"></span>'
@@ -468,10 +467,14 @@ def construire_page(base_http, jetons, selecteurs_aplat=()):
         '<section class="bloc" aria-labelledby="titre-cycles"><div class="entete-bloc">'
         '<h2 id="titre-cycles">Cycles</h2></div><p class="note" id="legende-cycles"></p>'
         '<ul id="workflows" class="cycles"></ul><p class="note" id="pied-cycles"></p></section>'
-        '<section class="bloc" aria-labelledby="titre-fichiers"><h2 id="titre-fichiers">Fichiers touchés</h2>'
-        '<div id="fichiers"></div></section>'
-        '<section class="bloc" aria-labelledby="titre-evenements"><h2 id="titre-evenements">Derniers événements</h2>'
-        '<ol class="timeline" id="timeline"></ol></section>'
+        # `titre-fichiers`/`fichiers` retirés (feature-028, décision humaine
+        # du 2026-09-23, « fichiers ») : la section « Fichiers touchés » a
+        # disparu entière du HTML réel — ce fragment synthétique ne la
+        # reconstruit plus.
+        # `titre-evenements`/`#timeline` retirés (U1 de feature-021,
+        # feature-028 lot A1) : le panneau d'événements permanent a disparu
+        # entier du HTML réel — ce fragment synthétique ne le reconstruit
+        # plus (stale jusqu'ici, corrigé au lot C2).
         "</main></div>"
         '<div class="tiroir" id="tiroir" hidden><div class="tiroir-barre"><span id="tiroir-titre"></span>'
         '<button type="button" id="tiroir-fermer" aria-label="Fermer">✕</button></div>'

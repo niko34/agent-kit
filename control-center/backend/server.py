@@ -52,9 +52,12 @@ chemin improvisée :
 - **fichiers statiques** : liste FERMÉE, calculée au démarrage depuis `web/`.
   Un nom qui n'y figure pas est refusé sans même toucher au disque ;
 - **specs** : l'identifiant demandé doit correspondre EXACTEMENT à une spec
-  découverte. On ne construit jamais un chemin à partir de la requête ;
-- **diffs** : `vcs.chemin_sur()`, qui résout les liens symboliques et refuse
-  tout ce qui sort du dépôt.
+  découverte. On ne construit jamais un chemin à partir de la requête.
+
+⚠️ `/api/diff` a existé (lecture confinée par `vcs.chemin_sur()`) et a été
+RETIRÉE (feature-028, GATE P1 condition C5) : son unique appelant frontal a
+disparu, et une route de lecture sans appelant ni justification reste une
+surface exposée sans raison (Règle absolue n°1).
 
 `transcript_path` est présent dans le journal d'événements et pointe **hors du
 dépôt** vers la conversation entière. Il n'est servi par aucune route et
@@ -116,10 +119,12 @@ sondage qui le pose explicitement).
 import ipaddress
 import json
 import os
+import re
 import signal
 import sys
 import threading
 import time
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -131,11 +136,13 @@ sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__f
 import agents as A  # noqa: E402
 import config as C  # noqa: E402
 import events as E  # noqa: E402
+import fil as F  # noqa: E402
 import gestion_spec as GS  # noqa: E402
 import jeton as J  # noqa: E402
 import lanceur as L  # noqa: E402
 import redaction_commande as RC  # noqa: E402
 import redaction_spec as RS  # noqa: E402
+import session_tmux as ST  # noqa: E402
 import specs as S  # noqa: E402
 import transcripts as T  # noqa: E402
 import vcs as V  # noqa: E402
@@ -208,8 +215,10 @@ _ROUTES_ECRITURE = ("/api/lancer", "/api/interrompre",
 # Un corps de POST tient largement sous cette borne : {"cle": "..."} ne
 # dépasse jamais quelques dizaines d'octets. Au-delà, 413 sans lire le reste.
 # Reste le DÉFAUT inchangé pour toute route absente de `_TAILLES_MAX_CORPS`
-# ci-dessous — en particulier `/api/lancer` et `/api/interrompre`, qui ne
-# transportent jamais plus qu'une clé de commande.
+# ci-dessous — en particulier `/api/lancer` (une clé de commande) et
+# `/api/interrompre` ({spec_id} OPTIONNEL, feature-028 : un identifiant de
+# spec reste très en-deçà de 4096 octets, comme les autres routes `spec_id`
+# ci-dessous).
 _TAILLE_MAX_CORPS = 4096
 
 # Bornes PAR ROUTE (feature-008) : un besoin en texte libre ne tient pas dans
@@ -336,7 +345,7 @@ def _chemin_conversation(lancement):
                          "%d-%d.jsonl" % (lancement.pid, int(lancement.debut * 1000)))
 
 
-def _ecrire_message_conversation(chemin_journal, texte):
+def _ecrire_message_conversation(chemin_journal, texte, destinataire):
     """Ajoute UNE ligne JSON au fil, mode 0600 (feature-022, S3.4 — PAS le
     0644 du collecteur d'événements : ce fichier porte du texte libre d'un
     utilisateur, potentiellement sensible), O_APPEND, UN SEUL `write()`.
@@ -347,6 +356,16 @@ def _ecrire_message_conversation(chemin_journal, texte):
     puis non journalisé »). Appelé AVANT tout envoi sur le canal — dans cet
     ordre précis, un échec ici empêche l'envoi plutôt que l'inverse.
     `ok` est `False`/`position_envoye` est `None` sur échec d'écriture.
+
+    ⚠️ Reboucle GATE P2 (feature-026, A1) : `destinataire` (NON NUL) est
+    écrit dans CHAQUE ligne, sur les DEUX chemins — session tmux ET canal
+    `json-lines`. Sa raison est double : c'était l'arbitrage 1 du plan
+    (« destinataire nommé dans la réponse ET dans la ligne de journal ») et
+    la condition 2 du GATE P1 — le cockpit peut parler à DEUX interlocuteurs,
+    et dans le transcript un message tapé par le cockpit est INDISCERNABLE
+    d'un message venu d'un autre appareil. Le journal du cockpit est donc le
+    SEUL enregistrement de la destination ; sans ce champ, un message parti
+    dans le mauvais terminal est irretraçable.
 
     Revue de code du cycle `feature-021` (B3) : la ligne porte désormais un
     champ `"envoye": false`, écrit AVANT toute tentative d'envoi — donc avant
@@ -359,7 +378,8 @@ def _ecrire_message_conversation(chemin_journal, texte):
     confirmé, via `_marquer_message_envoye` — sans jamais réécrire la ligne
     entière ni les lignes voisines.
     """
-    prefixe = (json.dumps({"ts": _horodatage_ms(), "texte": texte},
+    prefixe = (json.dumps({"ts": _horodatage_ms(), "texte": texte,
+                          "destinataire": destinataire},
                           ensure_ascii=False)[:-1] + ', "envoye": ')
     prefixe_octets = prefixe.encode("utf-8")
     ligne = prefixe_octets + b"false}\n"
@@ -403,6 +423,39 @@ def _marquer_message_envoye(chemin_journal, position_envoye):
         pass
 
 
+_RE_NOM_SESSION_SUR = re.compile(r"[^A-Za-z0-9_.-]")
+
+# Libellés FRANÇAIS exposés BRUTS par le backend (feature-026, ux-ui-designer,
+# journal de bord étape 5 : « le libellé vient du backend, le JS ne le
+# redérive plus d'un code HTTP »). Jamais recalculés côté client.
+_LIBELLES_ETAT_SESSION = {
+    "en_ligne": "En ligne",
+    # ⚠️ Reboucle GATE P2-bis (2026-09-22) : « Occupée » est INFORMATIONNEL
+    # — mesuré, un texte tapé pendant que la session travaille est mis EN
+    # FILE par `claude` lui-même (`promptSource: "queued"`), jamais perdu.
+    # Ce libellé ne doit JAMAIS être lu comme « refuse l'envoi » : POST
+    # /api/conversation accepte un message en_ligne OU occupee — seuls un
+    # dialogue modal ou un brouillon déjà présent refusent (voir
+    # `_conversation_envoyer`).
+    "occupee": "Occupée",
+    "hors_ligne": "Hors ligne",
+    "injoignable": "Injoignable",
+}
+
+
+def _chemin_conversation_session(nom):
+    """`var/conversations/session-<nom>.jsonl` (feature-026, A3) — clé
+    indexée sur le NOM DÉCLARÉ en configuration, JAMAIS sur le `session-id` :
+    celui-ci change à chaque redémarrage (`Restart=on-failure` relance sans
+    `--resume`, sur un fichier neuf), et indexer dessus aurait scindé ou
+    perdu le journal du cockpit à chaque redémarrage du service. `nom` vient
+    de la configuration LOCALE, jamais d'une requête — le filtrage des
+    séparateurs de chemin reste une défense en profondeur, pas une garde
+    contre un attaquant distant."""
+    nom_sur = _RE_NOM_SESSION_SUR.sub("_", nom or "")
+    return os.path.join(_RACINE_CONVERSATIONS, "session-%s.jsonl" % nom_sur)
+
+
 def _lire_conversation(chemin_journal):
     """Rend `(messages, tronque)` — jamais un `SELECT *` non borné (S3.4) :
     au-delà de `_TAILLE_MAX_LECTURE_CONVERSATION`, seule la QUEUE du fichier
@@ -433,6 +486,111 @@ def _lire_conversation(chemin_journal):
     return messages, tronque
 
 
+# Fenêtre d'appariement texte+temps pour la fusion transcript/journal cockpit
+# (B1, feature-026, reboucle GATE) : assez large pour couvrir une mise en
+# file pendant une tâche longue, jamais assez pour confondre deux envois
+# distincts du même texte à des minutes d'écart.
+_FENETRE_DEDOUBLONNAGE_S = 30.0
+
+
+def _horodatage_vers_epoch(ts):
+    """Parse un horodatage ISO-8601 UTC avec millisecondes
+    (`_horodatage_ms()` du cockpit, ou `timestamp` du transcript — même
+    forme) en secondes epoch, ou `None` si absent/mal formé — jamais une
+    exception qui casserait la fusion."""
+    if not isinstance(ts, str):
+        return None
+    try:
+        return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%S.%fZ").replace(
+            tzinfo=timezone.utc).timestamp()
+    except ValueError:
+        return None
+
+
+def _fusionner_avec_journal_cockpit(messages_transcript, entrees_cockpit):
+    """B1 (feature-026, reboucle GATE P2) : un message tapé dans le cockpit
+    PENDANT que la session travaille est mis EN FILE par `claude` — il
+    n'apparaît JAMAIS en `type: user` dans le transcript tant que ce tour
+    n'a pas été rejoué (mesuré : `type` ∈ {queue-operation, attachment} sur
+    ce message, jamais `user`). Le journal PROPRE du cockpit
+    (`var/conversations/session-<nom>.jsonl`, A1/A3) sait ce qu'il a
+    envoyé ; cette fonction fusionne les deux sources SANS DOUBLON.
+
+    ⚠️ Reboucle GATE (revue de code) — B1a, décidé et écrit : les entrées
+    `"envoye": false` sont IGNORÉES, jamais ajoutées au fil. La ligne est
+    journalisée AVANT l'envoi (A3) et reste `false` sur tout refus (409
+    heuristique, 503, échec `tmux`) — ce ne sont PAS des messages du fil,
+    ce sont des tentatives. La promesse faite à l'utilisateur est « tu ne
+    vois que ce qui est réellement parti », pas « tu vois tout, marqué » :
+    mesuré sur le journal de PRODUCTION, 5 tentatives refusées du même
+    texte s'y seraient sinon affichées comme 5 messages envoyés.
+
+    ⚠️ B1b, résolu PAR CETTE DÉCISION : un message refusé PUIS réessayé
+    avec succès (mesuré : >30 s plus tard, hors `_FENETRE_DEDOUBLONNAGE_S`)
+    ne peut structurellement plus apparaître deux fois — la tentative
+    refusée n'est JAMAIS candidate à la fusion, seule la réussite l'est.
+    Il n'existe donc qu'UNE entrée à apparier, jamais deux à distinguer.
+
+    Appariement (pour les entrées `envoye: true` restantes) par TEXTE ÉGAL
+    **ET** fenêtre de temps (`_FENETRE_DEDOUBLONNAGE_S`) entre l'horodatage
+    cockpit (à l'écriture) et celui d'un message `user` du transcript —
+    jamais le texte seul (deux envois identiques à des minutes d'écart sont
+    deux messages distincts), jamais le temps seul. Une entrée cockpit dont
+    un horodatage est incomparable (absent, mal formé) est conservée par
+    PRUDENCE — mieux vaut un message affiché deux fois qu'un message qui
+    disparaît.
+    """
+    candidats_transcript = [
+        (message, _horodatage_vers_epoch(message.get("ts")))
+        for message in messages_transcript if message.get("role") == "user"
+    ]
+    fusion = list(messages_transcript)
+    for entree in entrees_cockpit:
+        if entree.get("envoye") is False:
+            continue  # B1a : jamais un message du fil, seulement une tentative
+        texte = entree.get("texte")
+        if not isinstance(texte, str) or not texte:
+            continue
+        epoch_cockpit = _horodatage_vers_epoch(entree.get("ts"))
+        deja_present = False
+        for message, epoch_msg in candidats_transcript:
+            if message.get("texte") != texte:
+                continue
+            if epoch_cockpit is None or epoch_msg is None:
+                deja_present = True
+                break
+            if abs(epoch_cockpit - epoch_msg) <= _FENETRE_DEDOUBLONNAGE_S:
+                deja_present = True
+                break
+        if not deja_present:
+            fusion.append({"role": "user", "texte": texte,
+                           "prompt_source": "cockpit", "ts": entree.get("ts")})
+    # Revue de code : `or 0.0` faisait remonter en TÊTE (epoch 1970) tout
+    # message sans `ts` comparable — `interpreter_ligne` l'autorise (mesuré
+    # 599/599 présents aujourd'hui, donc improbable, mais possible). Un
+    # `ts` incomparable doit laisser le message où le tri STABLE de Python
+    # le trouve (ni remonté, ni descendu) : `math.inf` place les cas
+    # incomparables APRÈS tout ce qui a un horodatage réel, jamais avant.
+    fusion.sort(key=lambda m: (_horodatage_vers_epoch(m.get("ts")) is None,
+                                _horodatage_vers_epoch(m.get("ts")) or 0.0))
+    return fusion
+
+
+def _fusionner_et_borner(messages, tronque, entrees_cockpit):
+    """B1+B2 (feature-026, reboucle GATE P2) : applique
+    `_fusionner_avec_journal_cockpit`, puis réapplique la borne
+    `F.MAX_MESSAGES_DEFAUT` — la fusion ne doit JAMAIS laisser passer plus
+    de messages que ce que `fil.py` autoriserait seul. Rend
+    `(messages, tronque)`, `tronque` devenant `True` si la fusion a ajouté
+    assez d'entrées pour dépasser la borne, même si `fil.lire_fil` seul
+    n'avait pas tronqué."""
+    fusion = _fusionner_avec_journal_cockpit(messages, entrees_cockpit)
+    if len(fusion) > F.MAX_MESSAGES_DEFAUT:
+        fusion = fusion[-F.MAX_MESSAGES_DEFAUT:]
+        tronque = True
+    return fusion, tronque
+
+
 def _hote_valide(valeur):
     """Vrai si l'en-tête `Host` est un littéral IP ou `localhost` — jamais un
     nom quelconque (GATE P1, condition 5 ; A9).
@@ -441,7 +599,7 @@ def _hote_valide(valeur):
     vérification et l'usage (rebinding) ou confondrait un hôte virtuel. Un
     littéral IP ou `localhost` ne laisse aucune résolution s'intercaler.
     Validé sur TOUTES les routes : clôt aussi la lecture anonyme de
-    `/api/spec` et `/api/diff`.
+    `/api/spec`.
     """
     if not valeur or not isinstance(valeur, str):
         return False
@@ -1201,7 +1359,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):  # noqa: N802 (nom imposé par http.server)
         try:
             # Host validé sur TOUTES les routes (GATE P1, condition 5 ; A9) :
-            # clôt aussi la lecture anonyme de /api/spec et /api/diff.
+            # clôt aussi la lecture anonyme de /api/spec.
             if not _hote_valide(self.headers.get("Host")):
                 return self._erreur(421, "hôte non reconnu")
             analyse = urlparse(self.path)
@@ -1271,8 +1429,6 @@ class Handler(BaseHTTPRequestHandler):
                     self._peut_ecrire(jeton, distante), jeton_requis, spec_id_en_cours))
             if chemin == "/api/spec":
                 return self._spec(parametres)
-            if chemin == "/api/diff":
-                return self._diff(parametres)
             if chemin == "/api/flux":
                 return self._flux()
             if chemin == "/api/lancement":
@@ -1382,7 +1538,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._erreur(400, "corps tronqué")
 
             if chemin == "/api/interrompre":
-                return self._interrompre()
+                return self._interrompre(corps)
 
             if chemin == "/api/spec/brouillon":
                 return self._spec_brouillon(corps)
@@ -1472,13 +1628,6 @@ class Handler(BaseHTTPRequestHandler):
         # retour pour que le compare-and-write porte sur le VRAI fichier.
         return self._json(dict(spec, contenu=contenu[:400_000],
                                empreinte=GS.empreinte(contenu)))
-
-    def _diff(self, parametres):
-        demande = (parametres.get("chemin") or [""])[0]
-        texte, tronque = V.diff(self.server.etat.racine, demande or None)
-        if texte is None:
-            return self._erreur(404, "diff indisponible pour ce chemin")
-        return self._json({"chemin": demande, "diff": texte, "tronque": tronque})
 
     def _flux(self):
         """Server-Sent Events : un signal quand l'état change.
@@ -1606,13 +1755,48 @@ class Handler(BaseHTTPRequestHandler):
         _ecrire_evenement(self.server.etat.journal, evenement)
         return self._json({"lance": True, "cle": cle, "pid": lancement.pid}, 202)
 
-    def _interrompre(self):
+    def _interrompre(self, corps):
+        """`POST /api/interrompre {spec_id}` — `spec_id` OPTIONNEL
+        (feature-028, GATE P1 condition C3).
+
+        ABSENT : comportement INCHANGÉ, compatibilité du chemin existant —
+        interrompt `lancement_courant()` (le dernier lancement basculé).
+
+        PRÉSENT : cible EXACTEMENT le lancement dont le `spec_id` est ÉGAL,
+        parmi `lancements_actifs()` — TOUS les lancements encore en cours,
+        JAMAIS `lancement_courant()` seul, qui ne rend que le DERNIER
+        écrivain basculé et peut donc désigner un AUTRE lancement que celui
+        demandé (même défaut, même remède que `_spec_en_cours`/GATE P2 lot 9
+        condition 1). `404` si aucun lancement actif ne porte ce `spec_id` :
+        un agent en train d'écrire dans le dépôt ne doit jamais être tué
+        parce qu'un autre lancement, sans rapport, portait le dernier index
+        basculé.
+
+        L'arrêt vise toujours un `Lancement` — donc un PID CAPTURÉ — jamais
+        un motif (`PIEGES §3`).
+        """
+        donnees, erreur = self._corps_json(corps)
+        if erreur is not None:
+            code, message = erreur
+            return self._erreur(code, message)
+        spec_id = donnees.get("spec_id")
+        if spec_id is not None and (not isinstance(spec_id, str) or not spec_id):
+            return self._erreur(400, "spec_id invalide")
+
         ecriture = self._ecriture()
-        lancement = ecriture.lancement_courant()
-        if lancement is None or not lancement.toujours_en_cours():
-            return self._erreur(404, "aucun lancement en cours")
-        ecriture.interrompre_courant()
-        return self._json({"interrompu": True}, 202)
+        if spec_id is None:
+            lancement = ecriture.lancement_courant()
+            if lancement is None or not lancement.toujours_en_cours():
+                return self._erreur(404, "aucun lancement en cours")
+            ecriture.interrompre_courant()
+            return self._json({"interrompu": True}, 202)
+
+        lancement = next((l for l in ecriture.lancements_actifs()
+                          if l.spec_id == spec_id), None)
+        if lancement is None:
+            return self._erreur(404, "aucun lancement en cours pour cette spec")
+        lancement.interrompre()
+        return self._json({"interrompu": True, "spec_id": spec_id}, 202)
 
     def _corps_json(self, corps):
         """Décode le CORPS BRUT en objet JSON `dict` — générique, PAS
@@ -1620,8 +1804,9 @@ class Handler(BaseHTTPRequestHandler):
         (revue de code, cycle `feature-021` : le nom et l'ancien docstring
         ne décrivaient que `/api/spec/brouillon` et `/api/spec/ecrire`, alors
         que la fonction sert aussi `_spec_lancer`, `_spec_modifier`,
-        `_spec_supprimer` et `_conversation_envoyer` — chacune valide ENSUITE
-        la forme précise qu'elle attend). Rend `(donnees, None)` ou
+        `_spec_supprimer`, `_conversation_envoyer` et `_interrompre`
+        (feature-028) — chacune valide ENSUITE la forme précise qu'elle
+        attend). Rend `(donnees, None)` ou
         `(None, (code, message))` — `400` pour un corps illisible ou qui
         n'est pas un objet JSON, jamais `422` (réservé aux erreurs de SAISIE
         une fois le JSON compris, propre à chaque appelant)."""
@@ -1828,26 +2013,41 @@ class Handler(BaseHTTPRequestHandler):
     # -- feature-022 : canal de conversation (GATE P1 re-passage, S3) -------
 
     def _conversation_envoyer(self, corps):
-        """`POST /api/conversation {texte}` — écrit UN message sur le canal
-        `json-lines` du lancement en cours qui l'accepte (D1/D3).
+        """`POST /api/conversation {texte}` (feature-026, A3-A6).
 
-        Ordre EXACT, condition par condition : forme du corps (400) → borne
-        en CARACTÈRES (413, S3.3/S3.11 — AVANT tout écriture, journal
-        compris) → caractères de contrôle interdits (422, S3.3) →
-        destinataire (404 si aucun lancement `json-lines` actif) →
-        journalisation (500 si impossible — JAMAIS envoyé puis non
-        journalisé, S3.4) → écriture sur le canal (503 si occupé/corrompu/
-        indisponible, S3.9/S3.10) → 202 (« tube vidé, message écrit entier »,
-        D3 — pas « traité » : le traitement se constate par le message
-        utilisateur rejoué sur `/api/lancement`, `--replay-user-messages`).
+        Deux chemins DISTINCTS, jamais fusionnés : si `[session]` est
+        DÉCLARÉE en configuration (`config.session_config()`), le message
+        est TAPÉ dans le pty de la session tmux persistante — sinon,
+        comportement INCHANGÉ de `feature-022` (canal `json-lines` d'un
+        lancement du cockpit). `session_config()` retombe sur `None` quand
+        l'un des trois réglages manque : un projet qui n'a rien déclaré
+        continue de voir exactement l'ancien comportement.
 
-        Revue du cycle `feature-021` (B3) : la ligne journalisée porte un
-        champ `envoye`, `false` à l'écriture puis basculé à `true` UNIQUEMENT
-        après un envoi confirmé (`_marquer_message_envoye`) — sur un 503, la
-        ligne reste `false`, et c'est désormais ce qui la distingue d'un
-        message réellement remis (le volet client expose ce champ, cette
-        route ne fait que le poser correctement).
+        Chemin `session` — ordre EXACT : forme du corps (400) → borne en
+        CARACTÈRES (413, AVANT tout, même discipline que S3.3/S3.11) →
+        caractères de contrôle interdits, DEUX gardes cumulées (422 :
+        `_texte_conversation_valide` PUIS `session_tmux.texte_valide_pty`,
+        D7) → refus `/`/`!` en tête de CHAQUE ligne (422, irréversibilité —
+        `/exit`/`/clear` ne se rattrapent pas depuis le cockpit) → état de
+        la session (503 injoignable, 404 absente) → journalisation AVANT
+        envoi (500 si impossible — jamais envoyé puis non tracé, A3) →
+        écriture dans le pty (`session_tmux.envoyer`, D5/A4-A6 : l'écran est
+        relu AVANT et APRÈS collage, un refus est une HEURISTIQUE, 409, PAS
+        une garantie) → 202 (« tapé », jamais « traité »).
+
+        ⚠️ Reboucle GATE P2-bis (2026-09-22, même jour) : « occupée » n'est
+        PLUS un motif de refus — mesuré sur session jetable réelle, `claude`
+        MET EN FILE (`promptSource: "queued"`, transcript réel) un texte
+        tapé pendant qu'il travaille, il ne le perd ni ne le corrompt. Le
+        409 heuristique ne tombe plus que si `session_tmux.envoyer` rend
+        `raison` ∈ `{"compositeur_introuvable", "brouillon_present",
+        "interrompu_apres_collage"}` — dialogue modal, brouillon déjà
+        présent (un envoi s'y CONCATÈNERAIT, mesuré), ou dialogue apparu
+        entre le collage et l'`Enter`.
         """
+        config = self.server.etat.config
+        config_session = config.session_config()
+
         donnees, erreur = self._corps_json(corps)
         if erreur is not None:
             code, message = erreur
@@ -1862,38 +2062,153 @@ class Handler(BaseHTTPRequestHandler):
         if not _texte_conversation_valide(texte):
             return self._erreur(422, "caractères de contrôle non autorisés")
 
-        ecriture = self._ecriture()
-        lancement = ecriture.lancement_conversation()
-        if lancement is None:
-            return self._erreur(404, "aucun agent en cours n'accepte de message")
+        if config_session is None:
+            # -- Repli : ancien canal feature-022, INCHANGÉ. --------------
+            ecriture = self._ecriture()
+            lancement = ecriture.lancement_conversation()
+            if lancement is None:
+                return self._erreur(404, "aucun agent en cours n'accepte de message")
 
-        chemin = _chemin_conversation(lancement)
-        ok, position_envoye = _ecrire_message_conversation(chemin, texte)
+            chemin = _chemin_conversation(lancement)
+            destinataire = "lancement %r (pid %d)" % (lancement.cle, lancement.pid)
+            ok, position_envoye = _ecrire_message_conversation(chemin, texte, destinataire)
+            if not ok:
+                return self._erreur(500, "journalisation du message impossible")
+
+            ok, motif = lancement.envoyer(texte)
+            if not ok:
+                return self._erreur(503, motif or "canal indisponible")
+            _marquer_message_envoye(chemin, position_envoye)
+            return self._json({"envoye": True}, 202)
+
+        # -- Chemin session tmux persistante (feature-026). ---------------
+        if not ST.texte_valide_pty(texte):
+            return self._erreur(422, "caractère non autorisé dans un terminal (DEL/C1)")
+        for ligne in texte.split("\n"):
+            depouillee = ligne.strip()
+            if depouillee.startswith("/") or depouillee.startswith("!"):
+                return self._erreur(
+                    422, "commande slash/bang refusée depuis le cockpit (irréversible)")
+
+        nom = config_session["nom"]
+        destinataire = "session tmux %r" % nom
+        etat_session = ST.etat(config_session)
+        etat_valeur = etat_session.get("etat")
+        if etat_valeur == "injoignable":
+            return self._erreur(503, "socket tmux injoignable")
+        if etat_valeur == "hors_ligne":
+            return self._erreur(404, "session tmux absente")
+
+        chemin_journal = _chemin_conversation_session(nom)
+        ok, position_envoye = _ecrire_message_conversation(chemin_journal, texte, destinataire)
         if not ok:
             return self._erreur(500, "journalisation du message impossible")
 
-        ok, motif = lancement.envoyer(texte)
-        if not ok:
-            return self._erreur(503, motif or "canal indisponible")
-        _marquer_message_envoye(chemin, position_envoye)
-        return self._json({"envoye": True}, 202)
+        resultat = ST.envoyer(config_session, texte)
+        if not resultat.get("ok"):
+            raison = resultat.get("raison")
+            if raison == "injoignable":
+                return self._erreur(503, "socket tmux injoignable")
+            if raison == "session_absente":
+                return self._erreur(404, "session tmux absente")
+            if resultat.get("heuristique"):
+                # Condition 6 du GATE P1 : `heuristique: true` DANS le corps,
+                # jamais présenté comme une garantie — texte laissé visible
+                # dans le composeur, RIEN n'a été envoyé (`envoye: false`).
+                # ⚠️ Reboucle GATE P2-bis : « occupée » n'est PLUS parmi ces
+                # raisons (mesuré : un envoi pendant occupation est mis en
+                # file par `claude` lui-même, jamais refusé ici) — seuls
+                # `compositeur_introuvable` (dialogue modal, écran de
+                # confiance, liste de tâches) et `brouillon_present` (un
+                # envoi s'y concatènerait, mesuré) ou
+                # `interrompu_apres_collage` (dialogue apparu entre le
+                # collage et l'Enter) atteignent cette branche.
+                messages = {
+                    "compositeur_introuvable": "aucun compositeur identifiable (dialogue en cours)",
+                    "brouillon_present": "un brouillon est déjà présent dans le composeur",
+                    "interrompu_apres_collage": "un dialogue est apparu pendant le collage",
+                }
+                message = messages.get(raison, "panneau non disponible")
+                return self._json({"erreur": "%s (heuristique) — texte non envoyé" % message,
+                                   "raison": raison, "heuristique": True, "envoye": False,
+                                   "destinataire": destinataire}, 409)
+            return self._erreur(503, "échec de la commande tmux")
+
+        _marquer_message_envoye(chemin_journal, position_envoye)
+        return self._json({"tape": True, "envoye": True, "destinataire": destinataire}, 202)
 
     def _conversation_lire(self):
-        """`GET /api/conversation` — le fil PERSISTANT du lancement en cours
-        qui accepte un canal (S3.1 : une route de LECTURE, sous `/api/*`,
-        gardée par la chaîne commune de `do_GET` — aucune seconde chaîne).
+        """`GET /api/conversation` (feature-026, A2).
 
-        Ne porte QUE les messages UTILISATEUR (S3.4/D2) : les réponses de
-        l'agent vivent dans le tampon circulaire de `/api/lancement`, jamais
-        recopiées ici.
+        Repli sur l'ancien comportement `feature-022` (S3.1) quand
+        `[session]` n'est pas déclarée — sinon lit le fil de la session
+        tmux persistante : `session-id` RE-RÉSOLU à CHAQUE appel (jamais
+        mémorisé), filtré et borné par `fil.lire_fil` (D1/D2/A7).
         """
-        ecriture = self._ecriture()
-        lancement = ecriture.lancement_conversation()
-        if lancement is None:
-            return self._erreur(404, "aucun agent en cours n'accepte de message")
-        chemin = _chemin_conversation(lancement)
-        messages, tronque = _lire_conversation(chemin)
-        return self._json({"messages": messages, "tronque": tronque})
+        config = self.server.etat.config
+        config_session = config.session_config()
+        if config_session is None:
+            # -- Repli : ancien canal feature-022, INCHANGÉ. --------------
+            ecriture = self._ecriture()
+            lancement = ecriture.lancement_conversation()
+            if lancement is None:
+                return self._erreur(404, "aucun agent en cours n'accepte de message")
+            chemin = _chemin_conversation(lancement)
+            messages, tronque = _lire_conversation(chemin)
+            return self._json({"messages": messages, "tronque": tronque})
+
+        nom = config_session["nom"]
+        destinataire = "session tmux %r" % nom
+        etat_session = ST.etat(config_session)
+        etat_valeur = etat_session.get("etat")
+        libelle_etat = _LIBELLES_ETAT_SESSION.get(etat_valeur, "Injoignable")
+
+        if etat_valeur == "injoignable":
+            return self._json({"erreur": "socket tmux injoignable",
+                               "etat": libelle_etat, "destinataire": destinataire}, 503)
+        if etat_valeur == "hors_ligne":
+            return self._json({"erreur": "session tmux absente",
+                               "etat": libelle_etat, "destinataire": destinataire}, 404)
+
+        resolu = ST.session_id_courant(config_session)
+        if resolu is None:
+            return self._json({"erreur": "session Claude introuvable (aucun transcript résolu)",
+                               "etat": libelle_etat, "destinataire": destinataire}, 503)
+
+        # Défense en profondeur (GATE P2, condition 4) : `session_tmux`
+        # confine déjà `session_id` à `[0-9a-fA-F-]{1,64}` sur ses deux voies
+        # de résolution, mais ce chemin final ne dépend pas d'UNE SEULE des
+        # deux couches — même garde que `transcripts.py` (`vcs.chemin_sur`)
+        # avant tout `os.path.join` qui aboutit à une lecture de fichier.
+        relatif = V.chemin_sur(config_session["repertoire_transcripts"],
+                                resolu["session_id"] + ".jsonl")
+        if relatif is None:
+            return self._json({"erreur": "session Claude introuvable (aucun transcript résolu)",
+                               "etat": libelle_etat, "destinataire": destinataire}, 503)
+        chemin = os.path.join(config_session["repertoire_transcripts"], relatif)
+        if not os.path.isfile(chemin):
+            return self._json({"erreur": "transcript introuvable",
+                               "etat": libelle_etat, "destinataire": destinataire}, 503)
+
+        messages, tronque, _octets = F.lire_fil(chemin)
+
+        # B1 (reboucle GATE P2) : fusion avec le journal PROPRE du cockpit —
+        # un message mis en file par `claude` n'apparaît jamais en
+        # `type: user` tant que ce tour n'a pas été rejoué. B2 : les bornes
+        # de `fil.py` restent celles qui gouvernent, la fusion ne les
+        # contourne pas.
+        entrees_cockpit, _tronque_cockpit = _lire_conversation(_chemin_conversation_session(nom))
+        messages, tronque = _fusionner_et_borner(messages, tronque, entrees_cockpit)
+
+        return self._json({
+            "messages": messages,
+            "tronque": tronque,
+            "etat": libelle_etat,
+            "session_id": resolu["session_id"],
+            "session_id_source": resolu["source"],
+            "session_id_divergence": resolu["divergence"],
+            "destinataire": destinataire,
+        })
 
     def log_message(self, format, *args):
         # Le journal par défaut écrit une ligne par requête, flux SSE compris.

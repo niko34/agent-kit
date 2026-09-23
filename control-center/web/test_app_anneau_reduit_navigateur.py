@@ -105,7 +105,12 @@ _PAGE = """<!doctype html><html><head><meta charset="utf-8">
     ];
     var wf = { segments: passages, passages: passages };
     var sigles = siglesAgents(Array.from(collecterRoles([wf])));
-    document.getElementById('conteneur').appendChild(construireDiagramme(wf, sigles));
+    // `construireDiagramme` SUPPRIMÉE (feature-028, lot C1, accordéon
+    // « Cycles » retiré) : retargeté vers `construireGrapheAgents`, le
+    // point d'entrée bas niveau qu'elle enveloppait — MÊME rendu, celui que
+    // `rendreGrapheCyclePrincipal` (la production) appelle aussi.
+    var geo = disposer(wf.segments);
+    document.getElementById('conteneur').appendChild(construireGrapheAgents(geo, sigles, null));
     var noeud = document.querySelector('.agent-node');
     var avant = getComputedStyle(noeud, '::before');
     out.classes = noeud.className;

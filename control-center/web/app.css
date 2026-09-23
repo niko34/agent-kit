@@ -136,7 +136,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 
 /* ---------------- barre supérieure (F7, lot 3 — classe adoptée `top-app-bar`,
  * renommée depuis `.barre`) ---------------- */
-.app-shell { display: flex; flex-direction: column; min-height: 100vh; }
+/* `100vh` : repli DÉCLARÉ pour les navigateurs sans `dvh` (feature-028,
+ * lot B1) — iOS/Safari anciens, ou tout moteur qui ignore l'unité dynamique.
+ * `100dvh` la SUIT et gagne dans les navigateurs qui la comprennent (une
+ * déclaration de propriété inconnue est ignorée, jamais appliquée comme
+ * `0` — le repli reste donc RÉELLEMENT peint, pas seulement présent dans la
+ * source) ; sur iOS, `dvh` exclut la barre d'adresse/le clavier virtuel,
+ * contrairement à `vh` qui vise le viewport LARGE et ignore le clavier. */
+.app-shell { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }
 .skip-link {
   /* Sous la profondeur 30 (condition de sécurité 3, test_app_navigation.js
    * E7_c3) : la porte d'authentification reste le seul plafond à 30. 15 :
@@ -407,9 +414,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .metric { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
 .metric strong { color: var(--ink); font-size: 13px; font-variant-numeric: tabular-nums; }
 
-/* ---- fil d'état du dépôt (classe adoptée `repo-strip`) — décorative ici,
- * les données réelles restent portées par `.jauge`/`.systeme` (§16 PIEGES :
- * tout chiffre affiché vient des données ; câblage réel différé, F10/F11). --- */
+/* ---- fil d'état du dépôt (classe adoptée `repo-strip`) — porte désormais
+ * SEULE le dépôt/fichiers touchés : `.systeme` (qui les dupliquait) a été
+ * retirée (feature-028, décision humaine du 2026-09-23). Câblage réel dans
+ * `rendreGrapheCyclePrincipal` (§16 PIEGES : tout chiffre affiché vient des
+ * données). --- */
 .repo-strip { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
 .repo-strip .ok { color: var(--teal); }
 
@@ -426,6 +435,18 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   box-shadow: var(--shadow-1);
   padding: 18px;
   min-height: 0;
+  /* Plafond (correctif, rapporté depuis un iPad) : `.conversation` porte
+   * déjà `overflow: auto; min-height: 0`, mais une ligne `1fr` dans une
+   * grille NON BORNÉE se dimensionne sur son contenu — l'`overflow` du
+   * descendant ne fait rien tant que le PARENT n'a pas de hauteur finie.
+   * Valeur reprise TELLE QUELLE de `.kanban-viewport` (déjà en production,
+   * même convention pour toute colonne dont le contenu vient des données) —
+   * non choisie à l'œil.
+   * `58vh`/`58dvh` migrent ENSEMBLE avec `.kanban-viewport` (feature-028,
+   * lot B1) : les laisser diverger ferait se comporter différemment les
+   * deux seules zones défilantes du même écran face au clavier virtuel. */
+  max-height: 58vh;
+  max-height: 58dvh;
   display: grid;
   grid-template-rows: auto 1fr auto;
   gap: 14px;
@@ -434,11 +455,45 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .claude-ident { display: flex; align-items: center; gap: 10px; }
 .claude-mark { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; color: var(--coral); background: var(--coral-soft); font-size: 22px; }
 .claude-status { color: var(--teal); font-size: 12px; }
+/* TROIS états (feature-026, correction ux-ui-designer étape 5bis — la
+ * maquette normative n'en code qu'UN SEUL, l.756) — jetons EXISTANTS, aucun
+ * neuf. Le glyphe `●` reste identique dans les trois (posé en JS) : c'est le
+ * TEXTE du libellé qui fait foi, jamais la couleur seule.
+ * ⚠️ « Occupée » NE PLIE PAS le badge : retiré (`.is-occupee` supprimée) —
+ * l'information « Claude travaille » vit désormais dans le FIL
+ * (`#claude-live-message`, `rendreMessageActiviteClaude`), jamais ici. */
+.claude-status.is-en-ligne { color: var(--teal); }
+.claude-status.is-hors-ligne { color: var(--muted); }
+.claude-status.is-injoignable { color: var(--danger); }
+/* Destinataire (feature-026) : texte BRUT du backend, jamais reformulé —
+ * `var(--mono)` comme les autres identifiants techniques de ce module
+ * (`docs/DESIGN-SYSTEM.md`). */
+.claude-destinataire { margin: 2px 0 0; font-size: 11.5px; color: var(--muted); }
+.claude-destinataire-valeur { font-family: var(--mono); color: var(--ink); }
 .conversation { display: grid; align-content: start; gap: 12px; min-height: 0; overflow: auto; padding-right: 2px; }
+/* Zone défilante atteignable au clavier (`tabindex="0" role="region"` posés
+ * dans `index.html`) — même convention que `.kanban-viewport`/`.graphe-
+ * scroll` pour toute zone défilante du design system, aucune couleur neuve. */
+.conversation:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
 .message { display: grid; grid-template-columns: 30px 1fr; gap: 8px; align-items: start; }
 .message-avatar { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--coral-soft); color: var(--coral); }
-.bubble { background: var(--surface-low); border-radius: 6px 16px 16px 16px; padding: 10px 12px; color: var(--primary-ink); }
+/* `.bubble` reste le palier ASSISTANT (identique au prototype, seul rôle
+ * qu'il code) ; `.is-utilisateur` (feature-026) porte le palier tonal
+ * `--surface-high` — même rayon, même alignement, AUCUNE couleur neuve, pas
+ * d'alignement à droite inventé (piège trouvé par l'ux-ui-designer). Défilement
+ * interne générique au-delà de ~240px, quel que soit le rôle ou le contenu :
+ * les messages humains portent des blocs `<system-reminder>` accolés,
+ * affichés TELS QUELS, jamais repliés sélectivement. */
+.bubble {
+  background: var(--surface-low); border-radius: 6px 16px 16px 16px;
+  padding: 10px 12px; color: var(--primary-ink);
+  max-height: 240px; overflow-y: auto; overflow-wrap: anywhere;
+}
+.bubble.is-utilisateur { background: var(--surface-high); }
 .bubble time { display: block; color: var(--muted); font-size: 12px; margin-bottom: 3px; }
+/* `prompt_source` (`queued`/`typed`, feature-026) : BRUT, discret, après
+ * l'horodatage — aucune traduction française. */
+.prompt-source { display: block; color: var(--muted); font-size: 11px; font-family: var(--mono); margin: -2px 0 4px; }
 .question { background: var(--coral-soft); border-radius: 16px; padding: 12px; color: var(--question-ink); }
 .question strong { font-weight: 500; }
 .composer { display: flex; gap: 8px; padding: 5px 5px 5px 14px; background: var(--surface-low); border-radius: 22px; }
@@ -467,7 +522,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .kanban-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .kanban-viewport {
   display: block;
+  /* `58vh`/`58dvh` migrent ENSEMBLE avec `.claude-panel` — voir le
+   * commentaire là-bas (feature-028, lot B1). */
   max-height: 58vh;
+  max-height: 58dvh;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
@@ -504,30 +562,14 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   .claude-panel { min-height: 360px; }
 }
 
-.bloc {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  /* 12px : `.bloc` n'existe pas dans le prototype (les sections qu'il
-     habille — Agents, Système, demande, Pilotage, Cycles, Fichiers,
-     Événements — sont préexistantes, absentes du prototype). Même famille
-     de rôle que `.cycle-surface` ci-dessus : surface secondaire bordée,
-     sans élévation, alignée sur `.repo-strip`/`.feature-fact` (12px,
-     feature-021, cycle 2, lot 6, F17). */
-  border-radius: 12px;
-  padding: 12px 14px;
-}
-/* Titre de section (§4) : corrige trois divergences à la fois (feature-019) —
- * chasse fixe sur un libellé, 11 px au lieu des 18 px d'un titre de section,
- * et le jeton de texte le plus faible sur un titre. Les capitales et
- * l'interlettrage n'avaient plus de justification une fois la taille
- * corrigée : retirés avec le reste. */
-.bloc h2 {
-  margin: 0 0 8px;
-  font-size: 18px;
-  color: var(--ink);
-  font-weight: 600;
-  font-family: var(--sans);
-}
+/* `.bloc`/`.bloc h2` SUPPRIMÉES (feature-028, lot pilotage dédié) : ces deux
+ * règles habillaient sept sections héritées — Agents, Système, demande,
+ * Pilotage, Cycles, Fichiers touchés, Événements — TOUTES retirées au fil
+ * de ce cycle (U1 de feature-021, puis décisions humaines du 2026-09-23).
+ * Plus aucun élément ne porte `class="bloc"` (ni statique, ni construit par
+ * `app.js`) : dernière section à la porter, « Pilotage », vient de
+ * disparaître — retirée avec elle plutôt que laissée orpheline (§33
+ * PIEGES). */
 .entete-bloc { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .entete-bloc h2 { margin-bottom: 8px; }
 .compteur { font-family: var(--sans); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -539,39 +581,31 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .note.erreur { color: var(--danger); }
 .note code { font-family: var(--mono); font-size: 11.5px; color: var(--primary); }
 
-/* ---------------- agents ---------------- */
-.agents { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
-.agents li {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
-  align-items: center;
-  padding: 5px 6px;
-  /* 9px : rôle « rangée sélectionnable dans une liste bordée » — même
-     rayon que `.menu-item` du prototype (l.527), l'équivalent le plus
-     proche pour une ligne compacte (feature-021, cycle 2, lot 6, F17). */
-  border-radius: 9px;
-  font-size: 12.5px;
-}
-.agents li.actif { background: color-mix(in srgb, var(--teal) 12%, transparent); }
-.agents .nom { font-family: var(--mono); font-size: 12px; }
-.agents li.actif .nom { color: var(--teal); }
-.agents .modele {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.agents .plume { color: var(--muted); font-size: 10.5px; }
+/* ---------------- agents ----------------
+ * `.agents` SUPPRIMÉE (U1 de feature-021, feature-028 lot A1) : la section
+ * « Agents » du DOM a disparu entière, cette classe n'est plus posée nulle
+ * part — retirée avec elle (sinon une règle CSS vide/orpheline, §33 PIEGES). */
 
-.systeme { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 12px; }
-.systeme dt { color: var(--muted); }
-.systeme dd { margin: 0; font-family: var(--sans); font-size: 11.5px; text-align: right; font-variant-numeric: tabular-nums; }
-.systeme dd .suffixe-ecriture { color: var(--muted); }
+/* ---------------- système ----------------
+ * `.systeme` SUPPRIMÉE (feature-028, décision humaine du 2026-09-23 :
+ * « Supprime système. Je ne souhaite pas que ça aille ailleurs. » — AU-DELÀ
+ * de U1 de feature-021, qui demandait une migration jamais faite). La
+ * section « Système » a disparu entière, cette classe n'est plus posée
+ * nulle part — retirée avec elle (sinon une règle CSS vide/orpheline,
+ * §33 PIEGES). */
 
-/* ---------------- demande ---------------- */
-.demande textarea {
+/* ---------------- demande ----------------
+ * `.demande` SUPPRIMÉE (feature-028, lot C2) : la section a disparu entière,
+ * remplacée par `#add-item-dialog` (le `+`, seul point d'entrée désormais).
+ * `#item-title`/`#item-description` sont déjà stylés par `.form-field
+ * input, .form-field select, .form-field textarea` (prototype, plus bas
+ * dans cette feuille) — RIEN à recréer pour eux. Seul le `<textarea
+ * class="brouillon">` construit par `rendreBrouillonRedaction()` (app.js),
+ * qui n'est PAS enveloppé dans `.form-field`, a besoin d'un sélecteur : il
+ * vivait sous `.demande textarea`/`.demande textarea.brouillon`, il vit
+ * maintenant sous `#add-item-redaction-corps` (le seul conteneur qui le
+ * porte). */
+#add-item-redaction-corps textarea {
   width: 100%;
   background: var(--surface-high);
   border: 1px solid var(--line);
@@ -587,24 +621,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
   resize: vertical;
   margin-bottom: 8px;
 }
-.demande textarea:disabled { opacity: 0.55; cursor: not-allowed; }
+#add-item-redaction-corps textarea:disabled { opacity: 0.55; cursor: not-allowed; }
 /* feature-008 : le brouillon est du Markdown — même logique que
- * `#tiroir-contenu` / `#sortie-lancement` (texte technique en monospace). */
-.demande textarea.brouillon { font-family: var(--mono); font-size: 12.5px; }
-/* feature-008 : le titre est une PHRASE lue par un humain (il nomme le
- * fichier, mais n'est pas lui-même un identifiant technique) — sans-serif,
- * comme tout le reste de `.demande textarea`, jamais `.pilotage-jeton input`
- * (chasse fixe, réservée aux identifiants/jetons). */
-.demande .champ-titre { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
-.demande .champ-titre label { font-size: 12px; color: var(--muted); }
-.demande input[type="text"] {
-  /* 12px : même rôle « champ de formulaire » que `.demande textarea`
-     ci-dessus (feature-021, cycle 2, lot 6, F17). */
-  width: 100%; background: var(--surface-high); border: 1px solid var(--line);
-  border-radius: 12px; color: var(--ink); font-family: var(--sans);
-  font-size: 13px; padding: 8px 10px;
-}
-.demande input[type="text"]:focus-visible { outline: 1px solid var(--primary); border-color: var(--primary); }
+ * `#tiroir-contenu` (texte technique en monospace ; `#sortie-lancement`,
+ * qui partageait cette raison, a disparu avec le panneau « Piloter par
+ * clé », feature-028, lot pilotage dédié). */
+#add-item-redaction-corps textarea.brouillon { font-family: var(--mono); font-size: 12.5px; }
 
 /* ---------------- filtres ---------------- */
 .filtres { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
@@ -749,7 +771,13 @@ dialog p { color: var(--muted); margin: 8px 0 18px; }
 .dialog-actions .confirm { background: var(--danger); color: white; }
 .dialog-actions .confirm[disabled] { background: var(--line-strong); cursor: not-allowed; }
 
-.feature-dialog { width: min(620px, calc(100vw - 32px)); max-width: 620px; max-height: calc(100vh - 32px); padding: 0; overflow: hidden; }
+/* `max-height` : repli `100vh` DÉCLARÉ, puis `100dvh` qui le suit et gagne
+ * quand le navigateur le comprend (feature-028, lot B1 — l'iPad de
+ * l'humain). Sur iOS, `100vh` vise le viewport LARGE, qui IGNORE le clavier
+ * virtuel affiché : la boîte restait dimensionnée pour l'écran entier
+ * pendant que la zone réellement visible rétrécissait — c'est exactement le
+ * défaut rapporté (« la popup rétrécit… jusqu'à devenir inutilisable »). */
+.feature-dialog { width: min(620px, calc(100vw - 32px)); max-width: 620px; max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); padding: 0; overflow: hidden; }
 .feature-dialog[open] { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
 .feature-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 22px 22px 15px; }
 .feature-dialog-heading { display: grid; gap: 7px; }
@@ -775,7 +803,31 @@ dialog p { color: var(--muted); margin: 8px 0 18px; }
 .feature-dialog-actions .secondary { background: transparent; color: var(--primary); }
 .feature-dialog-actions .primary { background: var(--primary); color: white; }
 
-.add-item-dialog { width: min(720px, calc(100vw - 32px)); max-width: 720px; max-height: calc(100vh - 32px); padding: 0; overflow: hidden; }
+/* Même repli `100vh` → `100dvh` que `.feature-dialog` ci-dessus
+ * (feature-028, lot B1) : c'est CETTE boîte que le rapport humain décrit
+ * (« la popup pour ajouter une spécification »).
+ * ⚠️ B2 (revue de code, feature-028) : les `dvh` n'étaient qu'UNE des deux
+ * causes. `.add-item-form` a QUATRE enfants directs (`.add-item-body`,
+ * `#erreur-generer-item-brouillon`, `#add-item-redaction-corps`,
+ * `.add-item-actions`), mais `grid-template-rows` n'en déclarait que DEUX
+ * (`minmax(0,1fr) auto`) — les deux enfants restants tombaient dans des
+ * rangées IMPLICITES `auto`, qui ne se compriment jamais. Résultat mesuré
+ * en Chromium réel à 413 px de viewport : le brouillon (`#add-item-
+ * redaction-corps`, qui porte le `<textarea rows="20">`) grandit sans
+ * borne, `.add-item-body` (la SEULE rangée `overflow-y: auto`) est écrasée
+ * à `0px` — titre et description disparaissent avec elle — et
+ * `.add-item-actions` est repoussée hors de la boîte
+ * (`document.elementFromPoint` sur le bouton rend `null` : inatteignable,
+ * pas seulement hors de vue). Deux pistes envisagées : déplacer les deux
+ * enfants errants À L'INTÉRIEUR de `.add-item-body` (retenue : ATTEIGNABLE
+ * les deux boîtes, index.html) ; sonner PLUTÔT `grid-template-rows:
+ * minmax(0,1fr) auto auto auto` (à quatre enfants, correcte, mais CSS Grid
+ * ne pose pas d'`overflow` sur une RANGÉE — il aurait fallu un conteneur
+ * de défilement dédié pour le brouillon, en plus, sans rien gagner). Une
+ * fois les deux enfants déplacés, `.add-item-form` retombe à DEUX enfants
+ * réels (`.add-item-body`/`.add-item-actions`) : `grid-template-rows`
+ * n'a plus besoin de changer, il est enfin exact. */
+.add-item-dialog { width: min(720px, calc(100vw - 32px)); max-width: 720px; max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); padding: 0; overflow: hidden; }
 .add-item-dialog[open] { display: grid; grid-template-rows: auto minmax(0, 1fr); }
 .add-item-form { min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
 .add-item-body { overflow-y: auto; padding: 0 22px 22px; }
@@ -787,6 +839,9 @@ dialog p { color: var(--muted); margin: 8px 0 18px; }
 .form-field input, .form-field select, .form-field textarea { width: 100%; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface); color: var(--ink); padding: 11px 12px; }
 .form-field input, .form-field select { min-height: 48px; }
 .form-field textarea { min-height: 88px; resize: vertical; }
+/* M1 (revue de code, feature-028) : `#item-priority` réellement `disabled`
+ * — même convention que les autres contrôles inertes de ce module. */
+.form-field select:disabled { opacity: 0.55; cursor: not-allowed; }
 .field-help { color: var(--muted); font-size: 12px; }
 .type-segment { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; border-radius: 14px; background: var(--surface-low); }
 .type-option { position: relative; cursor: pointer; }
@@ -812,90 +867,14 @@ dialog p { color: var(--muted); margin: 8px 0 18px; }
 #delete-confirm-input:invalid { border-color: var(--line-strong); }
 
 /* ---------------- cycles (feature-016) ----------------
- * Liste en accordéon (docs/DESIGN-SYSTEM.md §6) : un seul détail ouvert à la
- * fois, le plus récent par défaut. Précédence identité/état (§8), appliquée
- * ICI pour la première fois : l'identité d'un agent colore son TEXTE et son
- * sigle (`.agent-nom`, `.agent-sigle`, couleur posée en ligne par app.js
- * depuis les jetons `--a-<rôle>` / `--f-<rôle>`) ; un état se lit dans le
- * CONTOUR et la FORME d'un badge dédié (`.cycle-etat`), jamais en recolorant
- * un texte d'identité par-dessus. */
-.cycles { list-style: none; margin: 0; padding: 0; }
-.cycle { border-top: 1px solid color-mix(in srgb, var(--line) 60%, var(--surface)); }
-.cycle:first-child { border-top: none; }
-.cycle-entete { margin: 0; }
-.cycle-bouton {
-  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
-  width: 100%; text-align: left; padding: 9px 2px; margin: 0;
-  background: none; border: none; color: inherit; font: inherit; cursor: pointer;
-}
-.cycle-bouton:hover { background: var(--surface-low); }
-.cycle-bouton:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
-.cycle-designation { font-family: var(--sans); font-size: 12.5px; }
-.cycle-resume { color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
-
-/* Badge d'état — tableau arrêté à quatre cases (feature-016). Le libellé
- * n'est JAMAIS tronqué, à aucune largeur : c'est ce qui rend acceptable le
- * contour de « terminé », mesuré à 1,20:1 (illisible seul) — mais SEULEMENT
- * parce que le libellé, lui, tient le seuil texte (4,5:1). Revue : le
- * libellé des trois états achromatiques peignait `--texte-faible`, mesuré
- * (fond `.bloc` = `--surface`) à 3,90:1 en thème sombre (6,02 en clair) —
- * sous le seuil. `--texte` mesuré PAR CE CORRECTIF sur la même paire :
- * 13,29:1 sombre, 16,5:1 clair — la couleur vive reste réservée à
- * « en cours » (`--actif`), ce badge ne gagne aucune teinte neuve. */
-.cycle-etat {
-  display: inline-flex; align-items: center; gap: 4px;
-  /* 10px : rôle « badge d'état » — même rayon que `.feature-chip`/
-     `.type-option span` du prototype (l.551/584), feature-021, cycle 2,
-     lot 6, F17. */
-  padding: 1px 7px; border-radius: 10px; font-family: var(--sans);
-  font-size: 11px; white-space: normal;
-}
-.cycle-etat .glyphe { font-size: 11px; line-height: 1; }
-.cycle-etat.en-cours { border: 1px solid var(--teal); color: var(--teal); }
-.cycle-etat.termine { border: 1px solid var(--line); color: var(--ink); }
-/* Pointillé (`dotted`), PAS tirets (`dashed`, revue) : les tirets sont
- * réservés au RÔLE (`.maillon.principal`) ailleurs dans cette feuille —
- * un même état ne peut pas se dessiner en pointillé dans la chaîne
- * (`.maillon.sans-cloture`, plus bas) et en tirets dans ce badge. */
-.cycle-etat.sans-cloture { border: 1px dotted var(--line-strong); color: var(--ink); }
-/* Contour double = deuxième forme distincte, réservée à « indéterminé » —
- * aucun autre état de ce tableau ne la porte. */
-.cycle-etat.indetermine { border: 3px double var(--line-strong); color: var(--ink); }
-
-.cycle-detail { padding: 0 2px 12px; }
-.cycle-proprietes {
-  margin: 0 0 12px; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px;
-  font-size: 12px; max-width: 420px;
-}
-.cycle-proprietes dt { color: var(--muted); }
-.cycle-proprietes dd { margin: 0; font-family: var(--sans); font-size: 11.5px; font-variant-numeric: tabular-nums; }
-
-/* ---- table des passages ---- */
-.table-passages { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 10px; }
-.table-passages th, .table-passages td { text-align: left; padding: 3px 8px 3px 0; }
-.table-passages th {
-  color: var(--muted); font-weight: 400; font-size: 11px;
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, var(--surface));
-}
-.table-passages td { border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, var(--surface)); font-variant-numeric: tabular-nums; }
-.table-passages tr:last-child td { border-bottom: none; }
-/* Ancrage du rebouclage sur SA ligne (réutilise `indicesRepris`) : même
- * grammaire que `.maillon.repris` dans la chaîne — un liseré, jamais un fond
- * ni une bordure complète. */
-.table-passages tr.repris { border-left: 2px dashed var(--amber); }
-.table-passages .colonne-agent { display: flex; align-items: center; gap: 6px; }
-/* Plus de couleur d'identité par agent (ADR-0032, lot 4) : fond/texte neutres
- * fixes, remplaçant l'ancien `sigle.style.color`/`.background` posés en ligne
- * depuis `--a-<rôle>`/`--f-<rôle>` (retirés). */
-.agent-sigle {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 18px; height: 18px; flex: none; border-radius: 50%;
-  font-family: var(--mono); font-size: 9.5px; font-weight: 600;
-  background: var(--surface-high); color: var(--primary-ink);
-}
-.agent-nom { font-family: var(--mono); font-size: 11.5px; color: var(--ink); }
-
-.cycle-detail .vide { margin: 0 0 10px; }
+ * SUPPRIMÉE (feature-028, lot C1) : l'accordéon « Cycles » (`.cycles`/
+ * `.cycle`/`.cycle-entete`/`.cycle-bouton`/`.cycle-designation`/
+ * `.cycle-resume`/`.cycle-etat`/`.cycle-detail`/`.cycle-proprietes`/
+ * `.agent-sigle`/`.agent-nom`) a disparu entier (décision humaine 1B,
+ * 2026-09-23) — plus aucune de ces classes n'est posée nulle part (retirées
+ * d'`app.js` au même lot), règles CSS retirées avec elles plutôt que
+ * laissées orphelines (§33 PIEGES). `.table-passages` avait déjà été
+ * retirée avant elles (U1 de feature-021, feature-028 lot A1). */
 
 /* ==================== graphe d'agents — disque Material 3 (ADR-0031) ======
  * feature-021, cycle 2, lot 4 (F8/F9/F14/F15/F16). RÉÉCRITURE COMPLÈTE : la
@@ -1204,62 +1183,14 @@ dialog p { color: var(--muted); margin: 8px 0 18px; }
 .state-active .tool-ticks i:nth-child(3n + 1) { animation: tick-work 2.8s ease-in-out infinite; animation-delay: calc(var(--i) * 120ms); }
 .state-active .tool-ticks i:nth-child(3n + 2) { animation: tick-work 3.5s ease-in-out infinite; animation-delay: calc(var(--i) * 95ms); }
 
-/* ---- chaîne des segments (repli textuel du diagramme ci-dessus, §5) ---- */
-.chaine { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-bottom: 10px; }
-.maillon {
-  display: inline-flex; align-items: baseline; gap: 6px;
-  /* var(--surface), pas var(--surface-low) (feature-019, §3) : le maillon est
-   * déjà délimité par son propre filet ci-dessous. */
-  background: var(--surface); border: 1px solid color-mix(in srgb, var(--line) 60%, var(--surface));
-  /* 10px : rôle « puce », même famille que `.jauge`/`.cycle-etat`
-     ci-dessus — `.feature-chip` du prototype (feature-021, cycle 2, lot 6,
-     F17). */
-  border-radius: 10px; padding: 3px 7px; font-size: 12px;
-}
-.maillon .mnom { font-family: var(--mono); font-size: 11.5px; }
-.maillon .mduree { font-family: var(--sans); font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
-/* Précédence identité/état (§8) : le texte (`.mnom`) ne porte plus la
- * couleur d'état — l'identité de l'agent la porte désormais (couleur posée
- * en ligne par app.js). L'état reste lisible au CONTOUR ci-dessous. */
-.maillon.en-cours { border-color: color-mix(in srgb, var(--teal) 50%, var(--line)); }
-.maillon.echec { border-color: color-mix(in srgb, var(--danger) 50%, var(--line)); }
-/* Fin sans annonce (bug-013/feature-010) : NI teal (en cours) ni rouille
- * (échec) — ce n'est ni un succès ni un échec du travail, un simple fait
- * signalé. Bordure EN POINTILLÉ (`dotted`) pour le distinguer visuellement
- * d'un maillon clos normal, sans emprunter au registre de l'alerte — et
- * SURTOUT distincte des TIRETS (`dashed`) de `.principal` ci-dessous
- * (revue, §8) : un même trait ne peut pas porter à la fois un rôle et un
- * état. Combinaison impossible par construction (events.py) : le segment
- * principal a `termine: true` fixé à la création, jamais `sans_cloture`. */
-.maillon.sans-cloture { border-color: var(--line); border-style: dotted; }
-/* Ancrage du rebouclage dans la chaîne (feature-010, §8) : un simple liseré,
- * jamais un fond ni une bordure complète — le maillon reste lisible comme un
- * agent normal, ce trait ajoute juste le contexte « déjà vu ». */
-.maillon.repris { border-left: 2px dashed var(--amber); }
+/* ---- chaîne des segments (repli textuel du diagramme ci-dessus, §5) ----
+ * SUPPRIMÉE (feature-028, lot C1) : `.chaine`/`.maillon`/`.fleche`/
+ * `.wf-notes` ne servaient plus que l'accordéon « Cycles »
+ * (`construireChaineEtNotes`), retiré entier (décision humaine 1B,
+ * 2026-09-23) — plus aucune de ces classes n'est posée nulle part. */
 
-/* L'agent principal est un acteur à part : c'est lui qui orchestre. Un fond
- * creusé et un nom en retrait le distinguent des sous-agents sans le mettre en
- * avant — il est le fil, pas l'événement. Le retrait (italique) ET les
- * TIRETS (`dashed`) restent le registre du RÔLE (`.principal`) — jamais
- * réutilisés pour un état : l'état s'écrit en POINTILLÉ (`dotted`,
- * `.sans-cloture` ci-dessus), jamais en tirets. */
-.maillon.principal { background: var(--surface-high); border-style: dashed; }
-.maillon.principal .mnom { color: var(--muted); font-style: italic; }
-.fleche { color: var(--muted); font-size: 11px; }
-.wf-notes { margin-top: 6px; margin-bottom: 6px; font-size: 11.5px; color: var(--muted); }
-/* `.wf-notes .alerte` RETIRÉE au lot 5 (F3b, feature-021 cycle 2) : jamais
- * posée par aucun code — `imbrication_suspectee` a été rétrogradée en
- * `.attendu` (feature-010 §9, commentaire ci-dessous), sans que la règle
- * CSS de l'ancien style « alerte » ait été retirée avec elle (PIEGES §33 :
- * une classe déclarée sans porteur ne protège rien, elle documente une
- * intention périmée). */
-/* Une information ATTENDUE ne se peint pas comme une anomalie. */
-.wf-notes.attendu { color: var(--muted); cursor: help; }
-/* Le rebouclage EST une anomalie du déroulement nominal (pas du récit) :
- * seule bande en ambre du bloc de détail, distincte de `.attendu`. */
-.wf-notes.reboucle { color: var(--amber); }
-
-.action-repli { margin-bottom: 8px; }
+/* `.action-repli` SUPPRIMÉE (U1 de feature-021, feature-028 lot A1) : elle
+ * stylait le bouton de repli de `.table-passages`, disparue avec elle. */
 
 /* ---------------- pilotage ---------------- */
 /* Un bouton qui écrit dans le dépôt et dépense de l'argent n'a pas la
@@ -1271,54 +1202,16 @@ dialog p { color: var(--muted); margin: 8px 0 18px; }
   border-color: color-mix(in srgb, var(--teal) 50%, var(--line));
 }
 
-/* Trouvé en écrivant F3b (feature-021, cycle 2, lot 5) : ces trois
- * conteneurs de PHASE (`rendreConfirmationPilotage`/`rendreOccupePilotage`/
- * `rendreLancementPilotage`, app.js) sont posés depuis toujours SANS AUCUNE
- * règle CSS — ni `.pilotage-select`/`.pilotage-jeton` (mise en page réelle)
- * ni une règle vide (PIEGES §33). `display: block` documente l'intention
- * (un simple conteneur de groupement, sans mise en page propre) sans rien
- * changer au rendu (déjà la valeur par défaut d'un `<div>`) — la moindre
- * mise en page réelle éventuelle reste à ajouter ici, jamais à inventer
- * ailleurs. */
-.pilotage-confirmation, .pilotage-occupe, .pilotage-lancement { display: block; }
-.pilotage-select, .pilotage-jeton { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; max-width: 420px; }
-.pilotage-select label, .pilotage-jeton label { font-size: 12px; color: var(--muted); }
-.pilotage-select select, .pilotage-jeton input {
-  /* 12px : rôle « champ de formulaire », même famille que `.demande
-     textarea`/`.demande input[type="text"]` ci-dessus (feature-021,
-     cycle 2, lot 6, F17). */
-  background: var(--surface-high); border: 1px solid var(--line); border-radius: 12px;
-  color: var(--ink); font-family: var(--mono); font-size: 12.5px; padding: 6px 8px;
-  min-height: 32px;
-}
-.pilotage-select select:focus-visible, .pilotage-jeton input:focus-visible {
-  outline: 2px solid var(--primary); outline-offset: 1px;
-}
-
-.pilotage-ligne { font-family: var(--sans); font-size: 12.5px; margin: 0 0 8px; }
-.pilotage-ligne.en-cours { color: var(--teal); }
-.pilotage-ligne.bloque { color: var(--amber); }
-.pilotage-ligne.termine { color: var(--teal); }
-.pilotage-ligne.echec { color: var(--danger); }
-.pilotage-ligne.interrompu { color: var(--muted); }
-
-/* 12px : rôle « surface secondaire / bandeau », même famille que
-   `.repo-strip`/`.feature-fact` du prototype (feature-021, cycle 2, lot 6,
-   F17). */
-.pilotage-tronque {
-  font-family: var(--sans); font-size: 11.5px; color: var(--amber);
-  border: 1px solid color-mix(in srgb, var(--amber) 45%, var(--line));
-  border-radius: 12px; padding: 4px 8px; margin-bottom: 6px;
-}
-
-/* 12px : même rôle « surface secondaire » (feature-021, cycle 2, lot 6,
-   F17). */
-#sortie-lancement {
-  margin: 0 0 8px; padding: 10px; background: var(--surface-high); border: 1px solid var(--line);
-  border-radius: 12px; font-family: var(--mono); font-size: 12px; line-height: 1.55;
-  white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted);
-  max-height: 320px; overflow-y: auto;
-}
+/* `.pilotage-confirmation`/`.pilotage-occupe`/`.pilotage-lancement`/
+ * `.pilotage-select`/`.pilotage-jeton`/`.pilotage-ligne`(+états)/
+ * `.pilotage-tronque`/`#sortie-lancement` SUPPRIMÉES (feature-028, lot
+ * pilotage dédié) : elles ne stylaient que le panneau générique « Piloter
+ * par clé » (`rendreConfirmationPilotage`/`rendreOccupePilotage`/
+ * `rendreLancementPilotage`, retirées d'app.js au même lot), plus aucun
+ * producteur. `.pilotage-secondaire`/`.pilotage-boutons`/`.action-ecriture`
+ * RESTENT : partagées avec le flux de rédaction (`#add-item-dialog`,
+ * boutons Générer/Régénérer/Écrire/Annuler/Confirmer), jamais propres au
+ * panneau retiré. */
 
 /* 13px : rôle « bouton d'action » — même rayon que `.dialog-actions
    button`/`.feature-dialog-actions button`/`.form-buttons button` du
@@ -1349,7 +1242,6 @@ dialog p { color: var(--muted); margin: 8px 0 18px; }
 .pilotage-boutons { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
 
 @media (max-width: 480px) {
-  .pilotage-select select, .pilotage-jeton input,
   .action-ecriture, .pilotage-secondaire { width: 100%; }
   .pilotage-boutons { flex-direction: column; }
   .pilotage-boutons .action-ecriture, .pilotage-boutons .pilotage-secondaire { width: 100%; }
@@ -1359,33 +1251,17 @@ dialog p { color: var(--muted); margin: 8px 0 18px; }
 /* ---------------- fichiers & timeline ----------------
  * Fichiers et Événements vivent désormais dans deux sections distinctes
  * (feature-019, §5) — `.deux-colonnes` (mise en page à deux blocs côte à
- * côte de l'ancien empilement) n'a plus d'usage et a été retirée. */
-.fichier {
-  display: grid; grid-template-columns: 76px 1fr; gap: 8px; align-items: baseline;
-  padding: 3px 0; font-size: 12px; width: 100%;
-  background: none; border: none; color: inherit; text-align: left; cursor: pointer;
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, var(--surface));
-}
-.fichier:hover .fchemin, .fichier:hover .fsujet { color: var(--primary); }
-.fichier:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
-.fichier .fcode { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
-/* Chemin de fichier — un identifiant technique (§4), chasse fixe. */
-.fichier .fchemin { font-family: var(--mono); font-size: 11.5px; overflow-wrap: anywhere; }
-/* Sujet de commit (feature-019) — une phrase écrite par un humain, pas un
- * chemin : `.fchemin` était réutilisée ici (app.js, `rendreFichiers`), ce
- * qui mettait un texte de commit en chasse fixe. Classe distincte, en
- * sans-serif, mêmes proportions que `.fchemin`. */
-.fichier .fsujet { font-family: var(--sans); font-size: 11.5px; overflow-wrap: anywhere; }
+ * côte de l'ancien empilement) n'a plus d'usage et a été retirée.
+ * `.fichier`/`.fcode`/`.fchemin` SUPPRIMÉES (feature-028, décision humaine du
+ * 2026-09-23) : la section « Fichiers touchés » et `rendreFichiers` sont
+ * retirés, retrait de capacité assumé — plus aucun élément ne pose ces
+ * classes (§33 PIEGES : une règle sans usage ne protège rien). */
 
-.timeline { list-style: none; margin: 0; padding: 0; max-height: 340px; overflow-y: auto; }
-.timeline li {
-  display: grid; grid-template-columns: 74px 1fr; gap: 9px;
-  padding: 2px 0; font-size: 12px; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, var(--surface));
-}
-.timeline .heure { font-family: var(--sans); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.timeline .quoi { font-family: var(--mono); font-size: 11.5px; overflow-wrap: anywhere; }
-.timeline li.echec .quoi { color: var(--danger); }
-.timeline li.agent .quoi { color: var(--teal); }
+/* `.timeline` SUPPRIMÉE (U1 de feature-021, feature-028 lot A1) : le
+ * panneau permanent a disparu, `rendreTimeline` avec lui — la tranche
+ * d'événements d'un passage s'ouvre désormais en texte brut dans le
+ * tiroir existant (`ouvrirEvenementsPassage`, app.js), qui réutilise
+ * `#tiroir-contenu`/`<pre>`, déjà stylé. */
 
 .vide { color: var(--muted); font-size: 12px; font-style: italic; }
 
@@ -1456,12 +1332,13 @@ dialog p { color: var(--muted); margin: 8px 0 18px; }
 }
 .porte-carte h2 { margin: 0 0 8px; font-size: 15px; font-weight: 600; color: var(--ink); }
 .porte-carte label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
-/* `#porte-champ` reprend `.pilotage-jeton input` TEL QUEL (bug-012) : même
- * structure de règles, dupliquée ici car le HTML livré n'enveloppe pas le
- * champ dans un conteneur `.pilotage-jeton`. */
+/* `#porte-champ` reprenait `.pilotage-jeton input` TEL QUEL (bug-012) : même
+ * structure de règles, dupliquée ici car le HTML livré n'enveloppait pas le
+ * champ dans un conteneur `.pilotage-jeton`. `.pilotage-jeton` a disparu
+ * depuis (feature-028, lot pilotage dédié) — cette règle reste, autonome,
+ * dupliquée pour rien de particulier désormais, mais toujours correcte. */
 #porte-champ {
-  /* 12px : rôle « champ de formulaire », même famille que `.pilotage-jeton
-     input` (feature-021, cycle 2, lot 6, F17). */
+  /* 12px : rôle « champ de formulaire » (feature-021, cycle 2, lot 6, F17). */
   width: 100%;
   background: var(--surface-high); border: 1px solid var(--line); border-radius: 12px;
   color: var(--ink); font-family: var(--mono); font-size: 12.5px; padding: 6px 8px;

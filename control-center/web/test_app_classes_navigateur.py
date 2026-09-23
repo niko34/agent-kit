@@ -37,10 +37,18 @@ enveloppe est le VRAI `<body>` d'`index.html`, copié tel quel (pas de
 reconstruction manuelle qui pourrait diverger).
 
 Chaque scénario appelle une fonction de rendu RÉELLE d'`app.js`
-(`rendreAgents`, `rendreSysteme`, `rendreKanban`, `construireDiagramme`,
-`rendreCycles`, `rendreFichiers`, `rendreTimeline`, `ouvrirPorte`,
+(`rendreKanban`, `construireDiagramme`,
+`rendreCycles`, `ouvrirPorte`,
 `afficherBandeauHote`) avec des données représentatives couvrant les
 branches connues pour poser des classes d'état (§ liste dans le script).
+⚠️ `rendreAgents`/`rendreTimeline` retirés de cette liste (feature-028,
+lot A1, U1 de feature-021) : les deux fonctions et les classes CSS
+correspondantes (`.agents`/`.timeline`) ont disparu ensemble.
+⚠️ `rendreSysteme` retiré à son tour (feature-028, décision humaine du
+2026-09-23, AU-DELÀ de U1) : `.systeme` a disparu avec lui.
+⚠️ `rendreFichiers` retiré à son tour (feature-028, décision humaine du
+2026-09-23, « fichiers ») : `.fichier` a disparu avec lui, `ouvrirDiff`
+avec elle (code mort, plus aucun appelant).
 
 Saute proprement si Chromium OU `node` est introuvable.
 """
@@ -201,7 +209,30 @@ _SCRIPT_MESURE = r"""
     // `.token-value--partiel` (les trois autres, faute de compteur alors
     // que la lecture a été coupée par le budget) dans ce MÊME scénario.
     var tokensParPassage = { partiel: true, par_agent: { "backend-id": { input_tokens: 4000, output_tokens: 1500 } } };
-    document.getElementById('cycle-canvas').appendChild(construireDiagramme(wf1, sigles, tokensParPassage));
+    // `construireDiagramme` SUPPRIMÉE (feature-028, lot C1, accordéon
+    // « Cycles » retiré) : retargeté vers `construireGrapheAgents`, le
+    // point d'entrée bas niveau qu'elle enveloppait — MÊME rendu.
+    document.getElementById('cycle-canvas').appendChild(
+      construireGrapheAgents(disposer(wf1.segments), sigles, tokensParPassage));
+
+    // -- diagramme : rebouclage (connecteur `.is-reprise`) ------------------
+    // Perdu par accident au retrait de l'accordéon « Cycles » (feature-028,
+    // lot C1) : la SEULE scène de ce fichier qui posait `.is-reprise` était
+    // celle de `rendreCycles` (retirée avec lui), pas celle du diagramme —
+    // `.is-reprise` est un mécanisme DIFFÉRENT (connecteur SVG du graphe
+    // principal, `disposer()`), sans rapport avec l'accordéon. Reconstituée
+    // ici, minimale : un agent qui réapparaît après un AUTRE sous-agent.
+    var passagesReprise = [
+      passage({ agent: "claude", debut: "2026-09-21T11:00:00.000Z", type: "principal" }),
+      passage({ agent: "frontend-developer", debut: "2026-09-21T11:00:01.000Z", termine: true }),
+      passage({ agent: "backend-developer", debut: "2026-09-21T11:00:02.000Z", termine: true }),
+      passage({ agent: "frontend-developer", debut: "2026-09-21T11:00:03.000Z", termine: true }),
+    ];
+    var conteneurReprise = document.createElement('div');
+    conteneurReprise.id = 'sonde-reprise';
+    document.body.appendChild(conteneurReprise);
+    conteneurReprise.appendChild(construireGrapheAgents(
+      disposer(passagesReprise), siglesAgents(Array.from(collecterRoles([{ segments: passagesReprise, passages: passagesReprise }]))), null));
 
     // -- kanban : priorité (basse/moyenne/haute/critique) + divergence -----
     rendreKanban({
@@ -223,116 +254,31 @@ _SCRIPT_MESURE = r"""
       divergences: 1,
     });
 
-    // -- agents : un actif, un inactif --------------------------------------
-    rendreAgents([
-      { nom: "frontend-developer", actif_sur: "F-003", modele: "sonnet", peut_ecrire: true, outils: ["Read"], peut_deleguer: false, description: "d" },
-      { nom: "backend-developer", actif_sur: null, modele: "sonnet", peut_ecrire: false, outils: [], peut_deleguer: true, description: "d" },
-    ]);
-    // -- agents : liste vide (état vide explicite, classe `.vide`) ----------
-    var agentsSauvegardes = document.getElementById('agents').innerHTML;
-    rendreAgents([]);
-    document.getElementById('agents').innerHTML = agentsSauvegardes;
+    // -- agents : SUPPRIMÉ (U1 de feature-021, feature-028 lot A1) —
+    // `rendreAgents`/`.agents` n'existent plus ni dans app.js ni dans
+    // app.css ; rien à exercer ici, aucune classe orpheline en jeu.
 
-    // -- système ---------------------------------------------------------
-    rendreSysteme({
-      ecriture_active: false, git: { depot: true, branche: "main", touches: [1] },
-      divergences: 1, workflows: [1], config_lue: true, commandes_declarees: [],
-      garde_fous: { budget_max_usd: 5, ecrivains_simultanes: 1 },
-    });
+    // -- système : SUPPRIMÉ À SON TOUR (feature-028, décision humaine du
+    // 2026-09-23, AU-DELÀ de U1) — `rendreSysteme`/`.systeme` n'existent
+    // plus ni dans app.js ni dans app.css ; rien à exercer ici, aucune
+    // classe orpheline en jeu.
 
-    // -- cycles : les quatre états, un rebouclage réel, une imbrication -----
-    function segPrincipal(debut, fin) {
-      return { type: "principal", agent: "claude", debut: debut, fin: fin, duree_ms: 1000, outils: 1, fichiers: [], echecs: 0, termine: true, etat: "termine" };
-    }
-    function segAgent(agent, debut, etat, echecs, termine) {
-      return { type: "sousagent", agent: agent, debut: debut, fin: termine === false ? null : debut, duree_ms: 500, outils: 1, fichiers: [], echecs: echecs || 0, termine: termine !== false, etat: etat };
-    }
-    var wfEnCours = {
-      workflow_id: "s1#0", indice_cycle: 0, debut: "2026-09-21T10:00:00.000Z", fin_observee: "2026-09-21T10:05:00.000Z",
-      fin_observee_absente: false, bornage: "session-entiere", borne_par: null,
-      segments: [segPrincipal("2026-09-21T10:00:00.000Z", "2026-09-21T10:00:01.000Z"), segAgent("frontend-developer", "2026-09-21T10:00:02.000Z", "en_cours", 0, false)],
-      passages: [segAgent("frontend-developer", "2026-09-21T10:00:02.000Z", "en_cours", 0, false)],
-      cycles_total: 4, evenements_hors_session: 2,
-    };
-    var wfTermineRepris = {
-      workflow_id: "s1#1", indice_cycle: 1, debut: "2026-09-21T09:00:00.000Z", fin_observee: "2026-09-21T09:10:00.000Z",
-      fin_observee_absente: false, bornage: "marqueur-agent", borne_par: "orchestrator",
-      segments: [
-        segPrincipal("2026-09-21T09:00:00.000Z", "2026-09-21T09:00:01.000Z"),
-        segAgent("frontend-developer", "2026-09-21T09:00:02.000Z", "termine", 0, true),
-        segPrincipal("2026-09-21T09:00:03.000Z", "2026-09-21T09:00:04.000Z"),
-        segAgent("backend-developer", "2026-09-21T09:00:05.000Z", "termine", 0, true),
-        segPrincipal("2026-09-21T09:00:06.000Z", "2026-09-21T09:00:07.000Z"),
-        segAgent("frontend-developer", "2026-09-21T09:00:08.000Z", "termine", 1, true),
-      ],
-      passages: [
-        segAgent("frontend-developer", "2026-09-21T09:00:02.000Z", "termine", 0, true),
-        segAgent("backend-developer", "2026-09-21T09:00:05.000Z", "termine", 0, true),
-        segAgent("frontend-developer", "2026-09-21T09:00:08.000Z", "termine", 1, true),
-      ],
-      cycles_total: 4, evenements_hors_session: 2,
-      reprises: { "frontend-developer": 2 },
-    };
-    var wfSansCloture = {
-      workflow_id: "s1#2", indice_cycle: 2, debut: "2026-09-20T09:00:00.000Z", fin_observee: null,
-      fin_observee_absente: true, bornage: "avant-premier-marqueur", borne_par: null,
-      segments: [segAgent("test-engineer", "2026-09-20T09:00:00.000Z", "sans_cloture", 0, false)],
-      passages: [segAgent("test-engineer", "2026-09-20T09:00:00.000Z", "sans_cloture", 0, false)],
-      cycles_total: 4, evenements_hors_session: 2,
-    };
-    var wfIndetermine = {
-      workflow_id: "s1#3", indice_cycle: 3, debut: "2026-09-19T09:00:00.000Z", fin_observee: "2026-09-19T09:01:00.000Z",
-      fin_observee_absente: false, bornage: "session-entiere", borne_par: null,
-      segments: [{ type: "sousagent", agent: "code-reviewer", debut: "2026-09-19T09:00:00.000Z", fin: null, duree_ms: null, outils: 0, fichiers: [], echecs: 0, termine: false }],
-      passages: [{ type: "sousagent", agent: "code-reviewer", debut: "2026-09-19T09:00:00.000Z", fin: null, duree_ms: null, outils: 0, fichiers: [], echecs: 0, termine: false }],
-      cycles_total: 4, evenements_hors_session: 2,
-    };
-    // 45 passages > LIMITE_PASSAGES_VISIBLES (40, app.js) : exerce le repli
-    // (`.action-repli`) sur la table des passages.
-    var passagesNombreux = [];
-    for (var i = 0; i < 45; i++) {
-      passagesNombreux.push(segAgent("frontend-developer", "2026-09-18T09:00:" + String(i).padStart(2, "0") + ".000Z", "termine", 0, true));
-    }
-    var wfLong = {
-      workflow_id: "s1#4", indice_cycle: 4, debut: "2026-09-18T09:00:00.000Z", fin_observee: "2026-09-18T09:10:00.000Z",
-      fin_observee_absente: false, bornage: "session-entiere", borne_par: null,
-      segments: passagesNombreux, passages: passagesNombreux,
-      cycles_total: 5, evenements_hors_session: 2,
-    };
+    // -- cycles : SUPPRIMÉ (feature-028, lot C1, accordéon « Cycles »
+    // retiré, décision humaine 1B du 2026-09-23) — `rendreCycles`/
+    // `.cycle-bouton`/`.cycle-etat`/`.wf-notes`/`.maillon`/`.chaine`
+    // n'existent plus ni dans app.js ni dans app.css ; rien à exercer
+    // ici, aucune classe orpheline en jeu.
 
-    // `dernierEtat` : le clic sur un en-tête de cycle appelle
-    // `rendreCycles(dernierEtat)` (app.js), jamais l'objet local — sans le
-    // poser ICI, ce même appel lève sur `null.workflows` et VIDE
-    // `#workflows` sans le repeupler (`vider()` tourne avant l'exception).
-    dernierEtat = { workflows: [wfEnCours, wfTermineRepris, wfSansCloture, wfIndetermine, wfLong], cycles_total: 5, evenements_hors_session: 2 };
-    rendreCycles(dernierEtat);
-    // clique le bouton d'en-tête de CHAQUE cycle listé : le dépliement
-    // exclusif ne construit le détail visible qu'une fois ouvert au clic
-    // (`.action-repli`/`.wf-notes.reboucle` vivent dans ce détail).
-    Array.prototype.forEach.call(document.querySelectorAll('.cycle-bouton'), function (b) { b.click(); });
+    // -- fichiers : SUPPRIMÉ (feature-028, décision humaine du 2026-09-23,
+    // « fichiers ») — `rendreFichiers`/`ouvrirDiff`/`.fichier` n'existent
+    // plus ni dans app.js ni dans app.css ; rien à exercer ici, aucune
+    // classe orpheline en jeu.
 
-    // -- cycles : état vide explicite ---------------------------------------
-    var cyclesSauvegardes = document.getElementById('workflows').innerHTML;
-    rendreCycles({ workflows: [], cycles_total: 0, evenements_hors_session: 0 });
-    document.getElementById('workflows').innerHTML = cyclesSauvegardes;
-
-    // -- fichiers : dépôt avec fichiers touchés + commits --------------------
-    rendreFichiers({
-      git: {
-        depot: true,
-        touches: [{ libelle: "M", chemin: "a.py", ancien: null }, { libelle: "R", chemin: "b.py", ancien: "a_old.py" }],
-        commits: [{ hash: "abc123", sujet: "un sujet de commit" }],
-      },
-    });
-
-    // -- timeline : agent + échec + outil ------------------------------------
-    rendreTimeline({
-      evenements: [
-        { hook_event_name: "SubagentStart", agent_type: "frontend-developer", ts: "2026-09-21T10:00:00.000Z" },
-        { hook_event_name: "SubagentStop", ts: "2026-09-21T10:00:05.000Z" },
-        { hook_event_name: "PostToolUse", tool: "Read", failed: true, ts: "2026-09-21T10:00:02.000Z" },
-      ],
-    });
+    // -- timeline : SUPPRIMÉ (U1 de feature-021, feature-028 lot A1) —
+    // `rendreTimeline`/`.timeline` n'existent plus ; la tranche d'événements
+    // d'un passage s'ouvre désormais dans le tiroir existant, exercée par
+    // `test_app_u1_navigateur.py` (A1bis) et par le bac à sable `vm`
+    // (`test_app_accordeon.js`), pas par ce fichier de parité CSS/DOM.
 
     // -- jauges : les variantes d'état, posées telles quelles ---------------
     // `figer()` avant tout appel ultérieur qui réécrirait le MÊME élément
@@ -354,7 +300,7 @@ _SCRIPT_MESURE = r"""
     // (`afficherBandeauHote('reseau')` seulement) : ce scénario n'est donc
     // écrasé par aucun rafraîchissement asynchrone. -----------------------
     conversation.phase = "disponible";
-    conversation.messages = [{ ts: Date.parse("2026-09-21T10:00:00.000Z"), texte: "un message utilisateur" }];
+    conversation.messages = [{ ts: "2026-09-21T10:00:00.000Z", texte: "un message utilisateur" }];
     conversation.tronque = false;
     dernierEtat = { ecriture_active: true, agents: [{ nom: "frontend-developer", actif_sur: "F-003" }] };
     rendreConversation();
@@ -366,6 +312,73 @@ _SCRIPT_MESURE = r"""
     conversation.tronque = false;
     rendreConversation();
     figer('conversation');
+    figer('claude-status');   // pose `.is-hors-ligne` (feature-026, B1) — sinon
+                               // écrasé par les états suivants avant tout gel.
+
+    // -- conversation (feature-026) : canal session tmux persistante — les
+    // TROIS états de la pastille (`#claude-status` est un élément PARTAGÉ,
+    // réécrit par chaque état, donc FIGÉ après chacun — même discipline que
+    // le cimetière tout en haut) et un message ASSISTANT avec
+    // `prompt_source`, qui pose `.prompt-source` (jamais posée par l'ancien
+    // canal feature-022, qui ne porte jamais ce champ). -----------------------
+    conversation.phase = "disponible";
+    conversation.etat = "En ligne";
+    conversation.destinataire = "session tmux 'kit'";
+    conversation.messages = [
+      { role: "assistant", texte: "réponse de l'agent", ts: "2026-09-22T11:00:00.000Z", prompt_source: "queued" },
+    ];
+    conversation.tronque = false;
+    rendreConversation();
+    figer('claude-status');
+    figer('conversation');
+
+    // ⚠️ « Occupée » N'EST PLUS un état DISTINCT du badge (correction
+    // ux-ui-designer, étape 5bis) : `appliquerEtatComposer` le PLIE sur
+    // « En ligne » avant de peindre `#claude-status` — ce pas repose donc
+    // `.is-en-ligne`, jamais `.is-occupee` (retirée d'`app.css` avec la
+    // même correction). Conservé ICI comme GARDE-FOU DE RÉGRESSION : si
+    // `_CLASSE_ETAT_PASTILLE` réapprenait une entrée `"Occupée"` sans que
+    // `app.css` réapprenne la règle, ce scénario poserait une classe
+    // orpheline et ferait échouer F3b-B (`toute_classe_posee_au_runtime_
+    // est_declaree_avec_un_corps`) — l'information « Claude travaille »
+    // elle-même est vérifiée ailleurs (`test_app_conversation_
+    // feature026.js`, fil + `#claude-live-message`), pas ici (classes
+    // seulement, aucune neuve).
+    conversation.etat = "Occupée";
+    rendreConversation();
+    figer('claude-status');
+
+    conversation.etat = "Injoignable";
+    rendreConversation();
+    figer('claude-status');
+
+    // -- correctif « hauteur du panneau » (rapporté depuis un iPad) : preuve
+    // PAR EXÉCUTION avec un VRAI volume — le défaut initial (la page grandit
+    // au lieu de `.conversation` défilant à l'intérieur) était invisible en
+    // lisant la règle CSS seule (`overflow: auto` sur un descendant d'une
+    // grille NON BORNÉE ne fait rien) ; seule l'exécution avec 40 messages
+    // le révèle. Mesuré ICI, jamais supposé. -------------------------------
+    var quarante = [];
+    for (var qi = 0; qi < 40; qi += 1) {
+      quarante.push({
+        role: qi % 2 === 0 ? "utilisateur" : "assistant",
+        texte: "message de test numéro " + qi + " — un peu de texte pour occuper une vraie place dans la bulle.",
+        ts: "2026-09-22T11:00:00.000Z",
+      });
+    }
+    conversation.phase = "disponible";
+    conversation.etat = "En ligne";
+    conversation.messages = quarante;
+    conversation.tronque = false;
+    rendreConversation();
+    (function () {
+      var panneau = document.querySelector('.claude-panel');
+      var fil = document.getElementById('conversation');
+      out.hauteurClaudePanel = panneau ? panneau.getBoundingClientRect().height : null;
+      out.filScrollHeight = fil ? fil.scrollHeight : null;
+      out.filClientHeight = fil ? fil.clientHeight : null;
+      out.innerHeight = window.innerHeight;
+    })();
 
     // -- bandeau d'hôte : les deux motifs -----------------------------------
     afficherBandeauHote('reseau');
@@ -381,49 +394,28 @@ _SCRIPT_MESURE = r"""
     demarrerActualisationPeriodique();
     arreterActualisationPeriodique();
 
-    // -- pilotage : les cinq phases + les quatre états de `l.etat` ----------
-    // `pilotage`/`rendrePilotage` sont purement DOM, aucun `fetch` : sûr à
-    // piloter directement depuis ce script (même portée globale qu'app.js,
-    // tous deux des scripts CLASSIQUES du même document). Chaque phase est
-    // `figer()`ée dans le cimetière avant la suivante (voir tout en haut).
-    pilotage.phase = "pret";
-    pilotage.commandes = ["pio test", "pio run"];
-    pilotage.budgetMaxUsd = 5;
-    pilotage.ecrivains = 1;
-    rendrePilotage();
-    figer('pilotage-corps');
-
-    pilotage.phase = "confirmation";
-    pilotage.confirmation = { cle: "pio test", plafond: 5, ecrivains: 1, besoinJeton: true, erreur: "jeton refusé", enCours: false };
-    rendrePilotage();
-    figer('pilotage-corps');
-
-    pilotage.phase = "occupe";
-    pilotage.occupe = { texte: "un autre écrivain travaille déjà" };
-    rendrePilotage();
-    figer('pilotage-corps');
-
-    ["en_cours", "termine", "echec", "interrompu"].forEach(function (etatL) {
-      pilotage.phase = "lancement";
-      pilotage.lancement = {
-        cle: "pio test", etat: etatL, curseur: 0, tronque: true,
-        derniereActivite: Math.floor(Date.now() / 1000) - 40, // > 30 s : "bloqué"
-        debutClient: Date.now() - 5000, texteSortie: "sortie…",
-        syntheticMessage: etatL === "echec" ? "code 1" : null,
-      };
-      rendrePilotage();
-      figer('pilotage-corps');
-      // `.jauge.pilotage-en-cours` sur le badge d'en-tête, seulement pour
-      // l'état "en_cours" (rendreBadgePilotage, app.js).
-      rendreBadgePilotage({ ecriture_active: true });
-      figer('jauge-pilotage');
-    });
-    // `.en-cours` (pas bloqué) : activité récente, pas « bloqué ».
-    pilotage.lancement = Object.assign({}, pilotage.lancement, { etat: "en_cours", derniereActivite: Math.floor(Date.now() / 1000) });
-    rendrePilotage();
-    figer('pilotage-corps');
+    // -- pilotage : SUPPRIMÉ (feature-028, lot pilotage dédié) --------------
+    // Le panneau générique (`rendrePilotage`/`#pilotage-corps`, cinq phases,
+    // quatre états de `l.etat`) a disparu entier — `pilotage`/
+    // `rendreBadgePilotage` SURVIVENT comme état d'exécution partagé avec
+    // les actions de carte (voir le commentaire d'introduction du bloc
+    // « pilotage », app.js). Seul le badge d'en-tête reste à exercer ici :
+    // `.jauge.pilotage-en-cours` (`#jauge-pilotage`), posé pour l'état
+    // "en_cours" d'un lancement, quelle que soit sa provenance (carte ou,
+    // historiquement, panneau).
+    pilotage.lancement = {
+      cle: null, etat: "en_cours", curseur: 0, tronque: true,
+      derniereActivite: Math.floor(Date.now() / 1000), debutClient: Date.now() - 5000,
+      texteSortie: "sortie…", syntheticMessage: null,
+    };
+    rendreBadgePilotage({ ecriture_active: true });
+    figer('jauge-pilotage');
 
     // -- rédaction : brouillon (`.brouillon`, le <textarea> réellement écrit)
+    // Surface `dialogue` (feature-028, lot B) : `demande` n'existe plus
+    // (retirée au lot suivant du même cycle) — `redaction.surface` cible
+    // désormais `#add-item-redaction-corps`, jamais un id figé.
+    redaction.surface = "dialogue";
     redaction.phase = "brouillon";
     redaction.brouillon = {
       genre: "complet", titre: "Un besoin", texte: "…", minimal: false,
@@ -432,7 +424,24 @@ _SCRIPT_MESURE = r"""
     redaction.contenu = "## Contenu\n[remplir]\n";
     redaction.compteRemplir = 1;
     rendreRedaction();
-    figer('redaction-corps');
+    figer('add-item-redaction-corps');
+
+    // -- rédaction : « Écriture non activée » (`.note.avert`) ---------------
+    // Seul producteur restant de `.avert` depuis le retrait du panneau
+    // « Piloter par clé » (feature-028, lot pilotage dédié), qui portait
+    // l'autre occurrence (`pilotage.phase === "inactif"`, retirée avec lui).
+    // `rendreBrouillonRedaction()` est une fonction PURE (lit `redaction`/
+    // `dernierEtat`, retourne un fragment, ne touche AUCUN élément du DOM
+    // elle-même) : appelée directement dans un conteneur DÉTACHÉ, jamais
+    // `#add-item-redaction-corps` (déjà `figer()`é ci-dessus avec le
+    // brouillon actif) — seule la classe doit être posée quelque part, pas
+    // remplacer la scène précédente.
+    var sondeAvert = document.createElement('div');
+    sondeAvert.id = 'sonde-avert';
+    document.body.appendChild(sondeAvert);
+    dernierEtat.ecriture_active = false;
+    sondeAvert.appendChild(rendreBrouillonRedaction());
+    dernierEtat.ecriture_active = true;
 
     // -- mutation (c), feature-025 : `.progress-track` NE PORTE JAMAIS un
     // pourcentage mesuré (K4 — aucune grandeur de progression n'est exposée
@@ -580,6 +589,25 @@ def main():
     if mesures.get("erreur"):
         print("ECHEC ATTEIGNABILITE : le script de la page a levé :\n%s" % mesures["erreur"])
         return 1
+
+    # -- correctif « hauteur du panneau » : PREUVE au navigateur, avec 40
+    # messages réels, pas une relecture de règle CSS (`.claude-panel` doit
+    # rester borné, `#conversation` doit défiler POUR DE VRAI à l'intérieur).
+    hauteur_panel = mesures.get("hauteurClaudePanel")
+    fil_scroll = mesures.get("filScrollHeight")
+    fil_client = mesures.get("filClientHeight")
+    inner_height = mesures.get("innerHeight")
+    print("[dérivé] avec 40 messages : hauteur .claude-panel=%s px, "
+          "#conversation scrollHeight=%s / clientHeight=%s px (innerHeight=%s)"
+          % (hauteur_panel, fil_scroll, fil_client, inner_height))
+    check("PLAFOND_claude_panel_borne_a_58vh_avec_40_messages",
+          hauteur_panel is not None and inner_height and hauteur_panel <= inner_height * 0.58 + 5,
+          "obtenu %s px pour un plafond attendu ~%.1f px (58vh de %s)"
+          % (hauteur_panel, (inner_height or 0) * 0.58, inner_height))
+    check("PLAFOND_conversation_defile_reellement_avec_40_messages",
+          fil_scroll is not None and fil_client is not None and fil_scroll > fil_client + 1,
+          "scrollHeight=%s clientHeight=%s — le fil ne défile pas à l'intérieur, "
+          "le panneau a dû pousser la page" % (fil_scroll, fil_client))
 
     classes_runtime = set(mesures["classesRuntime"])
     check("atteignabilite_classes_runtime_non_vide", len(classes_runtime) > 50,

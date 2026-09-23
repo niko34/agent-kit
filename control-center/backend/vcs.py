@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
-"""Git — fichiers touchés, diffs, historique, ET (depuis feature-025) la
-suppression d'une spec suivie et propre.
+"""Git — fichiers touchés, historique, ET (depuis feature-025) la suppression
+d'une spec suivie et propre.
+
+⚠️ `diff()` a existé (diff de l'arbre de travail, ou d'un fichier précis) et a
+été RETIRÉE (feature-028, GATE P1 condition C5) avec son unique appelant,
+`/api/diff` : une route de lecture confinée mais sans plus aucune
+justification reste une surface exposée sans raison (Règle absolue n°1).
 
 Git est la source de vérité de l'état du code, comme les specs le sont de l'état
 fonctionnel. Ce module a longtemps été un module de LECTURE SEULE — ce n'est
@@ -36,11 +41,6 @@ dans chaque projet issu du template.
 
 import os
 import subprocess
-
-# Un diff est fait pour être lu par un humain dans une page web. Au-delà, on
-# tronque et on le DIT : mieux vaut un diff annoncé incomplet qu'une page de
-# quatre mégaoctets ou, pire, un diff silencieusement coupé.
-_MAX_DIFF = 200_000
 
 # Une commande git qui ne rend pas la main est un serveur qui ne rend pas la main.
 _TIMEOUT = 15
@@ -184,31 +184,6 @@ def etat(racine):
     return entrees
 
 
-def diff(racine, chemin=None, indexe=False, taille_max=_MAX_DIFF):
-    """Diff de l'arbre de travail, ou d'un fichier précis.
-
-    Rend (texte, tronque). `tronque` est vrai quand le diff dépassait la borne —
-    l'appelant DOIT le dire à l'utilisateur : un diff coupé en silence se lit
-    comme un diff complet, et c'est un mensonge sur l'état du code.
-    """
-    arguments = ["diff", "--no-color"]
-    if indexe:
-        arguments.append("--cached")
-    if chemin is not None:
-        relatif = chemin_sur(racine, chemin)
-        if relatif is None:
-            return None, False
-        # `--` ferme la liste des options : un fichier nommé `--stat` reste un
-        # fichier.
-        arguments += ["--", relatif]
-    ok, sortie = _git(racine, *arguments)
-    if not ok:
-        return None, False
-    if len(sortie) > taille_max:
-        return sortie[:taille_max], True
-    return sortie, False
-
-
 def journal(racine, limite=20):
     """Derniers commits : hash court, date ISO, auteur, sujet.
 
@@ -340,6 +315,3 @@ if __name__ == "__main__":
         "touches": etat(racine),
         "derniers_commits": journal(racine, 3),
     }, ensure_ascii=False, indent=2))
-    texte, tronque = diff(racine)
-    print("diff de l'arbre : %d caractères%s"
-          % (len(texte or ""), " (TRONQUÉ)" if tronque else ""))

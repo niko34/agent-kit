@@ -56,24 +56,36 @@ function positionDeId(idValeur) {
   return pos;
 }
 
+// ⚠️ `titre-agents` RETIRÉ de cette garde (feature-028, lot A1, U1 de
+// feature-021) : la section « Agents » a disparu entière — il n'existe plus
+// de position à comparer. `titre-systeme` RETIRÉ À SON TOUR (feature-028,
+// décision humaine du 2026-09-23, AU-DELÀ de U1) : la section « Système »
+// a disparu entière, retrait sec sans migration — même raison, même geste.
+// `titre-demande` RETIRÉ ENSUITE (feature-028, lot C2, une fois B3 vérifié) :
+// `demande` a disparu entière, `#add-item-dialog` (le `+`) en est le seul
+// remplaçant — MÊME geste, INVERSÉ en assertion d'absence ci-dessous.
 const pDetailSheet = positionDeId("selected-title");
 const pBacklog = positionDeId("backlog-title");
-const pAgents = positionDeId("titre-agents");
-const pSysteme = positionDeId("titre-systeme");
-const pDemande = positionDeId("titre-demande");
 console.log("[dérivé] positions (octets) : selected-title=" + pDetailSheet +
-  " backlog-title=" + pBacklog + " titre-agents=" + pAgents +
-  " titre-systeme=" + pSysteme + " titre-demande=" + pDemande);
+  " backlog-title=" + pBacklog);
 
 check("F18_backlog_suit_directement_la_feuille_de_detail",
   pDetailSheet < pBacklog,
   "`selected-title` (feuille de détail) devrait précéder `backlog-title` — obtenu " +
     pDetailSheet + " >= " + pBacklog);
 
-check("F18_backlog_precede_agents_systeme_et_demande",
-  pBacklog < pAgents && pBacklog < pSysteme && pBacklog < pDemande,
-  "`backlog-title` devrait précéder titre-agents(" + pAgents + "), titre-systeme(" +
-    pSysteme + ") et titre-demande(" + pDemande + ") — obtenu backlog-title=" + pBacklog);
+// INVERSÉ (feature-028, décision humaine du 2026-09-23) : ce fichier
+// comparait la position de `titre-systeme` ; il affirme désormais son
+// ABSENCE complète du HTML servi.
+check("F18_titre_systeme_absent_du_html",
+  !/id="titre-systeme"/.test(corps));
+
+// INVERSÉ (feature-028, lot C2) : ce fichier comparait la position de
+// `titre-demande` (`backlog-title` devait la précéder) ; il affirme
+// désormais son ABSENCE complète du HTML servi, même geste que `titre-
+// systeme` ci-dessus.
+check("F18_titre_demande_absent_du_html",
+  !/id="titre-demande"/.test(corps));
 
 // Non-régression du comparateur : fige la lecture « position textuelle »
 // hors de tout aléa du contenu actuel d'index.html.
