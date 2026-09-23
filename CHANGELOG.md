@@ -11,6 +11,48 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 
 ### Centre de contrôle
 
+- **Le panneau de conversation parle désormais à la vraie session Claude,
+  pas à un agent lancé par le cockpit.** Il lit le fil de la session
+  distante que vous pilotez déjà (téléphone, `tmux attach`) et tape vos
+  messages directement dans son terminal. Vous pouvez lui écrire **pendant
+  qu'elle travaille** : le message est mis en file, jamais perdu ni
+  entrelacé avec la réponse en cours — le composeur ne se bloque plus pour
+  cette raison. La pastille d'état (En ligne / Hors ligne / Injoignable)
+  affiche désormais aussi le **destinataire exact** du message, pour ne
+  jamais l'envoyer par erreur au mauvais terminal. Certains textes restent
+  refusés (caractères de contrôle, ou une ligne commençant par `/` ou `!`) :
+  des commandes comme `/clear` ou `/exit` ne peuvent pas être annulées
+  depuis le cockpit.
+- **Le bouton « + » du backlog crée enfin une spécification.** Il n'ouvrait
+  jusqu'ici qu'une boîte de dialogue sans effet ; il passe désormais par le
+  même chemin que la génération de brouillon assistée (relecture puis
+  confirmation avant toute écriture — jamais automatique).
+- **Interrompre un cycle se fait désormais depuis le menu `⋮` de sa propre
+  carte**, dans le backlog — l'action cible exactement ce cycle, jamais un
+  autre lancement en cours. Le panneau générique « Piloter par clé » a été
+  retiré : il ne servait plus, la configuration ne déclarant que des
+  commandes d'exemple.
+- **Sept cadres hérités de l'ancien tableau de bord ont disparu** :
+  Agents, Système, la demande de spécification en texte libre, Pilotage
+  générique, l'accordéon des Cycles, la liste des Fichiers touchés et le
+  flux d'Événements en continu. Le mono-écran livré par un cycle précédent
+  ne cohabite plus avec ce qu'il devait remplacer. Deux informations
+  n'ont plus d'écran d'accueil (propriétés agrégées d'un cycle, et la
+  consultation détaillée d'un diff) : retraits assumés, pas des oublis.
+- **La sélection d'un cycle passé se fait désormais par les onglets du
+  haut** (« Cycle actif » / « Historique »), qui remplacent l'accordéon
+  retiré ci-dessus.
+- **La boîte d'ajout d'une spécification reste utilisable clavier virtuel
+  affiché**, sur iPad comme sur tout appareil à clavier logiciel : elle ne
+  rétrécit plus jusqu'à rendre ses boutons inatteignables.
+- **Correction d'un défaut préexistant, jamais visible jusqu'ici** : l'heure
+  d'un message dans le panneau de conversation ne s'affichait **jamais**
+  (fonction qui comparait un horodatage texte à un type numérique qu'il
+  n'a jamais été) — corrigée au passage de l'unification des deux canaux
+  de conversation.
+- **La consultation du détail d'un diff de fichier a été retirée** (route
+  `/api/diff`) : elle n'avait plus d'écran l'appelant depuis le retrait de
+  la liste « Fichiers touchés » ci-dessus.
 - **Le diagramme du déroulé de chaque cycle est entièrement redessiné.**
   Chaque agent est désormais un **disque** — sigle au centre, jusqu'à
   3 pastilles de fichiers dessous — relié en séquence par un fil. Le disque
@@ -183,6 +225,41 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 
 ### Documentation
 
+- `docs/adr/0042-parler-a-une-session-quon-ne-detient-pas.md` [nouveau] :
+  pourquoi le cockpit tape dans le pty de la session Claude remote plutôt
+  que d'ouvrir un second processus, ce que ça verrouille (dépendance à
+  `tmux` et au format de transcript), et l'amendement d'`ADR-0041` (§7).
+- `docs/adr/0043-feature-028-absorbee-au-titre-dadr-0017.md` [nouveau] :
+  pourquoi la dette « U1 » de `feature-021` (cinq sections sur six jamais
+  retirées) a été traitée dans le même cycle que `feature-026`, au titre
+  d'`ADR-0017`, plutôt que reportée.
+- `docs/adr/0044-verifier-le-mecanisme-nest-pas-verifier-la-chose.md`
+  [nouveau] : les sept défauts de ce cycle, tous trouvés par l'usage humain
+  et aucun par la chaîne d'agents, et ce que ça impose aux clôtures futures.
+- `docs/adr/0019-jeton-comme-unique-barriere-et-table-des-routes-fermee.md` :
+  note additive datée — la mention d'`/api/diff` en « Alternatives
+  considérées » est une trace historique, la route n'existe plus.
+- `docs/adr/README.md` : trois lignes ajoutées à l'index (0042-0044) ; ligne
+  de statut d'`ADR-0041` amendée (corps intact).
+- `docs/DESIGN-SYSTEM.md` : §6 corrigé — le motif décrit (`role="tablist"`)
+  n'est pas celui implémenté par `feature-028` (deux boutons `role="group"`/
+  `aria-pressed`, pour ne réintroduire aucun `role="tab"`) ; note sur le
+  décalage entre l'annonce d'`ADR-0029` et son câblage réel.
+- `docs/features/page-centre-de-controle.md` : sept sections décrites comme
+  actuelles alors que retirées (« Liste des cycles en accordéon »,
+  « Conversation avec l'agent en cours » en sémantique `feature-022` seule,
+  `#add-item-dialog` décrit inerte) réécrites sur ce qui est réellement
+  servi ; nouvelle section sur les sept cadres hérités retirés et leurs
+  verdicts ; nouvelle section sur l'interruption depuis le menu `⋮`.
+- `control-center/README.md` : Étape B corrigée (la troncature de diff
+  documentée n'existe plus) ; table des trois familles de chemins mise à
+  jour (la ligne « diffs » retirée) ; Étape D précisée (`{spec_id}` optionnel
+  sur `/api/interrompre`) ; nouvelle sous-section Étape I+ documentant le
+  rebranchement du panneau de conversation sur la session Claude remote.
+- `control-center/PIEGES.md` : six entrées ajoutées (§63 à §68 — témoin
+  fabriqué, une mesure pour deux questions, registre d'ids inerte, code mort
+  derrière un bloc `__main__`, empreinte AST incluant le docstring, bornes
+  redondantes non documentées).
 - `docs/features/page-centre-de-controle.md` : la section « Commande de
   thème » est retirée — le contrôle qu'elle décrivait n'existe plus dans
   l'écran servi.

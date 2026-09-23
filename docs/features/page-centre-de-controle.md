@@ -48,8 +48,57 @@ réouverture de périmètre du 2026-09-22, [ADR-0039](../adr/0039-la-fidelite-a-
 barre supérieure (voir « Barre supérieure »), bande de résumé, zone de
 travail avec le graphe d'agents à gauche, kanban pleine largeur en dessous
 (voir « Kanban et actions du backlog »), feuille de détail d'un passage
-(bottom sheet), et un panneau de conversation permanent avec l'agent en
-cours (voir « Conversation avec l'agent en cours »).
+(bottom sheet), et un panneau de conversation permanent avec Claude
+(voir « Conversation avec Claude »).
+
+### Sept sections héritées, retirées (`feature-028`, `ADR-0043`)
+
+`feature-021` (lot 3) avait empilé l'intégralité de l'ancien tableau de bord
+**sous** le mono-écran, avec un verdict écrit par section dans sa table
+« U1 — ce qui disparaît pour de bon » : cinq verdicts sur six n'avaient
+**jamais** été appliqués, et la case de clôture qui l'affirmait
+(« 0 `role="tab"` ») ne le mesurait pas — voir
+[ADR-0043](../adr/0043-feature-028-absorbee-au-titre-dadr-0017.md). La dette
+est soldée par `feature-028` : `agents`, `systeme`, `demande`, `pilotage`,
+`cycles` (l'accordéon) et `fichiers` **ont disparu du DOM**, chacune avec un
+verdict et, quand une information n'avait nulle part où migrer, un retrait
+**assumé** plutôt qu'une migration inventée :
+
+- **`agents`** — supprimée entière ; l'identité couleur/sigle par agent
+  survit dans la légende du diagramme.
+- **`systeme`** — supprimée, **sans migration** (décision humaine explicite,
+  au-delà de ce que `U1` demandait) : Dépôt/Fichiers touchés dupliqués dans
+  `.repo-strip` ; Divergences dupliquée dans `#compteur-specs` ; Budget
+  max/Écrivains et Workflows avaient un second porteur (la note de plafond
+  du panneau `pilotage`, la légende de l'accordéon `cycles`) qui a lui-même
+  disparu au fil du même cycle — **ces deux informations ne sont plus
+  affichées nulle part**. « Configuration : lue/défauts » n'avait aucun
+  doublon et disparaît sans autre trace.
+- **`demande`** (« Que souhaitez-vous développer ? ») — supprimée **une fois
+  seulement** que `#add-item-dialog` (le `+`) a repris sa fonction (voir
+  « Kanban et actions du backlog » ci-dessous) : jamais un second chemin.
+- **`pilotage`** (panneau générique « Piloter par clé ») — supprimé : la
+  configuration réelle ne déclare que `demo`/`lent`, deux commandes
+  d'exemple sans usage réel ; le lancement et l'interruption **par carte**
+  restent pleinement fonctionnels, ils réutilisent l'état d'exécution
+  partagé, pas cette section. ⚠️ Si une commande réelle est un jour déclarée
+  dans `[commandes]`, elle n'aura plus aucun point d'accès générique — perte
+  sous une **condition d'environnement**, pas sous une décision de
+  conception.
+- **`cycles`** (l'accordéon) — supprimé, une fois les onglets « Cycle
+  actif »/« Historique » câblés (voir « Sélecteur de cycle » plus bas) : les
+  propriétés agrégées d'un cycle (outils, fichiers écrits, rebouclages,
+  agents simultanés) et la chaîne textuelle des segments **disparaissent
+  sans remplaçant**, retrait assumé, même forme que le retrait des diffs.
+- **`fichiers`** (« Fichiers touchés ») — supprimée : « la consultation des
+  diffs ne va nulle part » (décision humaine). Le compte de fichiers touchés
+  reste lisible via `.repo-strip` ; `/api/diff` est **retirée** (aucun
+  appelant frontal, Règle absolue n°1).
+
+Une garde de non-régression (`test_app_u1_navigateur.py`) dérive sa liste
+d'ids attendus **en parsant la table `U1` dans la spec close elle-même** :
+altérer le texte de la décision fait échouer la garde, pour qu'un futur
+changement de verdict ne puisse plus laisser la garde derrière lui.
 
 ### États vides par section
 
@@ -189,10 +238,60 @@ l'écran n'exécute jamais lui-même. Voir
 [ADR-0040](../adr/0040-les-chemins-decriture-du-cockpit.md) pour le détail
 du mécanisme et des conditions de sécurité.
 
-### `#add-item-dialog` — présent, inerte
+### Interrompre un cycle depuis le menu `⋮` de sa carte (`feature-028`)
 
-Reproduit du prototype mais **inerte avec motif affiché** : créer une spec
-depuis le cockpit relève de `feature-024`, hors périmètre de ce cycle.
+Remplace le panneau générique `pilotage` (retiré, voir plus haut) pour ce
+seul usage : l'item « Interrompre » du menu contextuel n'apparaît **que**
+sur la carte dont la spec est le lancement **courant**
+(`data-interrompable`, dérivé d'`etat.lancement_spec_id`). `POST
+/api/interrompre {spec_id}` cible désormais **exactement** le lancement
+dont le `spec_id` est égal, parmi tous les lancements actifs — jamais le
+dernier écrivain basculé, qui pourrait désigner un autre lancement que
+celui de la carte cliquée (voir `control-center/README.md`, Étape D).
+
+⚠️ « Demander l'arrêt » depuis la conversation Claude (panneau ci-dessous)
+**n'est pas** ce mécanisme : ce sont deux processus distincts, et le texte
+tapé dans le pty de la session remote est mis en file, jamais traité comme
+une interruption immédiate. Aucun bouton ni libellé « interrompre » n'existe
+sur ce chemin.
+
+### `#add-item-dialog` — le `+` crée réellement une spec (`feature-028`)
+
+Câblé sur décision humaine du 2026-09-23 (« la fonction *ajouter un élément*
+sert justement à ça ») : il n'était pas un arbitrage à rendre mais une
+fonction laissée **inerte** par `feature-021`, qui n'en avait repris que le
+markup pour la fidélité structurelle. Il entre dans la **même** machine à
+états que la rédaction de spec (`feature-008`/`feature-024`) — un clic
+produit un **brouillon seul** (`POST /api/spec/brouillon`), l'écriture
+(`POST /api/spec/ecrire`) n'a lieu qu'après **deux gestes explicites** :
+relecture du Markdown généré, puis confirmation. Jamais les deux routes
+enchaînées automatiquement — c'est cette relecture humaine qui porte la
+garantie que le GATE de `feature-008` avait posée, et que ce lot ne
+supprime pas silencieusement.
+
+Un champ **titre** a été ajouté au formulaire (absent du prototype) : le
+slug, donc le nom de fichier, en dérive — jamais du contenu. `#item-priority`
+n'a **aucun** champ serveur correspondant : conservé à l'écran (fidélité au
+prototype adopté) mais rendu **réellement `disabled`**, pas seulement
+`aria-disabled`, pour qu'aucune valeur choisie n'y soit jetée en silence.
+La dérogation « gabarit minimal » (`CLAUDE.md` l'impose pour un bug simple
+ou un refactor ponctuel) a un équivalent dans cette boîte
+(`#item-derogation-minimale`), indépendant du type choisi.
+
+#### La boîte reste utilisable clavier virtuel affiché
+
+Le rapport initial (« la popup […] rétrécit en hauteur […] jusqu'à devenir
+inutilisable ») avait deux causes, pas une seule : le viewport statique
+(`100vh`, qui ignore le clavier virtuel sur iOS — corrigé par un repli
+`100dvh` sur les quatre puis cinq occurrences du fichier de style, y compris
+`.claude-panel` posé entre-temps par `feature-026`) **et** une grille CSS à
+quatre enfants directs mais deux rangées seulement déclarées — les deux
+enfants non couverts tombaient dans des rangées implicites qui ne se
+compriment jamais, écrasant la seule rangée défilante à `0px` et repoussant
+les actions hors de la boîte (`document.elementFromPoint` sur le bouton
+rendait `null` : inatteignable, pas seulement hors de vue, à 413 px de
+viewport mesuré). Les deux enfants errants ont été déplacés à l'intérieur
+de la zone défilante plutôt que de complexifier la grille.
 
 ### La barre de progression du backlog
 
@@ -210,24 +309,76 @@ clavier et au lecteur d'écran par son titre, la barre n'en est qu'un
 renfort visuel. Un `aria-valuenow` sur cet élément est un défaut : sa présence fait échouer
 la garde de conformité dédiée.
 
-## Conversation avec l'agent en cours
+## Conversation avec Claude
 
-Livrée au lot 11 de `feature-021` étendu (`feature-022`, absorbée).
-`#conversation` affiche le fil des messages **utilisateur** envoyés à
-l'agent en cours d'exécution (`GET /api/conversation`) ; les réponses de
-l'agent restent dans le flux SSE de `/api/lancement`, jamais recopiées
-ici. `#spec-prompt` (renommé depuis `#prompt`, qui reste le composeur de
-rédaction de spec de `feature-008` — collision de noms tranchée par
-renommage exhaustif) envoie un message via `POST /api/conversation`.
+Livrée au lot 11 de `feature-021` étendu (`feature-022`, absorbée), puis
+**rebranchée** sur la session Claude remote persistante par `feature-026` :
+`#conversation` n'affiche plus le fil d'un lancement du cockpit, mais celui
+de la **vraie** session que l'humain pilote déjà (téléphone, `tmux
+attach`). Pourquoi taper dans le pty de cette session plutôt qu'ouvrir un
+second processus : [ADR-0042](../adr/0042-parler-a-une-session-quon-ne-detient-pas.md).
 
-Le canal n'accepte du texte que si le lancement en cours l'a **déclaré**
-dans sa configuration (`entree = "json-lines"`) : sur toute autre commande,
-la route rend `404`, « aucun agent en cours n'accepte de message ». Un
-message trop long (`413`), portant des caractères de contrôle (`422`), ou
-envoyé sur un canal occupé/corrompu (`503`) est refusé **avant** tout effet
-— voir [ADR-0040](../adr/0040-les-chemins-decriture-du-cockpit.md) §3 pour
-le détail des conditions. Le fil est **persistant** (un fichier par
-lancement, hors dépôt) : fermer puis rouvrir l'onglet ne le perd pas.
+### Destinataire affiché, jamais deviné
+
+`#claude-destinataire-valeur` affiche le destinataire **brut** renvoyé par
+le backend (`"session tmux '<nom>'"`, ou, si `[session]` n'est pas déclarée,
+`"lancement '<cle>' (pid <pid>)"`), visible **avant** le premier
+`GET /api/conversation` réussi — un basculement silencieux de destinataire
+ferait atterrir un message dans le mauvais terminal. `#conversation-portee`
+rappelle en permanence que les étapes d'outils et le raisonnement interne
+de Claude ne sont **pas** repris : seuls les messages échangés apparaissent.
+
+### La pastille a trois états, pas quatre
+
+`#claude-status` : **En ligne**, **Hors ligne**, **Injoignable** — un
+quatrième état « Occupée » a été conçu puis **retiré** en cours de cycle
+(`ux-ui-designer`, reboucle du 2026-09-22) : il ne codait rien que la
+maquette normative connaisse, et il servait à **bloquer l'envoi**, ce qui
+s'est révélé faux (voir plus bas). L'information « Claude travaille » vit
+désormais **dans le fil**, jamais dans le badge : un indicateur d'activité
+(région `aria-live` déjà existante) l'affiche, avec le `title`
+d'incertitude qui accompagnait autrefois la pastille.
+
+### Écrire pendant que Claude travaille est accepté, pas refusé
+
+Le composeur n'est **jamais** rendu inerte parce que Claude travaille : un
+message tapé pendant une réponse en cours est **mis en file** par `claude`
+lui-même (mesuré sur le transcript réel : `promptSource: "queued"`) et
+traité, dans l'ordre, une fois la tâche en cours terminée — rien n'est
+perdu, rien n'est corrompu. Le `409` reste possible, mais **réactif**, sous
+deux formes discriminables : un dialogue est détecté (permission, écran de
+confiance) — modale `<dialog>` dédiée — ou un brouillon est déjà présent
+dans le composeur — note inline. Les deux textes sont explicitement qualifiés
+d'**heuristique**, jamais présentés comme une garantie : la fenêtre entre la
+lecture de l'écran et l'envoi ne se ferme jamais complètement.
+
+### Ce que le cockpit refuse d'envoyer, et pourquoi
+
+Un texte portant un caractère de contrôle, `DEL` ou un caractère C1 est
+refusé (`422`) — effaçant ou perturbateur dans un terminal, même quand il
+est inoffensif pour le canal `json-lines` historique. Une ligne commençant
+par `/` ou `!` est refusée (`422`, irréversibilité) : `/exit`, `/logout`,
+`/clear` tapés depuis le cockpit ne se rattrapent pas depuis lui, et
+`/resume` n'existe pas en Remote Control — la session ne se relance qu'au
+démarrage du service.
+
+### Persistance et repli
+
+Le fil reste **persistant** (transcript de la session, hors dépôt) : fermer
+puis rouvrir l'onglet ne le perd pas, et un bornage en nombre de messages et
+en octets (jamais le fichier entier) s'applique à chaque lecture. Le canal
+`json-lines` d'un lancement du cockpit (`feature-022`) reste la cible par
+défaut quand `[session]` n'est pas déclarée en configuration — comportement
+**inchangé** ; voir `control-center/README.md`, Étape I, pour le détail des
+deux chemins et de leurs codes d'erreur.
+
+### Hauteur bornée (`feature-026`)
+
+`.claude-panel` se plafonne à `58vh`/`58dvh` (repli déclaré, même convention
+que `.kanban-viewport`) : le fil défile **à l'intérieur** du panneau plutôt
+que d'étirer toute la page. Le panneau ne suit un message neuf que si
+l'utilisateur y était déjà en bas — jamais de saut forcé sur quelqu'un qui a
+remonté l'historique.
 
 ## Identité d'agent : le texte, plus la couleur
 
@@ -247,48 +398,32 @@ La couleur redevient **exclusivement sémantique** : elle porte un état
 par disque, jamais un rôle. Voir la section « Diagramme du déroulé »
 ci-dessous pour le détail des jetons d'état.
 
-## Liste des cycles en accordéon
+## Sélecteur de cycle : « Cycle actif » / « Historique » (`feature-028`)
 
-Remplace l'ancien affichage à plat des « workflows observés ». Chaque cycle
-(voir [ADR-0014](../adr/0014-bornage-des-cycles-par-marqueur-declare.md) pour
-ce que « cycle » désigne) est une **ligne**, le plus récent en tête.
+Remplace l'ancien affichage en **accordéon** des « workflows observés »
+(`feature-016`), retiré par `feature-028` avec ses deux informations
+**perdues sans remplaçant** (décision humaine assumée, même forme que le
+retrait des diffs) : les **propriétés agrégées** d'un cycle (outils,
+fichiers écrits, rebouclages, agents simultanés) et la **chaîne textuelle**
+des segments. La légende de bornage de l'accordéon (« N sur M cycles
+affichés », « N événement(s) sans session associée ») disparaît avec lui et
+n'est affichée nulle part ailleurs.
 
-### Ce qu'une ligne porte
+`.cycle-tabs` porte deux **modes d'affichage du même** `#cycle-canvas`/
+`.detail-sheet` — jamais deux panneaux, jamais `role="tab"` (le mono-écran
+de `feature-021` n'est pas rouvert) :
 
-- son **état** — `termine`, `en_cours` ou `sans_cloture` (bug-013, additif) ;
-- sa **désignation** — l'heure de départ et l'agent ouvrant (`borne_par`), ou
-  la mention du bornage quand il n'y en a pas (`session entière`,
-  `avant le premier repère`). **Pas un nom de spec** — voir plus bas ;
-- le nombre d'agents, la durée totale, l'ancienneté.
+- **`#cycle-tab-actif`** — le cycle en cours, ou le plus récent.
+- **`#cycle-tab-historique`** — active `#cycle-indice`, qui devient le
+  **sélecteur réel** : un clic avance d'un cycle vers le précédent, boucle
+  après le plus ancien. C'est désormais le **seul** endroit du DOM
+  permettant de voir un cycle passé.
 
-### Dépliement exclusif
-
-Un seul détail de cycle est ouvert à la fois. Le plus récent est déplié par
-défaut ; en ouvrir un autre referme le précédent — jamais deux détails
-visibles ensemble (`docs/DESIGN-SYSTEM.md` §6). Le dépliement est une
-préférence d'affichage **locale** à la page, pas un état conservé côté
-serveur : un rechargement revient au dernier cycle ouvert par défaut.
-
-### Navigation clavier
-
-Chaque en-tête de ligne est un bouton, atteignable par tabulation, portant
-`aria-expanded` et associé à son détail. Déplier, replier et parcourir la
-liste entière se font sans souris.
-
-### Le détail d'un cycle
-
-- **Bloc de propriétés** : statut, durée, appels d'outils, fichiers écrits,
-  rebouclages, agents simultanés. Les totaux affichés égalent la somme des
-  lignes de la table qui suit.
-- **Table des passages d'agent** : agent, début, durée, outils, fichiers,
-  état ; une reprise (rebouclage sur le même agent) est signalée sur la
-  ligne concernée. Le sigle de l'agent (section ci-dessus) identifie chaque
-  ligne ; les pastilles d'état portent une couleur sémantique, jamais une
-  identité de rôle.
-
-Un cycle en cours se rafraîchit sans se refermer ni perdre la position de
-lecture. Un cycle sans agent typé affiche sa ligne normalement ; le détail le
-dit plutôt que de disparaître en silence.
+Le diagramme (voir « Diagramme du déroulé » plus bas) et la feuille de
+détail (bottom sheet) restent la seule représentation d'un cycle, actif ou
+passé — voir [ADR-0014](../adr/0014-bornage-des-cycles-par-marqueur-declare.md)
+pour ce que « cycle » désigne et [ADR-0023](../adr/0023-un-cycle-observe-ne-porte-pas-de-nom.md)
+pour ce que `#cycle-title` affiche.
 
 ### Ce que l'écran n'affiche pas, et pourquoi
 
@@ -311,17 +446,18 @@ dit plutôt que de disparaître en silence.
 - **`segments[]` porte des passages d'agent, pas des cycles.** Le nom du
   champ, hérité de la reconstruction interne, trompe à la lecture : chaque
   entrée de `segments[]` est un passage (l'agent principal ou un sous-agent)
-  à l'intérieur d'un seul cycle, jamais un cycle lui-même. La liste en
-  accordéon de cette page ne s'appuie pas sur `segments[]` mais sur la liste
-  de workflows rendue par `reconstruire()`.
+  à l'intérieur d'un seul cycle, jamais un cycle lui-même. Le sélecteur de
+  cycle de cette page (ci-dessus) ne s'appuie pas sur `segments[]` mais sur
+  la liste de workflows rendue par `reconstruire()`.
 
 ## Diagramme du déroulé
 
 **Grammaire réécrite au lot 4 de `feature-021`** (`ADR-0031`) : ce qui suit
 remplace intégralement l'ancienne grammaire (diamètre fonction de la durée,
 graduations comptant les appels d'outils, liseré des fichiers en continu),
-révoquée dans son ensemble. Dans le détail d'un cycle déplié (voir plus
-haut), le diagramme SVG dessine un **disque par agent**, relié en séquence,
+révoquée dans son ensemble. Pour le cycle affiché par le sélecteur (« Cycle
+actif » ou « Historique », voir plus haut), le diagramme SVG dessine un
+**disque par agent**, relié en séquence,
 fidèle au bit près au prototype Material 3
 (`control-center/maquettes/2026-09-20-maquette-materiel-3.html`). Au-dessus
 du disque : le **nom** de l'agent. En dessous : la **durée seule** — l'heure
@@ -449,8 +585,8 @@ pour la disparition de la couleur d'identité par agent (section
 ## Voir aussi
 
 - `docs/DESIGN-SYSTEM.md` — règles visuelles complètes, méthode de palette,
-  grammaire du diagramme, §3 (surfaces), §4 (typographie), §6 (liste des
-  cycles)
+  grammaire du diagramme, §3 (surfaces), §4 (typographie), §6 (sélecteur de
+  cycle)
 - [ADR-0029](../adr/0029-le-tableau-de-bord-revient-au-mono-ecran.md) — le
   retour au mono-écran, l'amendement d'`ADR-0024 §1`/§2 et le refus de
   `three.js`
@@ -497,5 +633,16 @@ pour la disparition de la couleur d'identité par agent (section
 - [ADR-0041](../adr/0041-lecture-hors-racine-compteurs-seulement.md) —
   lecture des transcripts de sous-agent hors racine, compteurs seulement,
   budget par instantané
+- [ADR-0042](../adr/0042-parler-a-une-session-quon-ne-detient-pas.md) — le
+  panneau de conversation rebranché sur la session Claude remote
+  persistante, pourquoi taper dans son pty plutôt qu'ouvrir un second
+  processus, et l'amendement d'`ADR-0041`
+- [ADR-0043](../adr/0043-feature-028-absorbee-au-titre-dadr-0017.md) — la
+  dette `U1` de `feature-021` (sept sections héritées) soldée par
+  `feature-028`, absorbée au titre d'`ADR-0017`
+- [ADR-0044](../adr/0044-verifier-le-mecanisme-nest-pas-verifier-la-chose.md)
+  — la méthode tirée du cycle `feature-026`/`feature-028` : sept défauts
+  trouvés par l'usage humain, aucun par la chaîne d'agents
 - `control-center/README.md` — modèle de déploiement, jeton d'accès, et le
-  contrat des routes d'écriture (§ Étapes D à H)
+  contrat des routes d'écriture (§ Étapes D à J, et l'Étape I+ pour la
+  session Claude remote)

@@ -321,8 +321,11 @@ Une référence de commit est validée par **liste blanche de caractères** avan
 d'atteindre git : `--help`, `-n`, `a/b`, `; rm -rf /`, `$(whoami)` sont tous
 refusés.
 
-Un diff tronqué est **annoncé comme tel**. Un diff coupé en silence se lit comme
-un diff complet, et c'est un mensonge sur l'état du code.
+⚠️ Ce module servait aussi `vcs.diff()`, dont un diff tronqué était **annoncé
+comme tel** (un diff coupé en silence se lit comme un diff complet, et c'est un
+mensonge sur l'état du code) — trace historique de cette étape, **la fonction
+et la route qu'elle servait n'existent plus** (`/api/diff`, retirée par
+`feature-028`, voir Étape H).
 
 ## Étape C — le tableau de bord
 
@@ -373,7 +376,11 @@ Aucune arithmétique de chemin n'est improvisée :
 |---|---|
 | fichiers statiques | liste **fermée**, calculée au démarrage depuis `web/` — l'extension tranche, pas l'existence du fichier |
 | specs | l'identifiant doit correspondre **exactement** à une spec découverte ; aucun chemin n'est construit depuis la requête |
-| diffs | `vcs.chemin_sur()` — liens symboliques résolus, sortie du dépôt refusée |
+| transcript de la session Claude remote (étape I, `feature-026`) | `session_id` confiné à `[0-9a-fA-F-]{1,64}` (`session_tmux.py`) **puis** revérifié par `vcs.chemin_sur()` avant tout `os.path.join` (défense en profondeur, ne dépend pas d'une seule des deux couches) |
+
+⚠️ **`diffs` a existé dans cette table** (`vcs.chemin_sur()`, servant
+`/api/diff`) et en a été retirée : la route est **supprimée** (voir « Ce qui
+peut sortir du serveur » ci-dessus, et l'Étape H).
 
 `transcript_path` figure dans le journal et pointe **hors du dépôt**, vers la
 conversation entière. Une **liste blanche positive** de champs l'écarte : un
@@ -473,6 +480,14 @@ après 5 secondes s'il résiste — même délai à l'arrêt du serveur
 arrêt ordinaire. Sur un `SIGKILL` du serveur lui-même, rien de tout cela ne
 s'exécute : c'est alors la méta du verrou qui détecte l'orphelin au
 redémarrage suivant.
+
+`{spec_id}` est **optionnel** dans le corps depuis `feature-028` (menu `⋮`
+d'une carte kanban, condition C3 du GATE) : absent, comportement **inchangé**
+(interrompt `lancement_courant()`, le dernier lancement basculé) ; présent, la
+route cible **exactement** le lancement dont le `spec_id` est égal, parmi
+**tous** les lancements actifs (`404` si aucun ne correspond) — jamais
+`lancement_courant()` seul, qui ne désignerait que le dernier écrivain basculé
+et pourrait donc interrompre un lancement sans rapport avec la carte cliquée.
 
 ### Le champ unique qui dit si l'écriture est active
 
@@ -717,6 +732,59 @@ sérialiseur réel, jamais recopiée d'un rapport — 3,0× d'écart mesuré sel
 le seul drapeau `ensure_ascii`) sont détaillées dans
 [ADR-0040](../docs/adr/0040-les-chemins-decriture-du-cockpit.md) §3, avec
 l'hypothèse de segment de confiance dont dépend toute cette surface.
+
+### Étape I+ (`feature-026`) — la session Claude remote persistante remplace la cible par défaut
+
+Ce qui précède décrit le canal **`json-lines`** d'un lancement du cockpit —
+**inchangé**, et il reste la bonne porte pour une commande lancée par le
+cockpit qui accepte `--input-format stream-json`. Mais aucune commande
+réelle du projet ne déclare cette entrée (`demo`/`lent` sont des exemples) :
+`GET /api/conversation` rendait donc `404` en permanence, et le panneau
+affichait « Hors ligne ».
+
+`feature-026` rebranche les deux routes sur une **autre** cible, décidée par
+la configuration (jamais par la requête, `ADR-0005`) : `[session]` (`nom`,
+`socket_tmux`, `repertoire_transcripts` — voir `control-center.example.toml`).
+**Déclarée**, elle prend le pas sur l'ancien canal — `config.session_config()`
+rend `None` dès que l'un des trois réglages manque, et le comportement
+`feature-022` ci-dessus reste alors **strictement inchangé**. **Non
+déclarée** (le cas par défaut), rien ne change.
+
+Quand elle est déclarée, `session_tmux.py` tape dans le **pty d'une session
+tmux persistante** qui tourne déjà, en dehors du cockpit — démarrée par
+systemd (`claude-remote-kit.service`, [ADR-0036](../docs/adr/0036-une-session-distante-se-releve-seule-plafonnee-au-pic-mesure.md)),
+déjà authentifiée, déjà pilotée depuis un autre terminal. Le pourquoi de ce
+choix (parler à un processus qu'on ne détient pas plutôt qu'en ouvrir un
+second sous OAuth) et les neuf puis quatre conditions du GATE sont dans
+[ADR-0042](../docs/adr/0042-parler-a-une-session-quon-ne-detient-pas.md).
+
+- `GET /api/conversation` (session déclarée) rend `{messages, tronque, etat,
+  session_id, session_id_source, session_id_divergence, destinataire}`.
+  `etat` ∈ `"En ligne"`, `"Hors ligne"` (`404`), `"Injoignable"` (`503`) —
+  **trois** états, pas quatre : `"Occupée"` a été retiré de la pastille en
+  cours de cycle (voir plus bas), l'information « Claude travaille » vivant
+  désormais dans le fil, jamais dans le badge. Le fil vient de
+  [`backend/fil.py`](backend/fil.py) (filtre positif sur `type`, lecture
+  bornée en octets/messages/caractères, jamais le fichier entier), **fusionné**
+  avec le journal propre du cockpit — un message dont `envoye` vaut `false`
+  (refusé) n'entre jamais dans la fusion, pour ne jamais afficher un message
+  qui n'est, en réalité, jamais parti.
+- `POST /api/conversation {texte}` (session déclarée) tape le texte via
+  `load-buffer`/`paste-buffer -p`/`Enter` — jamais par l'argv de
+  `send-keys -l`, lisible dans `ps`. Refusé (`422`) si le texte porte un
+  caractère de contrôle, DEL, un C1, ou si une ligne commence par `/` ou
+  `!` (irréversibilité : `/exit`/`/clear` ne se rattrapent pas depuis le
+  cockpit, `/resume` n'existant pas en Remote Control). `409` — toujours
+  qualifié d'**heuristique**, jamais d'une garantie — quand aucun compositeur
+  n'est identifiable (dialogue, écran de confiance) ou qu'un brouillon y est
+  déjà présent ; **pas** quand la session est simplement occupée : mesuré,
+  un texte tapé pendant que `claude` travaille est **mis en file** par
+  `claude` lui-même, jamais perdu ni corrompu.
+- Chaque message tapé par le cockpit est **journalisé avant l'envoi**, avec
+  son `destinataire` explicite (`"session tmux '<nom>'"` ou, sur l'ancien
+  canal, `"lancement '<cle>' (pid <pid>)"`) : le transcript seul ne permet
+  pas de distinguer un message tapé par le cockpit d'un message venu d'un
+  autre terminal (téléphone, `tmux attach`).
 
 ## Étape J — les tokens par passage d'agent
 

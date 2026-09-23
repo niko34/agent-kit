@@ -906,6 +906,94 @@ d'un contrôle qu'elle n'appelle pas.
 les gardes du cycle n'ont jamais traversé. Une suite verte pendant treize lots
 ne dit rien de ce qu'elle fera au `git mv` final.
 
+## 63. Un témoin fabriqué n'est pas une capture
+
+La première version d'`ecran_semble_au_prompt` (feature-026) s'appuyait sur
+trois témoins écrits par l'agent : un écran de composeur **dessiné à la main**
+(`cat` d'une chaîne bordée `│ ❯ … │`), jamais capturé sur un vrai `claude`. Les
+trois témoins étaient conformes à la consigne qui les demandait (session
+jetable, phrase-marqueur) — la consigne ne disait simplement pas qu'il fallait
+un **vrai** `claude` en face.
+
+Coût : une heuristique livrée, revue, et déclarée gardée par une campagne de
+mutation entière — **inatteignable sur sa cible réelle** dès le premier essai
+en service (`claude` 2.1.278 n'a aucune bordure verticale). Le défaut n'a été
+vu qu'au GATE P2, en recapturant un écran réel.
+
+**Règle** : un témoin qui représente la sortie d'un outil externe se
+**capture**, il ne se rédige jamais à la main — même quand la forme paraît
+évidente à reproduire.
+
+## 64. Une même mesure peut trancher deux questions et n'être lue que pour celle qui l'a motivée
+
+`promptSource: "queued"` a été mesuré et cité pour répondre à une seule
+question, au GATE P1 : « le cockpit peut-il tracer qu'un message vient de
+lui ? ». La même valeur répondait déjà, dans les mêmes données, à une question
+ergonomique distincte — « le compositeur doit-il rester actif pendant que
+Claude travaille ? » — et n'a traversé jusqu'à elle qu'après une question
+humaine directe, pas par relecture de spec ou de journal.
+
+Coût : une pastille à quatre états conçue puis rejetée (`ux-ui-designer`,
+étape 5 puis 5bis de `feature-026`), et une branche d'inertie du composeur
+livrée puis retirée.
+
+**Règle** : après toute mesure, se demander explicitement à quelles **autres**
+décisions en cours elle s'applique — pas seulement à celle qui l'a demandée.
+Une mesure écrite et citée n'est pas une mesure exploitée.
+
+## 65. Un registre d'ids tenu à la main peut être vert sans rien vérifier
+
+Six registres `IDS` tenus à la main existent dans les harnais web de ce
+module (`test_app_bug012.js`, `test_app_conversation_feature026.js`,
+`test_app_bug017.js`, et trois autres). Un id bidon inséré dans `index.html`
+n'a fait échouer **qu'un seul** des six (établi par exécution, lot A1 +
+B de `feature-028`) : les cinq autres sont des copies jamais confrontées au
+DOM réel — ils ne mesurent pas la synchronisation, ils la **supposent**.
+
+Un recoupement par `grep` a été tenté en amont pour trancher lesquels
+vérifient réellement ; il ne distingue pas « lit `index.html` » de
+« assertionne la couverture », donc il ne confirme ni n'infirme — seule
+l'injection d'un id bidon, suivie de l'exécution, tranche.
+
+**Règle** : « ce registre est vert » ne veut rien dire par soi-même — vérifier
+par injection qu'il **peut** rougir avant de le compter comme une garde.
+
+## 66. Un bloc `if __name__ == "__main__"` peut appeler du code mort qu'aucun test n'exécute
+
+En retirant `vcs.diff()` (feature-028, GATE C5), le bloc CLI de debug en fin
+de `vcs.py` continuait de l'appeler. Invisible à un `grep` centré sur les
+appelants de **production**, et invisible à la suite de tests — aucun test
+n'exécute ce bloc. Trouvé par `pyflakes`, pas par l'exécution des tests : le
+module aurait cassé au premier lancement en ligne de commande.
+
+**Règle** : avant de retirer une fonction publique d'un module qui porte un
+tel bloc, chercher **spécifiquement** ses appelants dans ce bloc — un `grep`
+sur les appelants « réels » ne le couvre pas.
+
+## 67. L'empreinte AST de synchronisation inclut le docstring
+
+La garde qui vérifie qu'une fonction copiée dans un second fichier reste
+identique à son original compare l'AST **du fichier entier**, docstring
+compris. Reformuler « en mieux » le commentaire d'une fonction copiée — sans
+toucher à sa logique — suffit à la faire échouer. Mesuré deux fois dans ce
+cycle (lots `feature-028`), les deux fois par surprise.
+
+**Règle** : une fonction dupliquée pour une garde de synchronisation se
+copie-colle **octet pour octet**, commentaires compris — jamais « en mieux ».
+
+## 68. Deux bornes redondantes non documentées font survivre une mutation qui semblait neutraliser une garde
+
+`fil.py` applique la même limite d'octets par deux mécanismes indépendants
+(troncature à la lecture, puis re-troncature après fusion avec le journal du
+cockpit). Muter l'un des deux ne casse rien, parce que l'autre absorbe le
+dépassement — et réciproquement : chaque mutation, prise seule, **survit**,
+en donnant l'impression que la borne n'est pas gardée.
+
+**Règle** : une mutation qui survit sur une borne numérique n'établit
+l'absence de garde qu'après avoir vérifié qu'aucun **second** mécanisme,
+même non documenté comme redondant, ne produit le même plafond par un autre
+chemin.
+
 ## Voir aussi
 
 - `docs/DESIGN-SYSTEM.md` — règles de couleur, de surface et de typographie

@@ -300,15 +300,28 @@ d'outils/fichiers, F11) et les gardes runtime F3b/F4b/F5b restent au
 
 *Révisé par `feature-021` — voir
 [ADR-0029](adr/0029-le-tableau-de-bord-revient-au-mono-ecran.md), qui retire
-l'accordéon des cycles livré par `feature-016` et remplace cette section.*
+l'accordéon des cycles livré par `feature-016` et annonce cette section. Le
+câblage réel n'est arrivé que plus tard, avec `feature-028` — voir
+[ADR-0043](adr/0043-feature-028-absorbee-au-titre-dadr-0017.md) : entre les
+deux, l'accordéon de `feature-016` est resté en service, et c'est ce
+décalage — une case de clôture cochée sur la lettre (« 0 `role="tab"` »)
+plutôt que sur la chose (« l'accordéon a disparu ») — que documente
+[ADR-0044](adr/0044-verifier-le-mecanisme-nest-pas-verifier-la-chose.md).
+⚠️ **Correction (2026-09-23)** : le motif implémenté n'est **pas**
+`role="tablist"`/`tab`/`tabpanel` — deux boutons `role="group"` avec
+`aria-pressed`, choisis pour ne réintroduire aucun `role="tab"` dans le DOM
+(garde `F7` de `feature-021`, toujours en vigueur). Le paragraphe qui suit
+décrivait l'intention, pas encore la forme exacte retenue.*
 
 Le cycle le plus récent s'affiche **sans aucun clic** : c'est la lecture par
 défaut du mono-écran, cohérente avec l'exigence que l'état du projet se lise
-sans interaction. Une bande de sélection en `role="tablist"` permet de
-consulter un cycle **antérieur** — c'est le seul usage restant du motif
-`tablist`/`tab`/`tabpanel` dans ce document ; la navigation entre sections du
-tableau de bord elle-même en a été retirée (voir ADR-0029). Un seul
-`tabpanel`, donc un seul diagramme, n'est jamais visible à l'écran à la fois.
+sans interaction. Une bande de sélection (`.cycle-tabs`, `role="group"`,
+deux boutons `aria-pressed` — « Cycle actif » / « Historique » — plus un
+sélecteur `#cycle-indice` actif en mode Historique) permet de consulter un
+cycle **antérieur**, en avançant vers le précédent à chaque clic, avec
+bouclage après le plus ancien. Un seul cycle, donc un seul diagramme, n'est
+jamais visible à l'écran à la fois — les deux boutons bascule bien le
+**même** `#cycle-canvas`/`.detail-sheet`, jamais deux panneaux distincts.
 
 La zone du diagramme **défile horizontalement** quand le tracé dépasse la
 largeur ; elle ne se comprime pas. Molette seule = la page ; `Maj` + molette ou
