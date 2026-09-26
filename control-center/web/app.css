@@ -121,6 +121,25 @@ body {
   line-height: 1.35;
 }
 
+/* `button, input, textarea, select { font: inherit; }` — copié tel quel du
+ * prototype (l.48) : SANS cette règle, les éléments de formulaire ne
+ * reprennent PAS la police posée sur `body` mais la police par défaut du
+ * NAVIGATEUR pour ces contrôles (dépend de la machine, cf. `bug-030` : trois
+ * boutons — `.add-item-button`, `.feature-dialog-actions .secondary`,
+ * `.form-buttons`/`.dialog-actions .cancel` — n'héritaient d'AUCUNE règle
+ * `font: inherit` propre, contrairement aux autres contrôles interactifs de
+ * cette feuille qui la portent déjà chacun sur leur propre classe
+ * (`.icon-button`, `.account-button`, `.tab-button`/`.small-button`,
+ * `.composer input`, `.card-title-button`, `.more-button`,
+ * `.action-ecriture`, `.pilotage-secondaire`). Un repli GLOBAL, comme dans le
+ * prototype, ferme le trou pour CES quatre groupes de boutons (`.dialog-
+ * actions button`, `.feature-dialog-actions button`, `.form-buttons button`,
+ * `.add-item-button`) d'un coup — spécificité d'élément (0,0,1), toujours
+ * dominée par la classe la plus proche (ex. `.add-item-button
+ * { font-weight: 500 }`, 0,1,0), donc sans effet sur ce que ces classes
+ * imposent déjà. */
+button, input, textarea, select { font: inherit; }
+
 /* Anneau de focus M3 (F6, lot 2) : 3 px, décalé de 3 px, sur `--primary`
  * directement (pas l'alias transitoire `--accent`, qui disparaît au lot 3) —
  * copié tel quel du prototype (l.51-54). N'écrase AUCUNE règle existante :

@@ -19,9 +19,10 @@ Deux comparaisons
 A. PAR ANCRE — pour chaque id « adopté, DÉJÀ LIVRÉ » de la table F0 (lots
    0-5, `lotEstDejaLivre`, cf. `test_conformite_partition_donnees.js`)
    présent dans les DEUX DOM rendus :
-     - vecteur de STYLE CALCULÉ (`getComputedStyle` : `border-radius` et
-       `box-shadow` RÉSOLUS — `color-mix()` compris, cascade réelle, pas la
-       déclaration source que G1/G2 lisent) ;
+     - vecteur de STYLE CALCULÉ (`getComputedStyle` : `border-radius`,
+       `box-shadow` et `font-family` RÉSOLUS — `color-mix()` compris, cascade
+       réelle, pas la déclaration source que G1/G2 lisent ; `font-family`
+       ajoutée bug-030, cf. commentaire sur `styleForme`) ;
      - GÉOMÉTRIE NORMALISÉE : largeur rapportée à la fenêtre
        (`rect.width / innerWidth`), hauteur rapportée à l'ancre PARENTE
        (`rect.height / parent.rect.height`) ;
@@ -351,6 +352,23 @@ function fideliteMesurer(idsAncres) {
     var cs = getComputedStyle(el);
     return { borderRadius: cs.borderRadius, boxShadow: cs.boxShadow };
   }
+  // `fontFamily` RÉSOLUE, séparément du vecteur de forme ci-dessus (bug-030)
+  // : sans elle, une ancre de type bouton qui perd son `font: inherit`
+  // (repli sur la police par défaut du NAVIGATEUR pour les contrôles de
+  // formulaire, jamais celle de `body`) ne fait bouger ni `borderRadius` ni
+  // `boxShadow` — la divergence n'était visible qu'INDIRECTEMENT, par la
+  // largeur du texte peint, dépendante des polices installées sur la
+  // machine. Portée VOLONTAIREMENT étroite aux ancres où ce cycle l'a
+  // établie et corrigée (`.add-item-button`, `.feature-dialog-actions
+  // button`, `.form-buttons`/`.dialog-actions button`) — pas à toutes les
+  // ancres communes : `#selected-code` (entre autres) déclare DÉLIBÉRÉMENT
+  // `--mono` côté cockpit contre `--sans` côté prototype (sigle d'agent en
+  // chasse fixe), une divergence de police PRÉEXISTANTE et hors du périmètre
+  // de ce correctif — l'étendre sans discernement transforme la garde en
+  // échec sur un choix de design non concerné, pas sur la cause réelle.
+  function fontFamilleCalculee(el) {
+    return getComputedStyle(el).fontFamily;
+  }
   var ancres = {};
   var pourOrdre = [];
   idsAncres.forEach(function (id) {
@@ -361,6 +379,7 @@ function fideliteMesurer(idsAncres) {
     var rectParent = parent ? parent.getBoundingClientRect() : null;
     ancres[id] = {
       forme: styleForme(el),
+      fontFamille: fontFamilleCalculee(el),
       largeurFenetre: rect.width / window.innerWidth,
       hauteurParent: (rectParent && rectParent.height > 0) ? (rect.height / rectParent.height) : null,
       top: rect.top,
@@ -782,6 +801,26 @@ def main():
           str(len(divergences_forme)) + " divergence(s) : " + " | ".join(divergences_forme[:10]))
     check("A_largeur_normalisee_dans_la_tolerance_mesuree", len(divergences_largeur) == 0,
           str(len(divergences_largeur)) + " divergence(s) : " + " | ".join(divergences_largeur[:10]))
+
+    # bug-030 : ces trois boutons perdaient `font: inherit` côté cockpit
+    # (`.add-item-button`, `.feature-dialog-actions button`, `.form-buttons
+    # button`) et retombaient sur la police par défaut du NAVIGATEUR pour les
+    # contrôles de formulaire, jamais sur `--sans` posé sur `body` — un écart
+    # invisible à `A_vecteur_de_style_calcule_identique_par_ancre_commune`
+    # (qui ne compare que `borderRadius`/`boxShadow`) et qui ne se manifestait
+    # qu'INDIRECTEMENT, par la largeur du texte peint, dépendante des polices
+    # installées sur la machine (rouge en CI, vert ici — cf. commentaire sur
+    # `fontFamilleCalculee`). Portée délibérément étroite à ces trois ancres,
+    # PAS à toutes les ancres communes : voir la note sur `#selected-code`.
+    ANCRES_POLICE_HERITEE_DU_CORPS = {"open-add-item", "feature-edit", "cancel-add-item"}
+    divergences_police = []
+    for aid in ANCRES_POLICE_HERITEE_DU_CORPS & set(ancres_communes):
+        vp = mesure_proto["ancres"][aid]["fontFamille"]
+        vc = mesure_cockpit["ancres"][aid]["fontFamille"]
+        if vp != vc:
+            divergences_police.append("#%s : prototype=%s cockpit=%s" % (aid, vp, vc))
+    check("A_police_heritee_du_corps_pour_les_boutons_bug030", len(divergences_police) == 0,
+          str(len(divergences_police)) + " divergence(s) : " + " | ".join(divergences_police))
 
     # Ordre vertical : la séquence des ancres COMMUNES, dans l'ordre où
     # chaque page les peint, doit être la MÊME séquence relative — modulo
