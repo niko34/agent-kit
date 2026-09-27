@@ -174,6 +174,32 @@ def _corps_lancer_navigateur(arbre):
     return None
 
 
+def _valeur_delai_chromium(arbre):
+    """Valeur de la constante de MODULE `_DELAI_CHROMIUM_S`, ou `None` si le
+    fichier n'en définit aucune.
+
+    ⚠️ Cette garde-ci existe parce que l'empreinte AST ci-dessus a CESSÉ de
+    couvrir le seuil. Tant que `timeout=30` était écrit DANS le corps de
+    `_lancer_navigateur`, `ast.dump` du corps portait la valeur : deux copies
+    aux seuils différents rendaient deux empreintes. Depuis que le seuil est
+    sorti en constante de module (bug-022 rouvert le 2026-09-27),
+    `timeout=_DELAI_CHROMIUM_S` est le MÊME nœud AST quelle que soit la
+    valeur — l'empreinte reste identique alors que les harnais n'attendent
+    plus la même chose. Sortir une valeur d'une fonction déplace donc aussi
+    ce qui la gardait, en silence : c'est ce trou-là que ces deux checks
+    referment (ADR-0044)."""
+    if arbre is None:
+        return None
+    for noeud in arbre.body:
+        if not isinstance(noeud, ast.Assign):
+            continue
+        for cible in noeud.targets:
+            if isinstance(cible, ast.Name) and cible.id == "_DELAI_CHROMIUM_S":
+                if isinstance(noeud.value, ast.Constant):
+                    return noeud.value.value
+    return None
+
+
 def _extraire_job(texte_yaml, nom_job):
     """Rend le texte du job `nom_job:` -- de sa ligne de déclaration
     (indentée de DEUX espaces sous `jobs:`) jusqu'à la prochaine clé au même
@@ -444,9 +470,26 @@ def main():
     check("test_les_copies_de_lancer_navigateur_sont_synchronisees",
           len(empreintes) <= 1,
           "%d empreinte(s) AST distincte(s) pour `_lancer_navigateur` parmi "
-          "%s -- les copies ont divergé (seuil de 30 s, reprise UNIQUE sur "
-          "`TimeoutExpired`, avertissement bruyant : les trois doivent "
+          "%s -- les copies ont divergé (reprise UNIQUE sur "
+          "`TimeoutExpired`, avertissement bruyant : toutes doivent "
           "rester identiques, PIEGES §22)" % (len(empreintes), _rel(declares)))
+
+    # --- le SEUIL lui-même, que l'empreinte AST ne couvre plus -------------
+    delai_par_fichier = {f: _valeur_delai_chromium(arbres[f]) for f in declares}
+    sans_delai = sorted(f for f, v in delai_par_fichier.items() if not isinstance(v, int))
+    check("test_tout_harnais_navigateur_declare_le_delai_chromium",
+          len(sans_delai) == 0,
+          "fichier(s) marqué(s) %r sans constante entière `_DELAI_CHROMIUM_S` "
+          "de module : %s -- le seuil de `_lancer_navigateur` y est alors "
+          "invérifiable (bug-022)" % (_MARQUEUR_LITTERAL, _rel(sans_delai)))
+
+    delais = {v for v in delai_par_fichier.values() if isinstance(v, int)}
+    check("test_le_delai_chromium_est_le_meme_partout", len(delais) <= 1,
+          "%d valeur(s) distincte(s) de `_DELAI_CHROMIUM_S` parmi %s : %s -- "
+          "les copies attendent des durées différentes, et l'empreinte AST de "
+          "`_lancer_navigateur` ne le voit PAS (le nom est le même nœud quelle "
+          "que soit la valeur)"
+          % (len(delais), _rel(declares), sorted(delais)))
 
     # --- provenance 3 : le motif, LU depuis le YAML du job matrice ---------
     motif = _extraire_motif_filtre(job_matrice)

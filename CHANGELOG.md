@@ -222,6 +222,24 @@ un comportement observable (cf. CLAUDE.md, « Auto-vérification fin de tour »)
 - Voir [ADR-0036](docs/adr/0036-une-session-distante-se-releve-seule-plafonnee-au-pic-mesure.md)
   pour le trade-off assumé et l'alternative écartée (augmenter la RAM du
   conteneur plutôt que réparer l'absence de relève).
+- **`bug-022` rouvert par son propre critère longitudinal, et son seuil
+  remesuré** : le délai d'un lancement Chromium dans les harnais de test
+  passe de **30 s à 120 s**. Les 30 s étaient justifiés par une marge de
+  6,5× mesurée **en local** ; sur le coureur GitHub, l'avertissement de
+  reprise s'est imprimé deux runs de suite (`36243211048`, reprise réussie,
+  puis `36305731821`, les deux tentatives expirées et le job rouge). Dans
+  ce même journal, les lancements suivants tiennent en ~12 s : seul le
+  **premier du job**, à froid, dépassait. Le seuil était donc à l'intérieur
+  de la distribution normale, pas au-delà — la marge mesurait une machine
+  qui n'est pas celle qui échoue. La reprise unique et l'avertissement
+  bruyant sont conservés.
+- **Correction d'une attente de test qui n'attendait pas** : dans
+  `test_server_ecriture.py`, `Verrou.liberer()` vidant `meta`, le prédicat
+  d'attente lisait `starttime=None` et rendait la main immédiatement. La
+  suite passait ou échouait selon l'ordonnancement (2 échecs sur 5 sous
+  charge CPU, 0 sur 8 au repos) — d'où un vert local et un rouge en CI. Le
+  prédicat est désormais **vu faux avant l'action et vrai après**, ce
+  qu'une garde dédiée exige.
 
 ### Documentation
 

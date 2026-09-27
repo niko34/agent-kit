@@ -994,6 +994,29 @@ l'absence de garde qu'après avoir vérifié qu'aucun **second** mécanisme,
 même non documenté comme redondant, ne produit le même plafond par un autre
 chemin.
 
+## 69. Sortir une valeur d'une fonction déplace aussi la garde qui la couvrait
+
+`_lancer_navigateur` est dupliqué dans 14 harnais, et une garde
+(`backend/test_ci_partition_navigateur.py`) compare l'empreinte `ast.dump` du
+corps de la fonction pour que les copies ne divergent pas. Tant que le seuil
+était écrit `timeout=30` **dans** ce corps, la valeur faisait partie de
+l'empreinte : deux copies aux seuils différents rendaient deux empreintes, et
+la garde tombait.
+
+Remplacer `30` par la constante de module `_DELAI_CHROMIUM_S` — un geste de
+propreté, aucune ligne de garde touchée — a rendu cette garde **aveugle au
+seuil** : `timeout=_DELAI_CHROMIUM_S` est le même nœud AST quelle que soit la
+valeur. Vérifié par mutation : un harnais passé à `60` alors que les treize
+autres restent à `120` laisse
+`test_les_copies_de_lancer_navigateur_sont_synchronisees` **vert**.
+
+**Règle** : extraire une valeur dans une constante, un réglage ou un fichier de
+configuration déplace la frontière de ce qu'une garde structurelle observe. Se
+demander à chaque extraction **quelle garde portait cette valeur**, et la
+suivre — sinon elle reste verte en surveillant un endroit où plus rien ne se
+décide. Corollaire de l'ADR-0044 : vérifier le mécanisme n'est pas vérifier la
+chose.
+
 ## Voir aussi
 
 - `docs/DESIGN-SYSTEM.md` — règles de couleur, de surface et de typographie
