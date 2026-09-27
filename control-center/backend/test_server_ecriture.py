@@ -607,6 +607,23 @@ def main():
         lancement1 = g6.ecriture().lancement_courant()
         pid_fils_reel = lancement1.pid
 
+        # `starttime` capturé AVANT `liberer()` : `liberer()` vide `self.meta`
+        # à `None` (verrou.py:218). Le lire APRÈS rend `starttime_attendu`
+        # systématiquement `None`, et `_fils_toujours_vivant` rend alors
+        # `False` dès son PREMIER appel (elle rend `False` sitôt que
+        # `starttime_attendu is None`) — l'attente plus bas se terminerait
+        # donc IMMÉDIATEMENT, sans jamais avoir attendu que le fils meure pour
+        # de vrai. Établi par exécution : 2 échecs sur 5 passages sous charge
+        # CPU avec la lecture après `liberer()`, 0 sur 8 à vide (la fenêtre
+        # entre SIGKILL et l'attente vide de sens était trop courte pour se
+        # manifester au repos).
+        starttime_attendu = (lancement1.verrou.meta.get("starttime")
+                             if lancement1.verrou.meta else None)
+        check("test_T6_starttime_capture_avant_liberation",
+              starttime_attendu is not None,
+              "starttime introuvable dès la construction : le test ne "
+              "prouverait plus rien")
+
         # ⚠️ Simuler un CRASH DU SERVEUR, pas une interruption propre : le
         # noyau referme le descripteur de verrou (donc le flock se libère),
         # mais le FILS, lui, continue de tourner. `Verrou.liberer()` ne touche
@@ -632,14 +649,37 @@ def main():
         if lancement2 is not None:
             lancement2.interrompre()
 
+        # Prédicat UNIQUE, partagé par la garde de discrimination et par
+        # l'attente : si ce corps de fonction régresse un jour (ex. relire
+        # `lancement1.verrou.meta` APRÈS `liberer()` au lieu de fermer sur
+        # `starttime_attendu`), la garde ci-dessous le voit directement — le
+        # fils est réellement vivant à cet instant (juste avant le SIGKILL),
+        # donc toute régression qui fait rendre `False` au prédicat AVANT
+        # l'action fait échouer cette assertion-ci, pas seulement celle
+        # d'après.
+        def _fils_du_premier_lancement_encore_vivant():
+            return g6.srv.VR._fils_toujours_vivant(pid_fils_reel, starttime_attendu)
+
+        # Garde de DISCRIMINATION (discipline « vue rouge » appliquée à un
+        # prédicat d'attente) : le prédicat de l'attente ci-dessous doit être
+        # FAUX avant le SIGKILL (le fils est réellement encore vivant à cet
+        # instant) et VRAI après — sinon l'attente est inerte et son verdict
+        # ne prouve rien, quel qu'il soit. C'est cette assertion-ci, pas la
+        # relecture du code, qui établit que le prédicat discrimine.
+        check("test_T6_predicat_discrimine_vivant_avant_sigkill",
+              _fils_du_premier_lancement_encore_vivant(),
+              "le fils devrait être vivant juste avant le SIGKILL — si ce "
+              "prédicat rend déjà False ici, l'attente qui suit ne prouve rien")
+
         # Le fils RÉEL du premier lancement meurt (tué directement, puisque
         # son propre `Lancement` n'a plus le verrou pour l'interrompre
         # proprement) : la place doit redevenir prenable pour le second
         # `Ecriture`.
         g6.srv.L.tuer_immediatement(pid_fils_reel)
-        _attendre(lambda: not g6.srv.VR._fils_toujours_vivant(
-            pid_fils_reel, lancement1.verrou.meta.get("starttime")
-            if lancement1.verrou.meta else None))
+        mort = _attendre(lambda: not _fils_du_premier_lancement_encore_vivant())
+        check("test_T6_predicat_devient_faux_apres_sigkill", mort,
+              "le fils du premier lancement est encore vivant après le "
+              "SIGKILL — l'attente n'a pas réellement bouclé jusqu'à sa mort")
         lancement3, raison3 = second.lancer(
             "dodo", [_PY, "-c", "print('reprise')"],
             g6.racine_projet, os.path.join(g6.clone, "var", "j2.jsonl"))
